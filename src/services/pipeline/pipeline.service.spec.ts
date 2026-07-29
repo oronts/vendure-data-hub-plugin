@@ -91,8 +91,29 @@ describe('PipelineService lifecycle', () => {
         expect(run.definitionSnapshot).not.toEqual(draftDefinition);
         expect(run.channelId).toBe('17');
         expect(run.channelToken).toBe('private-channel');
+        expect(fixture.connection.getEntityOrThrow).toHaveBeenCalledWith(
+            ctx,
+            Pipeline,
+            fixture.pipeline.id,
+            { channelId: ctx.channelId },
+        );
         expect(fixture.eventBus.publish).toHaveBeenCalledOnce();
         expect(fixture.executionPermissions.assertAllowed).not.toHaveBeenCalled();
+    });
+
+    it('rejects starting a pipeline outside the active channel', async () => {
+        const fixture = createFixture();
+        fixture.connection.getEntityOrThrow.mockRejectedValueOnce(
+            new Error('Pipeline not found'),
+        );
+
+        await expect(fixture.service.startRun(
+            ctx,
+            fixture.pipeline.id,
+            { skipPermissionCheck: true },
+        )).rejects.toThrow('Pipeline not found');
+        expect(fixture.runRepository.save).not.toHaveBeenCalled();
+        expect(fixture.eventBus.publish).not.toHaveBeenCalled();
     });
 
     it('checks execution permissions before queueing a run', async () => {

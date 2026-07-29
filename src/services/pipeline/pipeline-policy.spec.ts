@@ -49,6 +49,32 @@ describe('pipeline policy', () => {
         expect(definitionsEqual(definition, { version: 2, steps: [] })).toBe(false);
     });
 
+    it('treats capability arrays as normalized sets', () => {
+        expect(definitionsEqual(
+            definition,
+            {
+                ...definition,
+                capabilities: { requires: [], writes: [] },
+            },
+        )).toBe(true);
+        expect(definitionsEqual(
+            {
+                ...definition,
+                capabilities: {
+                    requires: ['UpdateCatalog', 'RunDataHubPipeline'],
+                    writes: ['INVENTORY', 'CATALOG'],
+                },
+            },
+            {
+                ...definition,
+                capabilities: {
+                    requires: ['RunDataHubPipeline', 'UpdateCatalog'],
+                    writes: ['CATALOG', 'INVENTORY'],
+                },
+            },
+        )).toBe(true);
+    });
+
     it.each([
         PipelineStatus.REVIEW,
         PipelineStatus.PUBLISHED,

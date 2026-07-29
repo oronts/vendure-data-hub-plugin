@@ -5,6 +5,7 @@ import type { AdapterDefinition } from '../../sdk/types';
 import type { PipelineDefinition } from '../../types';
 import {
     AdapterDefinitionRegistry,
+    getEffectivePipelineCapabilities,
     getMissingPipelinePermissions,
     getRequiredPipelinePermissions,
     PermissionContext,
@@ -113,6 +114,21 @@ describe('pipeline capabilities', () => {
             'UpdateCatalog',
         ]);
         expect(loaderDefinition.capabilities?.requires).toEqual(['RunDataHubPipeline']);
+    });
+
+    it('returns a stable effective capability summary', () => {
+        const definition: PipelineDefinition = {
+            ...loaderDefinition,
+            capabilities: {
+                ...loaderDefinition.capabilities,
+                writes: ['ORDERS', 'CATALOG', 'ORDERS'],
+            },
+        };
+
+        expect(getEffectivePipelineCapabilities(registry, definition)).toEqual({
+            requires: ['RunDataHubPipeline', 'UpdateCatalog'],
+            writes: ['CATALOG', 'ORDERS'],
+        });
     });
 
     it('requires every permission on the active channel', () => {

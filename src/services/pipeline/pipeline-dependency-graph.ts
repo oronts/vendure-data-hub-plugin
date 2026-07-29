@@ -2,26 +2,37 @@ import type { PipelineDefinition } from '../../types';
 
 export interface PipelineDependencyNode {
     code: string;
-    definition: Pick<PipelineDefinition, 'dependsOn'>;
+    definition: Pick<PipelineDefinition, 'dependsOn' | 'hooks'>;
 }
 
-function getDependencies(
-    definition: Pick<PipelineDefinition, 'dependsOn'> | null | undefined,
+export function getPipelineDependencies(
+    definition: Pick<PipelineDefinition, 'dependsOn' | 'hooks'> | null | undefined,
 ): string[] {
-    return Array.isArray(definition?.dependsOn)
-        ? definition.dependsOn.filter((code): code is string => typeof code === 'string')
-        : [];
+    const references = new Set(
+        Array.isArray(definition?.dependsOn)
+            ? definition.dependsOn.filter((code): code is string => typeof code === 'string')
+            : [],
+    );
+    for (const actions of Object.values(definition?.hooks ?? {})) {
+        if (!Array.isArray(actions)) continue;
+        for (const action of actions) {
+            if (action.type === 'TRIGGER_PIPELINE' && typeof action.pipelineCode === 'string') {
+                references.add(action.pipelineCode);
+            }
+        }
+    }
+    return [...references];
 }
 
 export function findReachableDependencyCycle(
     rootCode: string,
-    rootDefinition: Pick<PipelineDefinition, 'dependsOn'>,
+    rootDefinition: Pick<PipelineDefinition, 'dependsOn' | 'hooks'>,
     pipelines: readonly PipelineDependencyNode[],
 ): string[] | null {
     const graph = new Map(
-        pipelines.map(pipeline => [pipeline.code, getDependencies(pipeline.definition)]),
+        pipelines.map(pipeline => [pipeline.code, getPipelineDependencies(pipeline.definition)]),
     );
-    graph.set(rootCode, getDependencies(rootDefinition));
+    graph.set(rootCode, getPipelineDependencies(rootDefinition));
 
     const visited = new Set<string>();
     const visiting = new Set<string>();

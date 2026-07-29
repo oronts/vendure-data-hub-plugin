@@ -1,7 +1,11 @@
 import {
+    ConfigService,
     RequestContext,
     RequestContextService,
+    User,
+    UserService,
 } from '@vendure/core';
+import { ConfigurationSource } from '../../constants/enums';
 import { PipelineRun } from '../../entities/pipeline';
 
 export interface PipelineRunChannel {
@@ -39,6 +43,9 @@ export function getPipelineRunChannel(ctx: RequestContext): PipelineRunChannel {
 
 export async function createPipelineRunContext(
     requestContextService: RequestContextService,
+    userService: UserService,
+    configService: ConfigService,
+    lookupCtx: RequestContext,
     run: PipelineRun,
 ): Promise<RequestContext> {
     if (!run.channelId || !run.channelToken) {
@@ -47,9 +54,16 @@ export async function createPipelineRunContext(
         );
     }
 
+    const user = await resolvePipelineRunUser(
+        userService,
+        configService,
+        lookupCtx,
+        run,
+    );
     const ctx = await requestContextService.create({
         apiType: 'admin',
         channelOrToken: run.channelToken,
+        user,
     });
 
     if (String(ctx.channelId) !== run.channelId) {
@@ -59,4 +73,41 @@ export async function createPipelineRunContext(
     }
 
     return ctx;
+}
+
+async function resolvePipelineRunUser(
+    userService: UserService,
+    configService: ConfigService,
+    lookupCtx: RequestContext,
+    run: PipelineRun,
+): Promise<User> {
+    const userId = run.startedByUserId ?? run.pipeline?.publishedByUserId;
+    if (userId != null) {
+        const user = await userService.getUserById(lookupCtx, userId);
+        if (!user) {
+            throw new Error(
+                `Pipeline run ${String(run.id)} references missing execution user ${String(userId)}`,
+            );
+        }
+        return user;
+    }
+
+    if (run.pipeline?.configurationSource !== ConfigurationSource.CODE_FIRST) {
+        throw new Error(
+            `Pipeline run ${String(run.id)} has no persisted execution user`,
+        );
+    }
+
+    const configuredIdentifier = configService.authOptions.superadminCredentials.identifier;
+    const user = await userService.getUserByEmailAddress(
+        lookupCtx,
+        configuredIdentifier,
+        'administrator',
+    );
+    if (!user) {
+        throw new Error(
+            `Pipeline run ${String(run.id)} cannot resolve configured execution user ${configuredIdentifier}`,
+        );
+    }
+    return user;
 }

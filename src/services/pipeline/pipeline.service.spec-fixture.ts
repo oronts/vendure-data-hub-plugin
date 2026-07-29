@@ -26,6 +26,12 @@ import { DefinitionValidationService } from '../validation/definition-validation
 import type { PipelineDefinitionIssue } from '../../validation/pipeline-definition-error';
 import { PipelineService } from './pipeline.service';
 import { PipelineExecutionPermissionService } from './pipeline-execution-permission.service';
+import { PipelineRunCreationService } from './pipeline-run-creation.service';
+import { PipelineRunGateService } from './pipeline-run-gate.service';
+import { PipelineRunService } from './pipeline-run.service';
+import { PipelineQueryService } from './pipeline-query.service';
+import { PipelineMutationService } from './pipeline-mutation.service';
+import { PipelineLifecycleService } from './pipeline-lifecycle.service';
 
 export const publishedDefinition: PipelineDefinition = {
     version: 1,
@@ -133,16 +139,21 @@ export function createPipelineServiceFixture(
             return run;
         }),
         update: vi.fn(async (
-            criteria: { id: ID; status: string; channelId?: string },
+            criteria: ID | { id: ID; status?: string; channelId?: string },
             updates: Partial<PipelineRun>,
         ) => {
+            const structuredCriteria = typeof criteria === 'object' ? criteria : undefined;
+            const criteriaId = structuredCriteria?.id ?? criteria;
             if (
                 !savedRun
-                || String(savedRun.id) !== String(criteria.id)
-                || savedRun.status !== criteria.status
+                || String(savedRun.id) !== String(criteriaId)
                 || (
-                    criteria.channelId !== undefined
-                    && savedRun.channelId !== criteria.channelId
+                    structuredCriteria?.status !== undefined
+                    && savedRun.status !== structuredCriteria.status
+                )
+                || (
+                    structuredCriteria?.channelId !== undefined
+                    && savedRun.channelId !== structuredCriteria.channelId
                 )
             ) {
                 return { affected: 0 };
@@ -221,24 +232,64 @@ export function createPipelineServiceFixture(
         assertAllowed: vi.fn(async () => undefined),
     };
 
-    const service = new PipelineService(
+    const runCreation = new PipelineRunCreationService(
+        connection as unknown as TransactionalConnection,
+        eventBus as unknown as EventBus,
+        executionPermissions as unknown as PipelineExecutionPermissionService,
+        loggerFactory as unknown as DataHubLoggerFactory,
+    );
+    const runGates = new PipelineRunGateService(
+        connection as unknown as TransactionalConnection,
+        eventBus as unknown as EventBus,
+        checkpointService as unknown as CheckpointService,
+        domainEvents as unknown as DomainEventsService,
+        loggerFactory as unknown as DataHubLoggerFactory,
+    );
+    const pipelineRuns = new PipelineRunService(
         connection as unknown as TransactionalConnection,
         listQueryBuilder as unknown as ListQueryBuilder,
-        eventBus as unknown as EventBus,
+        domainEvents as unknown as DomainEventsService,
+        runCreation,
+        runGates,
+        loggerFactory as unknown as DataHubLoggerFactory,
+    );
+    const queries = new PipelineQueryService(
+        connection as unknown as TransactionalConnection,
+        listQueryBuilder as unknown as ListQueryBuilder,
+        { find: vi.fn() } as never,
+    );
+    const managedResourceChannels = {
+        assignToCurrentChannel: vi.fn(async (_ctx, value) => value),
+        prepareDelete: vi.fn(async () => ({
+            entity: pipeline,
+            physicallyDelete: true,
+        })),
+        removeFromActiveChannel: vi.fn(),
+    };
+    const mutations = new PipelineMutationService(
+        connection as unknown as TransactionalConnection,
+        definitionValidator as unknown as DefinitionValidationService,
+        domainEvents as unknown as DomainEventsService,
+        revisionService as unknown as RevisionService,
+        managedResourceChannels as never,
+        queries,
+        loggerFactory as unknown as DataHubLoggerFactory,
+    );
+    const lifecycle = new PipelineLifecycleService(
+        connection as unknown as TransactionalConnection,
+        definitionValidator as unknown as DefinitionValidationService,
+        domainEvents as unknown as DomainEventsService,
+        revisionService as unknown as RevisionService,
+        queries,
+    );
+    const service = new PipelineService(
+        queries,
+        mutations,
+        lifecycle,
+        pipelineRuns,
         definitionValidator as unknown as DefinitionValidationService,
         {} as AdapterRuntimeService,
         executionPermissions as unknown as PipelineExecutionPermissionService,
-        checkpointService as unknown as CheckpointService,
-        domainEvents as unknown as DomainEventsService,
-        revisionService as unknown as RevisionService,
-        {
-            assignToCurrentChannel: vi.fn(async (_ctx, value) => value),
-            prepareDelete: vi.fn(async () => ({
-                entity: pipeline,
-                physicallyDelete: true,
-            })),
-            removeFromActiveChannel: vi.fn(),
-        } as never,
         loggerFactory as unknown as DataHubLoggerFactory,
     );
 

@@ -2,10 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { RequestContext, RequestContextService, TransactionalConnection } from '@vendure/core';
 import { RunStatus } from '../../constants';
 import type { PipelineRun } from '../../entities/pipeline';
-import type { AdapterRuntimeService } from '../../runtime/adapter-runtime.service';
-import type { RecordErrorService } from '../data/record-error.service';
 import type { DomainEventsService } from '../events/domain-events.service';
-import type { HookService } from '../events/hook.service';
 import type { DataHubLoggerFactory, ExecutionLogger } from '../logger';
 import type { DistributedLockService } from '../runtime/distributed-lock.service';
 import type { DefinitionValidationService } from '../validation/definition-validation.service';
@@ -17,7 +14,12 @@ describe('PipelineRunnerService duplicate queue delivery', () => {
             id: 42,
             status: RunStatus.PENDING,
             pipeline: { id: 7, code: 'catalog-sync' },
-        } as PipelineRun;
+            channelId: '17',
+            channelToken: 'private-channel',
+            startedByUserId: '1',
+            revisionId: 9,
+            definitionSnapshot: { version: 1, steps: [], edges: [] },
+        } as unknown as PipelineRun;
         const runRepo = {
             findOne: vi.fn(async () => run),
             count: vi.fn(async () => 0),
@@ -28,7 +30,14 @@ describe('PipelineRunnerService duplicate queue delivery', () => {
             getRepository: vi.fn(() => runRepo),
         };
         const requestContextService = {
-            create: vi.fn(async () => ({} as RequestContext)),
+            create: vi.fn(async () => ({
+                channelId: 17,
+                channel: { token: 'private-channel' },
+            } as RequestContext)),
+        };
+        const executionUser = { id: 1 };
+        const userService = {
+            getUserById: vi.fn(async () => executionUser),
         };
         const logger = {
             withContext: vi.fn(),
@@ -43,13 +52,14 @@ describe('PipelineRunnerService duplicate queue delivery', () => {
         const runner = new PipelineRunnerService(
             connection as unknown as TransactionalConnection,
             requestContextService as unknown as RequestContextService,
+            userService as never,
+            {} as never,
             {} as DefinitionValidationService,
-            {} as AdapterRuntimeService,
-            {} as RecordErrorService,
             {} as DomainEventsService,
-            {} as HookService,
             loggerFactory as unknown as DataHubLoggerFactory,
             {} as ExecutionLogger,
+            {} as never,
+            {} as never,
             distributedLock as unknown as DistributedLockService,
         );
 
@@ -58,6 +68,14 @@ describe('PipelineRunnerService duplicate queue delivery', () => {
         expect(run.status).toBe(RunStatus.PENDING);
         expect(runRepo.save).not.toHaveBeenCalled();
         expect(runRepo.update).not.toHaveBeenCalled();
+        expect(requestContextService.create).toHaveBeenNthCalledWith(1, {
+            apiType: 'admin',
+        });
+        expect(requestContextService.create).toHaveBeenNthCalledWith(2, {
+            apiType: 'admin',
+            channelOrToken: 'private-channel',
+            user: executionUser,
+        });
         expect(distributedLock.acquire).toHaveBeenCalledOnce();
     });
 });

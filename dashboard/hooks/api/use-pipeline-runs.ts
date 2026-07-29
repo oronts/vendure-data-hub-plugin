@@ -1,10 +1,14 @@
 import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useLingui } from '@lingui/react/macro';
 import { api } from '@vendure/dashboard';
 import { graphql } from '../../gql';
 import { createMutationErrorHandler } from './mutation-helpers';
 import { createQueryKeys } from '../../utils/query-key-factory';
 import { shouldPollRunStatus } from '../../utils/run-status';
-import { ITEMS_PER_PAGE, POLLING_INTERVALS } from '../../constants';
+import {
+    ITEMS_PER_PAGE,
+    POLLING_INTERVALS,
+} from '../../constants';
 import { queueKeys } from './use-queues';
 import type { DataHubPipelineRunListOptions } from '../../types';
 
@@ -22,6 +26,7 @@ const runsListDocument = graphql(`
         dataHubPipelineRuns(pipelineId: $pipelineId, options: $options) {
             items {
                 id
+                revisionId
                 status
                 startedAt
                 finishedAt
@@ -36,16 +41,23 @@ const runDetailDocument = graphql(`
     query DataHubPipelineRunDetailApi($id: ID!) {
         dataHubPipelineRun(id: $id) {
             id
+            revisionId
             status
             startedAt
             finishedAt
             metrics
             error
             startedByUserId
+            gateStepKey
+            gateTimeoutAt
             pipeline {
                 id
                 code
                 name
+                enabled
+                status
+                currentRevisionId
+                publishedVersionCount
             }
         }
     }
@@ -192,6 +204,7 @@ export function useErrorAudits(errorId: string | undefined) {
 }
 
 export function useCancelRun() {
+    const { t } = useLingui();
     const queryClient = useQueryClient();
 
     return useMutation({
@@ -203,11 +216,15 @@ export function useCancelRun() {
                 queryClient.invalidateQueries({ queryKey: runKeys.detail(String(data.id)) });
             }
         },
-        onError: createMutationErrorHandler('cancel pipeline run'),
+        onError: createMutationErrorHandler(
+            t`Failed to cancel pipeline run`,
+            { showDetails: true },
+        ),
     });
 }
 
 export function useRetryError() {
+    const { t } = useLingui();
     const queryClient = useQueryClient();
 
     return useMutation({
@@ -220,11 +237,15 @@ export function useRetryError() {
             queryClient.invalidateQueries({ queryKey: runKeys.all });
             queryClient.invalidateQueries({ queryKey: queueKeys.all });
         },
-        onError: createMutationErrorHandler('retry record'),
+        onError: createMutationErrorHandler(
+            t`Failed to retry record`,
+            { showDetails: true },
+        ),
     });
 }
 
 export function useApproveGate() {
+    const { t } = useLingui();
     const queryClient = useQueryClient();
 
     return useMutation({
@@ -236,11 +257,15 @@ export function useApproveGate() {
                 queryClient.invalidateQueries({ queryKey: runKeys.detail(String(data.run.id)) });
             }
         },
-        onError: createMutationErrorHandler('approve gate'),
+        onError: createMutationErrorHandler(
+            t`Failed to approve gate`,
+            { showDetails: true },
+        ),
     });
 }
 
 export function useRejectGate() {
+    const { t } = useLingui();
     const queryClient = useQueryClient();
 
     return useMutation({
@@ -252,6 +277,9 @@ export function useRejectGate() {
                 queryClient.invalidateQueries({ queryKey: runKeys.detail(String(data.run.id)) });
             }
         },
-        onError: createMutationErrorHandler('reject gate'),
+        onError: createMutationErrorHandler(
+            t`Failed to reject gate`,
+            { showDetails: true },
+        ),
     });
 }

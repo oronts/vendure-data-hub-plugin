@@ -11,7 +11,7 @@ export interface PipelineRunIdempotencyScope {
 
 export class PipelineRunIdempotencyConflictError extends Error {
     constructor() {
-        super('Idempotency key was already used with a different webhook payload');
+        super('Idempotency key was already used with a different request payload');
         this.name = 'PipelineRunIdempotencyConflictError';
     }
 }

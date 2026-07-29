@@ -31,4 +31,23 @@ describe('findReachableDependencyCycle', () => {
             ],
         )).toEqual(['catalog', 'inventory', 'pricing', 'catalog']);
     });
+
+    it('includes trigger-pipeline hooks in direct and transitive cycle detection', () => {
+        expect(findReachableDependencyCycle(
+            'catalog',
+            {
+                hooks: {
+                    PIPELINE_COMPLETED: [{
+                        type: 'TRIGGER_PIPELINE',
+                        pipelineCode: 'inventory',
+                        triggerKey: 'hook',
+                    }],
+                },
+            },
+            [{
+                code: 'inventory',
+                definition: { dependsOn: ['catalog'] },
+            }],
+        )).toEqual(['catalog', 'inventory', 'catalog']);
+    });
 });

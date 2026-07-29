@@ -6,6 +6,7 @@ import type { PipelineRun } from '../../entities/pipeline';
 import type { PipelineMetrics } from '../../types';
 import type { DataHubLogger, SpanContext } from '../logger';
 import { PipelineRunnerService } from './pipeline-runner.service';
+import { PipelineRunOutcomeService } from './pipeline-run-outcome.service';
 
 function createFixture() {
     const failure = new Error('temporary upstream failure');
@@ -24,10 +25,12 @@ function createFixture() {
         info: vi.fn(),
         warn: vi.fn(),
         error: vi.fn(),
+        logPipelineComplete: vi.fn(),
         logPipelineFailed: vi.fn(),
     } as unknown as DataHubLogger;
     const pipelineSpan = {
         addEvent: vi.fn(),
+        setAttribute: vi.fn(),
         end: vi.fn(),
     } as unknown as SpanContext;
     const domainEvents = {
@@ -42,6 +45,11 @@ function createFixture() {
     const loggerFactory = {
         createLogger: vi.fn(() => runLogger),
     };
+    const outcomes = new PipelineRunOutcomeService(
+        domainEvents as never,
+        hookService as never,
+        executionLogger as never,
+    );
     const runner = new PipelineRunnerService(
         {} as never,
         {} as never,
@@ -49,12 +57,13 @@ function createFixture() {
         {} as never,
         {} as never,
         domainEvents as never,
-        hookService as never,
         loggerFactory as never,
         executionLogger as never,
+        {} as never,
+        outcomes,
     );
     const executionContext = {
-        ctx: {},
+        ctx: {} as never,
         run,
         runId: run.id,
         runRepo,
@@ -87,6 +96,7 @@ function createFixture() {
         hookService,
         executionLogger,
         releaseLock,
+        outcomes,
     };
 }
 
@@ -158,6 +168,41 @@ describe('PipelineRunnerService queue attempts', () => {
     });
 });
 
+describe('PipelineRunnerService remote source finalization', () => {
+    it('acknowledges only after COMPLETED is persisted', async () => {
+        const fixture = createFixture();
+        const order: string[] = [];
+        const save = fixture.runRepo.save as unknown as ReturnType<typeof vi.fn>;
+        save.mockImplementation(async (entity: PipelineRun) => {
+            order.push(`save:${entity.status}`);
+            return entity;
+        });
+        const acknowledgements = {
+            acknowledgeCompletedForPipeline: vi.fn(async () => {
+                order.push('acknowledge');
+                expect(fixture.run.status).toBe(RunStatus.COMPLETED);
+                return { acknowledged: 1, failed: 0, pending: 0 };
+            }),
+        };
+        const outcomes = new PipelineRunOutcomeService(
+            { publishRunCompleted: vi.fn() } as never,
+            {} as never,
+            { logPipelineComplete: vi.fn(async () => undefined) } as never,
+            acknowledgements as never,
+        );
+
+        await outcomes.complete(fixture.executionContext, {
+            totalRecords: 1,
+            succeeded: 1,
+            failed: 0,
+        });
+
+        expect(order).toEqual(['save:COMPLETED', 'acknowledge']);
+        expect(acknowledgements.acknowledgeCompletedForPipeline)
+            .toHaveBeenCalledWith(fixture.executionContext.ctx, 7);
+    });
+});
+
 describe('PipelineRunnerService published adapter contract', () => {
     it('validates immutable bindings before invoking the adapter runtime', async () => {
         const validationError = new Error('Published pipeline definition is missing adapter bindings');
@@ -166,16 +211,17 @@ describe('PipelineRunnerService published adapter contract', () => {
                 throw validationError;
             }),
         };
-        const adapterRuntime = { executePipeline: vi.fn() };
+        const processor = { execute: vi.fn() };
         const runner = new PipelineRunnerService(
             {} as never,
             {} as never,
+            {} as never,
+            {} as never,
             definitionValidator as never,
-            adapterRuntime as never,
-            {} as never,
-            {} as never,
             {} as never,
             { createLogger: vi.fn(() => ({})) } as never,
+            {} as never,
+            processor as never,
             {} as never,
         );
         const definitionSnapshot = {
@@ -207,7 +253,7 @@ describe('PipelineRunnerService published adapter contract', () => {
             definitionSnapshot,
             { requireAdapterBindings: true },
         );
-        expect(adapterRuntime.executePipeline).not.toHaveBeenCalled();
+        expect(processor.execute).not.toHaveBeenCalled();
     });
 });
 
@@ -231,14 +277,7 @@ describe('PipelineRunnerService paused gate persistence', () => {
                 paused: true,
                 pausedAtStep: 'approval',
             } as PipelineMetrics;
-            const internals = fixture.runner as unknown as {
-                handlePaused(
-                    executionContext: typeof fixture.executionContext,
-                    runMetrics: PipelineMetrics,
-                ): Promise<void>;
-            };
-
-            await internals.handlePaused(fixture.executionContext, metrics);
+            await fixture.outcomes.pause(fixture.executionContext, metrics);
 
             expect(fixture.run.status).toBe(RunStatus.PAUSED);
             expect(fixture.run.gateStepKey).toBe('approval');
@@ -262,15 +301,8 @@ describe('PipelineRunnerService paused gate persistence', () => {
             paused: true,
             pausedAtStep: 'missing-gate',
         } as PipelineMetrics;
-        const internals = fixture.runner as unknown as {
-            handlePaused(
-                executionContext: typeof fixture.executionContext,
-                runMetrics: PipelineMetrics,
-            ): Promise<void>;
-        };
-
         await expect(
-            internals.handlePaused(fixture.executionContext, metrics),
+            fixture.outcomes.pause(fixture.executionContext, metrics),
         ).rejects.toThrow('without an actionable GATE step');
 
         expect(fixture.run.status).toBe(RunStatus.RUNNING);

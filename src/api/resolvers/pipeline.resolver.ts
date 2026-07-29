@@ -11,6 +11,9 @@ import {
 } from '@vendure/core';
 import { Pipeline, PipelineRun } from '../../entities/pipeline';
 import { PipelineService, CreatePipelineInput, UpdatePipelineInput, DefinitionValidationService, PipelineFormatService, VisualPipelineDefinition } from '../../services';
+import type { PipelineListOptions } from '../../services/pipeline/pipeline-management-types';
+import { getEffectivePipelineCapabilities } from '../../services/pipeline/pipeline-capabilities';
+import { DataHubRegistryService } from '../../sdk/registry.service';
 import { PipelineDefinition } from '../../types';
 import {
     PipelineDefinitionError,
@@ -43,15 +46,34 @@ export class DataHubPipelineAdminResolver {
         private definitionValidator: DefinitionValidationService,
         private formatService: PipelineFormatService,
         private managedResourceChannels: ManagedResourceChannelService,
+        private registry: DataHubRegistryService,
     ) {}
 
     @Query()
     @Allow(DataHubPipelinePermission.Read)
     async dataHubPipelines(
         @Ctx() ctx: RequestContext,
-        @Args() args: { options?: ListQueryOptions<Pipeline> },
+        @Args() args: { options?: PipelineListOptions },
     ): Promise<PaginatedList<Pipeline>> {
         return this.pipelineService.findAll(ctx, args.options ?? undefined);
+    }
+
+    @ResolveField()
+    @Allow(DataHubPipelinePermission.Read)
+    requiredCapabilities(@Parent() pipeline: Pipeline): string[] {
+        return getEffectivePipelineCapabilities(
+            this.registry,
+            pipeline.definition,
+        ).requires;
+    }
+
+    @ResolveField()
+    @Allow(DataHubPipelinePermission.Read)
+    writeCapabilities(@Parent() pipeline: Pipeline): string[] {
+        return getEffectivePipelineCapabilities(
+            this.registry,
+            pipeline.definition,
+        ).writes;
     }
 
     @Query()

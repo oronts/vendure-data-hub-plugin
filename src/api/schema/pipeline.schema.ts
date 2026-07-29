@@ -13,6 +13,28 @@ export const pipelineSchema = `
         ARCHIVED
     }
 
+    input DataHubPipelineCapabilityOperators {
+        "Matches a capability code exactly"
+        eq: String
+        "Excludes a capability code exactly"
+        notEq: String
+        "Matches when any capability code contains this text"
+        contains: String
+        "Excludes pipelines with a capability code containing this text"
+        notContains: String
+        "Matches when any capability code is in this set"
+        in: [String!]
+        "Excludes pipelines containing any capability code in this set"
+        notIn: [String!]
+        "Matches pipelines with no capabilities when true, or at least one when false"
+        isNull: Boolean
+    }
+
+    input DataHubPipelineFilterParameter {
+        requiredCapabilities: DataHubPipelineCapabilityOperators
+        writeCapabilities: DataHubPipelineCapabilityOperators
+    }
+
     """
     A data pipeline configuration defining steps, triggers, and execution flow
     """
@@ -44,6 +66,10 @@ export const pipelineSchema = `
         publishedAt: DateTime
         "User ID who published the pipeline"
         publishedByUserId: String
+        "Effective permissions declared by the pipeline and its registered adapters"
+        requiredCapabilities: [String!]!
+        "Declared data domains this pipeline writes"
+        writeCapabilities: [String!]!
         channels: [Channel!]!
     }
 

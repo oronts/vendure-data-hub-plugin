@@ -2,7 +2,11 @@ import type { Permission } from '@vendure/core';
 import { AdapterType, StepType } from '../../constants/enums';
 import { SHARED_STEP_TYPE_CONFIGS } from '../../../shared/constants/step-type-configs';
 import type { AdapterDefinition } from '../../sdk/types';
-import type { PipelineDefinition, PipelineStepDefinition } from '../../types';
+import type {
+    PipelineCapabilities,
+    PipelineDefinition,
+    PipelineStepDefinition,
+} from '../../types';
 import { getAdapterCode } from '../../types/step-configs';
 import {
     UseDataHubConnectionPermission,
@@ -87,14 +91,25 @@ export function getRequiredPipelinePermissions(
     return [...required].sort();
 }
 
+export function getEffectivePipelineCapabilities(
+    registry: AdapterDefinitionRegistry,
+    definition: PipelineDefinition,
+): Required<PipelineCapabilities> {
+    return {
+        requires: getRequiredPipelinePermissions(registry, definition),
+        writes: [...new Set(definition.capabilities?.writes ?? [])].sort(),
+    };
+}
+
 export function withEffectivePipelineCapabilities(
     registry: AdapterDefinitionRegistry,
     definition: PipelineDefinition,
 ): PipelineDefinition {
     const normalized = clonePipelineDefinition(definition);
+    const capabilities = getEffectivePipelineCapabilities(registry, definition);
     normalized.capabilities = {
         ...normalized.capabilities,
-        requires: getRequiredPipelinePermissions(registry, definition),
+        ...capabilities,
     };
     return normalized;
 }

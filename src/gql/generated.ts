@@ -2714,10 +2714,31 @@ export type DataHubPipeline = Node & {
   publishedByUserId?: Maybe<Scalars['String']['output']>;
   /** Number of the selected published version; zero before first publication */
   publishedVersionCount: Scalars['Int']['output'];
+  /** Effective permissions declared by the pipeline and its registered adapters */
+  requiredCapabilities: Array<Scalars['String']['output']>;
   status: DataHubPipelineStatus;
   updatedAt: Scalars['DateTime']['output'];
   /** Schema version for definition format */
   version: Scalars['Int']['output'];
+  /** Declared data domains this pipeline writes */
+  writeCapabilities: Array<Scalars['String']['output']>;
+};
+
+export type DataHubPipelineCapabilityOperators = {
+  /** Matches when any capability code contains this text */
+  contains?: InputMaybe<Scalars['String']['input']>;
+  /** Matches a capability code exactly */
+  eq?: InputMaybe<Scalars['String']['input']>;
+  /** Matches when any capability code is in this set */
+  in?: InputMaybe<Array<Scalars['String']['input']>>;
+  /** Matches pipelines with no capabilities when true, or at least one when false */
+  isNull?: InputMaybe<Scalars['Boolean']['input']>;
+  /** Excludes pipelines with a capability code containing this text */
+  notContains?: InputMaybe<Scalars['String']['input']>;
+  /** Excludes a capability code exactly */
+  notEq?: InputMaybe<Scalars['String']['input']>;
+  /** Excludes pipelines containing any capability code in this set */
+  notIn?: InputMaybe<Array<Scalars['String']['input']>>;
 };
 
 export type DataHubPipelineErrorCount = {
@@ -2739,9 +2760,11 @@ export type DataHubPipelineFilterParameter = {
   publishedAt?: InputMaybe<DateOperators>;
   publishedByUserId?: InputMaybe<StringOperators>;
   publishedVersionCount?: InputMaybe<NumberOperators>;
+  requiredCapabilities?: InputMaybe<DataHubPipelineCapabilityOperators>;
   status?: InputMaybe<StringOperators>;
   updatedAt?: InputMaybe<DateOperators>;
   version?: InputMaybe<NumberOperators>;
+  writeCapabilities?: InputMaybe<DataHubPipelineCapabilityOperators>;
 };
 
 export type DataHubPipelineList = PaginatedList & {
@@ -3358,9 +3381,9 @@ export type DataHubSandboxMetrics = {
 export type DataHubSandboxOptions = {
   /** Include full data lineage (default: true) */
   includeLineage?: InputMaybe<Scalars['Boolean']['input']>;
-  /** Maximum records to process (default: 100) */
+  /** Maximum records to process (integer from 1 to 100; default: 100) */
   maxRecords?: InputMaybe<Scalars['Int']['input']>;
-  /** Maximum samples per step (default: 10) */
+  /** Maximum samples per step (integer from 1 to 10; default: 10) */
   maxSamplesPerStep?: InputMaybe<Scalars['Int']['input']>;
   /** Custom seed data to use */
   seedData?: InputMaybe<Array<Scalars['JSON']['input']>>;
@@ -3370,7 +3393,7 @@ export type DataHubSandboxOptions = {
   startFromStep?: InputMaybe<Scalars['String']['input']>;
   /** Stop on first error (default: false) */
   stopOnError?: InputMaybe<Scalars['Boolean']['input']>;
-  /** Timeout in milliseconds (default: 60000) */
+  /** Overall budget checked between steps (1 to 300000 ms; default: 60000). Active adapters enforce their own timeout or cancellation. */
   timeoutMs?: InputMaybe<Scalars['Int']['input']>;
 };
 

@@ -74,7 +74,21 @@ export function definitionsEqual(
     left: PipelineDefinition,
     right: PipelineDefinition,
 ): boolean {
-    return isDeepStrictEqual(left, right);
+    return isDeepStrictEqual(
+        normalizeDefinitionCapabilities(left),
+        normalizeDefinitionCapabilities(right),
+    );
+}
+
+function normalizeDefinitionCapabilities(
+    definition: PipelineDefinition,
+): PipelineDefinition {
+    const normalized = clonePipelineDefinition(definition);
+    normalized.capabilities = {
+        requires: [...new Set(normalized.capabilities?.requires ?? [])].sort(),
+        writes: [...new Set(normalized.capabilities?.writes ?? [])].sort(),
+    };
+    return normalized;
 }
 
 export function statusAfterExecutableUpdate(
