@@ -173,6 +173,8 @@ export interface OtlpTelemetryConfig {
     maxQueueSize?: number;
     /** Maximum spans sent in one request. @default 256 */
     maxBatchSize?: number;
+    /** Maximum encoded OTLP request body size in bytes. @default 67108864 */
+    maxRequestBodyBytes?: number;
 }
 
 export interface DataHubPluginOptions {
@@ -212,14 +214,16 @@ export interface DataHubPluginOptions {
      *
      * @example
      * ```ts
+     * import { DataHubPlugin } from '@oronts/vendure-data-hub-plugin';
      * import { PimcoreConnector } from '@oronts/vendure-data-hub-plugin/connectors/pimcore';
      *
+     * const pimcore = PimcoreConnector({
+     *     connectionCode: 'pimcore-graphql',
+     * });
+     *
      * DataHubPlugin.init({
-     *     connectors: [
-     *         PimcoreConnector({
-     *             connection: { endpoint: 'https://pim.example.com/pimcore-graphql/...' },
-     *         }),
-     *     ],
+     *     connectors: [pimcore],
+     *     pipelines: pimcore.pipelines,
      * });
      * ```
      */

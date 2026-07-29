@@ -1,8 +1,8 @@
 /**
  * DataHub Logger Metrics
  *
- * In-memory metrics implementation for counters and histograms.
- * These can be replaced with OpenTelemetry-compatible implementations later.
+ * Bounded in-memory counters and histograms. The optional OTLP exporter reads
+ * snapshots from this registry for vendor-neutral telemetry delivery.
  */
 
 import { Counter, Histogram } from './logger.types';

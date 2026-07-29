@@ -1,6 +1,6 @@
 /** Prevents PII and credentials from being logged. */
 
-import { EMAIL_PATTERN } from '../../constants';
+import { EMAIL_PATTERN } from '../../constants/patterns';
 
 // Fields that should be completely redacted (case-insensitive matching)
 const SENSITIVE_FIELDS = [
@@ -9,7 +9,18 @@ const SENSITIVE_FIELDS = [
     'token',
     'apikey',
     'api_key',
+    'api-key',
+    'x-api-key',
+    'x-auth-token',
     'authorization',
+    'proxy-authorization',
+    'cookie',
+    'set-cookie',
+    'session',
+    'sessionid',
+    'phone',
+    'mobile',
+    'telephone',
     'bearer',
     'credential',
     'accesskey',
@@ -42,12 +53,17 @@ const SENSITIVE_FIELDS = [
 ];
 
 const REDACTED = '[REDACTED]';
+const MAX_LOG_MESSAGE_LENGTH = 4096;
+const INLINE_EMAIL_PATTERN = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi;
+const URL_PASSWORD_PATTERN = /([a-z][a-z\d+.-]*:\/\/[^\s/:@]+:)[^\s/@]+@/gi;
+const INLINE_PHONE_PATTERN = /(?<!\w)(?:\+[1-9](?:[\s().-]?\d){6,14}|\(\d{2,4}\)\s?\d{3,4}[-.\s]\d{3,4}|\d{3}[-.\s]\d{3}[-.\s]\d{4})(?!\w)/g;
+const INLINE_ASSIGNMENT_PATTERN = /(^|[\s,{[])(['"]?)([A-Za-z][A-Za-z0-9_.-]*)['"]?\s*[:=]\s*(?:"[^"\r\n]*"|'[^'\r\n]*'|[^,;\r\n]+)/gi;
+const UNREADABLE_PROPERTY = '[UNREADABLE_PROPERTY]';
 
 const PHONE_PATTERNS = [
-    /^\+?[1-9]\d{1,14}$/, // E.164 format
-    /^\+?[\d\s\-().]{7,20}$/, // Common phone formats
+    /^\+[1-9](?:[\s().-]?\d){6,14}$/, // E.164 and formatted international numbers
     /^\(\d{3}\)\s?\d{3}[-.]?\d{4}$/, // US format (123) 456-7890
-    /^\d{3}[-.]?\d{3}[-.]?\d{4}$/, // US format without parens
+    /^\d{3}[-.\s]\d{3}[-.\s]\d{4}$/, // US format without parens
 ];
 
 interface SanitizeOptions {
@@ -114,15 +130,41 @@ function sanitizeValue(
 ): unknown {
     if (typeof value !== 'string') return value;
 
-    if (options.maskEmails && isEmail(value)) {
-        return maskEmail(value);
+    let sanitized = redactInlineCredentials(value);
+    if (options.maskEmails) {
+        sanitized = isEmail(sanitized)
+            ? maskEmail(sanitized)
+            : sanitized.replace(INLINE_EMAIL_PATTERN, email => maskEmail(email));
     }
-
-    if (options.maskPhones && isPhone(value)) {
-        return maskPhone(value);
+    if (options.maskPhones) {
+        sanitized = isPhone(sanitized)
+            ? maskPhone(sanitized)
+            : sanitized.replace(INLINE_PHONE_PATTERN, phone => maskPhone(phone));
     }
+    return sanitized;
+}
 
-    return value;
+export function sanitizeLogMessage(message: string): string {
+    const sanitized = redactInlineCredentials(message)
+        .replace(INLINE_EMAIL_PATTERN, value => maskEmail(value))
+        .replace(INLINE_PHONE_PATTERN, value => maskPhone(value));
+
+    return sanitized.length > MAX_LOG_MESSAGE_LENGTH
+        ? `${sanitized.slice(0, MAX_LOG_MESSAGE_LENGTH)}...`
+        : sanitized;
+}
+
+function redactInlineCredentials(value: string): string {
+    return value
+        .replace(URL_PASSWORD_PATTERN, `$1${REDACTED}@`)
+        .replace(
+            INLINE_ASSIGNMENT_PATTERN,
+            (match, prefix: string, _quote: string, key: string) => (
+                isSensitiveField(key, [])
+                    ? `${prefix}${key}=${REDACTED}`
+                    : match
+            ),
+        );
 }
 
 /**
@@ -191,7 +233,13 @@ function sanitizeRecursive(
 
     const result: Record<string, unknown> = {};
     for (const key of Object.keys(obj as Record<string, unknown>)) {
-        const value = (obj as Record<string, unknown>)[key];
+        let value: unknown;
+        try {
+            value = (obj as Record<string, unknown>)[key];
+        } catch {
+            result[key] = UNREADABLE_PROPERTY;
+            continue;
+        }
 
         if (isSensitiveField(key, options.additionalSensitiveFields)) {
             result[key] = REDACTED;

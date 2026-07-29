@@ -33,14 +33,33 @@ const RETRYABLE_HTTP_STATUSES: ReadonlySet<number> = new Set([
     503,
     504,
 ]);
+type TelemetrySignal = 'metrics' | 'traces';
 
-class OtlpHttpError extends Error {
-    readonly retryable: boolean;
+interface RetryState {
+    failures: number;
+    nextAttemptAt: number;
+}
 
-    constructor(status: number) {
-        super(`OTLP collector returned HTTP ${status}`);
-        this.name = `OtlpHttpStatus${status}`;
-        this.retryable = RETRYABLE_HTTP_STATUSES.has(status);
+class OtlpExportError extends Error {
+    constructor(
+        name: string,
+        message: string,
+        readonly retryable: boolean,
+        readonly retryAfterMs?: number,
+    ) {
+        super(message);
+        this.name = name;
+    }
+}
+
+class OtlpHttpError extends OtlpExportError {
+    constructor(status: number, retryAfterMs?: number) {
+        super(
+            `OtlpHttpStatus${status}`,
+            `OTLP collector returned HTTP ${status}`,
+            RETRYABLE_HTTP_STATUSES.has(status),
+            retryAfterMs,
+        );
     }
 }
 
@@ -62,6 +81,23 @@ function hasRejectedItems(value: unknown): boolean {
         }
     }
     return false;
+}
+
+function parseRetryAfter(value: string | null, now: number): number | undefined {
+    const normalized = value?.trim();
+    if (!normalized) {
+        return undefined;
+    }
+    let delayMs: number;
+    if (/^\d+$/.test(normalized)) {
+        delayMs = Number(normalized) * 1_000;
+    } else {
+        delayMs = Date.parse(normalized) - now;
+    }
+    if (!Number.isFinite(delayMs) || delayMs < 0) {
+        return undefined;
+    }
+    return Math.min(delayMs, OTLP_TELEMETRY.MAX_RETRY_AFTER_MS);
 }
 
 async function readBoundedBody(response: Response): Promise<string> {
@@ -112,6 +148,10 @@ export class OtlpExporterService implements OnModuleInit, OnModuleDestroy {
     private interval?: ReturnType<typeof setInterval>;
     private activeFlush?: Promise<void>;
     private lastFailureReportAt = 0;
+    private readonly retryStates: Record<TelemetrySignal, RetryState> = {
+        metrics: { failures: 0, nextAttemptAt: 0 },
+        traces: { failures: 0, nextAttemptAt: 0 },
+    };
 
     constructor(
         @Inject(DATAHUB_PLUGIN_OPTIONS)
@@ -139,8 +179,22 @@ export class OtlpExporterService implements OnModuleInit, OnModuleDestroy {
             this.interval = undefined;
         }
         await this.flush();
-        if (this.spanQueue.length > 0) {
+        if (!this.config) {
+            return;
+        }
+        const remainingBatchCount = Math.ceil(
+            this.spanQueue.length / this.config.maxBatchSize,
+        );
+        for (
+            let batchIndex = 0;
+            batchIndex < remainingBatchCount && this.spanQueue.length > 0;
+            batchIndex += 1
+        ) {
+            const queuedBeforeFlush = this.spanQueue.length;
             await this.flush();
+            if (this.spanQueue.length >= queuedBeforeFlush) {
+                break;
+            }
         }
     }
 
@@ -177,7 +231,11 @@ export class OtlpExporterService implements OnModuleInit, OnModuleDestroy {
             return;
         }
         const exports: Promise<void>[] = [];
-        if (this.config.metrics && this.metricsRegistry) {
+        if (
+            this.config.metrics
+            && this.metricsRegistry
+            && this.canAttemptExport('metrics')
+        ) {
             const metricsPayload = createMetricsPayload(
                 this.config,
                 this.metricsRegistry,
@@ -185,19 +243,28 @@ export class OtlpExporterService implements OnModuleInit, OnModuleDestroy {
                 Date.now(),
             );
             if (metricsPayload) {
-                exports.push(this.exportPayload(METRIC_SIGNAL_PATH, metricsPayload, 'metrics'));
+                exports.push(
+                    this.exportPayload(METRIC_SIGNAL_PATH, metricsPayload, 'metrics')
+                        .then(() => this.resetRetryState('metrics'))
+                        .catch(error => this.handleExportFailure('metrics', error)),
+                );
             }
         }
-        if (this.config.traces && this.spanQueue.length > 0) {
+        if (
+            this.config.traces
+            && this.spanQueue.length > 0
+            && this.canAttemptExport('traces')
+        ) {
             const batch = this.spanQueue.splice(0, this.config.maxBatchSize);
             const tracesPayload = createTracesPayload(this.config, batch);
             exports.push(
                 this.exportPayload(TRACE_SIGNAL_PATH, tracesPayload, 'traces')
+                    .then(() => this.resetRetryState('traces'))
                     .catch(error => {
-                        if (!(error instanceof OtlpHttpError) || error.retryable) {
+                        if (this.isRetryable(error)) {
                             this.requeueSpans(batch);
                         }
-                        this.reportFailure('traces', error);
+                        this.handleExportFailure('traces', error);
                     }),
             );
         }
@@ -207,7 +274,7 @@ export class OtlpExporterService implements OnModuleInit, OnModuleDestroy {
     private async exportPayload(
         signalPath: string,
         payload: object,
-        signal: 'metrics' | 'traces',
+        signal: TelemetrySignal,
     ): Promise<void> {
         if (!this.config) {
             return;
@@ -216,26 +283,32 @@ export class OtlpExporterService implements OnModuleInit, OnModuleDestroy {
         const timeout = setTimeout(() => controller.abort(), this.config.requestTimeoutMs);
         timeout.unref();
         try {
+            const body = JSON.stringify(payload);
+            if (Buffer.byteLength(body, 'utf8') > this.config.maxRequestBodyBytes) {
+                throw new OtlpExportError(
+                    'OtlpRequestTooLarge',
+                    'OTLP request body exceeds the configured limit',
+                    false,
+                );
+            }
             const response = await fetch(`${this.config.endpoint}${signalPath}`, {
                 method: 'POST',
                 headers: {
                     ...this.config.headers,
                     [CONTENT_TYPE_HEADER]: CONTENT_TYPE_JSON,
                 },
-                body: JSON.stringify(payload),
+                body,
                 signal: controller.signal,
             });
             if (!response.ok) {
+                const retryAfterMs = parseRetryAfter(
+                    response.headers.get('retry-after'),
+                    Date.now(),
+                );
                 await response.body?.cancel();
-                throw new OtlpHttpError(response.status);
+                throw new OtlpHttpError(response.status, retryAfterMs);
             }
             await this.inspectPartialSuccess(response, signal);
-        } catch (error) {
-            if (signal === 'metrics') {
-                this.reportFailure(signal, error);
-                return;
-            }
-            throw error;
         } finally {
             clearTimeout(timeout);
         }
@@ -243,7 +316,7 @@ export class OtlpExporterService implements OnModuleInit, OnModuleDestroy {
 
     private async inspectPartialSuccess(
         response: Response,
-        signal: 'metrics' | 'traces',
+        signal: TelemetrySignal,
     ): Promise<void> {
         let body: string;
         try {
@@ -288,7 +361,45 @@ export class OtlpExporterService implements OnModuleInit, OnModuleDestroy {
         }
     }
 
-    private reportFailure(signal: 'metrics' | 'traces', error: unknown): void {
+    private canAttemptExport(signal: TelemetrySignal): boolean {
+        return Date.now() >= this.retryStates[signal].nextAttemptAt;
+    }
+
+    private isRetryable(error: unknown): boolean {
+        return !(error instanceof OtlpExportError) || error.retryable;
+    }
+
+    private handleExportFailure(signal: TelemetrySignal, error: unknown): void {
+        if (this.isRetryable(error)) {
+            this.scheduleRetry(signal, error);
+        } else {
+            this.resetRetryState(signal);
+        }
+        this.reportFailure(signal, error);
+    }
+
+    private scheduleRetry(signal: TelemetrySignal, error: unknown): void {
+        const state = this.retryStates[signal];
+        state.failures += 1;
+        const exponentialDelay = Math.min(
+            OTLP_TELEMETRY.INITIAL_RETRY_DELAY_MS * 2 ** (state.failures - 1),
+            OTLP_TELEMETRY.MAX_RETRY_DELAY_MS,
+        );
+        const jitterRange = exponentialDelay * OTLP_TELEMETRY.RETRY_JITTER_RATIO;
+        const jitteredDelay = Math.round(
+            exponentialDelay - jitterRange + Math.random() * jitterRange * 2,
+        );
+        const retryAfterMs = error instanceof OtlpExportError
+            ? error.retryAfterMs
+            : undefined;
+        state.nextAttemptAt = Date.now() + (retryAfterMs ?? jitteredDelay);
+    }
+
+    private resetRetryState(signal: TelemetrySignal): void {
+        this.retryStates[signal] = { failures: 0, nextAttemptAt: 0 };
+    }
+
+    private reportFailure(signal: TelemetrySignal, error: unknown): void {
         const now = Date.now();
         if (now - this.lastFailureReportAt < OTLP_TELEMETRY.FAILURE_REPORT_INTERVAL_MS) {
             return;

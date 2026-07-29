@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DatabasePaginationType, DatabaseType } from '../../constants';
 import type { DatabasePaginationConfig } from './types';
-import { appendIncrementalFilter, buildPaginatedQuery } from './query-builder';
+import { buildPaginatedQuery } from './query-builder';
 
 const cursorPagination: DatabasePaginationConfig = {
     enabled: true,
@@ -79,17 +79,4 @@ describe('database pagination query builder', () => {
         )).toThrow('Cursor pagination state must include both cursor values');
     });
 
-    it('uses MySQL identifier quotes for incremental filters', () => {
-        expect(appendIncrementalFilter(
-            'SELECT id, updated_at FROM products',
-            {
-                databaseType: DatabaseType.MYSQL,
-                query: 'SELECT id, updated_at FROM products',
-                incremental: { enabled: true, column: 'updated_at' },
-            },
-            '2026-07-18T08:00:00Z',
-        )).toBe(
-            "SELECT id, updated_at FROM products WHERE `updated_at` > '2026-07-18T08:00:00Z'",
-        );
-    });
 });

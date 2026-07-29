@@ -14,9 +14,9 @@ vi.mock('./connection-pool', async importOriginal => {
     };
 });
 
-function createContext(): ExtractorContext {
+function createContext(checkpointData: Record<string, string | number> = {}): ExtractorContext {
     return {
-        checkpoint: {},
+        checkpoint: { data: checkpointData },
         isCancelled: vi.fn().mockResolvedValue(false),
         setCheckpoint: vi.fn(),
         logger: {
@@ -118,6 +118,104 @@ describe('DatabaseExtractor pagination', () => {
         expect(close).toHaveBeenCalledOnce();
     });
 
+    it('checkpoints and resumes incremental extraction after the exact cursor pair', async () => {
+        const firstPage = [
+            { id: 41, updated_at: '2026-07-18T08:00:00Z' },
+            { id: 42, updated_at: '2026-07-18T08:00:00Z' },
+        ];
+        const firstQuery = vi.fn().mockResolvedValue({
+            rows: firstPage,
+            rowCount: firstPage.length,
+        });
+        vi.mocked(createDatabaseClient).mockResolvedValueOnce({
+            query: firstQuery,
+            close: vi.fn().mockResolvedValue(undefined),
+        } as DatabaseClient);
+        const firstContext = createContext();
+        const config: DatabaseExtractorConfig = {
+            databaseType: DatabaseType.POSTGRESQL,
+            host: 'db.example.test',
+            database: 'catalog',
+            query: 'SELECT id, updated_at FROM products',
+            pagination: {
+                enabled: true,
+                type: DatabasePaginationType.CURSOR,
+                pageSize: 2,
+                cursorColumn: 'updated_at',
+                cursorTieBreakerColumn: 'id',
+                maxPages: 1,
+            },
+            incremental: { enabled: true, column: 'updated_at' },
+        };
+
+        const firstRecords: RecordEnvelope[] = [];
+        for await (const record of new DatabaseExtractor().extract(firstContext, config)) {
+            firstRecords.push(record);
+        }
+
+        expect(firstRecords.map(record => record.data.id)).toEqual([41, 42]);
+        expect(firstContext.setCheckpoint).toHaveBeenCalledWith({
+            lastIncrementalValue: '2026-07-18T08:00:00Z',
+            lastIncrementalTieBreaker: 42,
+        });
+
+        const secondContext = createContext({
+            lastIncrementalValue: '2026-07-18T08:00:00Z',
+            lastIncrementalTieBreaker: 42,
+        });
+        const secondQuery = vi.fn().mockResolvedValue({ rows: [], rowCount: 0 });
+        vi.mocked(createDatabaseClient).mockResolvedValueOnce({
+            query: secondQuery,
+            close: vi.fn().mockResolvedValue(undefined),
+        } as DatabaseClient);
+
+        const secondRecords: RecordEnvelope[] = [];
+        for await (const record of new DatabaseExtractor().extract(secondContext, config)) {
+            secondRecords.push(record);
+        }
+
+        expect(secondRecords).toEqual([]);
+        expect(secondQuery).toHaveBeenCalledWith(
+            'SELECT * FROM (SELECT id, updated_at FROM products) AS _dh_paginated WHERE ("updated_at" > \'2026-07-18T08:00:00Z\' OR ("updated_at" = \'2026-07-18T08:00:00Z\' AND "id" > 42)) ORDER BY "updated_at", "id" LIMIT 2',
+            undefined,
+        );
+    });
+
+    it('fails closed on an incomplete incremental checkpoint', async () => {
+        const context = createContext({
+            lastIncrementalValue: '2026-07-18T08:00:00Z',
+        });
+        const close = vi.fn().mockResolvedValue(undefined);
+        vi.mocked(createDatabaseClient).mockResolvedValue({
+            query: vi.fn(),
+            close,
+        } as DatabaseClient);
+
+        const consume = async () => {
+            for await (const _record of new DatabaseExtractor().extract(context, {
+                databaseType: DatabaseType.POSTGRESQL,
+                host: 'db.example.test',
+                database: 'catalog',
+                query: 'SELECT id, updated_at FROM products',
+                pagination: {
+                    enabled: true,
+                    type: DatabasePaginationType.CURSOR,
+                    pageSize: 100,
+                    cursorColumn: 'updated_at',
+                    cursorTieBreakerColumn: 'id',
+                },
+                incremental: { enabled: true, column: 'updated_at' },
+            })) {
+                throw new Error(`Unexpected record ${String(_record.data.id)}`);
+            }
+        };
+
+        await expect(consume()).rejects.toThrow(
+            'Incremental checkpoint requires both "lastIncrementalValue" and "lastIncrementalTieBreaker"',
+        );
+        expect(close).toHaveBeenCalledOnce();
+    });
+
     it('fails before emitting a page with a null cursor boundary', async () => {
         const query = vi.fn().mockResolvedValue({
             rows: [{ id: 1, updated_at: null }],
@@ -185,5 +283,24 @@ describe('DatabaseExtractor pagination', () => {
             'pagination.cursorColumn',
             'pagination.cursorTieBreakerColumn',
         ]);
+    });
+
+    it('requires incremental extraction to use the same composite cursor', async () => {
+        const result = await new DatabaseExtractor().validate(createContext(), {
+            databaseType: DatabaseType.SQLITE,
+            database: ':memory:',
+            query: 'SELECT id, updated_at FROM products',
+            pagination: {
+                enabled: true,
+                type: DatabasePaginationType.OFFSET,
+                pageSize: 100,
+            },
+            incremental: { enabled: true, column: 'updated_at' },
+        });
+
+        expect(result.errors).toContainEqual({
+            field: 'pagination.type',
+            message: 'Incremental extraction requires cursor pagination',
+        });
     });
 });

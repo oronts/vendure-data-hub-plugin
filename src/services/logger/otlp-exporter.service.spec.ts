@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { METRICS } from '../../constants/defaults/reliability-defaults';
+import { OTLP_TELEMETRY } from '../../constants/defaults/telemetry-defaults';
 import type { DataHubPluginOptions } from '../../types';
 import { DataHubLoggerFactory } from './datahub-logger';
 import { MetricsRegistry } from './metrics';
@@ -301,6 +302,7 @@ describe('OtlpExporterService', () => {
     it.each([429, 502, 503, 504])(
         'bounds the trace queue and retries HTTP %i without rejecting callers',
         async status => {
+            vi.spyOn(Math, 'random').mockReturnValue(0.5);
             const fetchMock = vi.fn()
                 .mockResolvedValueOnce(new Response(null, { status }))
                 .mockResolvedValueOnce(successfulResponse());
@@ -318,6 +320,11 @@ describe('OtlpExporterService', () => {
 
             await expect(exporter.flush()).resolves.toBeUndefined();
             await expect(exporter.flush()).resolves.toBeUndefined();
+            expect(fetchMock).toHaveBeenCalledTimes(1);
+            await vi.advanceTimersByTimeAsync(
+                OTLP_TELEMETRY.INITIAL_RETRY_DELAY_MS,
+            );
+            await expect(exporter.flush()).resolves.toBeUndefined();
 
             expect(fetchMock).toHaveBeenCalledTimes(2);
             const firstBody = String((fetchMock.mock.calls[0][1] as RequestInit).body);
@@ -327,6 +334,108 @@ describe('OtlpExporterService', () => {
             expect(firstBody).not.toContain('second.operation');
         },
     );
+
+    it('honors Retry-After before retrying a throttled trace batch', async () => {
+        const fetchMock = vi.fn()
+            .mockResolvedValueOnce(new Response(null, {
+                status: 503,
+                headers: { 'retry-after': '10' },
+            }))
+            .mockResolvedValueOnce(successfulResponse());
+        vi.stubGlobal('fetch', fetchMock);
+        const exporter = createExporter({
+            endpoint: COLLECTOR_ENDPOINT,
+            metrics: false,
+        });
+        new DataHubLoggerFactory(exporter)
+            .createLogger('throttled')
+            .startSpan('throttled.operation')
+            .end();
+
+        await exporter.flush();
+        await vi.advanceTimersByTimeAsync(9_999);
+        await exporter.flush();
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+
+        await vi.advanceTimersByTimeAsync(1);
+        await exporter.flush();
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('backs off cumulative metric exports after transient failures', async () => {
+        vi.spyOn(Math, 'random').mockReturnValue(0.5);
+        const fetchMock = vi.fn()
+            .mockResolvedValueOnce(new Response(null, { status: 503 }))
+            .mockResolvedValueOnce(successfulResponse());
+        vi.stubGlobal('fetch', fetchMock);
+        const exporter = createExporter({
+            endpoint: COLLECTOR_ENDPOINT,
+            traces: false,
+        });
+        const registry = new MetricsRegistry();
+        registry.getCounter('records_total').increment();
+        exporter.bindMetricsRegistry(registry);
+
+        await exporter.flush();
+        await exporter.flush();
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+
+        await vi.advanceTimersByTimeAsync(
+            OTLP_TELEMETRY.INITIAL_RETRY_DELAY_MS,
+        );
+        await exporter.flush();
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('increases the retry delay after consecutive transient failures', async () => {
+        vi.spyOn(Math, 'random').mockReturnValue(0.5);
+        const fetchMock = vi.fn()
+            .mockResolvedValueOnce(new Response(null, { status: 503 }))
+            .mockResolvedValueOnce(new Response(null, { status: 503 }))
+            .mockResolvedValueOnce(successfulResponse());
+        vi.stubGlobal('fetch', fetchMock);
+        const exporter = createExporter({
+            endpoint: COLLECTOR_ENDPOINT,
+            metrics: false,
+        });
+        new DataHubLoggerFactory(exporter)
+            .createLogger('backoff')
+            .startSpan('backoff.operation')
+            .end();
+
+        await exporter.flush();
+        await vi.advanceTimersByTimeAsync(OTLP_TELEMETRY.INITIAL_RETRY_DELAY_MS);
+        await exporter.flush();
+        await vi.advanceTimersByTimeAsync(OTLP_TELEMETRY.INITIAL_RETRY_DELAY_MS * 2 - 1);
+        await exporter.flush();
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+
+        await vi.advanceTimersByTimeAsync(1);
+        await exporter.flush();
+        expect(fetchMock).toHaveBeenCalledTimes(3);
+    });
+
+    it('stops shutdown draining when a retryable collector makes no progress', async () => {
+        const fetchMock = vi.fn().mockResolvedValue(
+            new Response(null, { status: 503 }),
+        );
+        vi.stubGlobal('fetch', fetchMock);
+        const exporter = createExporter({
+            endpoint: COLLECTOR_ENDPOINT,
+            metrics: false,
+            maxBatchSize: 1,
+        });
+        const factory = new DataHubLoggerFactory(exporter);
+        for (let spanIndex = 0; spanIndex < 3; spanIndex += 1) {
+            factory.createLogger('shutdown')
+                .startSpan(`shutdown.operation.${spanIndex}`)
+                .end();
+        }
+
+        await exporter.onModuleDestroy();
+
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
 
     it.each([400, 401, 403, 404, 500])(
         'reports and drops a trace batch after non-retryable HTTP %i',
@@ -445,6 +554,31 @@ describe('OtlpExporterService', () => {
         );
     });
 
+    it('drops an oversized trace request before collector I/O', async () => {
+        const fetchMock = vi.fn();
+        vi.stubGlobal('fetch', fetchMock);
+        const exporter = createExporter({
+            endpoint: COLLECTOR_ENDPOINT,
+            metrics: false,
+            maxRequestBodyBytes: 1_024,
+        });
+        const span = new DataHubLoggerFactory(exporter)
+            .createLogger('oversized')
+            .startSpan('oversized.operation');
+        for (let index = 0; index < 10; index += 1) {
+            span.addEvent('x'.repeat(256), { recordsOut: index });
+        }
+        span.end();
+
+        await exporter.flush();
+        await exporter.flush();
+
+        expect(fetchMock).not.toHaveBeenCalled();
+        expect(vi.mocked(process.stderr.write)).toHaveBeenCalledWith(
+            expect.stringContaining('OtlpRequestTooLarge'),
+        );
+    });
+
     it('is inert when telemetry is absent or explicitly disabled', async () => {
         const fetchMock = vi.fn();
         vi.stubGlobal('fetch', fetchMock);
@@ -479,6 +613,10 @@ describe('OtlpExporterService', () => {
             endpoint: COLLECTOR_ENDPOINT,
             headers: { Authorization: 'Bearer token\nInjected: value' },
         })).toThrow('telemetry.headers');
+        expect(() => createExporter({
+            endpoint: COLLECTOR_ENDPOINT,
+            maxRequestBodyBytes: 1_023,
+        })).toThrow('telemetry.maxRequestBodyBytes');
     });
 });
 

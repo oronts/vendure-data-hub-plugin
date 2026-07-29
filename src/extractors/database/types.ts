@@ -72,7 +72,7 @@ export interface DatabaseExtractorConfig extends ExtractorConfig {
     /** Connection pool settings */
     pool?: DatabasePoolConfig;
 
-    /** Query timeout in milliseconds */
+    /** PostgreSQL/MySQL query timeout in milliseconds */
     queryTimeoutMs?: number;
 
 }

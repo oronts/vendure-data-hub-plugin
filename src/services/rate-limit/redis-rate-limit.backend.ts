@@ -1,9 +1,11 @@
 import * as crypto from 'crypto';
 import { DISTRIBUTED_LOCK, RATE_LIMIT } from '../../constants';
+import { getErrorMessage } from '../../utils/error.utils';
 import { sanitizeUrlForLogging } from '../../utils/url-sanitize.utils';
 import type { DataHubLogger } from '../logger';
 
 interface RedisRateLimitClient {
+    on(event: 'error', listener: (error: unknown) => void): unknown;
     connect(): Promise<void>;
     ping(): Promise<string>;
     eval(
@@ -23,12 +25,12 @@ export interface RedisRateLimitIncrement {
 }
 
 const INCREMENT_SCRIPT = `
-    local count = redis.call("incr", KEYS[1])
     local ttl = redis.call("pttl", KEYS[1])
-    if count == 1 or ttl < 1 then
-        redis.call("pexpire", KEYS[1], ARGV[1])
-        ttl = tonumber(ARGV[1])
+    if ttl < 1 then
+        redis.call("set", KEYS[1], 1, "PX", ARGV[1])
+        return { 1, tonumber(ARGV[1]) }
     end
+    local count = redis.call("incr", KEYS[1])
     return { count, ttl }
 `;
 
@@ -73,6 +75,12 @@ export class RedisRateLimitBackend {
                         DISTRIBUTED_LOCK.MAX_RETRY_DELAY_MS,
                     )
             ),
+        });
+        client.on('error', error => {
+            logger.error(
+                'Redis webhook rate-limit connection error',
+                error instanceof Error ? error : new Error(getErrorMessage(error)),
+            );
         });
 
         try {

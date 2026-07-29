@@ -46,6 +46,7 @@ export interface ResolvedTelemetryConfig {
     requestTimeoutMs: number;
     maxQueueSize: number;
     maxBatchSize: number;
+    maxRequestBodyBytes: number;
 }
 
 const SAFE_ATTRIBUTE_NAMES: ReadonlySet<string> = new Set([
@@ -215,6 +216,12 @@ export function resolveOtlpConfig(
             config.maxBatchSize ?? OTLP_TELEMETRY.DEFAULT_MAX_BATCH_SIZE,
             OTLP_TELEMETRY.MIN_MAX_BATCH_SIZE,
             OTLP_TELEMETRY.MAX_MAX_BATCH_SIZE,
+        ),
+        maxRequestBodyBytes: requireBoundedInteger(
+            'telemetry.maxRequestBodyBytes',
+            config.maxRequestBodyBytes ?? OTLP_TELEMETRY.DEFAULT_MAX_REQUEST_BODY_BYTES,
+            OTLP_TELEMETRY.MIN_MAX_REQUEST_BODY_BYTES,
+            OTLP_TELEMETRY.MAX_MAX_REQUEST_BODY_BYTES,
         ),
     };
 }

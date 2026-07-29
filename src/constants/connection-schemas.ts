@@ -7,26 +7,63 @@
  * hardcoding field definitions.
  */
 import { PORTS, DEFAULT_HOSTS } from '../../shared/constants';
+import type { UIConnectionType } from '../../shared/constants';
 
 export interface ConnectionSchemaField {
     key: string;
     label: string;
-    /** Field input type: text, number, password, boolean, secret, select */
-    type: 'text' | 'number' | 'password' | 'boolean' | 'secret' | 'select';
+    /** Field input type used by dynamic dashboard forms. */
+    type: 'text' | 'number' | 'password' | 'boolean' | 'secret' | 'select' | 'json';
     required?: boolean;
     placeholder?: string;
     defaultValue?: string | number | boolean;
+    min?: number;
+    max?: number;
     description?: string;
     options?: Array<{ value: string; label: string }>;
 }
 
 export interface ConnectionSchema {
-    type: string;
+    type: UIConnectionType;
     label: string;
     fields: ConnectionSchemaField[];
     /** True for HTTP-like connection types that use the dedicated HTTP editor with auth/headers support */
     httpLike?: boolean;
 }
+
+const DATABASE_TLS_CONNECTION_FIELDS = [
+    {
+        key: 'ssl',
+        label: 'Use TLS',
+        type: 'boolean',
+        description: 'Encrypt the database connection',
+    },
+    {
+        key: 'sslRejectUnauthorized',
+        label: 'Verify TLS Certificate',
+        type: 'boolean',
+        defaultValue: true,
+        description: 'Reject invalid or untrusted server certificates',
+    },
+    {
+        key: 'sslCaSecretCode',
+        label: 'TLS CA Secret Code',
+        type: 'secret',
+        description: 'Secret containing the trusted CA certificate',
+    },
+    {
+        key: 'sslCertSecretCode',
+        label: 'TLS Client Certificate Secret Code',
+        type: 'secret',
+        description: 'Secret containing the client certificate for mutual TLS',
+    },
+    {
+        key: 'sslKeySecretCode',
+        label: 'TLS Client Key Secret Code',
+        type: 'secret',
+        description: 'Secret containing the client private key for mutual TLS',
+    },
+] as const satisfies readonly ConnectionSchemaField[];
 
 export const CONNECTION_SCHEMAS: ConnectionSchema[] = [
     {
@@ -36,27 +73,15 @@ export const CONNECTION_SCHEMAS: ConnectionSchema[] = [
         httpLike: true,
     },
     {
-        type: 'DATABASE',
-        label: 'Database (Generic)',
-        fields: [
-            { key: 'host', label: 'Host', type: 'text', placeholder: DEFAULT_HOSTS.LOCALHOST, required: true },
-            { key: 'port', label: 'Port', type: 'number', placeholder: String(PORTS.POSTGRESQL), required: true },
-            { key: 'database', label: 'Database', type: 'text', placeholder: 'mydb', required: true },
-            { key: 'username', label: 'Username', type: 'text', placeholder: 'postgres', required: true },
-            { key: 'passwordSecretCode', label: 'Password Secret Code', type: 'secret', description: 'Reference a secret by code' },
-            { key: 'ssl', label: 'SSL', type: 'boolean' },
-        ],
-    },
-    {
         type: 'POSTGRES',
         label: 'PostgreSQL',
         fields: [
             { key: 'host', label: 'Host', type: 'text', placeholder: DEFAULT_HOSTS.LOCALHOST, required: true },
-            { key: 'port', label: 'Port', type: 'number', placeholder: String(PORTS.POSTGRESQL), required: true },
+            { key: 'port', label: 'Port', type: 'number', placeholder: String(PORTS.POSTGRESQL), defaultValue: PORTS.POSTGRESQL, required: true, min: PORTS.MIN, max: PORTS.MAX },
             { key: 'database', label: 'Database', type: 'text', placeholder: 'mydb', required: true },
             { key: 'username', label: 'Username', type: 'text', placeholder: 'postgres', required: true },
             { key: 'passwordSecretCode', label: 'Password Secret Code', type: 'secret', description: 'Reference a secret by code' },
-            { key: 'ssl', label: 'SSL', type: 'boolean' },
+            ...DATABASE_TLS_CONNECTION_FIELDS,
         ],
     },
     {
@@ -64,23 +89,11 @@ export const CONNECTION_SCHEMAS: ConnectionSchema[] = [
         label: 'MySQL / MariaDB',
         fields: [
             { key: 'host', label: 'Host', type: 'text', placeholder: DEFAULT_HOSTS.LOCALHOST, required: true },
-            { key: 'port', label: 'Port', type: 'number', placeholder: String(PORTS.MYSQL), required: true },
+            { key: 'port', label: 'Port', type: 'number', placeholder: String(PORTS.MYSQL), defaultValue: PORTS.MYSQL, required: true, min: PORTS.MIN, max: PORTS.MAX },
             { key: 'database', label: 'Database', type: 'text', placeholder: 'mydb', required: true },
             { key: 'username', label: 'Username', type: 'text', placeholder: 'root', required: true },
             { key: 'passwordSecretCode', label: 'Password Secret Code', type: 'secret', description: 'Reference a secret by code' },
-        ],
-    },
-    {
-        type: 'MSSQL',
-        label: 'Microsoft SQL Server',
-        fields: [
-            { key: 'host', label: 'Host', type: 'text', placeholder: DEFAULT_HOSTS.LOCALHOST, required: true },
-            { key: 'port', label: 'Port', type: 'number', placeholder: String(PORTS.MSSQL), required: true },
-            { key: 'database', label: 'Database', type: 'text', placeholder: 'mydb', required: true },
-            { key: 'username', label: 'Username', type: 'text', placeholder: 'sa', required: true },
-            { key: 'passwordSecretCode', label: 'Password Secret Code', type: 'secret', description: 'Reference a secret by code' },
-            { key: 'encrypt', label: 'Encrypt', type: 'boolean', description: 'Use encrypted connection' },
-            { key: 'trustServerCertificate', label: 'Trust Server Certificate', type: 'boolean', description: 'Trust the server certificate without validation' },
+            ...DATABASE_TLS_CONNECTION_FIELDS,
         ],
     },
     {
@@ -100,7 +113,7 @@ export const CONNECTION_SCHEMAS: ConnectionSchema[] = [
         label: 'FTP',
         fields: [
             { key: 'host', label: 'Host', type: 'text', placeholder: 'ftp.example.com', required: true },
-            { key: 'port', label: 'Port', type: 'number', placeholder: String(PORTS.FTP), required: true },
+            { key: 'port', label: 'Port', type: 'number', placeholder: String(PORTS.FTP), defaultValue: PORTS.FTP, required: true, min: PORTS.MIN, max: PORTS.MAX },
             { key: 'username', label: 'Username', type: 'text', required: true },
             { key: 'passwordSecretCode', label: 'Password Secret Code', type: 'secret', description: 'Reference a secret by code' },
             { key: 'secure', label: 'Use FTPS', type: 'boolean' },
@@ -111,10 +124,11 @@ export const CONNECTION_SCHEMAS: ConnectionSchema[] = [
         label: 'SFTP',
         fields: [
             { key: 'host', label: 'Host', type: 'text', placeholder: 'sftp.example.com', required: true },
-            { key: 'port', label: 'Port', type: 'number', placeholder: String(PORTS.SFTP), required: true },
+            { key: 'port', label: 'Port', type: 'number', placeholder: String(PORTS.SFTP), defaultValue: PORTS.SFTP, required: true, min: PORTS.MIN, max: PORTS.MAX },
             { key: 'username', label: 'Username', type: 'text', required: true },
             { key: 'passwordSecretCode', label: 'Password Secret Code', type: 'secret', description: 'Or use privateKeySecretCode' },
             { key: 'privateKeySecretCode', label: 'Private Key Secret Code', type: 'secret', description: 'SSH private key' },
+            { key: 'hostKeyFingerprintSecretCode', label: 'Host Key Fingerprint Secret Code', type: 'secret', description: 'Trusted OpenSSH SHA256 host-key fingerprint; required in production' },
         ],
     },
     {
@@ -134,7 +148,7 @@ export const CONNECTION_SCHEMAS: ConnectionSchema[] = [
         label: 'RabbitMQ',
         fields: [
             { key: 'host', label: 'Host', type: 'text', placeholder: DEFAULT_HOSTS.LOCALHOST, required: true },
-            { key: 'port', label: 'Port', type: 'number', placeholder: '5672', required: true },
+            { key: 'port', label: 'Port', type: 'number', placeholder: String(PORTS.RABBITMQ), defaultValue: PORTS.RABBITMQ, required: true, min: PORTS.MIN, max: PORTS.MAX },
             { key: 'vhost', label: 'Virtual Host', type: 'text', placeholder: '/', description: 'RabbitMQ virtual host' },
             { key: 'username', label: 'Username', type: 'text', placeholder: 'guest', required: true },
             { key: 'passwordSecretCode', label: 'Password Secret Code', type: 'secret', description: 'Reference a secret by code' },
@@ -146,8 +160,9 @@ export const CONNECTION_SCHEMAS: ConnectionSchema[] = [
         label: 'Amazon SQS',
         fields: [
             { key: 'region', label: 'Region', type: 'text', placeholder: 'us-east-1', required: true },
-            { key: 'accountId', label: 'AWS Account ID', type: 'text', placeholder: '123456789012', required: true },
-            { key: 'queueUrl', label: 'Queue URL (optional override)', type: 'text', placeholder: 'https://sqs.us-east-1.amazonaws.com/123456789/my-queue' },
+            { key: 'accountId', label: 'AWS Account ID', type: 'text', placeholder: '123456789012', description: 'Required to construct URLs for queues other than the direct Queue URL, including dead-letter queues' },
+            { key: 'queueUrl', label: 'Queue URL (optional override)', type: 'text', placeholder: 'https://sqs.us-east-1.amazonaws.com/123456789/my-queue', description: 'Direct URL used only when its final path segment matches the requested queue name' },
+            { key: 'endpoint', label: 'Custom Endpoint', type: 'text', placeholder: 'https://sqs.example.com', description: 'SQS-compatible base URL used with AWS Account ID to construct queue URLs' },
             { key: 'accessKeyIdSecretCode', label: 'Access Key ID Secret', type: 'secret', description: 'Reference a secret by code' },
             { key: 'secretAccessKeySecretCode', label: 'Secret Access Key Secret', type: 'secret', description: 'Reference a secret by code' },
         ],
@@ -157,31 +172,17 @@ export const CONNECTION_SCHEMAS: ConnectionSchema[] = [
         label: 'Redis',
         fields: [
             { key: 'host', label: 'Host', type: 'text', placeholder: DEFAULT_HOSTS.LOCALHOST, required: true },
-            { key: 'port', label: 'Port', type: 'number', placeholder: '6379', required: true },
+            { key: 'port', label: 'Port', type: 'number', placeholder: String(PORTS.REDIS), defaultValue: PORTS.REDIS, required: true, min: PORTS.MIN, max: PORTS.MAX },
             { key: 'passwordSecretCode', label: 'Password Secret Code', type: 'secret', description: 'Reference a secret by code' },
-            { key: 'db', label: 'Database Number', type: 'number', placeholder: '0', description: 'Redis database index (0-15)' },
+            { key: 'db', label: 'Database Number', type: 'number', placeholder: '0', defaultValue: 0, description: 'Redis database index (0-15)', min: 0, max: 15 },
             { key: 'ssl', label: 'SSL', type: 'boolean' },
-        ],
-    },
-    {
-        type: 'MONGODB',
-        label: 'MongoDB',
-        fields: [
-            { key: 'host', label: 'Host', type: 'text', placeholder: DEFAULT_HOSTS.LOCALHOST, defaultValue: 'localhost' },
-            { key: 'port', label: 'Port', type: 'number', placeholder: '27017', defaultValue: 27017 },
-            { key: 'database', label: 'Database', type: 'text', placeholder: 'mydb', required: true },
-            { key: 'username', label: 'Username', type: 'text' },
-            { key: 'passwordSecretCode', label: 'Password Secret Code', type: 'secret', description: 'Reference a secret by code' },
-            { key: 'authSource', label: 'Auth Source', type: 'text', placeholder: 'admin', defaultValue: 'admin', description: 'Authentication database name' },
-            { key: 'ssl', label: 'SSL', type: 'boolean', defaultValue: false },
-            { key: 'replicaSet', label: 'Replica Set', type: 'text', description: 'Replica set name (optional)' },
         ],
     },
     {
         type: 'CUSTOM',
         label: 'Custom Connection',
         fields: [
-            { key: 'config', label: 'Configuration (JSON)', type: 'text', description: 'Custom connection configuration as a JSON object. Structure depends on your specific integration.' },
+            { key: 'config', label: 'Configuration (JSON)', type: 'json', description: 'Custom connection configuration as a JSON object. Structure depends on your specific integration.' },
         ],
     },
 ];

@@ -11,7 +11,11 @@ import {
     ExtractorCategory,
 } from '../../types/index';
 import { getErrorMessage } from '../../utils/error.utils';
-import { DatabaseType, DatabasePaginationType, PAGINATION, TRANSFORM_LIMITS } from '../../constants/index';
+import {
+    DatabasePaginationType,
+    PAGINATION,
+    TRANSFORM_LIMITS,
+} from '../../constants/index';
 import { DATABASE_EXTRACTOR_SCHEMA } from './schema';
 import {
     DatabaseCursorValue,
@@ -24,16 +28,17 @@ import {
     DatabaseClient,
 } from './connection-pool';
 import {
-    validateQuery,
     hasLimitClause,
     buildPaginatedQuery,
-    appendIncrementalFilter,
 } from './query-builder';
-import { PaginationState } from './types';
-import { resolveConnectionBackedConfig } from '../shared/connection-backed-config';
-import { validateColumnName } from '../../utils/sql-security.utils';
-
-const DATABASE_CONNECTION_TYPES = ['POSTGRES', 'MYSQL'] as const;
+import { resolveDatabaseExtractorConfig } from './database-config.resolver';
+import { validateDatabaseExtractorConfig } from './database-config.validation';
+import {
+    assertCursorBoundaryValue,
+    createIncrementalCheckpoint,
+    createInitialPaginationState,
+} from './database-extraction-state';
+import { resolveBoundedLimit } from '../shared/pagination.utils';
 
 @Injectable()
 export class DatabaseExtractor implements DataExtractor<DatabaseExtractorConfig> {
@@ -51,7 +56,7 @@ export class DatabaseExtractor implements DataExtractor<DatabaseExtractorConfig>
         context: ExtractorContext,
         config: DatabaseExtractorConfig,
     ): AsyncGenerator<RecordEnvelope, void, undefined> {
-        config = await this.resolveConfig(context, config);
+        config = await resolveDatabaseExtractorConfig(context, config);
         context.logger.info('Starting database extraction', {
             databaseType: config.databaseType,
             host: config.host ?? null,
@@ -63,40 +68,24 @@ export class DatabaseExtractor implements DataExtractor<DatabaseExtractorConfig>
         try {
             client = await createDatabaseClient(context, config);
 
-            // Get incremental state from checkpoint if enabled
-            let lastIncrementalValue: JsonValue | undefined = undefined;
-            if (config.incremental?.enabled && context.checkpoint?.data) {
-                lastIncrementalValue = context.checkpoint.data.lastIncrementalValue;
-            }
-
-            // Apply incremental filter to base query
-            let baseQuery = config.query;
-            if (config.incremental?.enabled && lastIncrementalValue !== undefined) {
-                baseQuery = appendIncrementalFilter(baseQuery, config, lastIncrementalValue);
-            }
-
-            const paginationState: PaginationState = {
-                offset: 0,
-                cursor: undefined,
-                cursorTieBreaker: undefined,
-            };
+            const paginationState = createInitialPaginationState(
+                config,
+                context.checkpoint?.data,
+            );
             const paginationEnabled = config.pagination?.enabled === true;
             const maxPages = config.pagination?.maxPages ?? PAGINATION.MAX_PAGES;
             const pageSize = config.pagination?.pageSize ?? PAGINATION.DATABASE_PAGE_SIZE;
             let pageCount = 0;
             let totalRecords = 0;
-            let latestIncrementalValue: JsonValue | undefined = lastIncrementalValue;
 
             while (pageCount < maxPages) {
-                // Check for cancellation
                 if (await context.isCancelled()) {
                     context.logger.info('Database extraction cancelled');
                     break;
                 }
 
-                // Build paginated query
                 const paginatedQuery = buildPaginatedQuery(
-                    baseQuery,
+                    config.query,
                     config.pagination,
                     paginationState,
                     config.databaseType,
@@ -109,7 +98,6 @@ export class DatabaseExtractor implements DataExtractor<DatabaseExtractorConfig>
                     cursorTieBreaker: paginationState.cursorTieBreaker as JsonValue,
                 });
 
-                // Execute query
                 const result = await client.query(paginatedQuery, config.parameters as unknown[]);
 
                 if (result.rows.length === 0) {
@@ -128,8 +116,8 @@ export class DatabaseExtractor implements DataExtractor<DatabaseExtractorConfig>
                     const cursor = lastRow[config.pagination.cursorColumn];
                     const cursorTieBreaker = lastRow[config.pagination.cursorTieBreakerColumn];
 
-                    this.assertCursorBoundaryValue(cursor, config.pagination.cursorColumn);
-                    this.assertCursorBoundaryValue(
+                    assertCursorBoundaryValue(cursor, config.pagination.cursorColumn);
+                    assertCursorBoundaryValue(
                         cursorTieBreaker,
                         config.pagination.cursorTieBreakerColumn,
                     );
@@ -137,23 +125,8 @@ export class DatabaseExtractor implements DataExtractor<DatabaseExtractorConfig>
                     nextCursorTieBreaker = cursorTieBreaker;
                 }
 
-                // Yield records
                 for (const row of result.rows) {
                     totalRecords++;
-
-                    // Track incremental value
-                    if (config.incremental?.enabled && config.incremental.column) {
-                        const incrementalValue = row[config.incremental.column];
-                        if (incrementalValue != null) {
-                            // Validate types match before comparing to avoid mixed-type > comparison
-                            const canCompare = latestIncrementalValue === undefined ||
-                                typeof incrementalValue === typeof latestIncrementalValue;
-                            if (canCompare && (latestIncrementalValue === undefined ||
-                                (incrementalValue as string | number) > (latestIncrementalValue as string | number))) {
-                                latestIncrementalValue = incrementalValue as JsonValue;
-                            }
-                        }
-                    }
 
                     yield {
                         data: row as JsonObject,
@@ -164,7 +137,6 @@ export class DatabaseExtractor implements DataExtractor<DatabaseExtractorConfig>
                     };
                 }
 
-                // Update pagination state
                 pageCount++;
 
                 if (!paginationEnabled) {
@@ -179,19 +151,20 @@ export class DatabaseExtractor implements DataExtractor<DatabaseExtractorConfig>
                     paginationState.cursor = nextCursor;
                     paginationState.cursorTieBreaker = nextCursorTieBreaker;
                 } else {
-                    // For offset pagination
                     paginationState.offset += result.rows.length;
                 }
 
-                // If we got fewer rows than page size, we're done
                 if (result.rows.length < pageSize) {
                     break;
                 }
             }
 
-            // Save incremental state to checkpoint
-            if (config.incremental?.enabled && latestIncrementalValue !== undefined) {
-                context.setCheckpoint({ lastIncrementalValue: latestIncrementalValue });
+            const incrementalCheckpoint = createIncrementalCheckpoint(
+                config,
+                paginationState,
+            );
+            if (incrementalCheckpoint) {
+                context.setCheckpoint(incrementalCheckpoint);
             }
 
             context.logger.info('Database extraction completed', {
@@ -210,142 +183,15 @@ export class DatabaseExtractor implements DataExtractor<DatabaseExtractorConfig>
         context: ExtractorContext,
         config: DatabaseExtractorConfig,
     ): Promise<ExtractorValidationResult> {
-        config = await this.resolveConfig(context, config);
-        const errors: Array<{ field: string; message: string; code?: string }> = [];
-        const warnings: Array<{ field?: string; message: string }> = [];
-
-        if (!config.databaseType) {
-            errors.push({ field: 'databaseType', message: 'Database type is required' });
-        }
-
-        if (!config.query) {
-            errors.push({ field: 'query', message: 'SQL query is required' });
-        } else {
-            // Validate query
-            const queryValidation = validateQuery(config.query);
-            for (const err of queryValidation.errors) {
-                errors.push({ field: 'query', message: err, code: 'INVALID_QUERY' });
-            }
-
-            if (config.pagination?.enabled && hasLimitClause(config.query)) {
-                warnings.push({
-                    field: 'query',
-                    message: 'Query contains LIMIT clause which may conflict with pagination settings',
-                });
-            }
-        }
-
-        if (!config.connectionStringSecretCode && !config.connectionString) {
-            if (!config.host && config.databaseType !== DatabaseType.SQLITE) {
-                errors.push({ field: 'host', message: 'Host is required' });
-            }
-            if (!config.database) {
-                errors.push({
-                    field: 'database',
-                    message: config.databaseType === DatabaseType.SQLITE
-                        ? 'SQLite database path is required'
-                        : 'Database name is required',
-                });
-            }
-        }
-
-        if (config.port !== undefined) {
-            if (config.port <= 0 || config.port > 65535) {
-                errors.push({ field: 'port', message: 'Port must be between 1 and 65535' });
-            }
-        }
-
-        if (config.pagination?.enabled) {
-            if (config.pagination.type === DatabasePaginationType.CURSOR) {
-                if (!config.pagination.cursorColumn) {
-                    errors.push({
-                        field: 'pagination.cursorColumn',
-                        message: 'Cursor column is required for cursor-based pagination',
-                    });
-                }
-                if (!config.pagination.cursorTieBreakerColumn) {
-                    errors.push({
-                        field: 'pagination.cursorTieBreakerColumn',
-                        message: 'Cursor tie-breaker column is required for cursor-based pagination',
-                    });
-                }
-                if (
-                    config.pagination.cursorColumn &&
-                    config.pagination.cursorColumn === config.pagination.cursorTieBreakerColumn
-                ) {
-                    errors.push({
-                        field: 'pagination.cursorTieBreakerColumn',
-                        message: 'Cursor and tie-breaker columns must be different',
-                    });
-                }
-                for (const [field, column] of [
-                    ['pagination.cursorColumn', config.pagination.cursorColumn],
-                    [
-                        'pagination.cursorTieBreakerColumn',
-                        config.pagination.cursorTieBreakerColumn,
-                    ],
-                ] as const) {
-                    if (!column) continue;
-                    try {
-                        validateColumnName(column);
-                    } catch (error) {
-                        errors.push({ field, message: getErrorMessage(error) });
-                    }
-                }
-            }
-            if (config.pagination.pageSize <= 0) {
-                errors.push({ field: 'pagination.pageSize', message: 'Page size must be positive' });
-            }
-        }
-
-        if (config.incremental?.enabled && !config.incremental.column) {
-            errors.push({
-                field: 'incremental.column',
-                message: 'Incremental column is required when incremental extraction is enabled',
-            });
-        }
-
-        for (const field of ['namedParameters', 'schema', 'includeQueryMetadata'] as const) {
-            if (config[field] !== undefined) {
-                errors.push({
-                    field,
-                    message: `${field} is not supported by the database extractor`,
-                });
-            }
-        }
-        const rawPool = config.pool as Record<string, unknown> | undefined;
-        if (rawPool?.min !== undefined) {
-            errors.push({
-                field: 'pool.min',
-                message: 'pool.min is not supported by the database extractor',
-            });
-        }
-        const rawIncremental = config.incremental as Record<string, unknown> | undefined;
-        if (rawIncremental?.type !== undefined) {
-            errors.push({
-                field: 'incremental.type',
-                message: 'incremental.type is not supported; the checkpoint value is inferred from the column',
-            });
-        }
-
-        if (
-            config.databaseType &&
-            ![DatabaseType.POSTGRESQL, DatabaseType.MYSQL, DatabaseType.SQLITE].includes(config.databaseType)
-        ) {
-            errors.push({
-                field: 'databaseType',
-                message: `${config.databaseType} is not supported by the database extractor`,
-            });
-        }
-
-        return { valid: errors.length === 0, errors, warnings };
+        config = await resolveDatabaseExtractorConfig(context, config);
+        return validateDatabaseExtractorConfig(config);
     }
 
     async testConnection(
         context: ExtractorContext,
         config: DatabaseExtractorConfig,
     ): Promise<ConnectionTestResult> {
-        config = await this.resolveConfig(context, config);
+        config = await resolveDatabaseExtractorConfig(context, config);
         const testQuery = DATABASE_TEST_QUERIES[config.databaseType] || 'SELECT 1';
         const startTime = Date.now();
 
@@ -386,12 +232,16 @@ export class DatabaseExtractor implements DataExtractor<DatabaseExtractorConfig>
         limit: number = 10,
     ): Promise<ExtractorPreviewResult> {
         try {
-            config = await this.resolveConfig(context, config);
+            config = await resolveDatabaseExtractorConfig(context, config);
             const client = await createDatabaseClient(context, config);
             const records: RecordEnvelope[] = [];
 
             try {
-                const safeLimit = Math.max(1, Math.min(Math.floor(limit), TRANSFORM_LIMITS.MAX_PREVIEW_LIMIT));
+                const safeLimit = resolveBoundedLimit(
+                    limit,
+                    10,
+                    TRANSFORM_LIMITS.MAX_PREVIEW_LIMIT,
+                );
                 const previewQuery = hasLimitClause(config.query)
                     ? config.query
                     : `${config.query} LIMIT ${safeLimit}`;
@@ -434,46 +284,4 @@ export class DatabaseExtractor implements DataExtractor<DatabaseExtractorConfig>
         }
     }
 
-    private async resolveConfig(
-        context: ExtractorContext,
-        config: DatabaseExtractorConfig,
-    ): Promise<DatabaseExtractorConfig> {
-        const resolved = await resolveConnectionBackedConfig(
-            context,
-            config as unknown as JsonObject,
-            DATABASE_CONNECTION_TYPES,
-        );
-        const inferredType = resolved.connectionType === 'POSTGRES'
-            ? DatabaseType.POSTGRESQL
-            : resolved.connectionType === 'MYSQL'
-                ? DatabaseType.MYSQL
-                : undefined;
-        const resolvedConfig = resolved.config as unknown as DatabaseExtractorConfig;
-        const ssl = resolvedConfig.ssl;
-
-        return {
-            ...resolvedConfig,
-            databaseType: inferredType ?? resolvedConfig.databaseType,
-            ssl: typeof ssl === 'boolean' ? { enabled: ssl } : ssl,
-        };
-    }
-
-    private assertCursorBoundaryValue(
-        value: unknown,
-        column: string,
-    ): asserts value is DatabaseCursorValue {
-        if (
-            value === null ||
-            (typeof value !== 'string' &&
-                typeof value !== 'number' &&
-                typeof value !== 'boolean' &&
-                !(value instanceof Date)) ||
-            (typeof value === 'number' && !Number.isFinite(value)) ||
-            (value instanceof Date && Number.isNaN(value.getTime()))
-        ) {
-            throw new Error(
-                `Cursor column "${column}" must contain a non-null scalar value in the page boundary row`,
-            );
-        }
-    }
 }

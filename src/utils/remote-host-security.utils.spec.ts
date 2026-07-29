@@ -2,10 +2,32 @@ import { createHash } from 'crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { validateUrlSafety } from './url-security.utils';
 import {
+    createPinnedLookup,
+    createPinnedAddressLookup,
     createSftpHostVerifier,
     normalizeRemoteHostname,
     resolveSafeRemoteAddress,
+    resolveSafeRemoteAddresses,
 } from './remote-host-security.utils';
+
+function executeLookup(hostname: string): Promise<{ address: string; family: number }> {
+    const lookup = createPinnedLookup({
+        hostname: 'files.example.com',
+        address: '203.0.114.8',
+        family: 4,
+    });
+    return new Promise((resolve, reject) => {
+        lookup(hostname, { family: 0, all: false }, (error, address, family) => {
+            if (error) {
+                reject(error);
+            } else if (Array.isArray(address) || family === undefined) {
+                reject(new Error('Expected one pinned lookup address'));
+            } else {
+                resolve({ address, family });
+            }
+        });
+    });
+}
 
 vi.mock('./url-security.utils', () => ({
     validateUrlSafety: vi.fn(),
@@ -37,6 +59,54 @@ describe('remote host transport security', () => {
             address: '203.0.114.8',
             family: 4,
         });
+    });
+
+    it('preserves every unique approved address for pinned failover', async () => {
+        vi.mocked(validateUrlSafety).mockResolvedValue({
+            safe: true,
+            resolvedIPs: ['2001:db8::8', '203.0.114.8', '203.0.114.8'],
+        });
+
+        await expect(resolveSafeRemoteAddresses('files.example.com')).resolves.toEqual([
+            {
+                hostname: 'files.example.com',
+                address: '2001:db8::8',
+                family: 6,
+            },
+            {
+                hostname: 'files.example.com',
+                address: '203.0.114.8',
+                family: 4,
+            },
+        ]);
+    });
+
+    it('returns all pinned addresses requested by Node family auto-selection', async () => {
+        const lookup = createPinnedAddressLookup([
+            { hostname: 'files.example.com', address: '2001:db8::8', family: 6 },
+            { hostname: 'files.example.com', address: '203.0.114.8', family: 4 },
+        ]);
+
+        const addresses = await new Promise<unknown>((resolve, reject) => {
+            lookup('files.example.com', { all: true }, (error, result) => {
+                if (error) reject(error);
+                else resolve(result);
+            });
+        });
+        expect(addresses).toEqual([
+            { address: '2001:db8::8', family: 6 },
+            { address: '203.0.114.8', family: 4 },
+        ]);
+    });
+
+    it('pins transport lookup to the validated address and rejects hostname changes', async () => {
+        await expect(executeLookup('files.example.com')).resolves.toEqual({
+            address: '203.0.114.8',
+            family: 4,
+        });
+        await expect(executeLookup('redirect.example.com')).rejects.toThrow(
+            'refusing hostname change',
+        );
     });
 
     it('fails closed when DNS-aware SSRF validation rejects an address', async () => {

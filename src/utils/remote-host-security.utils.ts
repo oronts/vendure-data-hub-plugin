@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from 'crypto';
 import { lookup } from 'dns/promises';
-import { isIP, Socket } from 'net';
+import { isIP, Socket, type LookupFunction } from 'net';
 import { SECRET_SECURITY } from '../constants/defaults/security-defaults';
 import { validateUrlSafety } from './url-security.utils';
 
@@ -11,6 +11,78 @@ export interface SafeRemoteAddress {
     hostname: string;
     address: string;
     family: 4 | 6;
+}
+
+export type SafeRemoteAddresses = readonly [
+    SafeRemoteAddress,
+    ...SafeRemoteAddress[],
+];
+
+export function createPinnedLookup(remote: SafeRemoteAddress): LookupFunction {
+    return createPinnedAddressLookup([remote]);
+}
+
+export function createPinnedAddressLookup(
+    remotes: SafeRemoteAddresses,
+): LookupFunction {
+    const expectedHostname = remotes[0].hostname;
+    if (remotes.some(remote => remote.hostname !== expectedHostname)) {
+        throw new Error('Pinned remote addresses must use one hostname');
+    }
+
+    return (hostname, options, callback): void => {
+        let requestedHostname: string;
+        try {
+            requestedHostname = normalizeRemoteHostname(hostname);
+        } catch (error) {
+            callback(error as Error, '', 0);
+            return;
+        }
+        if (requestedHostname !== expectedHostname) {
+            callback(
+                new Error(
+                    `SSRF protection: refusing hostname change from ${expectedHostname} to ${requestedHostname}`,
+                ),
+                '',
+                0,
+            );
+            return;
+        }
+
+        const requestedFamily = options.family === 'IPv4'
+            ? 4
+            : options.family === 'IPv6'
+                ? 6
+                : options.family ?? 0;
+        const matchingRemotes = requestedFamily === 0
+            ? remotes
+            : remotes.filter(remote => remote.family === requestedFamily);
+        if (matchingRemotes.length === 0) {
+            callback(
+                new Error(
+                    `SSRF protection: validated ${expectedHostname} addresses do not match requested IP family`,
+                ),
+                '',
+                0,
+            );
+            return;
+        }
+        if (options.all) {
+            callback(
+                null,
+                matchingRemotes.map(remote => ({
+                    address: remote.address,
+                    family: remote.family,
+                })),
+            );
+            return;
+        }
+        callback(
+            null,
+            matchingRemotes[0].address,
+            matchingRemotes[0].family,
+        );
+    };
 }
 
 function remoteValidationUrl(hostname: string): string {
@@ -47,7 +119,9 @@ export function normalizeRemoteHostname(host: string): string {
     return hostname;
 }
 
-export async function resolveSafeRemoteAddress(host: string): Promise<SafeRemoteAddress> {
+export async function resolveSafeRemoteAddresses(
+    host: string,
+): Promise<SafeRemoteAddresses> {
     const hostname = normalizeRemoteHostname(host);
     const safety = await validateUrlSafety(remoteValidationUrl(hostname));
     if (!safety.safe) {
@@ -57,13 +131,26 @@ export async function resolveSafeRemoteAddress(host: string): Promise<SafeRemote
     const resolvedAddresses = safety.resolvedIPs?.length
         ? safety.resolvedIPs
         : (await lookup(hostname, { all: true })).map(result => result.address);
-    const address = resolvedAddresses[0];
-    const family = address ? isIP(address) : 0;
-    if (!address || (family !== 4 && family !== 6)) {
+    const remotes: SafeRemoteAddress[] = [];
+    const seenAddresses = new Set<string>();
+    for (const address of resolvedAddresses) {
+        const family = isIP(address);
+        if ((family !== 4 && family !== 6) || seenAddresses.has(address)) {
+            continue;
+        }
+        seenAddresses.add(address);
+        remotes.push({ hostname, address, family });
+    }
+    if (remotes.length === 0) {
         throw new Error(`Remote host '${hostname}' did not resolve to a valid IP address`);
     }
 
-    return { hostname, address, family };
+    return [remotes[0], ...remotes.slice(1)];
+}
+
+export async function resolveSafeRemoteAddress(host: string): Promise<SafeRemoteAddress> {
+    const remotes = await resolveSafeRemoteAddresses(host);
+    return remotes[0];
 }
 
 export async function connectPinnedRemoteSocket(
