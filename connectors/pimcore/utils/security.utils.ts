@@ -1,16 +1,27 @@
 type FilterObject = Record<string, unknown>;
 
+const MAX_PIMCORE_PATH_LENGTH = 2_048;
+
+function hasInvalidPathCharacter(path: string): boolean {
+    return [...path].some(character => {
+        const codePoint = character.codePointAt(0);
+        return character === '%' || codePoint === 127 || (codePoint !== undefined && codePoint < 32);
+    });
+}
+
 export function buildSafePathFilter(pathFilter: string | undefined): FilterObject | undefined {
-    if (!pathFilter) return undefined;
+    if (pathFilter === undefined) return undefined;
+    if (
+        !pathFilter.startsWith('/')
+        || pathFilter.length > MAX_PIMCORE_PATH_LENGTH
+        || hasInvalidPathCharacter(pathFilter)
+    ) {
+        throw new Error(
+            'Pimcore path filters must be absolute paths without control or wildcard characters',
+        );
+    }
 
-    const sanitized = pathFilter
-        .replace(/["\\']/g, '')
-        .replace(/[{}[\]]/g, '')
-        .replace(/[^a-zA-Z0-9/\-_.]/g, '');
-
-    if (!sanitized) return undefined;
-
-    return { path: { $like: `${sanitized}%` } };
+    return { fullpath: { $like: `${pathFilter}%` } };
 }
 
 export function buildSafeMimeTypeFilter(mimeTypes: string[] | undefined): FilterObject | undefined {

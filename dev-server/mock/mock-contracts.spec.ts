@@ -89,12 +89,15 @@ describe('mock HTTP contracts', () => {
         const productsEndpoint = `${pimcore.baseUrl}/api/products`;
         expect((await fetch(productsEndpoint)).status).toBe(401);
         expect((await fetch(productsEndpoint, {
-            headers: { apiKey: DEFAULT_DEV_PIMCORE_API_KEY },
+            headers: { 'X-API-Key': DEFAULT_DEV_PIMCORE_API_KEY },
         })).status).toBe(200);
+        expect((await fetch(
+            `${productsEndpoint}?apikey=${encodeURIComponent(DEFAULT_DEV_PIMCORE_API_KEY)}`,
+        )).status).toBe(200);
     });
 
     it('limits Pimcore stock to variants from published products', async () => {
-        const headers = { apiKey: DEFAULT_DEV_PIMCORE_API_KEY };
+        const headers = { 'X-API-Key': DEFAULT_DEV_PIMCORE_API_KEY };
         const [productsResponse, stockResponse] = await Promise.all([
             fetch(`${pimcore.baseUrl}/api/products?limit=100`, { headers }),
             fetch(`${pimcore.baseUrl}/api/stock`, { headers }),

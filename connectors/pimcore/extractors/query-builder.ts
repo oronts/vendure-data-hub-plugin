@@ -36,13 +36,21 @@ export function createPimcoreProductQuery(
         mapping.enabledField ?? 'published',
         'mapping.product.enabledField',
     );
+    const priceField = validateGraphQLFieldName(
+        mapping.priceField ?? 'price',
+        'mapping.product.priceField',
+    );
+    const stockQuantityField = validateGraphQLFieldName(
+        mapping.stockQuantityField ?? 'stockQuantity',
+        'mapping.product.stockQuantityField',
+    );
     const classFields = uniqueFields([
         skuField,
         nameField,
         slugField,
         descriptionField,
         enabledField,
-        'price',
+        priceField,
     ]).filter(field => !PRODUCT_BASE_FIELDS.has(field));
     const variantsSelection = includeVariants
         ? createVariantsSelection(
@@ -50,6 +58,8 @@ export function createPimcoreProductQuery(
             skuField,
             nameField,
             enabledField,
+            priceField,
+            stockQuantityField,
         )
         : '';
 
@@ -151,6 +161,8 @@ function createVariantsSelection(
     skuField: string,
     nameField: string,
     enabledField: string,
+    priceField: string,
+    stockQuantityField: string,
 ): string {
     const field = validateGraphQLFieldName(rawField, 'mapping.product.variantsField');
     const relation = field === 'variants'
@@ -160,7 +172,17 @@ function createVariantsSelection(
             : field;
     return `${relation} {
         ... on object_Product {
-            ${uniqueFields(['id', 'key', 'fullpath', 'published', skuField, nameField, enabledField, 'price', 'stockQuantity']).join(' ')}
+            ${uniqueFields([
+                'id',
+                'key',
+                'fullpath',
+                'published',
+                skuField,
+                nameField,
+                enabledField,
+                priceField,
+                stockQuantityField,
+            ]).join(' ')}
         }
     }`;
 }

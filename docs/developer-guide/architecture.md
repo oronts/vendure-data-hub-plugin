@@ -362,6 +362,12 @@ Pipeline runs use the job queue:
 - Distributed processing
 - Retry handling
 - Worker scaling
+- Permission-bearing context reconstruction from the initiating user, revision
+  publisher, or the configured superadmin for actorless code-first pipelines
+
+The worker reloads the selected user and current roles before creating the
+Vendure `RequestContext`. Database-managed runs without a durable actor fail
+closed; the code-first superadmin fallback is not applied to them.
 
 ## Enterprise Architecture
 

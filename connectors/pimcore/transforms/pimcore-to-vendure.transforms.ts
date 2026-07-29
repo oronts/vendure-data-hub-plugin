@@ -15,6 +15,15 @@ import { JsonObject } from '../../../src/types';
 import { getNestedValue } from '../../../shared/utils/object-path';
 import { priceToCents } from '../utils/math.utils';
 
+function isAbsoluteHttpUrl(value: string): boolean {
+    try {
+        const protocol = new URL(value).protocol;
+        return protocol === 'http:' || protocol === 'https:';
+    } catch {
+        return false;
+    }
+}
+
 // ============================================================================
 // Type Guards
 // ============================================================================
@@ -99,6 +108,8 @@ const DEFAULT_PRODUCT_MAPPING = {
     descriptionField: 'description',
     assetsField: 'images',
     variantsField: 'variants',
+    priceField: 'price',
+    stockQuantityField: 'stockQuantity',
     enabledField: 'published',
 };
 
@@ -257,9 +268,9 @@ export function transformVariant(
     const nameField = toStringOrLocalized(rawNameField);
     const name = extractLocalizedValue(nameField, defaultLanguage) || sku;
 
-    const rawPrice = getNestedValue(pimcoreVariant, 'price');
+    const rawPrice = getNestedValue(pimcoreVariant, mapping_.priceField);
     const price = priceToCents(typeof rawPrice === 'number' || typeof rawPrice === 'string' ? rawPrice : undefined);
-    const rawStockQuantity = getNestedValue(pimcoreVariant, 'stockQuantity');
+    const rawStockQuantity = getNestedValue(pimcoreVariant, mapping_.stockQuantityField);
     const stockQuantity = typeof rawStockQuantity === 'number' ? rawStockQuantity : undefined;
 
     const result: VendureVariantInput = {
@@ -346,7 +357,7 @@ export function transformAsset(
 
     const rawUrl = getNestedValue(pimcoreAsset, mapping_.urlField);
     let url = typeof rawUrl === 'string' ? rawUrl : undefined;
-    if (url && baseUrl && !url.startsWith('http')) {
+    if (url && baseUrl && !isAbsoluteHttpUrl(url)) {
         url = `${baseUrl.replace(/\/$/, '')}${url.startsWith('/') ? '' : '/'}${url}`;
     }
 

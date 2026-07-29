@@ -28,11 +28,16 @@ request. The validator accepts only HTTP and HTTPS URLs, rejects known local and
 metadata hostnames, resolves DNS, and rejects private or reserved IP addresses by
 default.
 
-This validation is defense in depth, not a replacement for network controls. A
-preflight DNS check does not pin every client connection or redirect to the
-validated address. Use an outbound proxy or firewall allowlist for high-security
-deployments, restrict redirect behavior in custom clients, and do not disable
-SSRF protection for untrusted pipeline configuration.
+Built-in HTTP requests revalidate redirects and socket DNS lookups. FTP, SFTP,
+SMTP, custom S3 endpoints, PostgreSQL, and MySQL bind connections to an address
+approved by the same policy; SFTP also supports required production host-key
+fingerprints. Database connection strings accept only documented single-host
+TCP URI schemes, reject endpoint-changing parameters and local sockets, and
+enable MySQL TLS certificate identity verification.
+These controls are defense in depth, not a replacement for an outbound proxy or
+firewall allowlist. Custom adapters must apply equivalent redirect and
+connection-time validation, and SSRF protection must remain enabled for
+untrusted pipeline configuration.
 
 `allowedHostnames` is an explicit bypass of the normal hostname and IP checks.
 Only use it for hosts that are trusted even if they resolve to a private address.

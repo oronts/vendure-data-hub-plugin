@@ -68,7 +68,6 @@ export const productImportCsv = createPipeline()
             { type: 'business', spec: { field: 'weight', min: 0, error: 'Weight cannot be negative' } },
         ],
         errorHandlingMode: 'ACCUMULATE', // Collect all errors, don't stop on first
-        validationMode: 'STRICT',
     })
 
     // Route invalid records to error export (parallel branch 1)
@@ -477,7 +476,6 @@ export const stockUpdateCsv = createPipeline()
             { type: 'business', spec: { field: 'reorder_point', min: 0, error: 'Reorder point cannot be negative' } },
         ],
         errorHandlingMode: 'ACCUMULATE',
-        validationMode: 'STRICT',
     })
 
     .transform('filter-valid', {

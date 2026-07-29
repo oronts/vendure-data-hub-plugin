@@ -113,7 +113,7 @@ DataHubPlugin.init({
 |---|---|
 | Type | `number` |
 | Default | `30` |
-| Description | Days to keep pipeline run history |
+| Description | Days to keep pipeline run history (`0..365`; `0` disables cleanup) |
 
 Old runs are deleted automatically by the retention job. The job runs in the
 Vendure server process under the configured distributed lock. Database work is
@@ -126,7 +126,7 @@ larger backlogs continue in later cycles.
 |---|---|
 | Type | `number` |
 | Default | `90` |
-| Description | Days to keep error records |
+| Description | Days to keep error records (`0..365`; `0` disables cleanup) |
 
 Quarantined records older than this are deleted.
 
@@ -184,7 +184,8 @@ ENV values must be one canonical environment-variable name and must exist in eve
 ```typescript
 interface CodeFirstConnection {
     code: string;           // Unique connection identifier
-    type: string;           // Connection type (e.g., 'postgres', 'mysql', 'rest', 's3')
+    type: 'HTTP' | 'REST' | 'GRAPHQL' | 'S3' | 'FTP' | 'SFTP'
+        | 'POSTGRES' | 'MYSQL' | 'RABBITMQ' | 'SQS' | 'REDIS' | 'CUSTOM';
     settings: JsonObject;   // Connection settings - supports env var references like ${DB_HOST}
 }
 ```
@@ -320,6 +321,7 @@ DataHubPlugin.init({
 | `requestTimeoutMs` | `5000` | Integer from 100 to 30,000 |
 | `maxQueueSize` | `2048` | Integer from 1 to 10,000 |
 | `maxBatchSize` | `256` | Integer from 1 to 1,000 |
+| `maxRequestBodyBytes` | `67108864` | Integer from 1,024 to 67,108,864 |
 
 The endpoint is a base URL; the exporter appends `/v1/metrics` and
 `/v1/traces`. Omit the option or set `enabled: false` for no background
@@ -705,9 +707,9 @@ These settings can be changed via Admin UI or GraphQL:
 
 | Setting | Description |
 |---------|-------------|
-| `retentionDaysRuns` | Run history retention |
-| `retentionDaysErrors` | Error retention |
-| `retentionDaysLogs` | Positive days purge older pipeline logs; `null` or `0` disables log purging |
+| `retentionDaysRuns` | `1..365` purges older run history; `0` disables cleanup; `null` restores the server default |
+| `retentionDaysErrors` | `1..365` purges older record errors; `0` disables cleanup; `null` restores the server default |
+| `retentionDaysLogs` | `1..365` purges older pipeline logs; `null` or `0` disables log cleanup |
 | `logPersistenceLevel` | Minimum log level to persist |
 
 ```graphql

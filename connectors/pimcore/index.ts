@@ -12,6 +12,7 @@ import {
 import { DEFAULT_CHANNEL_CODE } from '../../shared/constants';
 import { PIMCORE_EXTRACTOR_LIMITS, PIMCORE_PIPELINE_METADATA } from './constants';
 import { validateGraphQLFieldName } from './extractors/query-builder';
+import { buildSafePathFilter } from './utils/security.utils';
 
 export * from './types';
 export * from './extractors';
@@ -104,6 +105,8 @@ export const pimcoreConnectorDefinition: ConnectorDefinition<PimcoreConnectorCon
             'slugField',
             'descriptionField',
             'variantsField',
+            'priceField',
+            'stockQuantityField',
             'enabledField',
         ]);
         validateKnownFields(errors, 'mapping.category', config.mapping?.category, [
@@ -184,6 +187,9 @@ export const pimcoreConnectorDefinition: ConnectorDefinition<PimcoreConnectorCon
 
         validateMappingFieldNames(errors, config.mapping);
         validateMimeTypes(errors, config.pipelines?.assetSync?.mimeTypes);
+        validatePathFilter(errors, 'sync.pathFilter', config.sync?.pathFilter);
+        validatePathFilter(errors, 'pipelines.categorySync.rootPath', config.pipelines?.categorySync?.rootPath);
+        validatePathFilter(errors, 'pipelines.assetSync.folderPath', config.pipelines?.assetSync?.folderPath);
 
         validateOptionalBoolean(errors, 'sync.deltaSync', config.sync?.deltaSync);
         validateOptionalBoolean(errors, 'sync.includeUnpublished', config.sync?.includeUnpublished);
@@ -281,6 +287,20 @@ function validateMappingFieldNames(errors: string[], mapping: PimcoreConnectorCo
                 errors.push(error instanceof Error ? error.message : `${path}.${field} must be a GraphQL field name`);
             }
         }
+    }
+}
+
+function validatePathFilter(
+    errors: string[],
+    field: string,
+    value: string | undefined,
+): void {
+    if (value === undefined || typeof value !== 'string' || !value.trim()) return;
+    try {
+        buildSafePathFilter(value);
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'invalid Pimcore path filter';
+        errors.push(field + ': ' + message);
     }
 }
 

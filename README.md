@@ -203,8 +203,8 @@ export const config: VendureConfig = {
 |--------|------|---------|-------------|
 | `enabled` | `boolean` | `true` | Enable code-first config/secret startup synchronization; does not unregister plugin APIs |
 | `registerBuiltinAdapters` | `boolean` | `true` | Register built-in extractors, operators, loaders |
-| `retentionDaysRuns` | `number` | `30` | Days to keep pipeline run history |
-| `retentionDaysErrors` | `number` | `90` | Days to keep error records |
+| `retentionDaysRuns` | `number` | `30` | Run-history retention from 0 to 365 days; 0 disables cleanup |
+| `retentionDaysErrors` | `number` | `90` | Record-error retention from 0 to 365 days; 0 disables cleanup |
 | `pipelines` | `CodeFirstPipeline[]` | `[]` | Define pipelines in code |
 | `secrets` | `CodeFirstSecret[]` | `[]` | Define secrets in code |
 | `connections` | `CodeFirstConnection[]` | `[]` | Define connections in code |
@@ -242,8 +242,9 @@ DataHubPlugin.init({
 ```
 
 Export runs asynchronously with request timeouts, a bounded completed-span
-queue, and bounded metric label cardinality. Pipeline execution never waits for
-collector I/O. Trace attributes use a fixed operational allowlist; record
+queue, bounded request bodies, and bounded metric label cardinality. Transient
+collector failures use exponential backoff with jitter and honor `Retry-After`.
+Pipeline execution never waits for collector I/O. Trace attributes use a fixed operational allowlist; record
 payloads, configuration objects, user identifiers, secrets, error messages,
 and stacks are not exported. Metrics are cumulative and process-local, so
 configure every API and worker process that should be observed.
@@ -543,7 +544,8 @@ Execute custom JavaScript for complex transformations:
     lastNameField: 'lastName',
     phoneNumberField: 'phone',
     addressesField: 'addresses',
-    groupsField: 'groupCodes',
+    groupsField: 'groupNames',
+    groupsMode: 'ADD',
 })
 ```
 
@@ -1120,6 +1122,7 @@ const myExtractor: ExtractorAdapter<MyExtractorConfig> = {
         const response = await fetch(config.endpoint);
         const data = await response.json();
         for (const item of data.items) {
+            if (await context.isCancelled()) return;
             yield { data: item };
         }
     },
@@ -1215,6 +1218,12 @@ sandbox execution without granting resource-management access. Authenticated
 HTTP and GraphQL connections must define a
 `baseUrl`, and their credentials are restricted to that origin across redirects.
 
+Queue workers reconstruct the Vendure user context from the run initiator or the
+published revision owner and reload current roles before execution. Missing users
+or revoked channel permissions fail closed. Only actorless code-first pipelines
+use the configured Vendure superadmin account; database-managed runs require a
+persisted actor.
+
 ---
 
 ## Error Handling
@@ -1250,8 +1259,11 @@ Failed records automatically capture JavaScript stack traces when errors origina
 
 | Requirement | Version |
 |-------------|---------|
-| Vendure | >=3.5.7 <4 |
+| Vendure | >=3.5.7 <3.6.0 |
 | Node.js | >=20.0.0 |
+
+Amazon SQS consumers and producers additionally require the optional
+`@aws-sdk/client-sqs` peer dependency.
 
 ## Documentation
 

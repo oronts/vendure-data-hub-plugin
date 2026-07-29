@@ -121,7 +121,7 @@ forwarded across cross-origin redirects.
 // In connection configuration
 {
     code: 'erp-db',
-    type: 'postgres',
+    type: 'POSTGRES',
     settings: {
         host: 'db.example.com',
         database: 'erp',
@@ -136,7 +136,7 @@ forwarded across cross-origin redirects.
 ```typescript
 {
     code: 'aws-storage',
-    type: 's3',
+    type: 'S3',
     settings: {
         region: 'us-east-1',
         accessKeyIdSecretCode: 'aws-access-key',
@@ -150,7 +150,7 @@ forwarded across cross-origin redirects.
 ```typescript
 {
     code: 'supplier-ftp',
-    type: 'sftp',
+    type: 'SFTP',
     settings: {
         host: 'ftp.supplier.com',
         username: 'vendure',

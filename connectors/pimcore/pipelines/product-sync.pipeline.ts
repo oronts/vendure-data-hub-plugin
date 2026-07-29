@@ -23,6 +23,8 @@ export function createProductSyncPipeline(config: PimcoreConnectorConfig): Pipel
     const pipelineConfig = pipelines?.productSync ?? {};
     const variantsField = mapping?.product?.variantsField ?? 'variants';
     const enabledField = mapping?.product?.enabledField ?? 'published';
+    const priceField = mapping?.product?.priceField ?? 'price';
+    const stockQuantityField = mapping?.product?.stockQuantityField ?? 'stockQuantity';
     const syncVariants = pipelineConfig.syncVariants !== false && sync?.includeVariants !== false;
 
     if (pipelineConfig.enabled === false) {
@@ -113,7 +115,7 @@ export function createProductSyncPipeline(config: PimcoreConnectorConfig): Pipel
                 op: TRANSFORM_OPERATOR.DELTA_FILTER,
                 args: {
                     idPath: 'externalId',
-                    includePaths: ['name', 'slug', 'description', 'enabled', 'sku', 'price', variantsField],
+                    includePaths: ['name', 'slug', 'description', 'enabled', 'sku', priceField, variantsField],
                     excludePaths: ['syncedAt', 'modificationDate'],
                 },
             }],
@@ -151,19 +153,21 @@ export function createProductSyncPipeline(config: PimcoreConnectorConfig): Pipel
             operators: [
                 { op: TRANSFORM_OPERATOR.COALESCE, args: { paths: ['sku', 'itemNumber', 'key', 'id'], target: 'variantSku' } },
                 { op: TRANSFORM_OPERATOR.TEMPLATE, args: { template: '${productSku}-${variantSku}', target: 'variantSku' } },
-                { op: TRANSFORM_OPERATOR.TO_NUMBER, args: { source: 'price' } },
+                { op: TRANSFORM_OPERATOR.TO_NUMBER, args: { source: priceField, target: 'price' } },
+                { op: TRANSFORM_OPERATOR.TO_NUMBER, args: { source: stockQuantityField, target: 'stockQuantity' } },
                 { op: TRANSFORM_OPERATOR.COALESCE, args: { paths: [`name.${defaultLanguage}`, 'name', 'key', 'variantSku'], target: 'variantName' } },
             ],
         });
 
         pipeline.load('upsert-variants', {
             adapterCode: LOADER_CODE.VARIANT_UPSERT,
+            channel: vendureChannel,
             strategy: LOAD_STRATEGY.UPSERT,
             skuField: 'variantSku',
             nameField: 'variantName',
             priceField: 'price',
             stockField: 'stockQuantity',
-            enabledField: 'published',
+            enabledField,
         });
     }
 

@@ -139,6 +139,9 @@ export const config: VendureConfig = {
     paymentOptions: {
         paymentMethodHandlers: [dummyPaymentHandler],
     },
+    schedulerOptions: {
+        runTasksInWorkerOnly: false,
+    },
     plugins: [
         DefaultJobQueuePlugin,
         DefaultSchedulerPlugin.init({}),
@@ -282,7 +285,7 @@ export const config: VendureConfig = {
                             auth: {
                                 type: 'API_KEY',
                                 secretCode: 'pimcore-api-key',
-                                headerName: 'apikey',
+                                headerName: 'X-API-Key',
                             },
                         },
                     }]
@@ -295,7 +298,7 @@ export const config: VendureConfig = {
                         auth: {
                             type: 'API_KEY',
                             secretCode: 'pimcore-api-key',
-                            headerName: 'apiKey',
+                            headerName: 'X-API-Key',
                         },
                     },
                 },

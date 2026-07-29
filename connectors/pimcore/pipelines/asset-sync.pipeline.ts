@@ -9,11 +9,17 @@ import { PIMCORE_SOURCE_ORIGIN_FIELD } from '../constants';
 import { buildSafePathFilter, buildSafeMimeTypeFilter, combineFilters } from '../utils/security.utils';
 import { createPimcoreExtractorConfig } from './extractor-config';
 import { createPimcoreAssetQuery } from '../extractors/query-builder';
+import { DEFAULT_CHANNEL_CODE } from '../../../shared/constants';
 
 const DEFAULT_ASSET_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 export function createAssetSyncPipeline(config: PimcoreConnectorConfig): PipelineDefinition {
-    const { mapping, sync, pipelines } = config;
+    const {
+        mapping,
+        sync,
+        pipelines,
+        vendureChannel = DEFAULT_CHANNEL_CODE,
+    } = config;
 
     const pipelineConfig = pipelines?.assetSync ?? {};
 
@@ -99,6 +105,7 @@ export function createAssetSyncPipeline(config: PimcoreConnectorConfig): Pipelin
 
     pipeline.load('import-assets', {
         adapterCode: LOADER_CODE.ASSET_IMPORT,
+        channel: vendureChannel,
         sourceUrlField: 'sourceUrl',
         filenameField: 'filename',
         nameField: 'name',

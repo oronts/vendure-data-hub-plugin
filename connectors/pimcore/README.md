@@ -33,6 +33,10 @@ The Pimcore Connector provides pre-built pipelines for synchronizing your Pimcor
 
 The connector is included in the DataHub plugin. No separate installation required.
 
+Configure the endpoint, API key, schema, and workspaces using Pimcore's
+[GraphQL Datahub guide](https://docs.pimcore.com/platform/Datahub/GraphQL/). Expose
+only the classes and fields required by the synchronization pipelines.
+
 ## Configuration
 
 ### Basic Setup
@@ -51,6 +55,7 @@ export const config: VendureConfig = {
     DataHubPlugin.init({
       secrets: [
         { code: 'pimcore-api-key', provider: 'ENV', value: 'PIMCORE_API_KEY' },
+        { code: 'pimcore-webhook-key', provider: 'ENV', value: 'PIMCORE_WEBHOOK_KEY' },
       ],
       connections: [
         {
@@ -61,7 +66,7 @@ export const config: VendureConfig = {
             auth: {
               type: 'API_KEY',
               secretCode: 'pimcore-api-key',
-              headerName: 'apikey',
+              headerName: 'X-API-Key',
             },
           },
         },
@@ -105,6 +110,8 @@ const pimcore = PimcoreConnector({
       slugField: 'urlKey',         // Your slug field name
       descriptionField: 'longDescription',
       variantsField: 'children',
+      priceField: 'retailPrice',
+      stockQuantityField: 'availableStock',
       enabledField: 'isActive',
     },
     category: {
@@ -280,7 +287,7 @@ DataHubPlugin.init({
       auth: {
         type: 'API_KEY',
         secretCode: 'pimcore-api-key',
-        headerName: 'apikey',
+        headerName: 'X-API-Key',
       },
     },
   }],
@@ -318,7 +325,7 @@ Then create the secret via the Data Hub dashboard:
 
 ### 1. Create DataHub Configuration
 
-In Pimcore Admin → Settings → DataHub:
+Open Pimcore's Datahub configuration UI:
 
 1. Create new configuration (e.g., "shop")
 2. Set type to "GraphQL"
@@ -382,7 +389,7 @@ createPipeline()
     first: 50,
     maxPages: 100,
     includeUnpublished: false,
-    filter: '{"path": {"$like": "/Custom/%"}}',
+    filter: '{"fullpath": {"$like": "/Custom/%"}}',
     // Custom GraphQL query (optional)
     query: `
       query MyCustomQuery($first: Int, $after: Int) {
@@ -499,6 +506,8 @@ PimcoreConnector({
       nameField: 'productName',
       descriptionField: 'longDescription',
       variantsField: 'children',
+      priceField: 'retailPrice',
+      stockQuantityField: 'availableStock',
       enabledField: 'active',
     },
     category: {
@@ -535,12 +544,11 @@ const customPipeline = createPipeline()
         spec: {
           field: 'seoTitle',
           required: true,
-          when: { field: 'parentId', operator: 'isNull' },
-          error: 'Top-level categories require SEO title',
+          error: 'Categories require an SEO title',
         },
       },
       {
-        type: 'format',
+        type: 'business',
         spec: {
           field: 'slug',
           pattern: '^[a-z0-9-]+$',

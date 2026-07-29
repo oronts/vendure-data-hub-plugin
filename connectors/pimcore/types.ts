@@ -35,6 +35,10 @@ export interface PimcoreProductMappingConfig {
     descriptionField?: string;
     /** Variants relation field (default: 'variants') */
     variantsField?: string;
+    /** Variant/default-product price field (default: 'price') */
+    priceField?: string;
+    /** Variant stock quantity field (default: 'stockQuantity') */
+    stockQuantityField?: string;
     /** Published/enabled field (default: 'published') */
     enabledField?: string;
 }
@@ -149,8 +153,8 @@ export interface PimcoreObject {
     fullpath: string;
     classname?: string;
     published?: boolean;
-    creationDate?: number;
-    modificationDate?: number;
+    creationDate?: string;
+    modificationDate?: string;
     index?: number;
 }
 

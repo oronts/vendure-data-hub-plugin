@@ -56,10 +56,10 @@ DataHubPlugin.init({
     // Set to false if you only want custom adapters
     registerBuiltinAdapters: true,
 
-    // Days to keep pipeline run history (default: 30)
+    // 0..365 days; 0 disables cleanup (default: 30)
     retentionDaysRuns: 30,
 
-    // Days to keep error records (default: 90)
+    // 0..365 days; 0 disables cleanup (default: 90)
     retentionDaysErrors: 90,
 
     // Enable debug logging for pipeline execution

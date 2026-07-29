@@ -37,7 +37,10 @@ app.use(express.json());
 // ── Auth ─────────────────────────────────────────────────────────────────────
 const API_KEY = process.env.PIMCORE_API_KEY ?? DEFAULT_DEV_PIMCORE_API_KEY;
 function authenticate(req: express.Request): boolean {
-    const key = req.headers['apikey'] || req.query.apiKey;
+    const key = req.headers['x-api-key']
+        ?? req.headers['apikey']
+        ?? req.query.apikey
+        ?? req.query.apiKey;
     return key === API_KEY;
 }
 function lang(req: express.Request): string {

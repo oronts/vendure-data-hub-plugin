@@ -52,6 +52,42 @@ const MAX_EXTRACTORS = 5000;
 /** Maximum number of registered loaders across all connectors */
 const MAX_LOADERS = 5000;
 
+interface CandidateAdapterRegistries {
+    extractors: Map<string, ExtractorAdapter<unknown>>;
+    loaders: Map<string, LoaderAdapter<unknown>>;
+    errors: string[];
+}
+
+function createCandidateAdapterRegistries(
+    connectors: Iterable<ConnectorInstance>,
+): CandidateAdapterRegistries {
+    const extractors = new Map<string, ExtractorAdapter<unknown>>();
+    const loaders = new Map<string, LoaderAdapter<unknown>>();
+    const errors: string[] = [];
+
+    for (const instance of connectors) {
+        const connectorCode = instance.connector.code;
+        for (const extractor of instance.connector.extractors ?? []) {
+            const code = `${connectorCode}:${extractor.code}`;
+            if (extractors.has(code)) {
+                errors.push(`Duplicate connector extractor code "${code}"`);
+                continue;
+            }
+            extractors.set(code, { ...extractor, code });
+        }
+        for (const loader of instance.connector.loaders ?? []) {
+            const code = `${connectorCode}:${loader.code}`;
+            if (loaders.has(code)) {
+                errors.push(`Duplicate connector loader code "${code}"`);
+                continue;
+            }
+            loaders.set(code, { ...loader, code });
+        }
+    }
+
+    return { extractors, loaders, errors };
+}
+
 /**
  * Registry for managing DataHub connectors
  */
@@ -121,36 +157,37 @@ export class ConnectorRegistry {
             };
         }
 
-        // Register extractors (with size bound)
-        if (connector.extractors) {
-            for (const extractor of connector.extractors) {
-                const code = `${connector.code}:${extractor.code}`;
-                if (!this.extractors.has(code) && this.extractors.size >= MAX_EXTRACTORS) {
-                    errors.push(`Extractor registry is full (max ${MAX_EXTRACTORS}). Cannot register "${code}".`);
-                    continue;
-                }
-                this.extractors.set(code, { ...extractor, code });
-            }
-        }
-
-        // Register loaders (with size bound)
-        if (connector.loaders) {
-            for (const loader of connector.loaders) {
-                const code = `${connector.code}:${loader.code}`;
-                if (!this.loaders.has(code) && this.loaders.size >= MAX_LOADERS) {
-                    errors.push(`Loader registry is full (max ${MAX_LOADERS}). Cannot register "${code}".`);
-                    continue;
-                }
-                this.loaders.set(code, { ...loader, code });
-            }
-        }
-
-        // Store connector instance
-        this.connectors.set(connector.code, {
+        const candidateConnectors = new Map(this.connectors);
+        candidateConnectors.set(connector.code, {
             connector: connector as ConnectorDefinition<BaseConnectorConfig>,
             config: mergedConfig,
             pipelines,
         });
+
+        const candidateAdapters = createCandidateAdapterRegistries(
+            candidateConnectors.values(),
+        );
+        errors.push(...candidateAdapters.errors);
+        if (candidateAdapters.extractors.size > MAX_EXTRACTORS) {
+            errors.push(`Extractor registry is full (max ${MAX_EXTRACTORS}).`);
+        }
+        if (candidateAdapters.loaders.size > MAX_LOADERS) {
+            errors.push(`Loader registry is full (max ${MAX_LOADERS}).`);
+        }
+        if (errors.length > 0) {
+            return {
+                success: false,
+                connectorCode: connector.code,
+                pipelineCount: 0,
+                extractorCount: 0,
+                loaderCount: 0,
+                errors,
+            };
+        }
+
+        this.connectors = candidateConnectors;
+        this.extractors = candidateAdapters.extractors;
+        this.loaders = candidateAdapters.loaders;
 
         return {
             success: errors.length === 0,

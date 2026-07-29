@@ -80,6 +80,9 @@ npm run test:watch
 
 # E2E tests
 npm run test:e2e
+
+# Distributed Redis integration (requires a dedicated Redis test instance)
+DATAHUB_REDIS_INTEGRATION_URL=redis://localhost:6379 npx vitest run src/services/runtime/redis-distributed.integration.spec.ts
 ```
 
 ### Building

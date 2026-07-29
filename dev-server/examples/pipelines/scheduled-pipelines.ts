@@ -727,8 +727,8 @@ export const multiTriggerPipeline = createPipeline()
     .validate('check-stock', {
         errorHandlingMode: 'FAIL_FAST',
         rules: [
-            { type: 'business', spec: { field: 'sku', test: { op: 'present' }, error: 'SKU is required' } },
-            { type: 'business', spec: { field: 'quantity', test: { op: 'gte', value: 0 }, error: 'Quantity must be non-negative' } },
+            { type: 'business', spec: { field: 'sku', required: true, error: 'SKU is required' } },
+            { type: 'business', spec: { field: 'quantity', min: 0, error: 'Quantity must be non-negative' } },
         ],
     })
 
