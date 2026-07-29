@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { useMutation } from '@tanstack/react-query';
+import { useLingui } from '@lingui/react/macro';
 import { api } from '@vendure/dashboard';
 import { validatePipelineDefinitionDocument } from '../../../hooks';
 import type { PipelineValidationResult, ValidationIssue } from '../../../types';
@@ -15,6 +16,10 @@ const EMPTY_VALIDATION: ValidationState = {
     issues: [],
     warnings: [],
 };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
 
 /**
  * Parse the raw validation API response into a ValidationState.
@@ -60,11 +65,15 @@ export function usePipelineValidation(definition: unknown): {
     validationPending: boolean;
     setValidation: React.Dispatch<React.SetStateAction<ValidationState>>;
 } {
+    const { t } = useLingui();
     const [validation, setValidation] = React.useState<ValidationState>(EMPTY_VALIDATION);
     const requestIdRef = React.useRef(0);
 
     const validateMutation = useMutation({
         mutationFn: async (def: unknown) => {
+            if (!isRecord(def)) {
+                throw new Error(t`Invalid definition`);
+            }
             const res = await api.query(validatePipelineDefinitionDocument, {
                 definition: def,
                 level: 'FULL',

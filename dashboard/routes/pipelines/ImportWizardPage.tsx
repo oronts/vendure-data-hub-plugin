@@ -6,7 +6,7 @@ import {
     api,
     usePermissions,
 } from '@vendure/dashboard';
-import { useLingui } from '@lingui/react';
+import { Trans, useLingui } from '@lingui/react/macro';
 import { useNavigate } from '@tanstack/react-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -14,7 +14,6 @@ import {
     DATAHUB_NAV_LABELS,
     DATAHUB_PAGE_LABELS,
     DATAHUB_PERMISSIONS,
-    IMPORT_WIZARD_TRANSLATION_IDS,
     ROUTES,
 } from '../../constants';
 import { ImportWizard } from '../../components/wizards';
@@ -61,7 +60,7 @@ export const importWizardPage: DashboardRouteDefinition = {
 };
 
 function ImportWizardMetadataBoundary({ children }: { children: React.ReactNode }) {
-    const { i18n } = useLingui();
+    const { t } = useLingui();
     const entityLoaders = useEntityLoaders();
     const entityFields = useEntityFieldSchemas();
     const loaderAdapters = useAdaptersByType('LOADER');
@@ -69,14 +68,14 @@ function ImportWizardMetadataBoundary({ children }: { children: React.ReactNode 
     const configOptions = useConfigOptions();
     return (
         <MetadataQueriesBoundary
-            title={i18n._(IMPORT_WIZARD_TRANSLATION_IDS.METADATA_UNAVAILABLE)}
-            loadingMessage={i18n._(IMPORT_WIZARD_TRANSLATION_IDS.LOADING_CONFIGURATION)}
+            title={t`Import configuration unavailable`}
+            loadingMessage={t`Loading import configuration...`}
             queries={[
-                { label: i18n._(IMPORT_WIZARD_TRANSLATION_IDS.SUPPORTED_ENTITIES), ...entityLoaders },
-                { label: i18n._(IMPORT_WIZARD_TRANSLATION_IDS.ENTITY_FIELD_SCHEMAS), ...entityFields },
-                { label: i18n._(IMPORT_WIZARD_TRANSLATION_IDS.LOADER_ADAPTERS), ...loaderAdapters },
-                { label: i18n._(IMPORT_WIZARD_TRANSLATION_IDS.EXTRACTOR_ADAPTERS), ...extractorAdapters },
-                { label: i18n._(IMPORT_WIZARD_TRANSLATION_IDS.METADATA_UNAVAILABLE), ...configOptions },
+                { label: t`Supported entities`, ...entityLoaders },
+                { label: t`Entity field schemas`, ...entityFields },
+                { label: t`Loader adapters`, ...loaderAdapters },
+                { label: t`Source adapters`, ...extractorAdapters },
+                { label: t`Import configuration unavailable`, ...configOptions },
             ]}
         >
             {children}
@@ -85,7 +84,7 @@ function ImportWizardMetadataBoundary({ children }: { children: React.ReactNode 
 }
 
 function ImportWizardPageContent() {
-    const { i18n } = useLingui();
+    const { t } = useLingui();
     const { hasPermissions } = usePermissions();
     const navigate = useNavigate();
     const queryClient = useQueryClient();
@@ -122,11 +121,11 @@ function ImportWizardPageContent() {
         },
         onSuccess: async (data) => {
             await queryClient.invalidateQueries({ queryKey: pipelineKeys.lists() });
-            toast.success(i18n._(IMPORT_WIZARD_TRANSLATION_IDS.TOAST_CREATED));
+            toast.success(t`Import configuration created`);
             void navigate({ to: `${ROUTES.PIPELINES}/${data.id}` });
         },
         onError: (err) => {
-            toast.error(i18n._(IMPORT_WIZARD_TRANSLATION_IDS.TOAST_CREATE_FAILED), {
+            toast.error(t`Failed to create import configuration`, {
                 description: getErrorMessage(err),
             });
         },
@@ -143,7 +142,7 @@ function ImportWizardPageContent() {
 
     return (
         <Page>
-            <PageTitle>{i18n._(DATAHUB_PAGE_LABELS.IMPORT_WIZARD)}</PageTitle>
+            <PageTitle><Trans>Import Wizard</Trans></PageTitle>
             <div className="data-hub-responsive-page p-4 md:p-6">
                 <ImportWizard
                     onComplete={handleComplete}

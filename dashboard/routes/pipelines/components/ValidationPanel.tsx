@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { Trans, useLingui } from '@lingui/react/macro';
 import {
     Button,
     Dialog,
@@ -9,7 +10,10 @@ import {
     DialogTitle,
 } from '@vendure/dashboard';
 import type { ValidationIssue, ValidationState } from '../../../types';
-import { DIALOG_DIMENSIONS, SCROLL_HEIGHTS } from '../../../constants';
+import {
+    DIALOG_DIMENSIONS,
+    SCROLL_HEIGHTS,
+} from '../../../constants';
 
 export interface ValidationPanelProps {
     validation: ValidationState;
@@ -28,17 +32,23 @@ export function ValidationPanel({
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className={DIALOG_DIMENSIONS.MAX_WIDTH_2XL} data-testid="validation-dialog">
                 <DialogHeader>
-                    <DialogTitle>Validation Issues</DialogTitle>
-                    <DialogDescription>Fix the following before publishing.</DialogDescription>
+                    <DialogTitle>
+                        <Trans>Validation Issues</Trans>
+                    </DialogTitle>
+                    <DialogDescription>
+                        <Trans>Fix these issues before publishing the pipeline.</Trans>
+                    </DialogDescription>
                 </DialogHeader>
                 <div className={`space-y-2 ${SCROLL_HEIGHTS.VALIDATION_PANEL} overflow-auto`}>
                     {isLoading ? (
                         <div className="flex items-center gap-2 text-muted-foreground py-4 justify-center">
                             <div className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full" />
-                            <span>Validating...</span>
+                            <span><Trans>Validating…</Trans></span>
                         </div>
                     ) : validation.issues.length === 0 ? (
-                        <div className="text-sm text-muted-foreground">No issues.</div>
+                        <div className="text-sm text-muted-foreground">
+                            <Trans>No validation issues found.</Trans>
+                        </div>
                     ) : (
                         validation.issues.map((issue) => (
                             <ValidationIssueItem key={`${issue.stepKey ?? 'global'}-${issue.field ?? 'none'}-${issue.message}`} issue={issue} />
@@ -46,7 +56,9 @@ export function ValidationPanel({
                     )}
                     {validation.warnings.length > 0 && (
                         <div className="mt-4">
-                            <div className="text-sm font-medium text-amber-800 dark:text-amber-400 mb-2">Warnings</div>
+                            <div className="text-sm font-medium text-amber-800 dark:text-amber-400 mb-2">
+                                <Trans>Warnings</Trans>
+                            </div>
                             {validation.warnings.map((warning) => (
                                 <ValidationIssueItem key={`warning-${warning.stepKey ?? 'global'}-${warning.field ?? 'none'}-${warning.message}`} issue={warning} variant="warning" />
                             ))}
@@ -55,7 +67,9 @@ export function ValidationPanel({
                 </div>
                 <div className="flex justify-end">
                     <DialogClose asChild>
-                        <Button variant="outline" data-testid="validation-dialog-close-button">Close</Button>
+                        <Button variant="outline" data-testid="validation-dialog-close-button">
+                            <Trans>Close</Trans>
+                        </Button>
                     </DialogClose>
                 </div>
             </DialogContent>
@@ -69,6 +83,7 @@ interface ValidationIssueItemProps {
 }
 
 function ValidationIssueItem({ issue, variant = 'error' }: ValidationIssueItemProps) {
+    const { t } = useLingui();
     const bgClass = variant === 'warning'
         ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800'
         : 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800';
@@ -77,9 +92,15 @@ function ValidationIssueItem({ issue, variant = 'error' }: ValidationIssueItemPr
         <div className={`border rounded p-2 ${bgClass}`}>
             <div className="text-sm">{issue.message}</div>
             <div className="text-xs text-muted-foreground">
-                {issue.stepKey ? `Step: ${issue.stepKey}` : ''}
-                {issue.field ? ` - Field: ${issue.field}` : ''}
-                {issue.reason ? ` - Code: ${issue.reason}` : ''}
+                {issue.stepKey
+                    ? `${t`Step`}: ${issue.stepKey}`
+                    : ''}
+                {issue.field
+                    ? ` - ${t`Field`}: ${issue.field}`
+                    : ''}
+                {issue.reason
+                    ? ` - ${t`Code`}: ${issue.reason}`
+                    : ''}
             </div>
         </div>
     );
@@ -99,12 +120,21 @@ export function ValidationStatusBadge({
     isLoading,
     onShowIssues,
 }: ValidationStatusBadgeProps) {
+    const { t } = useLingui();
     if (isLoading) {
-        return <span className="text-xs text-muted-foreground">Validating...</span>;
+        return (
+            <span className="text-xs text-muted-foreground">
+                <Trans>Validating…</Trans>
+            </span>
+        );
     }
 
     if (validation.isValid === true) {
-        return <span className="text-xs px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-400">Valid</span>;
+        return (
+            <span className="text-xs px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-400">
+                <Trans>Valid</Trans>
+            </span>
+        );
     }
 
     if (validation.isValid === false) {
@@ -114,7 +144,9 @@ export function ValidationStatusBadge({
                 className="text-xs px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-400 hover:underline"
                 onClick={onShowIssues}
             >
-                Issues: {validation.count}
+                {validation.count === 1
+                    ? t`${validation.count} issue`
+                    : t`${validation.count} issues`}
             </button>
         );
     }

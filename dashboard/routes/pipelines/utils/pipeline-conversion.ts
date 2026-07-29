@@ -4,7 +4,11 @@
  */
 import type { PipelineDefinition } from '../../../../shared/types';
 import type { VisualPipelineDefinition, PipelineNode } from '../../../types';
-import { NODE_LAYOUT, mapStepTypeToCategory, mapCategoryToStepType } from '../../../constants';
+import { NODE_LAYOUT } from '../../../constants';
+import {
+    convertToCanonicalDefinition,
+    convertToVisualDefinition,
+} from './pipeline-format-conversion';
 
 /**
  * Calculate node levels in DAG based on edge connections.
@@ -117,143 +121,18 @@ export function layoutDagNodes(def: VisualPipelineDefinition): VisualPipelineDef
     };
 }
 
-/**
- * Convert a canonical pipeline definition to a visual definition for the ReactFlow editor.
- *
- * @param def - The canonical or visual pipeline definition
- * @returns A visual pipeline definition with nodes and edges
- */
 export function toVisualDefinition(
-    def: PipelineDefinition | VisualPipelineDefinition | undefined
+    def: PipelineDefinition | VisualPipelineDefinition | undefined,
 ): VisualPipelineDefinition {
-    if (!def) {
-        return {
-            nodes: [],
-            edges: [],
-            variables: {},
-            capabilities: undefined,
-            dependsOn: undefined,
-            trigger: undefined,
-        };
+    const candidate = def as VisualPipelineDefinition | undefined;
+    if (candidate && Array.isArray(candidate.nodes)) {
+        return candidate;
     }
-
-    // Already in visual format
-    if ('nodes' in def && def.nodes) {
-        return def as VisualPipelineDefinition;
-    }
-
-    const canonicalDef = def as PipelineDefinition;
-    const steps = Array.isArray(canonicalDef.steps) ? canonicalDef.steps : [];
-
-    const nodes: PipelineNode[] = steps.map((step, i) => {
-        const id = String(step.key ?? `step-${i}`);
-        const category = mapStepTypeToCategory(step.type);
-        const adapterCode = step.adapterCode ?? step.config?.adapterCode;
-        const label = step.name || step.key || `Step ${i + 1}`;
-
-        return {
-            id,
-            type: category,
-            position: { x: 0, y: 0 },
-            data: {
-                label,
-                type: category,
-                adapterCode,
-                config: step.config ?? {},
-            },
-        };
-    });
-
-    const canonicalEdges = canonicalDef.edges;
-    let edges: Array<{ id: string; source: string; target: string }>;
-
-    if (Array.isArray(canonicalEdges) && canonicalEdges.length) {
-        edges = canonicalEdges.map((e, idx) => ({
-            id: String(e.id ?? `edge-${idx}`),
-            source: String(e.from),
-            target: String(e.to),
-        }));
-    } else {
-        edges = nodes.slice(1).map((n, i) => ({
-            id: `edge-${i}`,
-            source: nodes[i].id,
-            target: n.id,
-        }));
-    }
-
-    const visualDef: VisualPipelineDefinition = {
-        nodes,
-        edges,
-        variables: canonicalDef.context ?? {},
-        capabilities: canonicalDef.capabilities,
-        dependsOn: canonicalDef.dependsOn,
-        trigger: canonicalDef.trigger,
-    };
-
-    return layoutDagNodes(visualDef);
+    return layoutDagNodes(convertToVisualDefinition(def));
 }
 
-/**
- * Convert a visual pipeline definition back to canonical format for storage.
- *
- * @param def - The visual or canonical pipeline definition
- * @returns A canonical pipeline definition with steps and edges
- */
 export function toCanonicalDefinition(
-    def: VisualPipelineDefinition | PipelineDefinition | undefined
+    def: VisualPipelineDefinition | PipelineDefinition | undefined,
 ): PipelineDefinition {
-    if (!def) {
-        return { version: 1, steps: [] };
-    }
-
-    // Check if it's a visual definition with nodes
-    if ('nodes' in def && Array.isArray(def.nodes) && def.nodes.length > 0) {
-        const visualDef = def as VisualPipelineDefinition;
-        const steps = visualDef.nodes.map((node, idx) => {
-            const stepType = mapCategoryToStepType(node.data?.type);
-            const adapterCode =
-                node.data?.adapterCode || (node.data?.config?.adapterCode as string) || '';
-            const existingConfig = node.data?.config ?? {};
-            const { adapterCode: _, ...restConfig } = existingConfig;
-
-            return {
-                key: node.id ?? `step-${idx}`,
-                type: stepType,
-                name: node.data?.label,
-                adapterCode: adapterCode || undefined,
-                config: restConfig,
-            };
-        });
-
-        const edges = (visualDef.edges ?? []).map((e, i) => ({
-            id: e.id ?? `edge-${i}`,
-            from: e.source,
-            to: e.target,
-        }));
-
-        return {
-            version: 1,
-            steps,
-            edges,
-            context: visualDef.variables ?? {},
-            ...(visualDef.capabilities ? { capabilities: visualDef.capabilities } : {}),
-            ...(visualDef.dependsOn ? { dependsOn: visualDef.dependsOn } : {}),
-            ...(visualDef.trigger ? { trigger: visualDef.trigger } : {}),
-        };
-    }
-
-    // Check if it's already canonical format
-    if ('steps' in def && Array.isArray(def.steps)) {
-        const canonicalDef = def as PipelineDefinition;
-        return {
-            ...canonicalDef,
-            version:
-                typeof canonicalDef.version === 'number' && canonicalDef.version > 0
-                    ? canonicalDef.version
-                    : 1,
-        };
-    }
-
-    // Fallback: return default with any extra properties
-    return { version: 1, steps: [], ...def };
+    return convertToCanonicalDefinition(def);
 }

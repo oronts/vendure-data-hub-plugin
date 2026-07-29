@@ -1,21 +1,22 @@
 import * as React from 'react';
 import {
-    Badge,
     DetailFormGrid,
     FormFieldWrapper,
     Input,
     Switch,
 } from '@vendure/dashboard';
-import type { UseFormReturn, FieldValues } from 'react-hook-form';
-import { FieldError } from '../../../components/common';
-import { PIPELINE_STATUS, getStatusBadgeVariant, ERROR_MESSAGES, PLACEHOLDERS } from '../../../constants';
+import { Trans, useLingui } from '@lingui/react/macro';
+import type { Control, FieldValues, Path } from 'react-hook-form';
 import { CODE_PATTERN, formatDateTime } from '../../../utils';
 import type { PipelineEntity, ValidationState } from '../../../types';
 import { ValidationStatusBadge } from './ValidationPanel';
+import {
+    PipelineCapabilityBadges,
+    PipelineStatusBadge,
+} from '../../../components/shared';
 
-export interface PipelineFormFieldsProps {
-    /** The form control instance from react-hook-form */
-    form: UseFormReturn<FieldValues>;
+export interface PipelineFormFieldsProps<TFormValues extends FieldValues> {
+    control: Control<TFormValues>;
     /** Whether the pipeline is being created (new) */
     creating: boolean;
     /** The pipeline entity (for existing pipelines) */
@@ -26,127 +27,134 @@ export interface PipelineFormFieldsProps {
     validationPending: boolean;
     /** Callback to show validation issues panel */
     onShowIssues: () => void;
+    readOnly: boolean;
 }
 
 /**
  * Form fields for the pipeline detail page.
  * Includes name, code, enabled toggle, and status display for existing pipelines.
  */
-export function PipelineFormFields({
-    form,
+export function PipelineFormFields<TFormValues extends FieldValues>({
+    control,
     creating,
     entity,
     validation,
     validationPending,
     onShowIssues,
-}: Readonly<PipelineFormFieldsProps>) {
+    readOnly,
+}: Readonly<PipelineFormFieldsProps<TFormValues>>) {
+    const { i18n, t } = useLingui();
+    const fieldIdPrefix = React.useId();
+    const fieldIds = {
+        nameLabel: `${fieldIdPrefix}-name-label`,
+        codeLabel: `${fieldIdPrefix}-code-label`,
+        codeDescription: `${fieldIdPrefix}-code-description`,
+        enabledLabel: `${fieldIdPrefix}-enabled-label`,
+    } as const;
+
     return (
         <DetailFormGrid>
             <FormFieldWrapper
-                name="name"
-                label="Name"
-                control={form.control}
+                name={'name' as Path<TFormValues>}
+                label={(
+                    <span id={fieldIds.nameLabel}>
+                        <Trans>Name</Trans>
+                    </span>
+                )}
+                control={control}
                 rules={{
-                    required: ERROR_MESSAGES.NAME_REQUIRED,
+                    required: t`Name is required`,
                     minLength: {
                         value: 2,
-                        message: ERROR_MESSAGES.MIN_LENGTH_2,
+                        message: t`Name must be at least 2 characters`,
                     },
                 }}
-                render={({ field, fieldState }) => (
-                    <div>
-                        <Input
-                            {...field}
-                            placeholder={PLACEHOLDERS.PIPELINE_NAME}
-                            className={
-                                fieldState.error
-                                    ? 'border-destructive focus-visible:ring-destructive'
-                                    : ''
-                            }
-                            data-testid="pipeline-name-input"
-                        />
-                        <FieldError
-                            error={fieldState.error?.message}
-                            touched={fieldState.isTouched}
-                        />
-                    </div>
+                render={({ field }) => (
+                    <Input
+                        {...field}
+                        aria-labelledby={fieldIds.nameLabel}
+                        disabled={readOnly}
+                        placeholder={t`My Pipeline`}
+                        data-testid="pipeline-name-input"
+                    />
                 )}
             />
             <FormFieldWrapper
-                name="code"
-                label="Code"
-                control={form.control}
+                name={'code' as Path<TFormValues>}
+                label={(
+                    <span id={fieldIds.codeLabel}>
+                        <Trans>Code</Trans>
+                    </span>
+                )}
+                description={(
+                    <span id={fieldIds.codeDescription}>
+                        <Trans>Letters, numbers, hyphens, and underscores only</Trans>
+                    </span>
+                )}
+                control={control}
                 rules={{
-                    required: ERROR_MESSAGES.CODE_REQUIRED,
+                    required: t`Code is required`,
                     pattern: {
                         value: CODE_PATTERN,
-                        message: ERROR_MESSAGES.CODE_PATTERN,
+                        message: t`Must start with a letter and contain only letters, numbers, hyphens, and underscores`,
                     },
                 }}
-                render={({ field, fieldState }) => (
-                    <div>
-                        <Input
-                            {...field}
-                            placeholder={PLACEHOLDERS.PIPELINE_CODE}
-                            className={
-                                fieldState.error
-                                    ? 'border-destructive focus-visible:ring-destructive'
-                                    : ''
-                            }
-                            data-testid="pipeline-code-input"
-                        />
-                        <FieldError
-                            error={fieldState.error?.message}
-                            touched={fieldState.isTouched}
-                        />
-                        {!fieldState.error && (
-                            <p className="mt-1 text-xs text-muted-foreground">
-                                Letters, numbers, hyphens, and underscores only
-                            </p>
-                        )}
-                    </div>
+                render={({ field }) => (
+                    <Input
+                        {...field}
+                        aria-labelledby={fieldIds.codeLabel}
+                        aria-describedby={fieldIds.codeDescription}
+                        placeholder={t`my-pipeline-code`}
+                        disabled={readOnly}
+                        data-testid="pipeline-code-input"
+                    />
                 )}
             />
             <FormFieldWrapper
-                name="enabled"
-                label="Enabled"
-                control={form.control}
+                name={'enabled' as Path<TFormValues>}
+                label={(
+                    <span id={fieldIds.enabledLabel}>
+                        <Trans>Enabled</Trans>
+                    </span>
+                )}
+                control={control}
                 render={({ field }) => (
-                    <div className="flex items-center h-10">
-                        <Switch
-                            checked={Boolean(field.value)}
-                            onCheckedChange={field.onChange}
-                            data-testid="pipeline-enabled-toggle"
-                        />
-                    </div>
+                    <Switch
+                        checked={Boolean(field.value)}
+                        aria-labelledby={fieldIds.enabledLabel}
+                        onCheckedChange={field.onChange}
+                        disabled={readOnly}
+                        data-testid="pipeline-enabled-toggle"
+                    />
                 )}
             />
             {!creating && entity && (
                 <>
                     <div className="col-span-2 text-sm flex items-center gap-2">
-                        Status:{' '}
-                        <Badge
-                            variant={getStatusBadgeVariant(
-                                entity.status ?? PIPELINE_STATUS.DRAFT
-                            )}
-                        >
-                            {entity.status ?? PIPELINE_STATUS.DRAFT}
-                        </Badge>
+                        <Trans>Status</Trans>:{' '}
+                        <PipelineStatusBadge status={entity.status} />
                         <span className="text-muted-foreground">
                             v{entity.version ?? 0}
                         </span>
                     </div>
                     <div className="col-span-2 text-sm flex items-center gap-3">
                         <span>
-                            Published:{' '}
+                            <Trans>Published</Trans>:{' '}
                             {entity.publishedAt
-                                ? formatDateTime(entity.publishedAt)
+                                ? formatDateTime(entity.publishedAt, undefined, i18n.locale)
                                 : '-'}
                         </span>
                         <ValidationStatusBadge
                             validation={validation}
                             isLoading={validationPending}
                             onShowIssues={onShowIssues}
+                        />
+                    </div>
+                    <div className="col-span-2 space-y-2 text-sm">
+                        <span><Trans>Capabilities</Trans></span>
+                        <PipelineCapabilityBadges
+                            requiredCapabilities={entity.requiredCapabilities}
+                            writeCapabilities={entity.writeCapabilities}
                         />
                     </div>
                 </>

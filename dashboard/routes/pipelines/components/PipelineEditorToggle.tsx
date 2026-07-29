@@ -1,14 +1,16 @@
 import * as React from 'react';
+import { Trans } from '@lingui/react/macro';
 import { Tabs, TabsList, TabsTrigger } from '@vendure/dashboard';
 import { PipelineEditor } from '../../../components/pipelines/PipelineEditor';
 import type {
     PipelineDefinition,
-    PipelineFormControl,
     VisualPipelineDefinition,
     ValidationIssue,
 } from '../../../types';
 import { toVisualDefinition, toCanonicalDefinition } from '../utils';
-import { EDITOR_HEIGHTS } from '../../../constants';
+import {
+    EDITOR_HEIGHTS,
+} from '../../../constants';
 
 const ReactFlowPipelineEditor = React.lazy(async () => {
     const module = await import(
@@ -20,10 +22,11 @@ const ReactFlowPipelineEditor = React.lazy(async () => {
 export type EditorMode = 'simple' | 'visual';
 
 export interface PipelineEditorToggleProps {
-    /** The form control for the pipeline */
-    form: PipelineFormControl;
+    definition: unknown;
+    onChange: (definition: PipelineDefinition) => void;
     /** Validation issues to display in the editor */
     issues: ValidationIssue[];
+    readOnly: boolean;
 }
 
 /**
@@ -31,10 +34,12 @@ export interface PipelineEditorToggleProps {
  * Converts between canonical and visual pipeline definitions on mode switch.
  */
 export function PipelineEditorToggle({
-    form,
+    definition: rawDefinition,
+    onChange,
     issues,
+    readOnly,
 }: Readonly<PipelineEditorToggleProps>) {
-    const definition = form.watch('definition') as
+    const definition = rawDefinition as
         | PipelineDefinition
         | VisualPipelineDefinition
         | undefined;
@@ -45,20 +50,22 @@ export function PipelineEditorToggle({
         return toVisualDefinition(definition);
     }, [definition]);
 
+    const canonicalDefinition = React.useMemo(() => {
+        return toCanonicalDefinition(definition);
+    }, [definition]);
+
     const handleVisualEditorChange = React.useCallback(
         (newDef: VisualPipelineDefinition) => {
-            form.setValue('definition', toCanonicalDefinition(newDef), {
-                shouldDirty: true,
-            });
+            onChange(toCanonicalDefinition(newDef));
         },
-        [form]
+        [onChange]
     );
 
     const handleSimpleEditorChange = React.useCallback(
-        (newDef: Record<string, unknown>) => {
-            form.setValue('definition', newDef, { shouldDirty: true });
+        (newDef: PipelineDefinition) => {
+            onChange(newDef);
         },
-        [form]
+        [onChange]
     );
 
     const handleModeChange = React.useCallback((value: string) => {
@@ -78,14 +85,16 @@ export function PipelineEditorToggle({
     return (
         <div className="space-y-3">
             <div className="flex items-center justify-between">
-                <label className="text-sm font-medium">Pipeline Definition</label>
+                <label className="text-sm font-medium">
+                    <Trans>Pipeline definition</Trans>
+                </label>
                 <Tabs value={editorMode} onValueChange={handleModeChange}>
                     <TabsList className="h-8">
                         <TabsTrigger value="simple" className="text-xs px-3">
-                            Simple
+                            <Trans>Simple</Trans>
                         </TabsTrigger>
                         <TabsTrigger value="visual" className="text-xs px-3">
-                            Workflow
+                            <Trans>Workflow</Trans>
                         </TabsTrigger>
                     </TabsList>
                 </Tabs>
@@ -99,21 +108,23 @@ export function PipelineEditorToggle({
                     <React.Suspense
                         fallback={
                             <div className="p-4 text-sm text-muted-foreground">
-                                Loading visual editor...
+                                <Trans>Loading visual editor...</Trans>
                             </div>
                         }
                     >
                         <ReactFlowPipelineEditor
                             definition={visualDefinition}
                             onChange={handleVisualEditorChange}
+                            readOnly={readOnly}
                             issues={formattedIssues}
                         />
                     </React.Suspense>
                 ) : (
                     <PipelineEditor
-                        definition={definition}
+                        definition={canonicalDefinition}
                         onChange={handleSimpleEditorChange}
                         issues={formattedIssues}
+                        readOnly={readOnly}
                     />
                 )}
             </div>

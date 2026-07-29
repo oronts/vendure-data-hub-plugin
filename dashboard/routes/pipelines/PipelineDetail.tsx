@@ -6,6 +6,7 @@ import {
     PageActionBar,
     PageActionBarRight,
     PageBlock,
+    PageLayout,
     PageTitle,
     PermissionGuard,
     api,
@@ -16,8 +17,8 @@ import {
 import { useNavigate } from '@tanstack/react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { useLingui } from '@lingui/react';
-import { Trans } from '@lingui/react/macro';
+import { Trans, useLingui } from '@lingui/react/macro';
+
 import { AlertCircle } from 'lucide-react';
 import { CONFIGURATION_SOURCE, getErrorMessage } from '../../../shared';
 import {
@@ -25,7 +26,6 @@ import {
     DATAHUB_PAGE_LABELS,
     DATAHUB_PERMISSIONS,
     DETAIL_ROUTES,
-    PIPELINE_DETAIL_TRANSLATION_IDS,
     PIPELINE_STATUS,
     ROUTES,
 } from '../../constants';
@@ -87,7 +87,7 @@ function PipelineDetailPermissionGate({ route }: { route: DashboardRoute }) {
 }
 
 function PipelineDetailPage({ route }: { route: DashboardRoute }) {
-    const { i18n } = useLingui();
+    const { i18n, t } = useLingui();
     const params = route.useParams();
     const navigate = useNavigate();
     const queryClient = useQueryClient();
@@ -115,14 +115,14 @@ function PipelineDetailPage({ route }: { route: DashboardRoute }) {
         }),
         params: { id: params.id },
         onSuccess: async data => {
-            toast.success(i18n._(PIPELINE_DETAIL_TRANSLATION_IDS.SAVE_SUCCESS));
+            toast.success(t`Successfully saved pipeline`);
             resetForm();
             if (creating && typeof data === 'object' && data !== null && 'id' in data) {
                 await navigate({ to: `../$id`, params: { id: data.id } });
             }
         },
         onError: err => {
-            toast.error(i18n._(PIPELINE_DETAIL_TRANSLATION_IDS.SAVE_ERROR), {
+            toast.error(t`Failed to save pipeline`, {
                 description: getErrorMessage(err),
             });
         },
@@ -183,12 +183,17 @@ function PipelineDetailPage({ route }: { route: DashboardRoute }) {
     const canEditPipeline = hasEditPermission && !managedByCodeFirst;
     const pipelineId = entity?.id == null ? undefined : String(entity.id);
     const validationErrorTitle = validation.count === 1
-        ? PIPELINE_DETAIL_TRANSLATION_IDS.CANNOT_SAVE_ONE_ERROR
-        : PIPELINE_DETAIL_TRANSLATION_IDS.CANNOT_SAVE_MULTIPLE_ERRORS;
+        ? t`Cannot save: ${validation.count} validation error`
+        : t`Cannot save: ${validation.count} validation errors`;
 
     return (
         <>
-            <Page pageId={PIPELINE_DETAIL_PAGE_ID} form={form} submitHandler={submitHandler}>
+            <Page
+                pageId={PIPELINE_DETAIL_PAGE_ID}
+                form={form}
+                submitHandler={submitHandler}
+                entity={entity}
+            >
                 <PageTitle>
                     {creating
                         ? i18n._(DATAHUB_PAGE_LABELS.NEW_PIPELINE)
@@ -212,16 +217,10 @@ function PipelineDetailPage({ route }: { route: DashboardRoute }) {
                                     || managedByCodeFirst
                                 }
                                 title={validation.isValid === false
-                                    ? i18n._(validationErrorTitle, {
-                                        count: validation.count,
-                                    })
+                                    ? validationErrorTitle
                                     : undefined}
                             >
-                                {i18n._(
-                                    creating
-                                        ? PIPELINE_DETAIL_TRANSLATION_IDS.CREATE
-                                        : PIPELINE_DETAIL_TRANSLATION_IDS.UPDATE,
-                                )}
+                                {creating ? <Trans>Create</Trans> : <Trans>Update</Trans>}
                             </Button>
                         </PermissionGuard>
                         <PipelineActionButtons
@@ -240,7 +239,7 @@ function PipelineDetailPage({ route }: { route: DashboardRoute }) {
                         />
                     </PageActionBarRight>
                 </PageActionBar>
-                <div className="w-full space-y-4">
+                <PageLayout>
                     <PageBlock column="main" blockId="main-form">
                         {managedByCodeFirst && (
                             <div className="mb-4 flex items-start gap-2 rounded-lg bg-amber-500/10 p-3">
@@ -309,18 +308,18 @@ function PipelineDetailPage({ route }: { route: DashboardRoute }) {
                             />
                         </PageBlock>
                     )}
-                    {!creating && (
-                        <PipelineRunsBlock
-                            pipelineId={pipelineId}
-                            currentRevisionId={pipelineEntity?.currentRevisionId}
-                            canRunPublishedRevision={
-                                pipelineEntity?.enabled !== false
-                                && pipelineEntity?.status !== PIPELINE_STATUS.ARCHIVED
-                                && pipelineEntity?.currentRevisionId != null
-                            }
-                        />
-                    )}
-                </div>
+                </PageLayout>
+                {!creating && (
+                    <PipelineRunsBlock
+                        pipelineId={pipelineId}
+                        currentRevisionId={pipelineEntity?.currentRevisionId}
+                        canRunPublishedRevision={
+                            pipelineEntity?.enabled !== false
+                            && pipelineEntity?.status !== PIPELINE_STATUS.ARCHIVED
+                            && pipelineEntity?.currentRevisionId != null
+                        }
+                    />
+                )}
             </Page>
 
             <ValidationPanel

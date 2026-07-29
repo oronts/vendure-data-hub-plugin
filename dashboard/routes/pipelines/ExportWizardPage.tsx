@@ -3,55 +3,88 @@ import {
     DashboardRouteDefinition,
     Page,
     PageTitle,
-    PermissionGuard,
     api,
 } from '@vendure/dashboard';
+import { Trans, useLingui } from '@lingui/react/macro';
 import { useNavigate } from '@tanstack/react-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { DATAHUB_PERMISSIONS, ROUTES, TOAST_WIZARD } from '../../constants';
+import {
+    DATAHUB_NAV_LABELS,
+    DATAHUB_PAGE_LABELS,
+    DATAHUB_PERMISSIONS,
+    ROUTES,
+} from '../../constants';
 import { ExportWizard } from '../../components/wizards';
+import {
+    AllPermissionsGuard,
+    MetadataQueriesBoundary,
+} from '../../components/shared';
 import type { ExportConfiguration } from '../../components/wizards';
-import { createPipelineDocument, pipelineKeys, useAdapterCodeMappings, useAdaptersByType } from '../../hooks';
+import {
+    createPipelineDocument,
+    pipelineKeys,
+    useAdapterCodeMappings,
+    useConfigOptions,
+} from '../../hooks';
 import { useDestinationSchemas, useTriggerTypeSchemas } from '../../hooks/api/use-config-options';
+import { useExportEntitySchemas } from '../../hooks/api/use-export-entity-schemas';
 import { generatePipelineCode, exportConfigToPipelineDefinition } from '../../utils';
-import type { AdapterResolver } from '../../utils/wizard-to-pipeline';
+import type { ExportAdapterResolver } from '../../utils/wizard-to-pipeline';
 import { getErrorMessage } from '../../../shared';
+import type { CreateDataHubPipelineApiMutation } from '../../types';
 
 export const exportWizardPage: DashboardRouteDefinition = {
     path: `${ROUTES.PIPELINES}/export-wizard`,
     loader: () => ({
         breadcrumb: [
-            { path: ROUTES.PIPELINES, label: 'Data Hub' },
-            'Export Wizard',
+            { path: ROUTES.PIPELINES, label: DATAHUB_NAV_LABELS.DATA_HUB },
+            DATAHUB_PAGE_LABELS.EXPORT_WIZARD,
         ],
     }),
     component: () => (
-        <PermissionGuard requires={[DATAHUB_PERMISSIONS.CREATE_PIPELINE]}>
-            <ExportWizardPageContent />
-        </PermissionGuard>
+        <AllPermissionsGuard requires={[
+            DATAHUB_PERMISSIONS.CREATE_PIPELINE,
+            DATAHUB_PERMISSIONS.READ_PIPELINE,
+            DATAHUB_PERMISSIONS.VIEW_ENTITY_SCHEMAS,
+        ]}>
+            <ExportWizardMetadataBoundary>
+                <ExportWizardPageContent />
+            </ExportWizardMetadataBoundary>
+        </AllPermissionsGuard>
     ),
 };
 
+function ExportWizardMetadataBoundary({ children }: { children: React.ReactNode }) {
+    const { t } = useLingui();
+    const exportEntities = useExportEntitySchemas();
+    const configOptions = useConfigOptions();
+    return (
+        <MetadataQueriesBoundary
+            title={t`Export configuration unavailable`}
+            loadingMessage={t`Loading export configuration...`}
+            queries={[
+                { label: t`Supported entities`, ...exportEntities },
+                { label: t`Export configuration unavailable`, ...configOptions },
+            ]}
+        >
+            {children}
+        </MetadataQueriesBoundary>
+    );
+}
+
 function ExportWizardPageContent() {
+    const { t } = useLingui();
     const navigate = useNavigate();
     const queryClient = useQueryClient();
     const { mappings: exportMappings } = useAdapterCodeMappings('exportAdapterCodes');
-    const { mappings: feedMappings } = useAdapterCodeMappings('feedAdapterCodes');
-    const { data: exporterAdapters } = useAdaptersByType('EXPORTER');
-    const { data: feedAdapters } = useAdaptersByType('FEED');
     const { schemas: destinationSchemas } = useDestinationSchemas();
     const { schemas: triggerSchemas } = useTriggerTypeSchemas();
 
-    const resolver = React.useMemo<AdapterResolver>(() => ({
-        getLoaderAdapterCode: () => undefined,
+    const resolver = React.useMemo<ExportAdapterResolver>(() => ({
         getExportAdapterCode: (formatType) =>
-            exportMappings.find(m => m.value === formatType)?.adapterCode
-            ?? exporterAdapters?.find(a => a.formatType === formatType)?.code,
-        getFeedAdapterCode: (formatType) =>
-            feedMappings.find(m => m.value === formatType)?.adapterCode
-            ?? feedAdapters?.find(a => a.formatType === formatType)?.code,
-    }), [exportMappings, feedMappings, exporterAdapters, feedAdapters]);
+            exportMappings.find(m => m.value === formatType)?.adapterCode,
+    }), [exportMappings]);
 
     const createMutation = useMutation({
         mutationFn: (config: ExportConfiguration) => {
@@ -63,23 +96,24 @@ function ExportWizardPageContent() {
                     definition,
                     enabled: false,
                 },
-            }).then(res => res.createDataHubPipeline);
+            }).then(res => (res as CreateDataHubPipelineApiMutation).createDataHubPipeline);
         },
         onSuccess: async (data) => {
             await queryClient.invalidateQueries({ queryKey: pipelineKeys.lists() });
-            toast.success(TOAST_WIZARD.EXPORT_CREATED);
+            toast.success(t`Export configuration created`);
             void navigate({ to: `${ROUTES.PIPELINES}/${data.id}` });
         },
         onError: (err) => {
-            toast.error(TOAST_WIZARD.CREATE_FAILED, {
+            toast.error(t`Failed to create export configuration`, {
                 description: getErrorMessage(err),
             });
         },
     });
+    const { mutate: createPipeline } = createMutation;
 
     const handleComplete = React.useCallback((config: ExportConfiguration) => {
-        createMutation.mutate(config);
-    }, [createMutation.mutate]);
+        createPipeline(config);
+    }, [createPipeline]);
 
     const handleCancel = React.useCallback(() => {
         void navigate({ to: ROUTES.PIPELINES });
@@ -87,8 +121,8 @@ function ExportWizardPageContent() {
 
     return (
         <Page>
-            <PageTitle title="Export Wizard" />
-            <div className="p-6">
+            <PageTitle><Trans>Export Wizard</Trans></PageTitle>
+            <div className="data-hub-responsive-page p-4 md:p-6">
                 <ExportWizard onComplete={handleComplete} onCancel={handleCancel} isSubmitting={createMutation.isPending} />
             </div>
         </Page>
