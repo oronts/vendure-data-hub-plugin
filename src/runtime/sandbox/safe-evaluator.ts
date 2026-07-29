@@ -42,7 +42,7 @@ export interface SafeEvaluatorConfig {
 }
 
 export const DEFAULT_EVALUATOR_CONFIG: SafeEvaluatorConfig = {
-    maxCacheSize: SAFE_EVALUATOR.MAX_CACHE_SIZE,
+    maxCacheSize: SAFE_EVALUATOR.DEFAULT_CACHE_SIZE,
     defaultTimeoutMs: SAFE_EVALUATOR.DEFAULT_TIMEOUT_MS,
     security: DEFAULT_CODE_SECURITY_CONFIG,
     enableCache: true,
@@ -149,6 +149,17 @@ interface CacheEntry {
     useCount: number;
 }
 
+function assertIntegerInRange(
+    value: number,
+    name: string,
+    minimum: number,
+    maximum: number,
+): void {
+    if (!Number.isInteger(value) || value < minimum || value > maximum) {
+        throw new Error(`${name} must be an integer between ${minimum} and ${maximum}`);
+    }
+}
+
 /** Whitelist-based expression evaluator with security validation */
 export class SafeEvaluator {
     private readonly config: SafeEvaluatorConfig;
@@ -157,6 +168,18 @@ export class SafeEvaluator {
 
     constructor(config: Partial<SafeEvaluatorConfig> = {}) {
         this.config = { ...DEFAULT_EVALUATOR_CONFIG, ...config };
+        assertIntegerInRange(
+            this.config.maxCacheSize,
+            'maxCacheSize',
+            SAFE_EVALUATOR.MIN_CACHE_SIZE,
+            SAFE_EVALUATOR.MAX_CACHE_SIZE,
+        );
+        assertIntegerInRange(
+            this.config.defaultTimeoutMs,
+            'defaultTimeoutMs',
+            SAFE_EVALUATOR.MIN_TIMEOUT_MS,
+            SAFE_EVALUATOR.MAX_TIMEOUT_MS,
+        );
         this.cache = new Map();
         this.sandbox = createCodeSandbox();
     }
@@ -186,6 +209,12 @@ export class SafeEvaluator {
 
             // Execute with timeout
             const timeout = timeoutMs ?? this.config.defaultTimeoutMs;
+            assertIntegerInRange(
+                timeout,
+                'timeoutMs',
+                SAFE_EVALUATOR.MIN_TIMEOUT_MS,
+                SAFE_EVALUATOR.MAX_TIMEOUT_MS,
+            );
             const value = this.executeWithTimeout(script, params, context, timeout);
 
             return {

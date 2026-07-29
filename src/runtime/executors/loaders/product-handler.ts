@@ -18,32 +18,22 @@ import {
     ID,
     LanguageCode,
 } from '@vendure/core';
-import { createChannelRequestContext } from '../../helpers/channel-request-context';
+import { createChannelCodeRequestContext } from '../../helpers/channel-request-context';
 import {
-    StockLevelInput,
     CreateProductInput,
-    CreateProductVariantInput,
-    CurrencyCode,
-    GlobalFlag,
     UpdateProductInput,
-    UpdateProductVariantInput,
     ProductTranslationInput,
-    ProductVariantTranslationInput,
 } from '@vendure/common/lib/generated-types';
 import {
     PipelineStepDefinition,
     ErrorHandlingConfig,
-    FacetValuesMode,
-    AssetsMode,
-    FeaturedAssetMode,
+    ProductUpsertLoaderConfig,
 } from '../../../types/index';
 import { RecordObject, OnRecordErrorCallback, LoaderExecutionResult } from '../../executor-types';
 import { LoaderHandler, CoercedProductFields, LoaderSimulationResult } from './types';
-import { assertCreateDuplicateCanBeSkipped, CreateDuplicateHandlingConfig } from './duplicate-handling';
+import { assertCreateDuplicateCanBeSkipped } from './duplicate-handling';
 import {
     findVariantBySku,
-    resolveTaxCategoryId,
-    resolveStockLevels,
     resolveChannelIds,
     parseTranslationsInput,
 } from './shared-lookups';
@@ -51,73 +41,19 @@ import { LOGGER_CONTEXTS } from '../../../constants/core';
 import { LoadStrategy, ConflictStrategy } from '../../../constants/enums';
 import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger/datahub-logger';
 import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
-import { majorToMinorUnits, resolveMoneyPrecision } from '../../../utils/money.utils';
+import { resolveMoneyPrecision } from '../../../utils/money.utils';
 import { applyEntityAssetInput } from './entity-asset-input';
-import {
-    getStringValue,
-    getNumberValue,
-    getObjectValue,
-    handleFacetValues,
-    slugify,
-} from '../../../loaders/shared-helpers';
-import {
-    persistVariantCurrencyPrices,
-    resolveDefaultCurrencyPrice,
-} from './variant-price-persistence';
+import { handleFacetValues, slugify } from '../../../loaders/shared-helpers';
 import {
     createUpsertSimulationDetail,
     summarizeSimulationDetails,
 } from './loader-simulation';
-
-/**
- * Configuration for product handler step
- */
-interface ProductHandlerConfig extends CreateDuplicateHandlingConfig {
-    /** Field name for product name */
-    nameField?: string;
-    /** Field name for product slug */
-    slugField?: string;
-    /** Field name for product description */
-    descriptionField?: string;
-    /** Field name for variant SKU */
-    skuField?: string;
-    /** Field name for variant price */
-    priceField?: string;
-    /** Field name for a currency-to-price map */
-    priceByCurrencyField?: string;
-    /** Field name for stock on hand */
-    stockField?: string;
-    /** Field name for stock by location map */
-    stockByLocationField?: string;
-    /** Name of tax category to assign */
-    taxCategoryName?: string;
-    /** Target channel token */
-    channel?: string;
-    /** Strategy for handling conflicts */
-    strategy?: LoadStrategy;
-    /** Conflict strategy */
-    conflictStrategy?: ConflictStrategy;
-    /** Whether to track inventory */
-    trackInventory?: string | boolean;
-    /** Field name for custom fields object */
-    customFieldsField?: string;
-    /** Field name for product enabled flag */
-    enabledField?: string;
-    /** Whether to create/update variants alongside the product (default: true) */
-    createVariants?: boolean;
-    /** Record field containing channel codes (array or comma-separated string) for dynamic per-record channel assignment */
-    channelsField?: string;
-    /** Record field containing a translations array or object map for multi-language support */
-    translationsField?: string;
-    /** Record field containing facet value codes or objects with a code property */
-    facetValuesField?: string;
-    /** How facet values are applied when the configured record field is present */
-    facetValuesMode?: FacetValuesMode;
-    assetsField?: string;
-    assetsMode?: AssetsMode;
-    featuredAssetField?: string;
-    featuredAssetMode?: FeaturedAssetMode;
-}
+import {
+    coerceProductFields,
+    getProductHandlerConfig,
+    parseFacetValueCodes,
+} from './product-record-fields';
+import { persistDefaultProductVariant } from './product-default-variant-persistence';
 
 /**
  * Context for processing a single product record
@@ -126,7 +62,7 @@ interface ProductProcessingContext {
     ctx: RequestContext;
     opCtx: RequestContext;
     step: PipelineStepDefinition;
-    cfg: ProductHandlerConfig;
+    cfg: ProductUpsertLoaderConfig;
     fields: CoercedProductFields;
     rec: RecordObject;
     existingProduct?: Product;
@@ -142,202 +78,6 @@ interface ProductUpsertResult {
     productId: ID | undefined;
     existing: Product | undefined;
     skipped?: boolean;
-}
-
-/**
- * Safely cast step config to ProductHandlerConfig
- */
-function getConfig(config: Record<string, unknown>): ProductHandlerConfig {
-    return config as unknown as ProductHandlerConfig;
-}
-
-/**
- * Helper to convert price object to currency-price map
- */
-function parsePriceByCurrency(priceObj: Record<string, unknown>, precision: number): Record<string, number> {
-    const result: Record<string, number> = {};
-    for (const [cc, val] of Object.entries(priceObj)) {
-        const currencyCode = cc.toUpperCase();
-        if (!Object.values(CurrencyCode).includes(currencyCode as CurrencyCode)) {
-            throw new Error(`Invalid currency code "${cc}"`);
-        }
-        result[currencyCode] = majorToMinorUnits(val, precision);
-    }
-    if (Object.keys(result).length === 0) {
-        throw new Error('Price map cannot be empty');
-    }
-    return result;
-}
-
-/**
- * Helper to parse stock by location map
- */
-function parseStockByLocation(stockObj: Record<string, unknown>): Record<string, number> {
-    const result: Record<string, number> = {};
-    for (const [locName, val] of Object.entries(stockObj)) {
-        const numericValue = typeof val === 'number' ? val : Number(val);
-        if (!Number.isNaN(numericValue)) {
-            result[locName] = Math.max(0, Math.floor(numericValue));
-        }
-    }
-    return result;
-}
-
-/**
- * Build prices array for variant input from price data
- */
-function buildVariantPrices(
-    priceMinor: number | undefined,
-    priceByCurrency: Record<string, number> | undefined,
-): { prices?: Array<{ currencyCode: CurrencyCode; price: number }>; price?: number } {
-    const result: { prices?: Array<{ currencyCode: CurrencyCode; price: number }>; price?: number } = {};
-    if (priceByCurrency) {
-        result.prices = Object.entries(priceByCurrency).map(([cc, minor]) => ({
-            currencyCode: cc as CurrencyCode,
-            price: minor,
-        }));
-    }
-    if (typeof priceMinor === 'number') {
-        result.price = priceMinor;
-    }
-    return result;
-}
-
-/**
- * Build stock fields for variant input
- */
-function buildVariantStockFields(
-    stockOnHand: number | undefined,
-    stockLevels: StockLevelInput[] | undefined,
-    trackInventory: boolean | undefined,
-): { stockOnHand?: number; stockLevels?: StockLevelInput[]; trackInventory?: GlobalFlag } {
-    const result: { stockOnHand?: number; stockLevels?: StockLevelInput[]; trackInventory?: GlobalFlag } = {};
-    if (typeof stockOnHand === 'number') {
-        result.stockOnHand = stockOnHand;
-    }
-    if (stockLevels && stockLevels.length) {
-        result.stockLevels = stockLevels;
-    }
-    if (typeof trackInventory === 'boolean') {
-        result.trackInventory = trackInventory ? GlobalFlag.TRUE : GlobalFlag.FALSE;
-    }
-    return result;
-}
-
-/**
- * Extract price fields from record
- */
-function extractPriceFields(
-    rec: RecordObject,
-    priceKey: string,
-    priceMapKey: string | undefined,
-    precision: number,
-): { priceMinor: number | undefined; priceByCurrency: Record<string, number> | undefined } {
-    const priceRaw = rec[priceKey];
-    const configuredPriceMap = priceMapKey ? rec[priceMapKey] : undefined;
-    const inlinePriceMap = priceRaw && typeof priceRaw === 'object' && !Array.isArray(priceRaw)
-        ? priceRaw as Record<string, unknown>
-        : undefined;
-
-    if (configuredPriceMap != null && priceRaw != null) {
-        throw new Error('Configure either priceField or priceByCurrencyField data, not both');
-    }
-
-    const priceMap = configuredPriceMap ?? inlinePriceMap;
-    if (priceMap != null) {
-        if (typeof priceMap !== 'object' || Array.isArray(priceMap)) {
-            throw new Error('Currency prices must be an object');
-        }
-        return {
-            priceMinor: undefined,
-            priceByCurrency: parsePriceByCurrency(priceMap as Record<string, unknown>, precision),
-        };
-    }
-    if (priceRaw != null) {
-        return { priceMinor: majorToMinorUnits(priceRaw, precision), priceByCurrency: undefined };
-    }
-
-    return { priceMinor: undefined, priceByCurrency: undefined };
-}
-
-/**
- * Extract stock fields from record
- */
-function extractStockFields(
-    rec: RecordObject,
-    cfg: ProductHandlerConfig | undefined,
-): { stockOnHand: number | undefined; stockByLocation: Record<string, number> | undefined } {
-    let stockOnHand: number | undefined;
-    const stockKey = cfg?.stockField ?? 'stockOnHand';
-    const stockRaw = getNumberValue(rec, stockKey);
-    if (typeof stockRaw === 'number') {
-        stockOnHand = Math.max(0, Math.floor(stockRaw));
-    }
-
-    let stockByLocation: Record<string, number> | undefined;
-    const stockLocKey = cfg?.stockByLocationField;
-    if (stockLocKey) {
-        const map = getObjectValue(rec, stockLocKey);
-        if (map) {
-            stockByLocation = parseStockByLocation(map);
-        }
-    }
-
-    return { stockOnHand, stockByLocation };
-}
-
-/**
- * Parse track inventory config value
- */
-function parseTrackInventory(cfg: ProductHandlerConfig | undefined): boolean | undefined {
-    const trackVal = String(cfg?.trackInventory ?? '').toLowerCase();
-    if (trackVal === 'true') return true;
-    if (trackVal === 'false') return false;
-    return undefined;
-}
-
-/**
- * Extract and normalize slug from record, generating from name if needed
- */
-function extractSlugField(rec: RecordObject, slugKey: string, name: string | undefined): string | undefined {
-    let slug = getStringValue(rec, slugKey) || undefined;
-    if (!slug && name) {
-        slug = slugify(name);
-    }
-    return slug;
-}
-
-/**
- * Extract and normalize SKU from record, generating from slug if needed
- */
-function extractSkuField(rec: RecordObject, skuKey: string, slug: string | undefined): string | undefined {
-    let sku = getStringValue(rec, skuKey) || getStringValue(rec, 'variantSku') || undefined;
-    if (!sku && slug) {
-        sku = slug.toUpperCase();
-    }
-    return sku;
-}
-
-function parseFacetValueCodes(value: unknown): string[] | undefined {
-    if (value === undefined) {
-        return undefined;
-    }
-    if (!Array.isArray(value)) {
-        throw new Error('Product facet values must be an array');
-    }
-
-    return value.map((item, index) => {
-        if (typeof item === 'string' && item.trim()) {
-            return item.trim();
-        }
-        if (item && typeof item === 'object') {
-            const code = Reflect.get(item, 'code');
-            if (typeof code === 'string' && code.trim()) {
-                return code.trim();
-            }
-        }
-        throw new Error(`Invalid product facet value at index ${index}`);
-    });
 }
 
 @Injectable()
@@ -369,12 +109,16 @@ export class ProductHandler implements LoaderHandler {
         let ok = 0;
         let fail = 0;
         let skipped = 0;
-        const cfg = getConfig(step.config);
+        const cfg = getProductHandlerConfig(step.config);
         const channelCache = new Map<string, ID>();
 
         for (const rec of input) {
             try {
-                const fields = this.coerceProductFields(rec, cfg);
+                const fields = coerceProductFields(
+                    rec,
+                    cfg,
+                    resolveMoneyPrecision(this.configService),
+                );
                 this.applyTranslationIdentityFallback(rec, cfg, fields);
 
                 if (!fields.slug || !fields.name) {
@@ -424,7 +168,21 @@ export class ProductHandler implements LoaderHandler {
                     logger: this.logger,
                 });
                 if (cfg.createVariants !== false) {
-                    await this.handleProductVariants(procCtx, productResult.productId);
+                    await persistDefaultProductVariant({
+                        sourceContext: procCtx.ctx,
+                        operationContext: procCtx.opCtx,
+                        stepKey: procCtx.step.key,
+                        productId: productResult.productId,
+                        config: procCtx.cfg,
+                        fields: procCtx.fields,
+                        existingVariant: procCtx.existingVariant,
+                    }, {
+                        productVariantService: this.productVariantService,
+                        taxCategoryService: this.taxCategoryService,
+                        stockLocationService: this.stockLocationService,
+                        channelService: this.channelService,
+                        logger: this.logger,
+                    });
                 }
 
                 ok++;
@@ -465,14 +223,19 @@ export class ProductHandler implements LoaderHandler {
      */
     private async resolveRequestContext(
         ctx: RequestContext,
-        cfg: ProductHandlerConfig,
+        cfg: ProductUpsertLoaderConfig,
     ): Promise<RequestContext> {
         const targetChannel = cfg.channel;
         if (!targetChannel) {
             return ctx;
         }
 
-        return createChannelRequestContext(this.requestContextService, ctx, targetChannel);
+        return createChannelCodeRequestContext(
+            this.requestContextService,
+            this.channelService,
+            ctx,
+            targetChannel,
+        );
     }
 
     /**
@@ -536,7 +299,7 @@ export class ProductHandler implements LoaderHandler {
     private buildProductTranslations(
         ctx: RequestContext,
         rec: RecordObject,
-        cfg: ProductHandlerConfig,
+        cfg: ProductUpsertLoaderConfig,
         fields: CoercedProductFields,
     ): ProductTranslationInput[] {
         if (cfg.translationsField) {
@@ -596,7 +359,7 @@ export class ProductHandler implements LoaderHandler {
     private async assignToRecordChannels(
         opCtx: RequestContext,
         rec: RecordObject,
-        cfg: ProductHandlerConfig,
+        cfg: ProductUpsertLoaderConfig,
         productId: ID,
         channelCache: Map<string, ID>,
     ): Promise<void> {
@@ -619,261 +382,20 @@ export class ProductHandler implements LoaderHandler {
         }
     }
 
-    /**
-     * Handle product variant creation or update
-     */
-    private async handleProductVariants(procCtx: ProductProcessingContext, productId: ID): Promise<void> {
-        const { ctx, opCtx, step, cfg, fields } = procCtx;
-        const { sku, name, priceMinor, priceByCurrency, trackInventory, stockOnHand, stockByLocation, customFields } = fields;
-
-        if (!sku) {
-            return;
-        }
-
-        const strategy = cfg.strategy ?? LoadStrategy.UPSERT;
-        const conflictResolution = cfg.conflictStrategy ?? ConflictStrategy.SOURCE_WINS;
-        const targetChannel = cfg.channel;
-
-        const existingVariant = procCtx.existingVariant;
-        if (existingVariant && strategy === LoadStrategy.CREATE) {
-            assertCreateDuplicateCanBeSkipped(cfg, 'variant', sku);
-            return;
-        }
-        const taxCategoryId = await resolveTaxCategoryId(this.taxCategoryService, opCtx, cfg.taxCategoryName, this.logger);
-        const stockLevels = await resolveStockLevels(this.stockLocationService, opCtx, stockByLocation, this.logger);
-        if (priceByCurrency) {
-            const availableCurrencies = opCtx.channel?.availableCurrencyCodes ?? [];
-            const unavailableCurrencies = Object.keys(priceByCurrency)
-                .filter(code => availableCurrencies.length > 0 && !availableCurrencies.includes(code as CurrencyCode));
-            if (unavailableCurrencies.length > 0) {
-                throw new Error(
-                    `Currencies not available in channel "${opCtx.channel?.code ?? 'default'}": ${unavailableCurrencies.join(', ')}`,
-                );
-            }
-        }
-
-        const shouldUpdateVariant = existingVariant && strategy !== LoadStrategy.CREATE && conflictResolution !== ConflictStrategy.VENDURE_WINS;
-        const shouldCreateVariant = !existingVariant && strategy !== LoadStrategy.UPDATE;
-
-        const variantTranslation: ProductVariantTranslationInput = {
-            languageCode: ctx.languageCode as LanguageCode,
-            name: name!,
-        };
-
-        if (shouldUpdateVariant && existingVariant) {
-            await this.updateExistingVariant(
-                opCtx, step, existingVariant, variantTranslation, taxCategoryId, stockLevels,
-                priceMinor, priceByCurrency, stockOnHand, trackInventory, targetChannel, customFields,
-            );
-        } else if (shouldCreateVariant) {
-            await this.createNewVariant(
-                opCtx, step, productId, sku, variantTranslation, taxCategoryId,
-                priceMinor, priceByCurrency, stockOnHand, stockByLocation, trackInventory, targetChannel, customFields,
-            );
-        }
-    }
-
-    /**
-     * Build variant input for update
-     */
-    private buildUpdateVariantInput(
-        variantId: ID,
-        variantTranslation: ProductVariantTranslationInput,
-        taxCategoryId: ID | undefined,
-        priceMinor: number | undefined,
-        priceByCurrency: Record<string, number> | undefined,
-        stockOnHand: number | undefined,
-        stockLevels: StockLevelInput[] | undefined,
-        trackInventory: boolean | undefined,
-        customFields: Record<string, unknown> | undefined,
-    ): UpdateProductVariantInput {
-        const priceFields = buildVariantPrices(priceMinor, priceByCurrency);
-        const stockFields = buildVariantStockFields(stockOnHand, stockLevels, trackInventory);
-
-        return {
-            id: variantId,
-            translations: [variantTranslation],
-            ...priceFields,
-            ...stockFields,
-            ...(taxCategoryId ? { taxCategoryId } : {}),
-            ...(customFields ? { customFields } : {}),
-        };
-    }
-
-    /**
-     * Update an existing product variant
-     */
-    private async updateExistingVariant(
-        opCtx: RequestContext,
-        step: PipelineStepDefinition,
-        existingVariant: ProductVariant,
-        variantTranslation: ProductVariantTranslationInput,
-        taxCategoryId: ID | undefined,
-        stockLevels: StockLevelInput[] | undefined,
-        priceMinor: number | undefined,
-        priceByCurrency: Record<string, number> | undefined,
-        stockOnHand: number | undefined,
-        trackInventory: boolean | undefined,
-        targetChannel: string | undefined,
-        customFields: Record<string, unknown> | undefined,
-    ): Promise<void> {
-        const updateVariant = this.buildUpdateVariantInput(
-            existingVariant.id, variantTranslation, taxCategoryId,
-            priceMinor, priceByCurrency, stockOnHand, stockLevels, trackInventory, customFields,
-        );
-
-        const updatedVariants = await this.productVariantService.update(opCtx, [updateVariant]);
-
-        if (targetChannel && updatedVariants.length > 0) {
-            await this.assignVariantToChannelIfNeeded(opCtx, step, existingVariant, updatedVariants[0].id, targetChannel);
-        }
-    }
-
-    /**
-     * Build variant input for creation
-     */
-    private buildVariantInput(
-        productId: ID,
-        sku: string,
-        variantTranslation: ProductVariantTranslationInput,
-        taxCategoryId: ID | undefined,
-        priceMinor: number | undefined,
-        stockOnHand: number | undefined,
-        stockLevels: StockLevelInput[] | undefined,
-        trackInventory: boolean | undefined,
-        customFields: Record<string, unknown> | undefined,
-    ): CreateProductVariantInput {
-        const priceFields = typeof priceMinor === 'number' ? { price: priceMinor } : {};
-        const stockFields = buildVariantStockFields(stockOnHand, stockLevels, trackInventory);
-
-        return {
-            productId,
-            sku,
-            translations: [variantTranslation],
-            ...priceFields,
-            ...stockFields,
-            ...(taxCategoryId ? { taxCategoryId } : {}),
-            ...(customFields ? { customFields } : {}),
-        };
-    }
-
-    /**
-     * Create variant record via service
-     */
-    private async createVariantRecord(
-        opCtx: RequestContext,
-        input: CreateProductVariantInput,
-    ): Promise<ProductVariant | undefined> {
-        const createdVariants = await this.productVariantService.create(opCtx, [input]);
-        return createdVariants[0];
-    }
-
-    /**
-     * Assign newly created variant to target channel
-     */
-    private async assignCreatedVariantToChannel(
-        opCtx: RequestContext,
-        step: PipelineStepDefinition,
-        variantId: ID,
-        targetChannel: string,
-    ): Promise<void> {
-        try {
-            await this.channelService.assignToChannels(opCtx, ProductVariant, variantId, [opCtx.channelId]);
-        } catch (error) {
-            this.logger.warn('Failed to assign created variant to target channel', {
-                stepKey: step.key,
-                variantId,
-                targetChannel,
-                error: getErrorMessage(error),
-            });
-            throw error;
-        }
-    }
-
-    /**
-     * Create a new product variant
-     */
-    private async createNewVariant(
-        opCtx: RequestContext,
-        step: PipelineStepDefinition,
-        productId: ID,
-        sku: string,
-        variantTranslation: ProductVariantTranslationInput,
-        taxCategoryId: ID | undefined,
-        priceMinor: number | undefined,
-        priceByCurrency: Record<string, number> | undefined,
-        stockOnHand: number | undefined,
-        stockByLocation: Record<string, number> | undefined,
-        trackInventory: boolean | undefined,
-        targetChannel: string | undefined,
-        customFields: Record<string, unknown> | undefined,
-    ): Promise<void> {
-        const stockLevels = await resolveStockLevels(this.stockLocationService, opCtx, stockByLocation, this.logger);
-        const currencyPrices = priceByCurrency
-            ? buildVariantPrices(undefined, priceByCurrency).prices
-            : undefined;
-        const createPrice = currencyPrices
-            ? resolveDefaultCurrencyPrice(opCtx, currencyPrices)
-            : priceMinor;
-        const input = this.buildVariantInput(
-            productId, sku, variantTranslation, taxCategoryId,
-            createPrice, stockOnHand, stockLevels, trackInventory, customFields,
-        );
-
-        const createdVariant = await this.createVariantRecord(opCtx, input);
-
-        if (createdVariant && currencyPrices) {
-            await persistVariantCurrencyPrices(
-                this.productVariantService,
-                opCtx,
-                createdVariant.id,
-                currencyPrices,
-            );
-        }
-
-        if (targetChannel && createdVariant) {
-            await this.assignCreatedVariantToChannel(opCtx, step, createdVariant.id, targetChannel);
-        }
-    }
-
-    /**
-     * Assign an updated variant to channel if not already assigned
-     */
-    private async assignVariantToChannelIfNeeded(
-        opCtx: RequestContext,
-        step: PipelineStepDefinition,
-        existingVariant: ProductVariant,
-        updatedVariantId: ID,
-        targetChannel: string,
-    ): Promise<void> {
-        try {
-            const variantWithChannels = existingVariant as ProductVariant & { channels?: Array<{ id: ID }> };
-            const alreadyIn = Array.isArray(variantWithChannels.channels) &&
-                variantWithChannels.channels.some((c) => c?.id === opCtx.channelId);
-            if (!alreadyIn) {
-                await this.channelService.assignToChannels(opCtx, ProductVariant, updatedVariantId, [opCtx.channelId]);
-            }
-        } catch (error) {
-            this.logger.warn('Failed to assign updated variant to target channel', {
-                stepKey: step.key,
-                variantId: updatedVariantId,
-                targetChannel,
-                error: getErrorMessage(error),
-            });
-            throw error;
-        }
-    }
-
     async simulate(
         ctx: RequestContext,
         step: PipelineStepDefinition,
         input: RecordObject[],
     ): Promise<LoaderSimulationResult> {
-        const cfg = getConfig(step.config);
+        const cfg = getProductHandlerConfig(step.config);
         const recordDetails = [];
         for (let index = 0; index < input.length; index++) {
             const record = input[index];
-            const fields = this.coerceProductFields(record, cfg);
+            const fields = coerceProductFields(
+                record,
+                cfg,
+                resolveMoneyPrecision(this.configService),
+            );
             this.applyTranslationIdentityFallback(record, cfg, fields);
             const opCtx = await this.resolveRequestContext(ctx, cfg);
             const missingField = !fields.name ? 'name' : !fields.slug ? 'slug' : undefined;
@@ -891,7 +413,7 @@ export class ProductHandler implements LoaderHandler {
                 index,
                 entityType: 'Product',
                 existing: identity.existingProduct,
-                strategy: cfg.strategy,
+                strategy: cfg.strategy ? LoadStrategy[cfg.strategy] : undefined,
                 skipDuplicates: cfg.skipDuplicates,
                 identifier: fields.slug,
                 missingIdentifier: identityError ?? (missingField
@@ -909,7 +431,7 @@ export class ProductHandler implements LoaderHandler {
 
     private async resolveProductIdentity(
         opCtx: RequestContext,
-        cfg: ProductHandlerConfig,
+        cfg: ProductUpsertLoaderConfig,
         fields: CoercedProductFields,
     ): Promise<ProductIdentity> {
         const existingBySlug = fields.slug
@@ -948,7 +470,7 @@ export class ProductHandler implements LoaderHandler {
 
     private applyTranslationIdentityFallback(
         record: RecordObject,
-        config: ProductHandlerConfig,
+        config: ProductUpsertLoaderConfig,
         fields: CoercedProductFields,
     ): void {
         if ((fields.name && fields.slug) || !config.translationsField) return;
@@ -963,33 +485,4 @@ export class ProductHandler implements LoaderHandler {
         }
     }
 
-    coerceProductFields(rec: RecordObject, cfg?: ProductHandlerConfig): CoercedProductFields {
-        const nameKey = cfg?.nameField ?? 'name';
-        const slugKey = cfg?.slugField ?? 'slug';
-        const descKey = cfg?.descriptionField ?? 'description';
-        const skuKey = cfg?.skuField ?? 'sku';
-        const priceKey = cfg?.priceField ?? 'price';
-        const priceMapKey = cfg?.priceByCurrencyField;
-
-        const name = getStringValue(rec, nameKey) || undefined;
-        const description = getStringValue(rec, descKey);
-        const slug = extractSlugField(rec, slugKey, name);
-        const sku = extractSkuField(rec, skuKey, slug);
-
-        const precision = resolveMoneyPrecision(this.configService);
-        const { priceMinor, priceByCurrency } = extractPriceFields(rec, priceKey, priceMapKey, precision);
-        const { stockOnHand, stockByLocation } = extractStockFields(rec, cfg);
-        const trackInventory = parseTrackInventory(cfg);
-
-        const customFieldsKey = cfg?.customFieldsField ?? 'customFields';
-        const customFields = getObjectValue(rec, customFieldsKey);
-
-        const enabledKey = cfg?.enabledField ?? 'enabled';
-        const enabledRaw = rec[enabledKey];
-        const enabled = enabledRaw != null
-            ? (typeof enabledRaw === 'boolean' ? enabledRaw : String(enabledRaw).toLowerCase() === 'true')
-            : undefined;
-
-        return { slug, name, description, sku, priceMinor, priceByCurrency, trackInventory, stockOnHand, stockByLocation, customFields, enabled };
-    }
 }

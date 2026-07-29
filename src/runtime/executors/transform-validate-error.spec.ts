@@ -23,7 +23,7 @@ describe('TransformExecutor validate rule errors', () => {
                 type: StepType.VALIDATE,
                 config: {
                     rules: [{
-                        type: 'FIELD',
+                        type: 'business',
                         spec: {
                             field: 'sku',
                             required: true,
@@ -38,6 +38,56 @@ describe('TransformExecutor validate rule errors', () => {
         expect(onRecordError).toHaveBeenCalledWith(
             'validate-products',
             'A product SKU is required',
+            record,
+        );
+    });
+
+    it('preserves independent errors for multiple rules on the same field', async () => {
+        const executor = new TransformExecutor({
+            createLogger: vi.fn(() => ({
+                debug: vi.fn(),
+                info: vi.fn(),
+                warn: vi.fn(),
+                error: vi.fn(),
+            })),
+        } as unknown as DataHubLoggerFactory);
+        const onRecordError = vi.fn(async () => undefined);
+        const record = { sku: 'lowercase' };
+
+        await executor.executeValidate(
+            {} as never,
+            {
+                key: 'validate-products',
+                type: StepType.VALIDATE,
+                config: {
+                    errorHandlingMode: 'ACCUMULATE',
+                    rules: [
+                        {
+                            type: 'business',
+                            spec: {
+                                field: 'sku',
+                                minLength: 12,
+                                error: 'SKU is too short',
+                            },
+                        },
+                        {
+                            type: 'business',
+                            spec: {
+                                field: 'sku',
+                                pattern: '^[A-Z]+$',
+                                error: 'SKU must be uppercase',
+                            },
+                        },
+                    ],
+                },
+            },
+            [record],
+            onRecordError,
+        );
+
+        expect(onRecordError).toHaveBeenCalledWith(
+            'validate-products',
+            'SKU is too short; SKU must be uppercase',
             record,
         );
     });

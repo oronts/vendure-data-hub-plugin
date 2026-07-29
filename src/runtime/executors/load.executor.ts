@@ -52,8 +52,9 @@ export function resolveLoadAdapterSettings(
     ctx: RequestContext,
     config: LoadStepCfg,
     pipelineContext?: PipelineContext,
+    targetChannelIds?: string[],
 ): ResolvedLoadAdapterSettings {
-    const configuredChannelIds = pipelineContext?.channelIds;
+    const configuredChannelIds = targetChannelIds ?? pipelineContext?.channelIds;
     const channels = configuredChannelIds !== undefined
         ? [...configuredChannelIds]
         : ctx.channelId === undefined || ctx.channelId === null
@@ -194,15 +195,7 @@ export class LoadExecutor implements OnModuleInit {
                     errorHandling,
                 ));
             }
-            const errors = results
-                .map(result => result.error)
-                .filter((error): error is string => error !== undefined);
-            const result: LoaderExecutionResult = {
-                ok: results.reduce((sum, current) => sum + current.ok, 0),
-                fail: results.reduce((sum, current) => sum + current.fail, 0),
-                skipped: results.reduce((sum, current) => sum + current.skipped, 0),
-                ...(errors.length > 0 ? { error: errors.join('; ') } : {}),
-            };
+            const result = combineLoaderResults(results);
             const durationMs = Date.now() - startTime;
             this.logger.logLoaderOperation(
                 adapterCode ?? 'unknown',
@@ -219,18 +212,23 @@ export class LoadExecutor implements OnModuleInit {
         if (adapterCode && this.registry) {
             const customLoader = this.registry.getRuntime(AdapterType.LOADER, adapterCode) as LoaderAdapter<unknown> | undefined;
             if (customLoader && typeof customLoader.load === 'function') {
-                const loaderContext = await resolveLoaderRequestContext(
+                const loaderContexts = await resolveBuiltInLoaderRequestContexts(
                     this.requestContextService,
+                    this.channelService,
                     ctx,
                     pipelineContext,
                 );
-                const result = await this.executeCustomLoader(
-                    loaderContext,
-                    step,
-                    input,
-                    customLoader,
-                    pipelineContext,
-                );
+                const results: LoaderExecutionResult[] = [];
+                for (const loaderContext of loaderContexts) {
+                    results.push(await this.executeCustomLoader(
+                        loaderContext,
+                        step,
+                        input,
+                        customLoader,
+                        pipelineContext,
+                    ));
+                }
+                const result = combineLoaderResults(results);
                 const durationMs = Date.now() - startTime;
                 this.logger.logLoaderOperation(
                     adapterCode,
@@ -261,14 +259,29 @@ export class LoadExecutor implements OnModuleInit {
         pipelineContext?: PipelineContext,
     ): Promise<LoaderExecutionResult> {
         const cfg = step.config as LoadStepCfg;
+        const targetChannelId = String(ctx.channelId);
+        const invocationContext = pipelineContext === undefined
+            ? undefined
+            : {
+                ...pipelineContext,
+                channelIds: [targetChannelId],
+            };
         const adapterSettings = resolveLoadAdapterSettings(
             ctx,
             cfg,
-            pipelineContext,
+            invocationContext,
+            [targetChannelId],
         );
 
         const loadContext: LoadContext = {
-            ...createBaseAdapterContext(ctx, step.key, this.secretService, this.connectionService, this.logger, pipelineContext),
+            ...createBaseAdapterContext(
+                ctx,
+                step.key,
+                this.secretService,
+                this.connectionService,
+                this.logger,
+                invocationContext,
+            ),
             ...adapterSettings,
         };
 
@@ -334,4 +347,18 @@ export class LoadExecutor implements OnModuleInit {
                 : 'Load step has no adapter code',
         };
     }
+}
+
+function combineLoaderResults(
+    results: LoaderExecutionResult[],
+): LoaderExecutionResult {
+    const errors = results
+        .map(result => result.error)
+        .filter((error): error is string => error !== undefined);
+    return {
+        ok: results.reduce((sum, result) => sum + result.ok, 0),
+        fail: results.reduce((sum, result) => sum + result.fail, 0),
+        skipped: results.reduce((sum, result) => sum + result.skipped, 0),
+        ...(errors.length > 0 ? { error: errors.join('; ') } : {}),
+    };
 }

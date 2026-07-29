@@ -266,12 +266,19 @@ export class AdapterRuntimeService {
         ctx: RequestContext,
         definition: PipelineDefinition,
         recordLimit?: number,
+        initialRecords: readonly Record<string, unknown>[] = [],
     ): Promise<{
         metrics: PipelineMetrics;
         sampleRecords: Array<{ step: string; before: RecordObject; after: RecordObject }>;
+        outputRecords: RecordObject[];
         errors?: DryRunRecordError[];
     }> {
-        return this.dryRunSimulator.executeDryRun(ctx, definition, recordLimit);
+        return this.dryRunSimulator.executeDryRun(
+            ctx,
+            definition,
+            recordLimit,
+            initialRecords,
+        );
     }
 
 

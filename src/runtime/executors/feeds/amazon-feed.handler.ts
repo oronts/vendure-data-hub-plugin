@@ -4,16 +4,13 @@
  * Generates an Amazon product feed in TSV format.
  */
 
-import * as fs from 'fs';
-import { getPath, recordsToCsv, ensureDirectoryExistsAsync } from '../../utils';
-import { getOutputPath } from '../../../constants/index';
+import { getPath, recordsToCsv } from '../../utils';
 import { getErrorMessage } from '../../../utils/error.utils';
-import { FeedHandlerParams, FeedHandlerResult } from './feed-handler.types';
+import { FeedHandlerParams, FeedHandlerResult, formatFeedAmount, writeFeedFile } from './feed-handler.types';
 
 export async function amazonFeedHandler(params: FeedHandlerParams): Promise<FeedHandlerResult> {
     const { config, records, fields, onRecordError, stepKey } = params;
     try {
-        const filePath = config.outputPath ?? getOutputPath('amazon', 'txt');
         const items = records.map(rec => {
             const sku = getPath(rec, 'sku') ?? getPath(rec, 'id') ?? '';
             const stockOnHand = getPath(rec, 'stockOnHand') ?? getPath(rec, 'quantity') ?? '0';
@@ -23,15 +20,14 @@ export async function amazonFeedHandler(params: FeedHandlerParams): Promise<Feed
                 'product-id-type': 'UPC',
                 'item-name': String(getPath(rec, fields.titleField) ?? ''),
                 'item-description': String(getPath(rec, fields.descriptionField) ?? ''),
-                'standard-price': String(getPath(rec, fields.priceField) ?? ''),
+                'standard-price': formatFeedAmount(getPath(rec, fields.priceField), fields),
                 'quantity': String(stockOnHand),
                 'main-image-url': String(getPath(rec, fields.imageField) ?? ''),
                 'brand-name': String(getPath(rec, fields.brandField) ?? ''),
             };
         });
         const tsv = recordsToCsv(items, '\t', true);
-        await ensureDirectoryExistsAsync(filePath);
-        await fs.promises.writeFile(filePath, tsv, 'utf-8');
+        const filePath = await writeFeedFile(config, 'amazon', 'txt', tsv);
         return { ok: items.length, fail: 0, outputPath: filePath };
     } catch (e: unknown) {
         const message = getErrorMessage(e);

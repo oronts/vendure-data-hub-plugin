@@ -1,162 +1,58 @@
-/**
- * Promotion upsert loader handler
- */
 import { Injectable } from '@nestjs/common';
 import {
-    RequestContext,
-    PromotionService,
-    RequestContextService,
     ChannelService,
     Promotion,
-    ID,
+    PromotionService,
+    RequestContext,
+    RequestContextService,
+    TransactionalConnection,
+    type ID,
 } from '@vendure/core';
-import { createChannelRequestContext } from '../../helpers/channel-request-context';
-import {
-    CreatePromotionInput,
-    UpdatePromotionInput,
-    AssignPromotionsToChannelInput,
-    LanguageCode,
-    PromotionTranslationInput,
-} from '@vendure/common/lib/generated-types';
-import { PipelineStepDefinition, ErrorHandlingConfig, JsonObject } from '../../../types/index';
-import { RecordObject, OnRecordErrorCallback, LoaderExecutionResult } from '../../executor-types';
-import { LoaderHandler, LoaderSimulationResult } from './types';
-import { assertCreateDuplicateCanBeSkipped, CreateDuplicateHandlingConfig } from './duplicate-handling';
-import { LoadStrategy } from '../../../constants/enums';
-import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
-import { getObjectValue } from '../../../loaders/shared-helpers';
-import { parseTranslationsInput, resolveChannelIds } from './shared-lookups';
 import { LOGGER_CONTEXTS } from '../../../constants/core';
+import { LoadStrategy } from '../../../constants/enums';
 import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger/datahub-logger';
+import type { ErrorHandlingConfig, PipelineStepDefinition } from '../../../types';
+import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
+import type {
+    LoaderExecutionResult,
+    OnRecordErrorCallback,
+    RecordObject,
+} from '../../executor-types';
+import { createChannelCodeRequestContext } from '../../helpers/channel-request-context';
 import {
-    parsePromotionOperations,
-    requirePromotionActions,
-} from './promotion-operation-input';
+    assertCreateDuplicateCanBeSkipped,
+} from './duplicate-handling';
 import {
     createUpsertSimulationDetail,
     summarizeSimulationDetails,
 } from './loader-simulation';
+import {
+    buildCreatePromotionInput,
+    buildUpdatePromotionInput,
+    getPromotionCode,
+    getPromotionConfig,
+    getPromotionRecordValue,
+    type PromotionHandlerConfig,
+} from './promotion-handler-input';
+import { parsePromotionOperations } from './promotion-operation-input';
+import { resolveChannelIds } from './shared-lookups';
+import type { LoaderHandler, LoaderSimulationResult } from './types';
 
-/**
- * Configuration interface for the promotion handler step
- */
-interface PromotionHandlerConfig extends CreateDuplicateHandlingConfig {
-    /** Field name in record containing the coupon code (default: 'code') */
-    codeField?: string;
-    /** Field name in record containing the enabled flag (default: 'enabled') */
-    enabledField?: string;
-    /** Field name in record containing the promotion name (default: 'name') */
-    nameField?: string;
-    /** Field name in record containing the start date (default: 'startsAt') */
-    startsAtField?: string;
-    /** Field name in record containing the end date (default: 'endsAt') */
-    endsAtField?: string;
-    /** Field name in record containing conditions JSON */
-    conditionsField?: string;
-    /** Field name in record containing actions JSON */
-    actionsField?: string;
-    /** Optional channel token for multi-channel assignment */
-    channel?: string;
-    /** Field name for custom fields object */
-    customFieldsField?: string;
-    /** Load strategy: UPSERT (default), CREATE, or UPDATE */
-    strategy?: LoadStrategy;
-    /** Record field containing multi-language translations (array or object map) */
-    translationsField?: string;
-    /** Record field containing channel codes for dynamic per-record channel assignment */
-    channelsField?: string;
-    /** Field name in record containing the description (default: not set → '') */
-    descriptionField?: string;
-    /** Field name in record containing the per-customer usage limit */
-    perCustomerUsageLimitField?: string;
-}
+type PromotionMutationResult = 'ok' | 'skipped';
 
-/**
- * Result type from promotion create/update operations
- */
-interface PromotionResult {
-    id: ID;
-}
-
-/**
- * Safely cast step config to PromotionHandlerConfig
- */
-function getConfig(config: JsonObject): PromotionHandlerConfig {
-    return config as unknown as PromotionHandlerConfig;
-}
-
-/**
- * Get a field value from record using configurable field name
- */
-function getRecordField(rec: RecordObject, fieldName: string): unknown {
-    return rec[fieldName];
-}
-
-/**
- * Type guard to check if a value has an id property
- */
-function hasId(value: unknown): value is PromotionResult {
-    return (
-        typeof value === 'object' &&
-        value !== null &&
-        'id' in value &&
-        (typeof (value as PromotionResult).id === 'string' ||
-            typeof (value as PromotionResult).id === 'number')
+function hasId(value: unknown): value is { id: ID } {
+    return Boolean(
+        value
+        && typeof value === 'object'
+        && ['string', 'number'].includes(typeof Reflect.get(value, 'id')),
     );
 }
 
 function promotionResultError(action: 'create' | 'update', value: unknown): Error {
-    const result = value && typeof value === 'object'
-        ? value as { errorCode?: unknown; message?: unknown }
-        : {};
-    const detail = typeof result.message === 'string'
-        ? result.message
-        : typeof result.errorCode === 'string'
-            ? result.errorCode
-            : 'Vendure returned no promotion ID';
-    return new Error(`Failed to ${action} promotion: ${detail}`);
-}
-
-/**
- * Type guard for checking if value is a Promotion entity
- */
-function isPromotion(value: unknown): value is Promotion {
-    return (
-        typeof value === 'object' &&
-        value !== null &&
-        'id' in value &&
-        'couponCode' in value
-    );
-}
-
-/**
- * Safely parse conditions/actions JSON into ConfigurableOperationInput array
- */
-/**
- * Convert a raw value to boolean
- */
-function toBoolean(value: unknown): boolean {
-    if (typeof value === 'boolean') {
-        return value;
-    }
-    return String(value).toLowerCase() === 'true';
-}
-
-/**
- * Convert a raw value to Date or undefined
- */
-function toDateOrUndefined(value: unknown): Date | undefined {
-    if (value === null || value === undefined) {
-        return undefined;
-    }
-    if (value instanceof Date) {
-        return value;
-    }
-    if (typeof value === 'string' || typeof value === 'number') {
-        const date = new Date(value);
-        return isNaN(date.getTime()) ? undefined : date;
-    }
-    return undefined;
+    const message = value && typeof value === 'object'
+        ? Reflect.get(value, 'message') ?? Reflect.get(value, 'errorCode')
+        : undefined;
+    return new Error(`Failed to ${action} promotion: ${String(message ?? 'Vendure returned no promotion ID')}`);
 }
 
 @Injectable()
@@ -164,9 +60,10 @@ export class PromotionHandler implements LoaderHandler {
     private readonly logger: DataHubLogger;
 
     constructor(
-        private promotionService: PromotionService,
-        private requestContextService: RequestContextService,
-        private channelService: ChannelService,
+        private readonly promotionService: PromotionService,
+        private readonly requestContextService: RequestContextService,
+        private readonly channelService: ChannelService,
+        private readonly connection: TransactionalConnection,
         loggerFactory: DataHubLoggerFactory,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.PROMOTION_LOADER);
@@ -179,276 +76,39 @@ export class PromotionHandler implements LoaderHandler {
         onRecordError?: OnRecordErrorCallback,
         _errorHandling?: ErrorHandlingConfig,
     ): Promise<LoaderExecutionResult> {
-        let ok = 0,
-            fail = 0,
-            skipped = 0;
-        const config = getConfig(step.config);
-
+        let ok = 0;
+        let fail = 0;
+        let skipped = 0;
+        const config = getPromotionConfig(step.config);
         const channelCache = new Map<string, ID>();
 
-        const codeFieldName = config.codeField ?? 'code';
-        const enabledFieldName = config.enabledField ?? 'enabled';
-        const nameFieldName = config.nameField ?? 'name';
-        const descFieldName = config.descriptionField ?? 'description';
-        const startsAtFieldName = config.startsAtField ?? 'startsAt';
-        const endsAtFieldName = config.endsAtField ?? 'endsAt';
-        const conditionsJsonField = config.conditionsField;
-        const actionsJsonField = config.actionsField;
-        const customFieldsKey = config.customFieldsField ?? 'customFields';
-
-        for (const rec of input) {
+        for (const record of input) {
             try {
-                const codeValue = getRecordField(rec, codeFieldName);
-                const code = codeValue ? String(codeValue) : '';
-
-                if (!code) {
-                    if (onRecordError) {
-                        await onRecordError(step.key, 'Missing required field: code', rec);
-                    }
-                    fail++;
-                    continue;
-                }
-
-                const enabledVal = getRecordField(rec, enabledFieldName);
-                const enabled = enabledVal != null ? toBoolean(enabledVal) : true;
-
-                const nameValue = getRecordField(rec, nameFieldName);
-                let name = nameValue ? String(nameValue) : code;
-
-                // Multi-language: extract name from first translation if missing
-                if (name === code && config.translationsField) {
-                    const raw = rec[config.translationsField];
-                    if (raw) {
-                        const parsed = parseTranslationsInput(raw);
-                        if (parsed.length > 0 && parsed[0].name) {
-                            name = String(parsed[0].name);
-                        }
-                    }
-                }
-
-                const descriptionRaw = getRecordField(rec, descFieldName);
-                const description = descriptionRaw != null ? String(descriptionRaw) : '';
-
-                const startsAtRaw = getRecordField(rec, startsAtFieldName);
-                const startsAt = toDateOrUndefined(startsAtRaw);
-
-                const endsAtRaw = getRecordField(rec, endsAtFieldName);
-                const endsAt = toDateOrUndefined(endsAtRaw);
-
-                const conditionsInput = parsePromotionOperations(
-                    rec,
-                    conditionsJsonField,
-                    'conditions',
+                const result = await this.connection.withTransaction(
+                    ctx,
+                    transactionCtx => this.upsertRecord(
+                        transactionCtx,
+                        record,
+                        config,
+                        channelCache,
+                    ),
                 );
-                const actionsInput = parsePromotionOperations(
-                    rec,
-                    actionsJsonField,
-                    'actions',
-                );
-
-                const customFields = getObjectValue(rec, customFieldsKey);
-
-                // Per-customer usage limit
-                let perCustomerUsageLimit: number | undefined;
-                if (config.perCustomerUsageLimitField) {
-                    const limitRaw = getRecordField(rec, config.perCustomerUsageLimitField);
-                    if (limitRaw != null) {
-                        const limitVal = Number(limitRaw);
-                        if (!isNaN(limitVal)) {
-                            perCustomerUsageLimit = Math.floor(limitVal);
-                        }
-                    }
-                }
-
-                // Build translations
-                const translations = this.buildTranslations(ctx, rec, config, name, description);
-
-                // Find existing promotion by coupon code
-                const list = await this.promotionService.findAll(ctx, {
-                    filter: { couponCode: { eq: code } },
-                    take: 1,
-                });
-                const existing = list.items[0];
-                const channel = config.channel;
-                let opCtx = ctx;
-
-                if (channel) {
-                    opCtx = await createChannelRequestContext(
-                        this.requestContextService,
-                        ctx,
-                        channel,
-                    );
-                }
-
-                const strategy = config.strategy ?? LoadStrategy.UPSERT;
-                let promotionId: ID | undefined;
-
-                if (existing && isPromotion(existing)) {
-                    if (strategy === LoadStrategy.CREATE) {
-                        assertCreateDuplicateCanBeSkipped(config, 'promotion', code);
-                        skipped++;
-                        continue;
-                    }
-                    const updateInput: UpdatePromotionInput = {
-                        id: existing.id,
-                        enabled,
-                        startsAt,
-                        endsAt,
-                        couponCode: code,
-                        translations,
-                        ...(customFields ? { customFields } : {}),
-                        ...(perCustomerUsageLimit !== undefined ? { perCustomerUsageLimit } : {}),
-                    };
-                    if (conditionsInput.present) {
-                        updateInput.conditions = conditionsInput.operations;
-                    }
-                    if (actionsInput.present) {
-                        updateInput.actions = requirePromotionActions(actionsInput);
-                    }
-                    const updated = await this.promotionService.updatePromotion(
-                        opCtx,
-                        updateInput,
-                    );
-
-                    if (hasId(updated)) {
-                        promotionId = updated.id;
-                        if (channel) {
-                            try {
-                                const assignInput: AssignPromotionsToChannelInput = {
-                                    promotionIds: [updated.id],
-                                    channelId: opCtx.channelId,
-                                };
-                                await this.promotionService.assignPromotionsToChannel(
-                                    opCtx,
-                                    assignInput,
-                                );
-                            } catch (error) {
-                                this.logger.warn('Failed to assign updated promotion to target channel', {
-                                    promotionId: updated.id,
-                                    channelId: opCtx.channelId,
-                                    error: getErrorMessage(error),
-                                });
-                                throw error;
-                            }
-                        }
-                    } else {
-                        throw promotionResultError('update', updated);
-                    }
+                if (result === 'skipped') {
+                    skipped++;
                 } else {
-                    if (strategy === LoadStrategy.UPDATE) {
-                        fail++;
-                        if (onRecordError) {
-                            await onRecordError(step.key, `Promotion not found for update: ${code}`, rec);
-                        }
-                        continue;
-                    }
-                    const createInput: CreatePromotionInput = {
-                        enabled,
-                        startsAt,
-                        endsAt,
-                        couponCode: code,
-                        conditions: conditionsInput.operations ?? [],
-                        actions: requirePromotionActions(actionsInput),
-                        translations,
-                        ...(customFields ? { customFields } : {}),
-                        ...(perCustomerUsageLimit !== undefined ? { perCustomerUsageLimit } : {}),
-                    };
-                    const created = await this.promotionService.createPromotion(
-                        opCtx,
-                        createInput,
-                    );
-
-                    if (hasId(created)) {
-                        promotionId = created.id;
-                        if (channel) {
-                            try {
-                                const assignInput: AssignPromotionsToChannelInput = {
-                                    promotionIds: [created.id],
-                                    channelId: opCtx.channelId,
-                                };
-                                await this.promotionService.assignPromotionsToChannel(
-                                    opCtx,
-                                    assignInput,
-                                );
-                            } catch (error) {
-                                this.logger.warn('Failed to assign created promotion to target channel', {
-                                    promotionId: created.id,
-                                    channelId: opCtx.channelId,
-                                    error: getErrorMessage(error),
-                                });
-                                throw error;
-                            }
-                        }
-                    } else {
-                        throw promotionResultError('create', created);
-                    }
+                    ok++;
                 }
-
-                // Assign to per-record channels
-                if (promotionId && config.channelsField) {
-                    const rawValue = rec[config.channelsField];
-                    if (rawValue != null) {
-                        const channelIds = await resolveChannelIds(this.channelService, opCtx, rawValue, channelCache, this.logger);
-                        if (channelIds.length > 0) {
-                            try {
-                                await this.channelService.assignToChannels(opCtx, Promotion, promotionId, channelIds);
-                            } catch (error) {
-                                this.logger.warn('Failed to assign promotion to record channels', {
-                                    promotionId,
-                                    channelIds,
-                                    error: getErrorMessage(error),
-                                });
-                                throw error;
-                            }
-                        }
-                    }
-                }
-
-                ok++;
-            } catch (e: unknown) {
-                if (onRecordError) {
-                    await onRecordError(
-                        step.key,
-                        getErrorMessage(e) || 'promotionUpsert failed',
-                        rec,
-                        getErrorStack(e),
-                    );
-                }
+            } catch (error) {
+                await onRecordError?.(
+                    step.key,
+                    getErrorMessage(error) || 'promotionUpsert failed',
+                    record,
+                    getErrorStack(error),
+                );
                 fail++;
             }
         }
         return { ok, fail, skipped };
-    }
-
-    /**
-     * Build promotion translations. Multi-language from translationsField, or single-language fallback.
-     * Promotion translations have {languageCode, name, description}.
-     */
-    private buildTranslations(
-        ctx: RequestContext,
-        rec: RecordObject,
-        cfg: PromotionHandlerConfig,
-        name: string,
-        description: string,
-    ): PromotionTranslationInput[] {
-        if (cfg.translationsField) {
-            const raw = rec[cfg.translationsField];
-            if (raw) {
-                const parsed = parseTranslationsInput(raw);
-                if (parsed.length > 0) {
-                    return parsed.map(t => ({
-                        languageCode: String(t.languageCode) as LanguageCode,
-                        name: String(t.name ?? name),
-                        description: t.description != null ? String(t.description) : '',
-                    }));
-                }
-            }
-        }
-        return [{
-            languageCode: ctx.languageCode as LanguageCode,
-            name,
-            description,
-        }];
     }
 
     async simulate(
@@ -456,48 +116,33 @@ export class PromotionHandler implements LoaderHandler {
         step: PipelineStepDefinition,
         input: RecordObject[],
     ): Promise<LoaderSimulationResult> {
-        const config = getConfig(step.config);
-        const codeFieldName = config.codeField ?? 'code';
+        const config = getPromotionConfig(step.config);
+        const operationCtx = await this.getOperationContext(ctx, config);
         const recordDetails = [];
 
         for (let index = 0; index < input.length; index++) {
             const record = input[index];
-            const codeValue = getRecordField(record, codeFieldName);
-            const code = codeValue ? String(codeValue) : '';
+            const code = getPromotionCode(record, config);
             let validationError = code ? undefined : 'Missing required field: code';
-            let actionsInput;
+            let existing: Promotion | undefined;
             if (!validationError) {
                 try {
-                    parsePromotionOperations(
-                        record,
-                        config.conditionsField,
-                        'conditions',
-                    );
-                    actionsInput = parsePromotionOperations(
-                        record,
-                        config.actionsField,
-                        'actions',
-                    );
-                } catch (error) {
-                    validationError = getErrorMessage(error);
-                }
-            }
-            const existing = !validationError
-                ? (await this.promotionService.findAll(ctx, {
-                    filter: { couponCode: { eq: code } },
-                    take: 1,
-                })).items[0]
-                : undefined;
-            if (
-                !validationError
-                && actionsInput
-                && (
-                    (!existing && config.strategy !== LoadStrategy.UPDATE)
-                    || (existing && actionsInput?.present)
-                )
-            ) {
-                try {
-                    requirePromotionActions(actionsInput);
+                    if (config.conditionsMode !== 'SKIP') {
+                        parsePromotionOperations(
+                            record,
+                            config.conditionsField,
+                            'conditions',
+                        );
+                    }
+                    if (config.actionsMode !== 'SKIP') {
+                        parsePromotionOperations(record, config.actionsField, 'actions');
+                    }
+                    existing = await this.findByCouponCode(operationCtx, code);
+                    if (existing) {
+                        buildUpdatePromotionInput(operationCtx, record, config, existing);
+                    } else if (config.strategy !== LoadStrategy.UPDATE) {
+                        buildCreatePromotionInput(operationCtx, record, config, code);
+                    }
                 } catch (error) {
                     validationError = getErrorMessage(error);
                 }
@@ -520,5 +165,116 @@ export class PromotionHandler implements LoaderHandler {
             recordDetails,
             ...summarizeSimulationDetails(recordDetails),
         };
+    }
+
+    private async upsertRecord(
+        ctx: RequestContext,
+        record: RecordObject,
+        config: PromotionHandlerConfig,
+        channelCache: Map<string, ID>,
+    ): Promise<PromotionMutationResult> {
+        const operationCtx = await this.getOperationContext(ctx, config);
+        const code = getPromotionCode(record, config);
+        if (!code) {
+            throw new Error('Missing required field: code');
+        }
+
+        const existing = await this.findByCouponCode(operationCtx, code);
+        const strategy = config.strategy ?? LoadStrategy.UPSERT;
+        let promotionId: ID;
+        if (existing) {
+            if (strategy === LoadStrategy.CREATE) {
+                assertCreateDuplicateCanBeSkipped(config, 'promotion', code);
+                return 'skipped';
+            }
+            const result = await this.promotionService.updatePromotion(
+                operationCtx,
+                buildUpdatePromotionInput(operationCtx, record, config, existing),
+            );
+            if (!hasId(result)) {
+                throw promotionResultError('update', result);
+            }
+            promotionId = result.id;
+        } else {
+            if (strategy === LoadStrategy.UPDATE) {
+                throw new Error(`Promotion not found for update: ${code}`);
+            }
+            const result = await this.promotionService.createPromotion(
+                operationCtx,
+                buildCreatePromotionInput(operationCtx, record, config, code),
+            );
+            if (!hasId(result)) {
+                throw promotionResultError('create', result);
+            }
+            promotionId = result.id;
+        }
+
+        await this.assignRecordChannels(
+            operationCtx,
+            record,
+            config,
+            promotionId,
+            channelCache,
+        );
+        return 'ok';
+    }
+
+    private async getOperationContext(
+        ctx: RequestContext,
+        config: PromotionHandlerConfig,
+    ): Promise<RequestContext> {
+        return config.channel
+            ? createChannelCodeRequestContext(
+                this.requestContextService,
+                this.channelService,
+                ctx,
+                config.channel,
+            )
+            : ctx;
+    }
+
+    private async findByCouponCode(
+        ctx: RequestContext,
+        couponCode: string,
+    ): Promise<Promotion | undefined> {
+        const result = await this.promotionService.findAll(ctx, {
+            filter: { couponCode: { eq: couponCode } },
+            take: 2,
+        });
+        if (result.items.length > 1) {
+            throw new Error(`Multiple promotions use coupon code "${couponCode}" in channel ${ctx.channel.code}`);
+        }
+        return result.items[0];
+    }
+
+    private async assignRecordChannels(
+        ctx: RequestContext,
+        record: RecordObject,
+        config: PromotionHandlerConfig,
+        promotionId: ID,
+        channelCache: Map<string, ID>,
+    ): Promise<void> {
+        if (!config.channelsField) {
+            return;
+        }
+        const value = getPromotionRecordValue(record, config.channelsField);
+        if (value === undefined || value === null) {
+            return;
+        }
+        const channelIds = await resolveChannelIds(
+            this.channelService,
+            ctx,
+            value,
+            channelCache,
+            this.logger,
+        );
+        if (channelIds.length > 0) {
+            await this.channelService.assignToChannels(
+                ctx,
+                Promotion,
+                promotionId,
+                channelIds,
+            );
+        }
     }
 }

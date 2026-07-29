@@ -66,6 +66,8 @@ function createStreamingExtractor(
     return {
         type: 'EXTRACTOR',
         code,
+        version: '1.0.0',
+        apiVersion: 1,
         schema: { fields: [] },
         extract,
     };
@@ -78,8 +80,13 @@ function createBatchExtractor(
     return {
         type: 'EXTRACTOR',
         code,
+        version: '1.0.0',
+        apiVersion: 1,
         schema: { fields: [] },
         extractAll,
+        async preview() {
+            return { records: [] };
+        },
     };
 }
 
@@ -135,7 +142,7 @@ describe('ExtractExecutor custom extractors', () => {
         );
         registry.registerRuntime(extractor);
         const { executor } = createExecutor(registry);
-        const onRecordError = vi.fn<Parameters<OnRecordErrorCallback>, ReturnType<OnRecordErrorCallback>>(
+        const onRecordError = vi.fn<OnRecordErrorCallback>(
             async () => undefined,
         );
 
@@ -176,7 +183,7 @@ describe('ExtractExecutor custom extractors', () => {
         );
         registry.registerRuntime(extractor);
         const { executor, logger } = createExecutor(registry);
-        const onRecordError = vi.fn<Parameters<OnRecordErrorCallback>, ReturnType<OnRecordErrorCallback>>(
+        const onRecordError = vi.fn<OnRecordErrorCallback>(
             async () => {
                 throw new Error('error store unavailable');
             },
@@ -346,5 +353,393 @@ describe('ExtractExecutor custom extractors', () => {
             createStep(extractor.code),
             createExecutorContext(),
         )).resolves.toEqual([]);
+    });
+
+    it('limits generator work at the source during previews', async () => {
+        const { executor } = createExecutor(new DataHubRegistryService());
+        const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.5);
+        const step: PipelineStepDefinition = {
+            key: 'preview-generator',
+            type: StepType.EXTRACT,
+            config: { adapterCode: 'generator', count: 1_000 },
+        };
+
+        await expect(executor.execute(
+            ctx,
+            step,
+            { ...createExecutorContext(), recordLimit: 3 },
+        )).resolves.toHaveLength(3);
+        expect(randomSpy).toHaveBeenCalledTimes(3);
+        randomSpy.mockRestore();
+    });
+
+    it('preserves configured generator totals in a bounded preview', async () => {
+        const { executor } = createExecutor(new DataHubRegistryService());
+        const step: PipelineStepDefinition = {
+            key: 'preview-generator-total',
+            type: StepType.EXTRACT,
+            config: {
+                adapterCode: 'generator',
+                count: 1_000,
+                template: { summary: '{{index}}/{{total}}' },
+            },
+        };
+
+        await expect(executor.preview(ctx, step, 2)).resolves.toMatchObject({
+            records: [
+                { data: { _index: 0, summary: '0/1000' } },
+                { data: { _index: 1, summary: '1/1000' } },
+            ],
+        });
+    });
+
+    it('supports an explicit zero generator count', async () => {
+        const { executor } = createExecutor(new DataHubRegistryService());
+        const step: PipelineStepDefinition = {
+            key: 'zero-generator',
+            type: StepType.EXTRACT,
+            config: { adapterCode: 'generator', count: 0 },
+        };
+
+        await expect(executor.execute(
+            ctx,
+            step,
+            createExecutorContext(),
+        )).resolves.toEqual([]);
+    });
+
+    it.each([Number.POSITIVE_INFINITY, -1, 1.5, 100_001])(
+        'rejects an unsafe generator count: %s',
+        async count => {
+            const { executor } = createExecutor(new DataHubRegistryService());
+            const step: PipelineStepDefinition = {
+                key: 'invalid-generator-count',
+                type: StepType.EXTRACT,
+                config: { adapterCode: 'generator', count },
+            };
+
+            await expect(executor.execute(
+                ctx,
+                step,
+                createExecutorContext(),
+            )).rejects.toThrow('Generator count must be an integer from 0 to 100000');
+        },
+    );
+
+    it('uses the registered extractor preview contract', async () => {
+        const extract = vi.fn(() => (async function* () {
+            yield { data: { id: 'must-not-run' } };
+        })());
+        const preview = vi.fn(async () => ({
+            records: [{ data: { id: 'bounded-preview' } }],
+            totalAvailable: 20,
+        }));
+        const extractor = {
+            type: 'EXTRACTOR',
+            code: 'modern-preview',
+            name: 'Modern preview extractor',
+            category: 'CUSTOM',
+            schema: { fields: [] },
+            validate: vi.fn(async () => ({ valid: true, errors: [] })),
+            extract,
+            preview,
+        };
+        const extractorRegistry = {
+            getExtractor: vi.fn(() => extractor),
+        };
+        const { executor } = createExecutor(
+            new DataHubRegistryService(),
+            extractorRegistry as unknown as ExtractorRegistryService,
+        );
+
+        await expect(executor.preview(ctx, createStep(extractor.code), 1)).resolves.toMatchObject({
+            records: [{ data: { id: 'bounded-preview' } }],
+            totalAvailable: 20,
+        });
+        expect(preview).toHaveBeenCalledWith(expect.any(Object), expect.any(Object), 1);
+        expect(extract).not.toHaveBeenCalled();
+    });
+
+    it('does not request one extra streaming record at the preview limit', async () => {
+        const registry = new DataHubRegistryService();
+        let requested = 0;
+        const extractor = createStreamingExtractor(
+            'bounded-stream',
+            async function* () {
+                while (true) {
+                    requested++;
+                    yield { data: { id: requested } };
+                }
+            },
+        );
+        registry.registerRuntime(extractor);
+        const { executor } = createExecutor(registry);
+
+        await expect(executor.preview(ctx, createStep(extractor.code), 3)).resolves.toMatchObject({
+            records: [
+                { data: { id: 1 } },
+                { data: { id: 2 } },
+                { data: { id: 3 } },
+            ],
+        });
+        expect(requested).toBe(3);
+    });
+
+    it('uses an SDK extractor preview contract when provided', async () => {
+        const registry = new DataHubRegistryService();
+        const extractor = {
+            ...createBatchExtractor('sdk-preview', vi.fn()),
+            preview: vi.fn(async () => ({
+                records: [{ data: { id: 'sdk-preview' } }],
+                totalAvailable: 4,
+            })),
+        };
+        registry.registerRuntime(extractor);
+        const { executor } = createExecutor(registry);
+
+        await expect(executor.preview(ctx, createStep(extractor.code), 1)).resolves.toMatchObject({
+            records: [{ data: { id: 'sdk-preview' } }],
+            totalAvailable: 4,
+        });
+        expect(extractor.preview).toHaveBeenCalledWith(expect.any(Object), expect.any(Object), 1);
+        expect(extractor.extractAll).not.toHaveBeenCalled();
+    });
+    it('uses bounded preview instead of full SDK batch extraction in dry runs', async () => {
+        const registry = new DataHubRegistryService();
+        const extractAll = vi.fn(async () => ({
+            records: [{ data: { id: 'unbounded' } }],
+        }));
+        const extractor = {
+            ...createBatchExtractor('sdk-bounded-batch', extractAll),
+            preview: vi.fn(async () => ({
+                records: [{ data: { id: 'bounded' } }],
+                totalAvailable: 50,
+            })),
+        };
+        registry.registerRuntime(extractor);
+        const { executor } = createExecutor(registry);
+
+        await expect(executor.execute(
+            ctx,
+            createStep(extractor.code),
+            { ...createExecutorContext(), recordLimit: 1 },
+        )).resolves.toEqual([{ id: 'bounded' }]);
+        expect(extractor.preview).toHaveBeenCalledOnce();
+        expect(extractAll).not.toHaveBeenCalled();
+    });
+
+    it('uses bounded preview instead of full registered batch extraction in dry runs', async () => {
+        const extractAll = vi.fn(async () => ({
+            records: [{ data: { id: 'unbounded' } }],
+            metrics: { totalFetched: 1 },
+        }));
+        const preview = vi.fn(async () => ({
+            records: [{ data: { id: 'bounded' } }],
+            totalAvailable: 50,
+        }));
+        const extractor = {
+            type: 'EXTRACTOR',
+            code: 'registered-bounded-batch',
+            name: 'Registered bounded batch',
+            category: 'CUSTOM',
+            schema: { fields: [] },
+            validate: vi.fn(async () => ({ valid: true, errors: [] })),
+            extractAll,
+            preview,
+        };
+        const extractorRegistry = {
+            getStreamingExtractor: vi.fn(),
+            getBatchExtractor: vi.fn(() => extractor),
+        };
+        const { executor } = createExecutor(
+            new DataHubRegistryService(),
+            extractorRegistry as unknown as ExtractorRegistryService,
+        );
+
+        await expect(executor.execute(
+            ctx,
+            createStep(extractor.code),
+            { ...createExecutorContext(), recordLimit: 1 },
+        )).resolves.toEqual([{ id: 'bounded' }]);
+        expect(preview).toHaveBeenCalledOnce();
+        expect(extractAll).not.toHaveBeenCalled();
+    });
+
+    it('snapshots reused stream records and closes the iterator at the limit', async () => {
+        const registry = new DataHubRegistryService();
+        const sharedRecord = { id: 0 };
+        let iteratorClosed = false;
+        const extractor = createStreamingExtractor(
+            'reused-record-stream',
+            async function* () {
+                try {
+                    sharedRecord.id = 1;
+                    yield { data: sharedRecord };
+                    sharedRecord.id = 2;
+                    yield { data: sharedRecord };
+                    sharedRecord.id = 3;
+                    yield { data: sharedRecord };
+                } finally {
+                    iteratorClosed = true;
+                }
+            },
+        );
+        registry.registerRuntime(extractor);
+        const { executor } = createExecutor(registry);
+
+        await expect(executor.execute(
+            ctx,
+            createStep(extractor.code),
+            { ...createExecutorContext(), recordLimit: 2 },
+        )).resolves.toEqual([{ id: 1 }, { id: 2 }]);
+        expect(iteratorClosed).toBe(true);
+    });
+
+    it('does not expose mutable checkpoint state to SDK extractors', async () => {
+        const registry = new DataHubRegistryService();
+        const extractor = createStreamingExtractor(
+            'checkpoint-reader',
+            async function* (context) {
+                context.checkpoint.cursor = 'mutated';
+                yield { data: { id: 'record' } };
+            },
+        );
+        registry.registerRuntime(extractor);
+        const executorCtx = createExecutorContext();
+        executorCtx.cpData = {
+            'extract-source': { cursor: 'original' },
+        };
+        const { executor } = createExecutor(registry);
+
+        await executor.execute(ctx, createStep(extractor.code), executorCtx);
+
+        expect(executorCtx.cpData['extract-source']).toEqual({ cursor: 'original' });
+        expect(executorCtx.markCheckpointDirty).not.toHaveBeenCalled();
+    });
+
+    it('snapshots checkpoint updates before storing them', async () => {
+        const registry = new DataHubRegistryService();
+        const nextCheckpoint = { cursor: 'saved' };
+        const extractor = createStreamingExtractor(
+            'checkpoint-writer',
+            async function* (context) {
+                context.setCheckpoint(nextCheckpoint);
+                nextCheckpoint.cursor = 'mutated-after-save';
+                yield { data: { id: 'record' } };
+            },
+        );
+        registry.registerRuntime(extractor);
+        const executorCtx = createExecutorContext();
+        const { executor } = createExecutor(registry);
+
+        await executor.execute(ctx, createStep(extractor.code), executorCtx);
+
+        expect(executorCtx.cpData?.['extract-source']).toEqual({ cursor: 'saved' });
+        expect(executorCtx.markCheckpointDirty).toHaveBeenCalledOnce();
+    });
+
+    it('exposes cancellation and execution mode to SDK extractors', async () => {
+        const registry = new DataHubRegistryService();
+        const observedContexts: Array<{ dryRun: boolean; cancelled: boolean }> = [];
+        const extractor = createStreamingExtractor(
+            'cancellable-sdk-stream',
+            async function* (context) {
+                const cancelled = await context.isCancelled();
+                observedContexts.push({
+                    dryRun: context.dryRun,
+                    cancelled,
+                });
+                if (!cancelled) {
+                    yield { data: { id: 'record' } };
+                }
+            },
+        );
+        registry.registerRuntime(extractor);
+        const { executor } = createExecutor(registry);
+
+        await expect(executor.execute(
+            ctx,
+            createStep(extractor.code),
+            {
+                ...createExecutorContext(),
+                onCancelRequested: vi.fn(async () => true),
+            },
+        )).resolves.toEqual([]);
+        await expect(executor.preview(
+            ctx,
+            createStep(extractor.code),
+            1,
+        )).resolves.toMatchObject({
+            records: [{ data: { id: 'record' } }],
+        });
+
+        expect(observedContexts).toEqual([
+            { dryRun: false, cancelled: true },
+            { dryRun: true, cancelled: false },
+        ]);
+    });
+
+    it('provides immutable run-scoped source references to SDK extractors', async () => {
+        const registry = new DataHubRegistryService();
+        const sourceRecords = [{ fileId: 'file-1', path: '/imports/catalog.csv' }];
+        const observedContext: Array<{
+            pipelineId: string;
+            runId: string;
+            sourceRecords: readonly Record<string, unknown>[] | undefined;
+        }> = [];
+        const extractor = createStreamingExtractor(
+            'run-scoped-sdk-stream',
+            async function* (context) {
+                observedContext.push({
+                    pipelineId: String(context.pipelineId),
+                    runId: String(context.runId),
+                    sourceRecords: context.sourceRecords,
+                });
+                const firstSource = context.sourceRecords?.[0];
+                if (firstSource) {
+                    firstSource.path = '/mutated-by-adapter.csv';
+                }
+                yield { data: { id: 'record' } };
+            },
+        );
+        registry.registerRuntime(extractor);
+        const { executor } = createExecutor(registry);
+
+        await expect(executor.execute(
+            ctx,
+            createStep(extractor.code),
+            createExecutorContext(),
+            undefined,
+            'pipeline-7',
+            'run-9',
+            sourceRecords,
+        )).resolves.toEqual([{ id: 'record' }]);
+
+        expect(observedContext).toEqual([{
+            pipelineId: 'pipeline-7',
+            runId: 'run-9',
+            sourceRecords: [{ fileId: 'file-1', path: '/mutated-by-adapter.csv' }],
+        }]);
+        expect(sourceRecords).toEqual([{
+            fileId: 'file-1',
+            path: '/imports/catalog.csv',
+        }]);
+    });
+
+    it('rejects non-finite record limits before invoking the source', async () => {
+        const registry = new DataHubRegistryService();
+        const extract = vi.fn(() => (async function* () {
+            yield { data: { id: 'must-not-run' } };
+        })());
+        const extractor = createStreamingExtractor('invalid-limit', extract);
+        registry.registerRuntime(extractor);
+        const { executor } = createExecutor(registry);
+
+        await expect(executor.execute(
+            ctx,
+            createStep(extractor.code),
+            { ...createExecutorContext(), recordLimit: Number.NaN },
+        )).rejects.toThrow('record limit must be a finite number');
+        expect(extract).not.toHaveBeenCalled();
     });
 });

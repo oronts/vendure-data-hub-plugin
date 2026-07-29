@@ -27,11 +27,29 @@ describe('promotion operation input', () => {
         ).operations).toEqual([operation]);
     });
 
+    it('reads operations from configured nested fields', () => {
+        const operation = {
+            code: 'order_percentage_discount',
+            arguments: [{ name: 'discount', value: '10' }],
+        };
+
+        expect(parsePromotionOperations(
+            { promotion: { actions: [operation] } },
+            'promotion.actions',
+            'actions',
+        )).toEqual({ present: true, operations: [operation] });
+    });
+
     it('rejects malformed and partial operations', () => {
         expect(() => parsePromotionOperations({ actions: '{' }, 'actions', 'actions'))
             .toThrow('must contain valid JSON');
         expect(() => parsePromotionOperations(
             { actions: [{ code: '', arguments: [] }] },
+            'actions',
+            'actions',
+        )).toThrow('must be an array of operations');
+        expect(() => parsePromotionOperations(
+            { actions: [{ code: 'discount', arguments: [{ name: '', value: 10 }] }] },
             'actions',
             'actions',
         )).toThrow('must be an array of operations');

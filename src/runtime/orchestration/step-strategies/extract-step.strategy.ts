@@ -82,6 +82,7 @@ export class ExtractStepStrategy implements StepStrategy {
 
     private async executeExtract(context: StepExecutionContext): Promise<RecordObject[]> {
         const { ctx, step, executorCtx, onRecordError, pipelineId, runId, records, seedMode } = context;
+        if (seedMode === 'RECORDS') return records;
         const sourceRecords = seedMode === 'SOURCE_REFERENCES' ? records : undefined;
         return this.extractExecutor.execute(
             ctx,

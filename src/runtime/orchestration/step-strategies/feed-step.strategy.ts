@@ -70,8 +70,14 @@ export class FeedStepStrategy implements StepStrategy {
     }
 
     private async executeFeed(context: StepExecutionContext, records: RecordObject[]): Promise<{ ok: number; fail: number; outputPath?: string }> {
-        const { ctx, step, onRecordError } = context;
-        return this.feedExecutor.execute(ctx, step, records, onRecordError);
+        const { ctx, step, onRecordError, pipelineContext } = context;
+        return this.feedExecutor.execute(
+            ctx,
+            step,
+            records,
+            onRecordError,
+            pipelineContext,
+        );
     }
 
     private async runAfterHook(context: StepExecutionContext, records: RecordObject[]): Promise<RecordObject[]> {

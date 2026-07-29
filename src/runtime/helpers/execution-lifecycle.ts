@@ -48,7 +48,9 @@ export class ExecutionLifecycleManager {
         result: { processed: number; succeeded: number; failed: number; skipped: number; details: JsonObject[]; counters: JsonObject; paused?: boolean; pausedAtStep?: string; cancelled?: boolean },
         pipelineId?: ID,
     ): Promise<{ processed: number; succeeded: number; failed: number; skipped: number; sourceRecords: number; details?: JsonObject[]; paused?: boolean; pausedAtStep?: string }> {
-        await this.checkpointManager.saveCheckpoint(ctx, pipelineId);
+        if (!result.cancelled) {
+            await this.checkpointManager.saveCheckpoint(ctx, pipelineId);
+        }
 
         result.details.push({ counters: result.counters });
 

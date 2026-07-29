@@ -8,7 +8,9 @@ function createFixture() {
     const checkpointService = {
         getByPipeline: vi.fn(async () => ({ data: { cursor: 'next-page' } })),
         clearForPipeline: vi.fn(async () => undefined),
-        setForPipeline: vi.fn(async () => undefined),
+        updateForPipeline: vi.fn(async (_ctx, _pipelineId, updater) => ({
+            data: updater({ fileWatcher: { path: 'pending.csv' } }),
+        })),
     };
     const logger = {
         debug: vi.fn(),
@@ -52,7 +54,7 @@ describe('CheckpointManager', () => {
         const { manager, checkpointService } = createFixture();
         await manager.loadCheckpoint(ctx, 1);
         manager.markCheckpointDirty();
-        checkpointService.setForPipeline.mockRejectedValueOnce(new Error('save failed'));
+        checkpointService.updateForPipeline.mockRejectedValueOnce(new Error('save failed'));
 
         await expect(manager.saveCheckpoint(ctx, 1)).rejects.toThrow('save failed');
         expect(manager.isCheckpointDirty()).toBe(true);
@@ -65,11 +67,28 @@ describe('CheckpointManager', () => {
 
         await manager.saveCheckpoint(ctx, 1);
 
-        expect(checkpointService.setForPipeline).toHaveBeenCalledWith(
+        expect(checkpointService.updateForPipeline).toHaveBeenCalledWith(
             ctx,
             1,
-            { cursor: 'next-page' },
+            expect.any(Function),
         );
         expect(manager.isCheckpointDirty()).toBe(false);
+    });
+
+    it('merges changed runtime keys without overwriting independent state', async () => {
+        const { manager, checkpointService } = createFixture();
+        await manager.loadCheckpoint(ctx, 1);
+        const checkpoint = manager.getCheckpointData();
+        if (!checkpoint) throw new Error('Expected loaded checkpoint');
+        checkpoint.cursor = { value: 'after' };
+        manager.markCheckpointDirty();
+
+        await manager.saveCheckpoint(ctx, 1);
+
+        const updater = checkpointService.updateForPipeline.mock.calls[0][2];
+        expect(updater({ fileWatcher: { path: 'pending.csv' } })).toEqual({
+            fileWatcher: { path: 'pending.csv' },
+            cursor: { value: 'after' },
+        });
     });
 });

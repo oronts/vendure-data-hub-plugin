@@ -1,10 +1,7 @@
 import { Injectable, Optional } from '@nestjs/common';
 import { RequestContext } from '@vendure/core';
 import {
-    BatchDataExtractor,
-    DataExtractor,
-    ExtractorContext as InternalExtractorContext,
-    ExtractorValidationResult,
+    ExtractorPreviewResult,
     JsonObject,
     PipelineStepDefinition,
 } from '../../types/index';
@@ -18,8 +15,6 @@ import { RecordObject, OnRecordErrorCallback, ExecutorContext } from '../executo
 import { LOGGER_CONTEXTS, EXTRACTOR_CODE } from '../../constants/index';
 import { DataHubRegistryService } from '../../sdk/registry.service';
 import { ExtractorRegistryService } from '../../extractors/extractor-registry.service';
-import { BatchExtractorAdapter, ExtractorAdapter, ExtractContext } from '../../sdk/types';
-import { createSecretsAdapter, createConnectionsAdapter, createLoggerAdapter } from './context-adapters';
 import {
     ExtractHandler,
     ExtractHandlerContext,
@@ -29,12 +24,28 @@ import { MemoryExtractHandler } from './extractors/memory-extract.handler';
 import { getAdapterCode } from '../../types/step-configs';
 import { getErrorMessage, toErrorOrUndefined } from '../../utils/error.utils';
 import { SchemaRegistryService } from '../../services/schema/schema-registry.service';
-import { formatSchemaValidationIssues } from '../../services/schema/schema-definition';
+import {
+    createInternalExtractorContext,
+    createSdkExtractorContext,
+    materializeRecords,
+    normalizeExecutorRecordLimit,
+    normalizeRecordLimit,
+} from './extract-execution-context';
+import {
+    normalizeExtractPreview,
+    validateExtractedRecordSchema,
+    validateExtractPreviewSchema,
+} from './extract-schema-validation';
+import {
+    assertValidExtractorConfig,
+    ExtractorAdapterRunner,
+} from './extract-adapter-runner';
 
 @Injectable()
 export class ExtractExecutor {
     private readonly logger: DataHubLogger;
     private readonly handlers: Map<string, ExtractHandler>;
+    private readonly adapterRunner: ExtractorAdapterRunner;
 
     constructor(
         private secretService: SecretService,
@@ -49,6 +60,14 @@ export class ExtractExecutor {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.EXTRACT_EXECUTOR);
 
         this.handlers = this.initializeHandlers(loggerFactory);
+        this.adapterRunner = new ExtractorAdapterRunner({
+            secretService: this.secretService,
+            connectionService: this.connectionService,
+            logger: this.logger,
+            handleFailure: (error, adapterCode, stepKey, onRecordError) => (
+                this.failExtractor(error, adapterCode, stepKey, onRecordError)
+            ),
+        });
     }
 
     private initializeHandlers(loggerFactory: DataHubLoggerFactory): Map<string, ExtractHandler> {
@@ -76,39 +95,77 @@ export class ExtractExecutor {
     ): Promise<RecordObject[]> {
         const adapterCode = getAdapterCode(step) || undefined;
         const startTime = Date.now();
+        const normalizedExecutorCtx = normalizeExecutorRecordLimit(executorCtx);
 
         this.logger.debug(`Executing extract step`, { stepKey: step.key, adapterCode });
 
-        if (executorCtx.recordLimit !== undefined && executorCtx.recordLimit <= 0) {
-            return [];
+        if (normalizedExecutorCtx.recordLimit === 0) {
+            return this.completeExecution(
+                step,
+                adapterCode ?? 'unknown',
+                [],
+                startTime,
+            );
         }
         // Execute inline handlers for Vendure, file, and memory sources.
         const handler = adapterCode ? this.handlers.get(adapterCode) : undefined;
         if (handler) {
-            const context: ExtractHandlerContext = { ctx, step, executorCtx, onRecordError };
-            const result = this.limitRecords(await handler.extract(context), executorCtx);
-            this.logOperationResult(adapterCode ?? 'unknown', result.length, startTime, step.key);
-            return result;
+            const context: ExtractHandlerContext = {
+                ctx,
+                step,
+                executorCtx: normalizedExecutorCtx,
+                onRecordError,
+            };
+            const result = materializeRecords(
+                await handler.extract(context),
+                normalizedExecutorCtx,
+            );
+            return this.completeExecution(
+                step,
+                adapterCode ?? 'unknown',
+                result,
+                startTime,
+            );
         }
 
         // Execute registered extractors, including the canonical HTTP and GraphQL implementations.
         if (adapterCode && this.extractorRegistry) {
             const streamingExtractor = this.extractorRegistry.getStreamingExtractor(adapterCode);
             if (streamingExtractor) {
-                const result = await this.executeRegistryExtractor(
-                    ctx, step, executorCtx, streamingExtractor, onRecordError, pipelineId, runId, sourceRecords,
+                const result = await this.adapterRunner.executeRegisteredStreaming(
+                    streamingExtractor,
+                    {
+                        ctx,
+                        step,
+                        executorCtx: normalizedExecutorCtx,
+                        onRecordError,
+                        pipelineId,
+                        runId,
+                        sourceRecords,
+                    },
                 );
-                this.logOperationResult(adapterCode, result.length, startTime, step.key);
-                return result;
+                return this.completeExecution(
+                    step, adapterCode, result, startTime,
+                );
             }
 
             const batchExtractor = this.extractorRegistry.getBatchExtractor(adapterCode);
             if (batchExtractor) {
-                const result = await this.executeRegistryBatchExtractor(
-                    ctx, step, executorCtx, batchExtractor, onRecordError, pipelineId, runId, sourceRecords,
+                const result = await this.adapterRunner.executeRegisteredBatch(
+                    batchExtractor,
+                    {
+                        ctx,
+                        step,
+                        executorCtx: normalizedExecutorCtx,
+                        onRecordError,
+                        pipelineId,
+                        runId,
+                        sourceRecords,
+                    },
                 );
-                this.logOperationResult(adapterCode, result.length, startTime, step.key);
-                return result;
+                return this.completeExecution(
+                    step, adapterCode, result, startTime,
+                );
             }
         }
 
@@ -116,28 +173,38 @@ export class ExtractExecutor {
         if (adapterCode && this.registry) {
             const customExtractor = this.registry.getExtractorRuntime(adapterCode);
             if (customExtractor && 'extract' in customExtractor) {
-                const result = await this.executeCustomExtractor(
-                    ctx,
-                    step,
-                    executorCtx,
+                const result = await this.adapterRunner.executeSdkStreaming(
                     customExtractor,
-                    onRecordError,
-                    pipelineId,
+                    {
+                        ctx,
+                        step,
+                        executorCtx: normalizedExecutorCtx,
+                        onRecordError,
+                        pipelineId,
+                        runId,
+                        sourceRecords,
+                    },
                 );
-                this.logOperationResult(adapterCode, result.length, startTime, step.key);
-                return result;
+                return this.completeExecution(
+                    step, adapterCode, result, startTime,
+                );
             }
             if (customExtractor && 'extractAll' in customExtractor) {
-                const result = await this.executeCustomBatchExtractor(
-                    ctx,
-                    step,
-                    executorCtx,
+                const result = await this.adapterRunner.executeSdkBatch(
                     customExtractor,
-                    onRecordError,
-                    pipelineId,
+                    {
+                        ctx,
+                        step,
+                        executorCtx: normalizedExecutorCtx,
+                        onRecordError,
+                        pipelineId,
+                        runId,
+                        sourceRecords,
+                    },
                 );
-                this.logOperationResult(adapterCode, result.length, startTime, step.key);
-                return result;
+                return this.completeExecution(
+                    step, adapterCode, result, startTime,
+                );
             }
         }
 
@@ -150,18 +217,174 @@ export class ExtractExecutor {
         );
     }
 
-    private limitRecords(records: RecordObject[], executorCtx: ExecutorContext): RecordObject[] {
-        if (executorCtx.recordLimit === undefined) return records;
-        return records.slice(0, Math.max(0, Math.floor(executorCtx.recordLimit)));
+    async preview(
+        ctx: RequestContext,
+        step: PipelineStepDefinition,
+        limit: number,
+        pipelineId?: ID,
+        runId?: ID,
+        sourceRecords?: readonly JsonObject[],
+    ): Promise<ExtractorPreviewResult> {
+        const adapterCode = getAdapterCode(step) || undefined;
+        const normalizedLimit = normalizeRecordLimit(limit) ?? 0;
+        const executorCtx: ExecutorContext = {
+            cpData: null,
+            cpDirty: false,
+            markCheckpointDirty: () => {},
+            recordLimit: normalizedLimit,
+        };
+        const startTime = Date.now();
+
+        const handler = adapterCode ? this.handlers.get(adapterCode) : undefined;
+        if (handler) {
+            try {
+                const context: ExtractHandlerContext = { ctx, step, executorCtx };
+                const result = await this.validatePreviewSchema(
+                    ctx,
+                    step,
+                    this.normalizePreviewResult(
+                        await handler.preview(context, normalizedLimit),
+                        normalizedLimit,
+                    ),
+                );
+                this.logOperationResult(
+                    adapterCode ?? 'unknown',
+                    result.records.length,
+                    startTime,
+                    step.key,
+                );
+                return result;
+            } catch (error) {
+                return this.failExtractor(error, adapterCode ?? 'unknown', step.key);
+            }
+        }
+
+        if (adapterCode && this.extractorRegistry) {
+            const extractor = this.extractorRegistry.getExtractor(adapterCode);
+            if (extractor?.preview) {
+                const context = createInternalExtractorContext({
+                    ctx,
+                    step,
+                    executorCtx,
+                    pipelineId,
+                    runId,
+                    sourceRecords,
+                    secretService: this.secretService,
+                    connectionService: this.connectionService,
+                    logger: this.logger,
+                });
+
+                try {
+                    const validation = await extractor.validate(context, step.config);
+                    assertValidExtractorConfig(extractor.code, validation, this.logger);
+                    const result = await this.validatePreviewSchema(
+                        ctx,
+                        step,
+                        this.normalizePreviewResult(
+                            await extractor.preview(context, step.config, normalizedLimit),
+                            normalizedLimit,
+                        ),
+                    );
+                    this.logOperationResult(adapterCode, result.records.length, startTime, step.key);
+                    return result;
+                } catch (error) {
+                    return this.failExtractor(error, extractor.code, step.key);
+                }
+            }
+            if (extractor && 'extractAll' in extractor) {
+                return this.failExtractor(
+                    new Error(
+                        `Batch extractor '${extractor.code}' does not provide bounded preview()`,
+                    ),
+                    extractor.code,
+                    step.key,
+                );
+            }
+        }
+
+        if (adapterCode && this.registry) {
+            const extractor = this.registry.getExtractorRuntime(adapterCode);
+            if (extractor?.preview) {
+                const context = createSdkExtractorContext({
+                    ctx,
+                    step,
+                    executorCtx,
+                    pipelineId,
+                    secretService: this.secretService,
+                    connectionService: this.connectionService,
+                    logger: this.logger,
+                });
+
+                try {
+                    const result = await this.validatePreviewSchema(
+                        ctx,
+                        step,
+                        this.normalizePreviewResult(
+                            await extractor.preview(context, step.config, normalizedLimit),
+                            normalizedLimit,
+                        ),
+                    );
+                    this.logOperationResult(adapterCode, result.records.length, startTime, step.key);
+                    return result;
+                } catch (error) {
+                    return this.failExtractor(error, extractor.code, step.key);
+                }
+            }
+            if (extractor && 'extractAll' in extractor) {
+                return this.failExtractor(
+                    new Error(
+                        `Batch extractor '${extractor.code}' does not provide bounded preview()`,
+                    ),
+                    extractor.code,
+                    step.key,
+                );
+            }
+        }
+
+        const records = await this.execute(
+            ctx,
+            step,
+            executorCtx,
+            undefined,
+            pipelineId,
+            runId,
+            sourceRecords,
+        );
+        return this.validatePreviewSchema(ctx, step, {
+            records: records.map(data => ({ data })),
+            totalAvailable: records.length,
+        });
     }
 
-    private hasReachedRecordLimit(records: RecordObject[], executorCtx: ExecutorContext): boolean {
-        return executorCtx.recordLimit !== undefined && records.length >= executorCtx.recordLimit;
+    private async validatePreviewSchema(
+        ctx: RequestContext,
+        step: PipelineStepDefinition,
+        result: ExtractorPreviewResult,
+    ): Promise<ExtractorPreviewResult> {
+        return validateExtractPreviewSchema(ctx, step, result, this.schemaRegistry);
     }
+
+    private normalizePreviewResult(
+        result: ExtractorPreviewResult,
+        limit: number,
+    ): ExtractorPreviewResult {
+        return normalizeExtractPreview(result, limit);
+    }
+
 
     private logOperationResult(adapterCode: string, recordCount: number, startTime: number, stepKey: string): void {
         const durationMs = Date.now() - startTime;
         this.logger.logExtractorOperation(adapterCode, recordCount, durationMs, { stepKey });
+    }
+
+    private async completeExecution(
+        step: PipelineStepDefinition,
+        adapterCode: string,
+        records: RecordObject[],
+        startTime: number,
+    ): Promise<RecordObject[]> {
+        this.logOperationResult(adapterCode, records.length, startTime, step.key);
+        return records;
     }
 
     async validateExtractedRecords(
@@ -170,219 +393,14 @@ export class ExtractExecutor {
         records: RecordObject[],
         onRecordError?: OnRecordErrorCallback,
     ): Promise<RecordObject[]> {
-        if (!step.schemaRef) return records;
-        if (!this.schemaRegistry) {
-            throw new Error('Schema registry is unavailable for extract step');
-        }
-        const validation = await this.schemaRegistry.validateRecords(
-            ctx,
-            step.schemaRef,
-            records,
-        );
-        const invalid = validation.records.filter(item => item.issues.length > 0);
-        if (validation.schema.compatibility === 'PERMISSIVE') {
-            if (invalid.length > 0) {
-                this.logger.warn('Permissive schema validation accepted mismatched records', {
-                    stepKey: step.key,
-                    schemaId: validation.schema.schemaId,
-                    schemaVersion: validation.schema.version,
-                    recordCount: invalid.length,
-                });
-            }
-            return records;
-        }
-        if (invalid.length > 0 && !onRecordError) {
-            throw new Error(
-                `Schema ${validation.schema.schemaId}@${validation.schema.version}: ${formatSchemaValidationIssues(invalid[0].issues)}`,
-            );
-        }
-        const accepted: RecordObject[] = [];
-        for (const item of validation.records) {
-            if (item.issues.length === 0) {
-                accepted.push(item.record);
-                continue;
-            }
-            await onRecordError?.(
-                step.key,
-                `Schema ${validation.schema.schemaId}@${validation.schema.version}: ${formatSchemaValidationIssues(item.issues)}`,
-                item.record,
-            );
-        }
-        return accepted;
-    }
-
-    private async executeCustomExtractor(
-        ctx: RequestContext,
-        step: PipelineStepDefinition,
-        executorCtx: ExecutorContext,
-        extractor: ExtractorAdapter<unknown>,
-        onRecordError?: OnRecordErrorCallback,
-        pipelineId?: ID,
-    ): Promise<RecordObject[]> {
-        const cfg = step.config as JsonObject;
-        const extractContext = this.buildExtractContext(ctx, step, executorCtx, cfg, pipelineId);
-        const records: RecordObject[] = [];
-
-        try {
-            for await (const envelope of extractor.extract(extractContext, cfg)) {
-                if (this.hasReachedRecordLimit(records, executorCtx)) break;
-                records.push(envelope.data as RecordObject);
-            }
-        } catch (error) {
-            return this.failExtractor(error, extractor.code, step.key, onRecordError);
-        }
-
-        return records;
-    }
-
-    private async executeCustomBatchExtractor(
-        ctx: RequestContext,
-        step: PipelineStepDefinition,
-        executorCtx: ExecutorContext,
-        extractor: BatchExtractorAdapter<unknown>,
-        onRecordError?: OnRecordErrorCallback,
-        pipelineId?: ID,
-    ): Promise<RecordObject[]> {
-        const cfg = step.config as JsonObject;
-        const extractContext = this.buildExtractContext(
+        return validateExtractedRecordSchema(
             ctx,
             step,
-            executorCtx,
-            cfg,
-            pipelineId,
+            records,
+            this.schemaRegistry,
+            this.logger,
+            onRecordError,
         );
-
-        try {
-            const result = await extractor.extractAll(extractContext, cfg);
-            const records = result.records.map(envelope => envelope.data as RecordObject);
-            return this.limitRecords(records, executorCtx);
-        } catch (error) {
-            return this.failExtractor(error, extractor.code, step.key, onRecordError);
-        }
-    }
-
-    private async executeRegistryExtractor(
-        ctx: RequestContext,
-        step: PipelineStepDefinition,
-        executorCtx: ExecutorContext,
-        extractor: DataExtractor,
-        onRecordError?: OnRecordErrorCallback,
-        pipelineId?: ID,
-        runId?: ID,
-        sourceRecords?: readonly JsonObject[],
-    ): Promise<RecordObject[]> {
-        const cfg = step.config as JsonObject;
-        const extractorContext = this.buildExtractorContext(ctx, step, executorCtx, pipelineId, runId, sourceRecords);
-        const records: RecordObject[] = [];
-
-        try {
-            const validation = await extractor.validate(extractorContext, cfg);
-            this.assertValidExtractorConfig(extractor.code, validation);
-            for await (const envelope of extractor.extract(extractorContext, cfg)) {
-                if (this.hasReachedRecordLimit(records, executorCtx)) break;
-                records.push(envelope.data as RecordObject);
-            }
-        } catch (error) {
-            return this.failExtractor(error, extractor.code, step.key, onRecordError);
-        }
-
-        return records;
-    }
-
-    private async executeRegistryBatchExtractor(
-        ctx: RequestContext,
-        step: PipelineStepDefinition,
-        executorCtx: ExecutorContext,
-        extractor: BatchDataExtractor,
-        onRecordError?: OnRecordErrorCallback,
-        pipelineId?: ID,
-        runId?: ID,
-        sourceRecords?: readonly JsonObject[],
-    ): Promise<RecordObject[]> {
-        const cfg = step.config as JsonObject;
-        const extractorContext = this.buildExtractorContext(ctx, step, executorCtx, pipelineId, runId, sourceRecords);
-
-        try {
-            const validation = await extractor.validate(extractorContext, cfg);
-            this.assertValidExtractorConfig(extractor.code, validation);
-            const result = await extractor.extractAll(extractorContext, cfg);
-            const records = result.records.map(envelope => envelope.data as RecordObject);
-            return this.limitRecords(records, executorCtx);
-        } catch (error) {
-            return this.failExtractor(error, extractor.code, step.key, onRecordError);
-        }
-    }
-
-    private assertValidExtractorConfig(
-        adapterCode: string,
-        validation: ExtractorValidationResult,
-    ): void {
-        if (validation.warnings?.length) {
-            this.logger.warn('Extractor configuration validation warnings', {
-                adapterCode,
-                warnings: validation.warnings,
-            });
-        }
-        if (validation.valid) {
-            return;
-        }
-
-        const errors = validation.errors
-            .map(error => `${error.field}: ${error.message}`)
-            .join('; ');
-        throw new Error(
-            `Invalid configuration for extractor "${adapterCode}": ${errors || 'unknown validation error'}`,
-        );
-    }
-
-    private buildExtractorContext(
-        ctx: RequestContext,
-        step: PipelineStepDefinition,
-        executorCtx: ExecutorContext,
-        pipelineId?: ID,
-        runId?: ID,
-        sourceRecords?: readonly JsonObject[],
-    ): InternalExtractorContext {
-        return {
-            ctx,
-            pipelineId: pipelineId ?? '0',
-            runId: runId ?? '0',
-            stepKey: step.key,
-            checkpoint: { data: executorCtx.cpData?.[step.key] as JsonObject ?? {} },
-            sourceRecords,
-            logger: createLoggerAdapter(this.logger),
-            secrets: createSecretsAdapter(this.secretService, ctx),
-            connections: createConnectionsAdapter(this.connectionService, ctx) as InternalExtractorContext['connections'],
-            dryRun: executorCtx.recordLimit !== undefined,
-            setCheckpoint: (data: JsonObject) => this.handleCheckpointUpdate(executorCtx, step.key, data),
-            isCancelled: executorCtx.onCancelRequested ?? (async () => false),
-        };
-    }
-
-    private buildExtractContext(
-        ctx: RequestContext,
-        step: PipelineStepDefinition,
-        executorCtx: ExecutorContext,
-        _cfg: JsonObject,
-        pipelineId?: ID,
-    ): ExtractContext {
-        return {
-            ctx,
-            pipelineId: pipelineId ?? '0',
-            stepKey: step.key,
-            checkpoint: executorCtx.cpData?.[step.key] ?? {},
-            logger: createLoggerAdapter(this.logger),
-            secrets: createSecretsAdapter(this.secretService, ctx),
-            connections: createConnectionsAdapter(this.connectionService, ctx),
-            setCheckpoint: (data: JsonObject) => this.handleCheckpointUpdate(executorCtx, step.key, data),
-        };
-    }
-
-    private handleCheckpointUpdate(executorCtx: ExecutorContext, stepKey: string, data: JsonObject): void {
-        if (executorCtx.cpData) {
-            executorCtx.cpData[stepKey] = data;
-            executorCtx.markCheckpointDirty();
-        }
     }
 
     private async failExtractor(

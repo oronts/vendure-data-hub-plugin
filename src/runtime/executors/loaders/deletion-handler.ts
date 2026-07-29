@@ -8,6 +8,7 @@
  */
 import { Injectable } from '@nestjs/common';
 import {
+    ChannelService,
     RequestContext,
     ProductService,
     ProductVariantService,
@@ -27,7 +28,7 @@ import {
     ID,
     LanguageCode,
 } from '@vendure/core';
-import { createChannelRequestContext } from '../../helpers/channel-request-context';
+import { createChannelCodeRequestContext } from '../../helpers/channel-request-context';
 import { PipelineStepDefinition, ErrorHandlingConfig } from '../../../types/index';
 import { RecordObject, OnRecordErrorCallback, LoaderExecutionResult } from '../../executor-types';
 import { LoaderHandler } from './types';
@@ -96,6 +97,7 @@ export class DeletionHandler implements LoaderHandler {
         private assetService: AssetService,
         private stockLocationService: StockLocationService,
         private requestContextService: RequestContextService,
+        private channelService: ChannelService,
         private connection: TransactionalConnection,
         loggerFactory: DataHubLoggerFactory,
     ) {
@@ -121,15 +123,12 @@ export class DeletionHandler implements LoaderHandler {
 
         let opCtx = ctx;
         if (cfg.channel) {
-            try {
-                opCtx = await createChannelRequestContext(
-                    this.requestContextService,
-                    ctx,
-                    cfg.channel,
-                );
-            } catch {
-                this.logger.warn('Failed to create context for channel, using original', { channel: cfg.channel });
-            }
+            opCtx = await createChannelCodeRequestContext(
+                this.requestContextService,
+                this.channelService,
+                ctx,
+                cfg.channel,
+            );
         }
 
         for (const rec of input) {

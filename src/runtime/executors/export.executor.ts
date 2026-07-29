@@ -4,6 +4,7 @@ import { JsonValue, JsonObject, PipelineStepDefinition, PipelineContext } from '
 import { SecretService } from '../../services/config/secret.service';
 import { ConnectionService } from '../../services/config/connection.service';
 import { FileStorageService } from '../../services/storage/file-storage.service';
+import { ExportDestinationService } from '../../services/destinations/export-destination.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { RecordObject, OnRecordErrorCallback, ExecutionResult, ExecutorContext } from '../executor-types';
 import { getPath, setPath, deepClone, removePath } from '../utils';
@@ -44,6 +45,7 @@ export class ExportExecutor {
         private secretService: SecretService,
         private connectionService: ConnectionService,
         private fileStorageService: FileStorageService,
+        private exportDestinationService: ExportDestinationService,
         loggerFactory: DataHubLoggerFactory,
         @Optional() private registry?: DataHubRegistryService,
     ) {
@@ -126,6 +128,7 @@ export class ExportExecutor {
                 secretService: this.secretService,
                 logger: this.logger,
                 fileStorageService: this.fileStorageService,
+                exportDestinationService: this.exportDestinationService,
             });
             ok = result.ok;
             fail = result.fail;

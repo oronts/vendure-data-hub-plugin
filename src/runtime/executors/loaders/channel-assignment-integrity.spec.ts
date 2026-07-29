@@ -183,15 +183,24 @@ describe('loader channel-assignment integrity', () => {
 
     it('fails a promotion record when target-channel assignment fails', async () => {
         const targetContext = createContext({ channelId: 'channel-2' });
+        const channelService = {
+            findAll: vi.fn().mockResolvedValue({
+                items: [{ id: 'channel-2', code: 'b2b' }],
+                totalItems: 1,
+            }),
+            assignToChannels: vi.fn().mockRejectedValue(assignmentError),
+        };
         const promotionService = {
             findAll: vi.fn().mockResolvedValue({ items: [], totalItems: 0 }),
             createPromotion: vi.fn().mockResolvedValue({ id: 'promotion-1' }),
-            assignPromotionsToChannel: vi.fn().mockRejectedValue(assignmentError),
         };
         const handler = new PromotionHandler(
             promotionService as never,
             { create: vi.fn().mockResolvedValue(targetContext) } as never,
-            {} as never,
+            channelService as never,
+            {
+                withTransaction: vi.fn(async (ctx, work) => work(ctx)),
+            } as never,
             createLoggerFactory(),
         );
         const onRecordError = vi.fn().mockResolvedValue(undefined);
@@ -199,9 +208,10 @@ describe('loader channel-assignment integrity', () => {
         await expectRecordFailure(
             handler.execute(
                 createContext(),
-                createStep('promotionUpsert', { channel: 'b2b', actionsField: 'actions' }),
+                createStep('promotionUpsert', { channelsField: 'channels', actionsField: 'actions' }),
                 [{
                     code: 'SUMMER',
+                    channels: ['b2b'],
                     actions: [{
                         code: 'order_percentage_discount',
                         arguments: [{ name: 'discount', value: '10' }],
@@ -215,6 +225,12 @@ describe('loader channel-assignment integrity', () => {
     });
 
     it('fails a promotion record when Vendure rejects the write before assignment', async () => {
+        const channelService = {
+            findAll: vi.fn().mockResolvedValue({
+                items: [{ id: 'channel-2', code: 'b2b' }],
+                totalItems: 1,
+            }),
+        };
         const promotionService = {
             findAll: vi.fn().mockResolvedValue({ items: [], totalItems: 0 }),
             createPromotion: vi.fn().mockResolvedValue({
@@ -226,7 +242,10 @@ describe('loader channel-assignment integrity', () => {
         const handler = new PromotionHandler(
             promotionService as never,
             { create: vi.fn().mockResolvedValue(createContext({ channelId: 'channel-2' })) } as never,
-            {} as never,
+            channelService as never,
+            {
+                withTransaction: vi.fn(async (ctx, work) => work(ctx)),
+            } as never,
             createLoggerFactory(),
         );
         const onRecordError = vi.fn().mockResolvedValue(undefined);

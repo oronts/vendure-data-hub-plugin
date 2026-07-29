@@ -220,4 +220,78 @@ describe('FileExtractHandler', () => {
             },
         })).rejects.toThrow('Uploaded CSV file not found');
     });
+    it('advances checkpoints only for records returned by a bounded extraction', async () => {
+        const handler = new FileExtractHandler(
+            {} as FileStorageService,
+            {
+                createLogger: vi.fn(() => ({ debug: vi.fn(), warn: vi.fn() })),
+            } as unknown as DataHubLoggerFactory,
+            new FileParserService(),
+        );
+        const executorCtx: ExecutorContext = {
+            cpData: {},
+            cpDirty: false,
+            markCheckpointDirty: vi.fn(),
+            recordLimit: 1,
+        };
+        const context = {
+            ctx: {} as RequestContext,
+            step: {
+                key: 'bounded-csv',
+                type: StepType.EXTRACT,
+                config: {
+                    adapterCode: 'csv',
+                    rows: [
+                        ['sku'],
+                        ['SKU-1'],
+                        ['SKU-2'],
+                    ],
+                },
+            },
+            executorCtx,
+        };
+
+        await expect(handler.extract(context)).resolves.toEqual([{ sku: 'SKU-1' }]);
+        expect(executorCtx.cpData?.['bounded-csv']).toEqual({ offset: 1 });
+        await expect(handler.extract(context)).resolves.toEqual([{ sku: 'SKU-2' }]);
+        expect(executorCtx.cpData?.['bounded-csv']).toEqual({ offset: 2 });
+    });
+
+    it('reads beyond the saved XLSX offset for bounded resumed extraction', async () => {
+        const workbook = utils.book_new();
+        utils.book_append_sheet(workbook, utils.json_to_sheet([
+            { sku: 'SKU-1' },
+            { sku: 'SKU-2' },
+            { sku: 'SKU-3' },
+        ]), 'Products');
+        const content = Buffer.from(write(workbook, { type: 'buffer', bookType: 'xlsx' }));
+        const handler = new FileExtractHandler(
+            { readFile: vi.fn(async () => content) } as unknown as FileStorageService,
+            {
+                createLogger: vi.fn(() => ({ debug: vi.fn(), warn: vi.fn() })),
+            } as unknown as DataHubLoggerFactory,
+            new FileParserService(),
+        );
+        const executorCtx: ExecutorContext = {
+            cpData: { workbook: { offset: 1 } },
+            cpDirty: false,
+            markCheckpointDirty: vi.fn(),
+            recordLimit: 1,
+        };
+
+        await expect(handler.extract({
+            ctx: {} as RequestContext,
+            step: {
+                key: 'workbook',
+                type: StepType.EXTRACT,
+                config: {
+                    adapterCode: 'xlsx',
+                    fileId: 'workbook-file',
+                    sheetName: 'Products',
+                },
+            },
+            executorCtx,
+        })).resolves.toEqual([{ sku: 'SKU-2' }]);
+        expect(executorCtx.cpData?.workbook).toEqual({ offset: 2 });
+    });
 });

@@ -9,6 +9,7 @@ import { sleep } from '../../../utils/retry.utils';
 import { HTTP_STATUS, HTTP } from '../../../constants/defaults/http-defaults';
 import { DataHubLogger } from '../../../services/logger/datahub-logger';
 import { secureFetch } from '../../../utils/secure-fetch.utils';
+import { PIPELINE_RETRY } from '../../../../shared/constants';
 
 /** Result of a single HTTP fetch attempt */
 export type HttpFetchResult = { ok: true } | { ok: false; error: string; isCircuitOpen?: boolean };
@@ -74,13 +75,50 @@ export function resolveHttpRetryConfig(
     errorHandling?: { maxRetries?: number; retryDelayMs?: number; maxRetryDelayMs?: number; backoffMultiplier?: number },
 ): ResolvedHttpConfig {
     return {
-        retries: Math.max(0, Number(cfg.retries ?? errorHandling?.maxRetries ?? 0) || 0),
-        retryDelayMs: Math.max(0, Number(cfg.retryDelayMs ?? errorHandling?.retryDelayMs ?? 0) || 0),
-        maxRetryDelayMs: Math.max(0, Number(cfg.maxRetryDelayMs ?? errorHandling?.maxRetryDelayMs ?? HTTP.RETRY_MAX_DELAY_MS) || HTTP.RETRY_MAX_DELAY_MS),
-        backoffMultiplier: Number(cfg.backoffMultiplier ?? errorHandling?.backoffMultiplier ?? HTTP.BACKOFF_MULTIPLIER) || HTTP.BACKOFF_MULTIPLIER,
+        retries: boundedNumber(
+            cfg.retries ?? errorHandling?.maxRetries,
+            PIPELINE_RETRY.DEFAULT_MAX_RETRIES,
+            0,
+            PIPELINE_RETRY.MAX_RETRIES,
+            true,
+        ),
+        retryDelayMs: boundedNumber(
+            cfg.retryDelayMs ?? errorHandling?.retryDelayMs,
+            PIPELINE_RETRY.DEFAULT_DELAY_MS,
+            0,
+            PIPELINE_RETRY.MAX_DELAY_MS,
+            true,
+        ),
+        maxRetryDelayMs: boundedNumber(
+            cfg.maxRetryDelayMs ?? errorHandling?.maxRetryDelayMs,
+            PIPELINE_RETRY.DEFAULT_MAX_DELAY_MS,
+            0,
+            PIPELINE_RETRY.MAX_DELAY_MS,
+            true,
+        ),
+        backoffMultiplier: boundedNumber(
+            cfg.backoffMultiplier ?? errorHandling?.backoffMultiplier,
+            PIPELINE_RETRY.DEFAULT_BACKOFF_MULTIPLIER,
+            1,
+            PIPELINE_RETRY.MAX_BACKOFF_MULTIPLIER,
+            false,
+        ),
         timeoutMs: Math.max(0, Number(cfg.timeoutMs ?? HTTP.TIMEOUT_MS) || HTTP.TIMEOUT_MS),
         maxBatchSize: Math.max(0, Number(cfg.maxBatchSize ?? 0) || 0),
     };
+}
+
+function boundedNumber(
+    value: number | undefined,
+    fallback: number,
+    minimum: number,
+    maximum: number,
+    integer: boolean,
+): number {
+    const numeric = Number(value ?? fallback);
+    if (!Number.isFinite(numeric)) return fallback;
+    const normalized = integer ? Math.trunc(numeric) : numeric;
+    return Math.min(maximum, Math.max(minimum, normalized));
 }
 
 /**

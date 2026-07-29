@@ -28,8 +28,8 @@ function createHandler(precision = 2) {
     };
     const facetValueService = {
         findAll: vi.fn().mockResolvedValue([
-            { id: 'facet-red', code: 'red', name: 'Red' },
-            { id: 'facet-blue', code: 'blue', name: 'Blue' },
+            { id: 'facet-red', code: 'red', name: 'Red', facet: { code: 'color' } },
+            { id: 'facet-blue', code: 'blue', name: 'Blue', facet: { code: 'color' } },
         ]),
     };
     const loggerFactory = {

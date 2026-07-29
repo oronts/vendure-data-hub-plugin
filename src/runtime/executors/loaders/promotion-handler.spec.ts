@@ -21,6 +21,7 @@ describe('PromotionHandler simulation', () => {
             { findAll } as unknown as PromotionService,
             {} as RequestContextService,
             {} as ChannelService,
+            {} as never,
             loggerFactory,
         );
         const step = {

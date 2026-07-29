@@ -112,7 +112,7 @@ export const CORE_LOADER_DEFINITIONS: LoaderDefinitionEntry[] = [
                     { key: 'addressesField', label: 'Addresses array field', type: 'string' },
                     { key: 'addressesMode', label: 'Addresses mode', type: 'select', options: ADDRESSES_MODE_OPTIONS, description: 'How to handle customer addresses on update (UPSERT_BY_MATCH prevents duplicates)' },
                     { key: 'addressMatchFields', label: 'Address match fields', type: 'string', defaultValue: 'streetLine1,city,countryCode', description: 'Comma-separated fields to match existing addresses (for UPSERT_BY_MATCH mode)' },
-                    { key: 'groupsField', label: 'Group codes array field', type: 'string' },
+                    { key: 'groupsField', label: 'Group names array field', type: 'string' },
                     { key: 'groupsMode', label: 'Groups mode', type: 'select', options: GROUPS_MODE_OPTIONS },
                     { key: 'customFieldsField', label: 'Custom fields field (object)', type: 'string', description: 'Record field containing custom field values (defaults to "customFields")' },
                 ],

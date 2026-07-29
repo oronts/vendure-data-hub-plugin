@@ -4,17 +4,15 @@
  * Generates a Google Merchant Center product feed in XML format.
  */
 
-import * as fs from 'fs';
 import { JsonValue } from '../../../types/index';
-import { xmlEscape, ensureDirectoryExistsAsync } from '../../utils';
-import { FEED_NAMESPACES, EXAMPLE_URLS, getOutputPath } from '../../../constants/index';
+import { xmlEscape } from '../../utils';
+import { FEED_NAMESPACES, EXAMPLE_URLS } from '../../../constants/index';
 import { getErrorMessage } from '../../../utils/error.utils';
-import { FeedHandlerParams, FeedHandlerResult, mapToFeedItem } from './feed-handler.types';
+import { FeedHandlerParams, FeedHandlerResult, mapToFeedItem, writeFeedFile } from './feed-handler.types';
 
 export async function googleMerchantFeedHandler(params: FeedHandlerParams): Promise<FeedHandlerResult> {
     const { config, records, fields, onRecordError, stepKey } = params;
     try {
-        const filePath = config.outputPath ?? getOutputPath('google-merchant', 'xml');
         const items = records.map(rec => mapToFeedItem(rec, fields));
         const shopUrl = (config as Record<string, JsonValue>).storeUrl ?? EXAMPLE_URLS.BASE;
         let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
@@ -39,8 +37,7 @@ export async function googleMerchantFeedHandler(params: FeedHandlerParams): Prom
         }
         xml += '  </channel>\n';
         xml += '</rss>';
-        await ensureDirectoryExistsAsync(filePath);
-        await fs.promises.writeFile(filePath, xml, 'utf-8');
+        const filePath = await writeFeedFile(config, 'google-merchant', 'xml', xml);
         return { ok: items.length, fail: 0, outputPath: filePath };
     } catch (e: unknown) {
         const message = getErrorMessage(e);

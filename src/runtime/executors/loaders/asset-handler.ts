@@ -3,6 +3,7 @@
  */
 import { Injectable } from '@nestjs/common';
 import {
+    ChannelService,
     RequestContext,
     ProductService,
     CollectionService,
@@ -11,7 +12,7 @@ import {
     ID,
     EntityWithAssets,
 } from '@vendure/core';
-import { createChannelRequestContext } from '../../helpers/channel-request-context';
+import { createChannelCodeRequestContext } from '../../helpers/channel-request-context';
 import { JsonObject, PipelineStepDefinition, ErrorHandlingConfig } from '../../../types/index';
 import { RecordObject, OnRecordErrorCallback, LoaderExecutionResult } from '../../executor-types';
 import { LoaderHandler } from './types';
@@ -41,6 +42,7 @@ export class AssetAttachHandler implements LoaderHandler {
         private collectionService: CollectionService,
         private assetService: AssetService,
         private requestContextService: RequestContextService,
+        private channelService: ChannelService,
     ) {}
 
     async execute(
@@ -71,8 +73,9 @@ export class AssetAttachHandler implements LoaderHandler {
                 let opCtx = ctx;
                 const channel = cfg.channel;
                 if (channel) {
-                    opCtx = await createChannelRequestContext(
+                    opCtx = await createChannelCodeRequestContext(
                         this.requestContextService,
+                        this.channelService,
                         ctx,
                         channel,
                     );

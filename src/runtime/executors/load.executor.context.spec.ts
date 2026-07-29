@@ -5,6 +5,7 @@ import {
 } from '@vendure/core';
 import { describe, expect, it, vi } from 'vitest';
 import {
+    LoadExecutor,
     resolveBuiltInLoaderRequestContexts,
     resolveLoadAdapterSettings,
     resolveLoaderRequestContext,
@@ -197,5 +198,118 @@ describe('resolveBuiltInLoaderRequestContexts', () => {
             source,
             { channelStrategy: 'EXPLICIT', channelIds: ['missing'] },
         )).rejects.toThrow('Channel not found: missing');
+    });
+});
+
+describe('LoadExecutor custom channel execution', () => {
+    const source = new RequestContext({
+        apiType: 'admin',
+        channel: { id: 'channel-source', token: 'source-token' } as never,
+        session: { user: { id: 'user-1' } } as never,
+        languageCode: LanguageCode.en,
+        currencyCode: CurrencyCode.USD,
+        isAuthorized: true,
+        authorizedAsOwnerOnly: false,
+    });
+    const channels = [
+        {
+            id: 'channel-a',
+            token: 'token-a',
+            code: 'channel-a',
+            defaultLanguageCode: LanguageCode.en,
+            defaultCurrencyCode: CurrencyCode.USD,
+            availableLanguageCodes: [LanguageCode.en],
+            availableCurrencyCodes: [CurrencyCode.USD],
+        },
+        {
+            id: 'channel-b',
+            token: 'token-b',
+            code: 'channel-b',
+            defaultLanguageCode: LanguageCode.en,
+            defaultCurrencyCode: CurrencyCode.EUR,
+            availableLanguageCodes: [LanguageCode.en],
+            availableCurrencyCodes: [CurrencyCode.EUR],
+        },
+    ];
+
+    it('invokes a custom loader once per target with matching context channels', async () => {
+        const invocations: Array<{
+            ctxChannelId: string;
+            channels: string[];
+            pipelineChannelIds: string[] | undefined;
+        }> = [];
+        const loader = {
+            type: 'LOADER',
+            code: 'custom-loader',
+            load: vi.fn(async (context, _config, records) => {
+                invocations.push({
+                    ctxChannelId: String(context.ctx.channelId),
+                    channels: context.channels.map(String),
+                    pipelineChannelIds: context.pipelineContext.channelIds,
+                });
+                return { succeeded: records.length, failed: 0, skipped: 0 };
+            }),
+        };
+        const requestContextService = {
+            create: vi.fn(async ({ channelOrToken, languageCode }) => new RequestContext({
+                apiType: 'admin',
+                channel: channelOrToken,
+                session: source.session,
+                languageCode,
+                currencyCode: channelOrToken.defaultCurrencyCode,
+                isAuthorized: true,
+                authorizedAsOwnerOnly: false,
+            })),
+        };
+        const channelService = {
+            findOne: vi.fn(async (_ctx, id) => channels.find(channel => channel.id === id)),
+        };
+        const logger = {
+            debug: vi.fn(),
+            info: vi.fn(),
+            warn: vi.fn(),
+            error: vi.fn(),
+            logLoaderOperation: vi.fn(),
+        };
+        const executor = new LoadExecutor(
+            {} as never,
+            requestContextService as never,
+            channelService as never,
+            {} as never,
+            {} as never,
+            { createLogger: () => logger } as never,
+            { getRuntime: vi.fn(() => loader) } as never,
+        );
+
+        const result = await executor.execute(
+            source,
+            {
+                key: 'load-custom',
+                type: 'LOAD',
+                config: { adapterCode: 'custom-loader' },
+            },
+            [{ id: 1 }, { id: 2 }],
+            undefined,
+            undefined,
+            {
+                channelStrategy: 'MULTI',
+                channelIds: ['channel-a', 'channel-b'],
+                contentLanguage: 'en',
+            },
+        );
+
+        expect(result).toEqual({ ok: 4, fail: 0, skipped: 0 });
+        expect(invocations).toEqual([
+            {
+                ctxChannelId: 'channel-a',
+                channels: ['channel-a'],
+                pipelineChannelIds: ['channel-a'],
+            },
+            {
+                ctxChannelId: 'channel-b',
+                channels: ['channel-b'],
+                pipelineChannelIds: ['channel-b'],
+            },
+        ]);
     });
 });

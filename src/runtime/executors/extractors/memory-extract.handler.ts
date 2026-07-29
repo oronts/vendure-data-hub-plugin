@@ -12,7 +12,12 @@ import * as crypto from 'crypto';
 import { Injectable } from '@nestjs/common';
 import { RecordObject } from '../../executor-types';
 import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
-import { LOGGER_CONTEXTS, EXTRACTOR_CODE } from '../../../constants/index';
+import {
+    EXTRACTOR_CODE,
+    LOGGER_CONTEXTS,
+} from '../../../constants/index';
+import { MEMORY_EXTRACTOR } from '../../../constants/defaults/runtime-defaults';
+import type { ExtractorPreviewResult } from '../../../types/index';
 import {
     ExtractHandler,
     ExtractHandlerContext,
@@ -54,6 +59,49 @@ export class MemoryExtractHandler implements ExtractHandler {
         return [];
     }
 
+    async preview(
+        context: ExtractHandlerContext,
+        limit: number,
+    ): Promise<ExtractorPreviewResult> {
+        const previewContext: ExtractHandlerContext = {
+            ...context,
+            executorCtx: { ...context.executorCtx, recordLimit: limit },
+        };
+        const records = await this.extract(previewContext);
+        const cfg = getExtractConfig<InMemoryExtractConfig | GeneratorExtractConfig>(
+            context.step,
+        );
+        const adapterCode = context.step.adapterCode ?? cfg.adapterCode;
+
+        return {
+            records: records.map(data => ({ data })),
+            totalAvailable: adapterCode === EXTRACTOR_CODE.IN_MEMORY
+                ? this.getInMemoryRecordCount((cfg as InMemoryExtractConfig).data)
+                : this.getGeneratorRecordCount((cfg as GeneratorExtractConfig).count),
+        };
+    }
+
+    private getInMemoryRecordCount(data: unknown): number {
+        if (Array.isArray(data)) return data.length;
+        return data !== null && typeof data === 'object' ? 1 : 0;
+    }
+
+    private getGeneratorRecordCount(value: unknown): number {
+        const configuredCount = value === undefined
+            ? MEMORY_EXTRACTOR.DEFAULT_GENERATOR_COUNT
+            : Number(value);
+        if (
+            !Number.isSafeInteger(configuredCount)
+            || configuredCount < 0
+            || configuredCount > MEMORY_EXTRACTOR.MAX_GENERATOR_COUNT
+        ) {
+            throw new Error(
+                `Generator count must be an integer from 0 to ${MEMORY_EXTRACTOR.MAX_GENERATOR_COUNT}`,
+            );
+        }
+        return configuredCount;
+    }
+
     async extractInMemory(context: ExtractHandlerContext): Promise<RecordObject[]> {
         const { step } = context;
         const cfg = getExtractConfig<InMemoryExtractConfig>(step);
@@ -65,7 +113,10 @@ export class MemoryExtractHandler implements ExtractHandler {
         }
 
         if (Array.isArray(data)) {
-            return data as RecordObject[];
+            const limit = context.executorCtx.recordLimit;
+            return limit === undefined
+                ? data as RecordObject[]
+                : data.slice(0, limit) as RecordObject[];
         }
 
         if (typeof data === 'object') {
@@ -80,12 +131,15 @@ export class MemoryExtractHandler implements ExtractHandler {
         const { step } = context;
         const cfg = getExtractConfig<GeneratorExtractConfig>(step);
 
-        const count = Number(cfg.count) || 10;
+        const configuredCount = this.getGeneratorRecordCount(cfg.count);
+        const count = context.executorCtx.recordLimit === undefined
+            ? configuredCount
+            : Math.min(configuredCount, context.executorCtx.recordLimit);
         const template = cfg.template;
         const records: RecordObject[] = [];
 
         for (let i = 0; i < count; i++) {
-            const record = this.generateRecord(i, count, template);
+            const record = this.generateRecord(i, configuredCount, template);
             records.push(record);
         }
 

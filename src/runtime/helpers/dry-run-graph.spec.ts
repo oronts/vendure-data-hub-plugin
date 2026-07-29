@@ -66,6 +66,43 @@ describe('executeDryRunGraph', () => {
         ]);
         expect(result.processed).toBe(2);
         expect(result.samples).toEqual(['extract', 'route', 'left', 'right', 'join']);
+        expect(result.outputRecords).toEqual([
+            { side: 'left', visited: 'join' },
+            { side: 'right', visited: 'join' },
+        ]);
+    });
+
+    it('passes bounded seed records into graph source steps', async () => {
+        const definition: PipelineDefinition = {
+            version: 1,
+            steps: [
+                { key: 'transform', type: 'TRANSFORM', config: {} },
+                { key: 'load', type: 'LOAD', config: {} },
+            ],
+            edges: [{ from: 'transform', to: 'load' }],
+        };
+        const seedRecords = [{ sku: 'SKU-1' }];
+        const executeStep = vi.fn(async (
+            step: PipelineDefinition['steps'][number],
+            input: RecordObject[],
+        ) => ({
+            output: input.map(record => ({ ...record, visited: step.key })),
+            processedDelta: 0,
+            samples: [],
+        }));
+
+        const result = await executeDryRunGraph(
+            definition,
+            executeStep,
+            seedRecords,
+        );
+
+        expect(executeStep.mock.calls[0][1]).toEqual(seedRecords);
+        expect(result.processed).toBe(1);
+        expect(result.outputRecords).toEqual([{
+            sku: 'SKU-1',
+            visited: 'load',
+        }]);
     });
 
     it('rejects cyclic graphs instead of silently skipping steps', async () => {

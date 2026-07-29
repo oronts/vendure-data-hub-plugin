@@ -62,6 +62,7 @@ export interface GraphExecutionResult {
     counters: Record<string, number>;
     paused?: boolean;
     pausedAtStep?: string;
+    cancelled?: boolean;
 }
 
 /**

@@ -8,7 +8,10 @@
  */
 
 import { RequestContext } from '@vendure/core';
-import { PipelineStepDefinition } from '../../../types/index';
+import {
+    ExtractorPreviewResult,
+    PipelineStepDefinition,
+} from '../../../types/index';
 import { RecordObject, OnRecordErrorCallback, ExecutorContext } from '../../executor-types';
 
 /**
@@ -73,6 +76,10 @@ export interface ExtractHandler {
      * Extract records from the data source
      */
     extract(context: ExtractHandlerContext): Promise<RecordObject[]>;
+    preview(
+        context: ExtractHandlerContext,
+        limit: number,
+    ): Promise<ExtractorPreviewResult>;
 }
 
 /**

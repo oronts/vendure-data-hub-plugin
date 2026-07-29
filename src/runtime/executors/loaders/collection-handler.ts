@@ -10,7 +10,7 @@ import {
     Collection,
     ID,
 } from '@vendure/core';
-import { createChannelRequestContext } from '../../helpers/channel-request-context';
+import { createChannelCodeRequestContext } from '../../helpers/channel-request-context';
 import {
     LanguageCode,
     CreateCollectionTranslationInput,
@@ -220,7 +220,12 @@ export class CollectionHandler implements LoaderHandler {
             return ctx;
         }
 
-        return createChannelRequestContext(this.requestContextService, ctx, channel);
+        return createChannelCodeRequestContext(
+            this.requestContextService,
+            this.channelService,
+            ctx,
+            channel,
+        );
     }
 
     /**

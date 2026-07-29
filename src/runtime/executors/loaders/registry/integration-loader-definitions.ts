@@ -75,7 +75,7 @@ export const INTEGRATION_LOADER_DEFINITIONS: LoaderDefinitionEntry[] = [
             icon: 'settings',
             color: '#64748b',
             entityType: toEntityCode(VendureEntityType.TAX_RATE),
-            patchableFields: ['name', 'value', 'enabled', 'taxCategoryCode', 'zoneCode', 'customFields'],
+            patchableFields: ['name', 'value', 'enabled', 'taxCategoryCode', 'taxCategoryId', 'zoneCode', 'zoneId', 'customFields'],
             schema: {
                 fields: [
                     { key: 'strategy', label: 'Load strategy', type: 'select', options: LOAD_STRATEGY_OPTIONS, description: 'UPSERT: create or update. CREATE: only create new. UPDATE: only update existing.' },
@@ -83,9 +83,9 @@ export const INTEGRATION_LOADER_DEFINITIONS: LoaderDefinitionEntry[] = [
                     { key: 'nameField', label: 'Name field', type: 'string', required: true, description: 'Field containing tax rate name' },
                     { key: 'valueField', label: 'Value field', type: 'string', required: true, description: 'Field containing tax rate percentage (0-100)' },
                     { key: 'enabledField', label: 'Enabled field', type: 'string', description: 'Field indicating if rate is active' },
-                    { key: 'taxCategoryCodeField', label: 'Tax category code field', type: 'string', required: true, description: 'Field containing tax category code/name' },
+                    { key: 'taxCategoryCodeField', label: 'Tax category code field', type: 'string', description: 'Field containing TaxCategory customFields.code' },
                     { key: 'taxCategoryIdField', label: 'Tax category ID field', type: 'string', description: 'Alternative: field containing tax category ID' },
-                    { key: 'zoneCodeField', label: 'Zone code field', type: 'string', required: true, description: 'Field containing zone code/name' },
+                    { key: 'zoneCodeField', label: 'Zone code field', type: 'string', description: 'Field containing Zone customFields.code' },
                     { key: 'zoneIdField', label: 'Zone ID field', type: 'string', description: 'Alternative: field containing zone ID' },
                 ],
             },

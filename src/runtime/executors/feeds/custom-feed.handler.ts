@@ -4,21 +4,18 @@
  * Generates a custom feed in the configured format (JSON, CSV, TSV, or XML).
  */
 
-import * as fs from 'fs';
 import { JsonValue } from '../../../types/index';
-import { getPath, recordsToCsv, recordsToXml, ensureDirectoryExistsAsync } from '../../utils';
-import { getOutputPath } from '../../../constants/index';
+import { getPath, recordsToCsv, recordsToXml } from '../../utils';
 import { FileFormat } from '../../../constants/enums';
 import { RecordObject } from '../../executor-types';
 import { getErrorMessage } from '../../../utils/error.utils';
-import { FeedHandlerParams, FeedHandlerResult } from './feed-handler.types';
+import { FeedHandlerParams, FeedHandlerResult, writeFeedFile } from './feed-handler.types';
 
 export async function customFeedHandler(params: FeedHandlerParams): Promise<FeedHandlerResult> {
     const { config, records, onRecordError, stepKey } = params;
     try {
-        const filePath = config.outputPath ?? getOutputPath('custom-feed', 'json');
         const customConfig = config as Record<string, JsonValue>;
-        const format = (customConfig.format as string) ?? 'json';
+        const format = String(customConfig.format ?? FileFormat.JSON).toUpperCase();
         const customFields = customConfig.fieldMapping as Record<string, string> | undefined;
         const items = records.map(rec => {
             if (customFields) {
@@ -41,8 +38,7 @@ export async function customFeedHandler(params: FeedHandlerParams): Promise<Feed
         } else {
             content = JSON.stringify(items, null, 2);
         }
-        await ensureDirectoryExistsAsync(filePath);
-        await fs.promises.writeFile(filePath, content, 'utf-8');
+        const filePath = await writeFeedFile(config, 'custom-feed', format.toLowerCase(), content);
         return { ok: items.length, fail: 0, outputPath: filePath };
     } catch (e: unknown) {
         const message = getErrorMessage(e);

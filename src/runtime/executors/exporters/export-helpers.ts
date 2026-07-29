@@ -4,13 +4,13 @@
  * Shared utilities for export handlers to reduce duplication.
  */
 
-import * as fs from 'fs';
 import * as pathLib from 'path';
 import { FILE_STORAGE, EXTENSION_MIME_MAP, CONTENT_TYPES } from '../../../constants/index';
-import { ensureDirectoryExists } from '../../utils';
+import { resolveSafeOutputPath, writeFileSafely } from '../../../utils/safe-output-path.utils';
 import { getErrorMessage } from '../../../utils/error.utils';
-import { ExportHandlerParams, ExportHandlerResult, resolveOutputPath } from './export-handler.types';
+import { ExportHandlerParams, ExportHandlerResult, renderOutputFilename } from './export-handler.types';
 import { RecordObject } from '../../executor-types';
+import { parseInlineExportDestination } from '../../../services/destinations/inline-export-destination';
 
 /**
  * Infer MIME type from file extension for export registration.
@@ -41,11 +41,19 @@ export async function writeExportFile(
     formatContent: (records: RecordObject[], config: Record<string, unknown>) => string,
     formatName: string,
 ): Promise<ExportHandlerResult> {
-    const { ctx, config, records, onRecordError, stepKey, logger, fileStorageService } = params;
+    const {
+        ctx,
+        config,
+        records,
+        onRecordError,
+        stepKey,
+        logger,
+        fileStorageService,
+        exportDestinationService,
+    } = params;
     try {
-        const basePath = (config.path as string) ?? FILE_STORAGE.TEMP_DIR;
-        const filenamePattern = config.filenamePattern as string | undefined;
-        const outputPath = resolveOutputPath(basePath, filenamePattern, defaultFilename);
+        const relativeDirectory = (config.path as string) ?? '.';
+        const filename = renderOutputFilename(config.filenamePattern as string | undefined, defaultFilename);
 
         let content = formatContent(records, config);
 
@@ -54,15 +62,44 @@ export async function writeExportFile(
             content = '\uFEFF' + content;
         }
 
-        ensureDirectoryExists(outputPath);
-        await fs.promises.writeFile(outputPath, content, 'utf-8');
+        const inlineDestination = parseInlineExportDestination(stepKey, config);
+        let outputLocation: string;
+        if (inlineDestination) {
+            if (!exportDestinationService) {
+                throw new Error('Export destination delivery service is unavailable');
+            }
+            const mimeType = inferMimeType(filename);
+            const delivery = await exportDestinationService.deliverConfigured(
+                ctx,
+                inlineDestination,
+                content,
+                filename,
+                {
+                    mimeType,
+                    metadata: {
+                        source: 'export',
+                        format: formatName,
+                        stepKey,
+                        recordCount: records.length,
+                    },
+                },
+            );
+            if (!delivery.success) {
+                throw new Error(delivery.error ?? `Delivery to ${inlineDestination.type} failed`);
+            }
+            outputLocation = delivery.location ?? inlineDestination.type;
+        } else {
+            const outputPath = await resolveSafeOutputPath(FILE_STORAGE.EXPORT_ROOT, relativeDirectory, filename);
+            await writeFileSafely(outputPath, content);
+            outputLocation = outputPath;
+        }
 
         // Register the exported file in the file storage system so it appears
         // in the /data-hub/files/ REST API for download
         if (fileStorageService) {
             const buffer = Buffer.from(content, 'utf-8');
-            const fileName = pathLib.basename(outputPath);
-            const mimeType = inferMimeType(outputPath);
+            const fileName = pathLib.basename(filename);
+            const mimeType = inferMimeType(filename);
             const result = await fileStorageService.storeFile(ctx, buffer, fileName, mimeType, {
                 metadata: { source: 'export', format: formatName, stepKey, recordCount: records.length },
             });
@@ -73,7 +110,7 @@ export async function writeExportFile(
             }
         }
 
-        logger.info(`${formatName} export complete`, { outputPath, recordCount: records.length });
+        logger.info(`${formatName} export complete`, { outputLocation, recordCount: records.length });
         return { ok: records.length, fail: 0 };
     } catch (e: unknown) {
         const message = getErrorMessage(e);

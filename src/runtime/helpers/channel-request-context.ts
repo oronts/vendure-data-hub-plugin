@@ -4,7 +4,34 @@ import {
     RequestContext,
     RequestContextService,
     Channel,
+    ChannelService,
 } from '@vendure/core';
+
+export async function createChannelCodeRequestContext(
+    requestContextService: RequestContextService,
+    channelService: ChannelService,
+    source: RequestContext,
+    channelCode: string,
+    languageCode?: LanguageCode,
+    currencyCode?: CurrencyCode,
+): Promise<RequestContext> {
+    const channel = source.channel.code === channelCode
+        ? source.channel
+        : (await channelService.findAll(source, {
+            filter: { code: { eq: channelCode } },
+            take: 1,
+        })).items[0];
+    if (!channel) {
+        throw new Error(`Channel code not found: ${channelCode}`);
+    }
+    return createChannelRequestContext(
+        requestContextService,
+        source,
+        channel,
+        languageCode,
+        currencyCode,
+    );
+}
 
 export async function createChannelRequestContext(
     requestContextService: RequestContextService,

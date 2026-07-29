@@ -6,6 +6,7 @@
 
 import { RequestContext } from '@vendure/core';
 import { PipelineDefinition, PipelineStepDefinition } from '../../../types/index';
+import type { PipelineContext } from '../../../types/index';
 import { LoaderExecutionResult, RecordObject, OnRecordErrorCallback } from '../../executor-types';
 import {
     StepStrategy,
@@ -25,6 +26,7 @@ export type LoadWithThroughputFn = (
     batch: RecordObject[],
     definition: PipelineDefinition,
     onRecordError?: OnRecordErrorCallback,
+    pipelineContext?: PipelineContext,
 ) => Promise<LoaderExecutionResult>;
 
 /**
@@ -110,8 +112,15 @@ export class LoadStepStrategy implements StepStrategy {
         context: StepExecutionContext,
         batch: RecordObject[],
     ): Promise<LoaderExecutionResult> {
-        const { ctx, definition, step, onRecordError } = context;
-        return this.loadWithThroughput(ctx, step, batch, definition, onRecordError);
+        const { ctx, definition, step, onRecordError, pipelineContext } = context;
+        return this.loadWithThroughput(
+            ctx,
+            step,
+            batch,
+            definition,
+            onRecordError,
+            pipelineContext,
+        );
     }
 
     private async runAfterHook(context: StepExecutionContext, records: RecordObject[]): Promise<RecordObject[]> {

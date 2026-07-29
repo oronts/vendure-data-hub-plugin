@@ -1,4 +1,5 @@
 import type { ConfigurableOperationInput } from '@vendure/common/lib/generated-types';
+import { getNestedValue, hasNestedValue } from '../../../utils/object-path.utils';
 import type { RecordObject } from '../../executor-types';
 
 export interface ParsedPromotionOperations {
@@ -14,7 +15,16 @@ function isConfigurableOperation(value: unknown): value is ConfigurableOperation
     const operation = value as { code?: unknown; arguments?: unknown };
     return typeof operation.code === 'string'
         && operation.code.trim().length > 0
-        && Array.isArray(operation.arguments);
+        && Array.isArray(operation.arguments)
+        && operation.arguments.every(isConfigArgument);
+}
+
+function isConfigArgument(value: unknown): boolean {
+    if (!value || typeof value !== 'object') return false;
+    const argument = value as { name?: unknown; value?: unknown };
+    return typeof argument.name === 'string'
+        && argument.name.trim().length > 0
+        && typeof argument.value === 'string';
 }
 
 export function parsePromotionOperations(
@@ -22,11 +32,11 @@ export function parsePromotionOperations(
     fieldName: string | undefined,
     label: 'conditions' | 'actions',
 ): ParsedPromotionOperations {
-    if (!fieldName || !Object.prototype.hasOwnProperty.call(record, fieldName)) {
+    if (!fieldName || !hasNestedValue(record, fieldName)) {
         return { present: false };
     }
 
-    const value = record[fieldName];
+    const value = getNestedValue(record, fieldName);
     const parsed = typeof value === 'string' ? parseJsonArray(value, label) : value;
     if (!Array.isArray(parsed) || !parsed.every(isConfigurableOperation)) {
         throw new Error(

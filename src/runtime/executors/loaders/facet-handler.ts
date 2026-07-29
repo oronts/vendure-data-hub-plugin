@@ -11,7 +11,7 @@ import {
     TransactionalConnection,
     ID,
 } from '@vendure/core';
-import { createChannelRequestContext } from '../../helpers/channel-request-context';
+import { createChannelCodeRequestContext } from '../../helpers/channel-request-context';
 import { FacetTranslationInput } from '@vendure/common/lib/generated-types';
 import { JsonObject, PipelineStepDefinition, ErrorHandlingConfig } from '../../../types/index';
 import { RecordObject, OnRecordErrorCallback, LoaderExecutionResult } from '../../executor-types';
@@ -105,8 +105,9 @@ export class FacetHandler implements LoaderHandler {
 
                 let opCtx = ctx;
                 if (cfg.channel) {
-                    opCtx = await createChannelRequestContext(
+                    opCtx = await createChannelCodeRequestContext(
                         this.requestContextService,
+                        this.channelService,
                         ctx,
                         cfg.channel,
                     );
@@ -258,8 +259,9 @@ export class FacetValueHandler implements LoaderHandler {
 
                 let opCtx = ctx;
                 if (cfg.channel) {
-                    opCtx = await createChannelRequestContext(
+                    opCtx = await createChannelCodeRequestContext(
                         this.requestContextService,
+                        this.channelService,
                         ctx,
                         cfg.channel,
                     );

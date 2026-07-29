@@ -10,7 +10,6 @@ import {
     TaxRateService,
     TaxCategoryService,
     ZoneService,
-    TaxCategory,
     ID,
 } from '@vendure/core';
 import { PipelineStepDefinition, ErrorHandlingConfig, JsonObject } from '../../../types/index';
@@ -20,6 +19,7 @@ import { LoaderHandler } from './types';
 import { LoadStrategy } from '../../../constants/enums';
 import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
 import { getStringValue, getNumberValue } from '../../../loaders/shared-helpers';
+import { resolveEntityReferenceId } from '../../../loaders/entity-reference.helpers';
 
 /**
  * Configuration for the tax rate handler step (mirrors loader-handler-registry.ts schema)
@@ -61,6 +61,8 @@ export class TaxRateHandler implements LoaderHandler {
         onRecordError?: OnRecordErrorCallback,
         _errorHandling?: ErrorHandlingConfig,
     ): Promise<LoaderExecutionResult> {
+        this.taxCategoryCache.clear();
+        this.zoneCache.clear();
         let ok = 0;
         let fail = 0;
         let skipped = 0;
@@ -102,7 +104,7 @@ export class TaxRateHandler implements LoaderHandler {
                 const taxCategoryId = await this.resolveTaxCategoryId(
                     ctx,
                     getStringValue(rec, taxCategoryCodeField),
-                    getStringValue(rec, taxCategoryIdField),
+                    getReferenceId(rec, taxCategoryIdField),
                 );
                 if (!taxCategoryId) {
                     fail++;
@@ -116,7 +118,7 @@ export class TaxRateHandler implements LoaderHandler {
                 const zoneId = await this.resolveZoneId(
                     ctx,
                     getStringValue(rec, zoneCodeField),
-                    getStringValue(rec, zoneIdField),
+                    getReferenceId(rec, zoneIdField),
                 );
                 if (!zoneId) {
                     fail++;
@@ -180,49 +182,51 @@ export class TaxRateHandler implements LoaderHandler {
     private async resolveTaxCategoryId(
         ctx: RequestContext,
         code?: string,
-        idStr?: string,
+        id?: ID,
     ): Promise<ID | null> {
-        if (idStr) return idStr as ID;
-        if (!code) return null;
-
-        if (this.taxCategoryCache.has(code)) {
-            return this.taxCategoryCache.get(code) ?? null;
+        if (id !== undefined && code !== undefined) {
+            throw new Error('Provide either taxCategoryId or taxCategoryCode, not both');
         }
-
-        const categories = await this.taxCategoryService.findAll(ctx);
-        const list = Array.isArray(categories)
-            ? categories
-            : (categories as unknown as { items: TaxCategory[] }).items || [];
-        const match = list.find(
-            (tc: TaxCategory) => tc.name.toLowerCase() === code.toLowerCase(),
+        const cacheKey = id !== undefined ? `id:${String(id)}` : code ? `code:${code}` : undefined;
+        if (cacheKey && this.taxCategoryCache.has(cacheKey)) {
+            return this.taxCategoryCache.get(cacheKey) ?? null;
+        }
+        const resolved = await resolveEntityReferenceId(
+            ctx,
+            this.taxCategoryService,
+            'Tax category',
+            { id, code },
         );
-        if (match) {
-            this.taxCategoryCache.set(code, match.id);
-            return match.id;
-        }
-        return null;
+        if (cacheKey && resolved !== null) this.taxCategoryCache.set(cacheKey, resolved);
+        return resolved;
     }
 
     private async resolveZoneId(
         ctx: RequestContext,
         code?: string,
-        idStr?: string,
+        id?: ID,
     ): Promise<ID | null> {
-        if (idStr) return idStr as ID;
-        if (!code) return null;
-
-        if (this.zoneCache.has(code)) {
-            return this.zoneCache.get(code) ?? null;
+        if (id !== undefined && code !== undefined) {
+            throw new Error('Provide either zoneId or zoneCode, not both');
         }
-
-        const zones = await this.zoneService.findAll(ctx);
-        const match = zones.items.find(
-            z => z.name.toLowerCase() === code.toLowerCase(),
+        const cacheKey = id !== undefined ? `id:${String(id)}` : code ? `code:${code}` : undefined;
+        if (cacheKey && this.zoneCache.has(cacheKey)) {
+            return this.zoneCache.get(cacheKey) ?? null;
+        }
+        const resolved = await resolveEntityReferenceId(
+            ctx,
+            this.zoneService,
+            'Zone',
+            { id, code },
         );
-        if (match) {
-            this.zoneCache.set(code, match.id);
-            return match.id;
-        }
-        return null;
+        if (cacheKey && resolved !== null) this.zoneCache.set(cacheKey, resolved);
+        return resolved;
     }
+}
+
+function getReferenceId(record: RecordObject, field: string): ID | undefined {
+    const value = record[field];
+    return typeof value === 'string' || typeof value === 'number'
+        ? value
+        : undefined;
 }

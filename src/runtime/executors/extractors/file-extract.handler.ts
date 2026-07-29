@@ -371,7 +371,9 @@ export class FileExtractHandler implements ExtractHandler {
             xlsx: {
                 sheet,
                 header: cfg.hasHeader !== false,
-                preview: executorCtx.recordLimit,
+                preview: executorCtx.recordLimit === undefined
+                    ? undefined
+                    : offset + executorCtx.recordLimit,
             },
         });
         if (!result.success) {
@@ -408,7 +410,10 @@ export class FileExtractHandler implements ExtractHandler {
         executorCtx: ExecutorContext,
         stepKey: string,
     ): RecordObject[] {
-        const sliced = records.slice(Math.max(0, offset));
+        const available = records.slice(Math.max(0, offset));
+        const sliced = executorCtx.recordLimit === undefined
+            ? available
+            : available.slice(0, executorCtx.recordLimit);
         updateCheckpoint(executorCtx, stepKey, { offset: offset + sliced.length });
         return sliced;
     }

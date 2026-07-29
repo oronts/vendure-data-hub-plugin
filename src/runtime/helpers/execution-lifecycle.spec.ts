@@ -53,6 +53,24 @@ describe('ExecutionLifecycleManager', () => {
         expect(checkpointManager.loadCheckpoint).toHaveBeenCalledWith(ctx, 7);
     });
 
+    it('does not persist checkpoint updates for a cancelled run', async () => {
+        const { lifecycle, checkpointManager } = createPreparationFixture();
+        const ctx = {} as RequestContext;
+        const definition: PipelineDefinition = { version: 1, steps: [] };
+
+        await lifecycle.finalizeExecution(ctx, definition, {
+            processed: 1,
+            succeeded: 1,
+            failed: 0,
+            skipped: 0,
+            details: [],
+            counters: { extracted: 1 },
+            cancelled: true,
+        }, 7);
+
+        expect(checkpointManager.saveCheckpoint).not.toHaveBeenCalled();
+    });
+
     it('does not emit completion side effects when checkpoint persistence fails', async () => {
         const failure = new Error('checkpoint write failed');
         const checkpointManager = {

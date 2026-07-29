@@ -14,7 +14,12 @@ import { SinkAdapter, SinkContext } from '../../sdk/types';
 import { getAdapterCode } from '../../types/step-configs';
 import { createBaseAdapterContext, handleCustomAdapterError } from './context-adapters';
 import { CircuitBreakerService } from '../../services/runtime';
-import { SINK_HANDLER_REGISTRY, SinkHandlerContext, SinkServices } from './sink-handler-registry';
+import {
+    SINK_ADAPTER_CODES,
+    SINK_HANDLER_REGISTRY,
+    SinkHandlerContext,
+    SinkServices,
+} from './sink-handler-registry';
 
 /**
  * Common sink configuration
@@ -23,18 +28,25 @@ interface BaseSinkCfg {
     adapterCode?: string;
     indexName?: string;
     idField?: string;
-    bulkSize?: number;
+    batchSize?: number;
     fields?: string[];
     excludeFields?: string[];
     host?: string;
-    hosts?: string[];
     apiKeySecretCode?: string;
-    basicSecretCode?: string;
-    applicationId?: string;
     appId?: string;
     collectionName?: string;
     primaryKey?: string;
     defaultOperation?: string;
+}
+
+export function resolveSinkIdentityField(
+    adapterCode: string | undefined,
+    config: Pick<BaseSinkCfg, 'idField' | 'primaryKey'>,
+): string {
+    if (adapterCode === SINK_ADAPTER_CODES.MEILISEARCH) {
+        return config.primaryKey ?? SINK.DEFAULT_ID_FIELD;
+    }
+    return config.idField ?? SINK.DEFAULT_ID_FIELD;
 }
 
 @Injectable()
@@ -79,8 +91,8 @@ export class SinkExecutor {
 
         // Common config - use constants for default values
         const indexName = cfg.indexName ?? SINK.DEFAULT_INDEX_NAME;
-        const idField = cfg.idField ?? SINK.DEFAULT_ID_FIELD;
-        const bulkSize = Number((cfg as Record<string, unknown>).batchSize ?? cfg.bulkSize ?? BATCH.BULK_SIZE) || BATCH.BULK_SIZE;
+        const idField = resolveSinkIdentityField(adapterCode, cfg);
+        const bulkSize = Number(cfg.batchSize ?? BATCH.BULK_SIZE) || BATCH.BULK_SIZE;
 
         // Apply field selection
         const fields = cfg.fields;
@@ -138,13 +150,21 @@ export class SinkExecutor {
             }
             if (deleteRecords.length > 0) {
                 if (entry.deleteHandler) {
-                    const ids = deleteRecords.map(r => String(getPath(r, idField) ?? ''));
+                    const deleteBatch = await this.prepareDeleteBatch(
+                        step,
+                        deleteRecords,
+                        idField,
+                        onRecordError,
+                    );
+                    fail += deleteBatch.invalid;
                     const handlerCtx: SinkHandlerContext = {
-                        ctx, step, input: deleteRecords, cfg, indexName: resolvedIndexName, idField, bulkSize, prepareDoc, onRecordError, operation: 'DELETE',
+                        ctx, step, input: deleteBatch.records, cfg, indexName: resolvedIndexName, idField, bulkSize, prepareDoc, onRecordError, operation: 'DELETE',
                     };
-                    const result = await entry.deleteHandler(handlerCtx, this.services, ids);
-                    ok += result.ok;
-                    fail += result.fail;
+                    if (deleteBatch.records.length > 0) {
+                        const result = await entry.deleteHandler(handlerCtx, this.services, deleteBatch.ids);
+                        ok += result.ok;
+                        fail += result.fail;
+                    }
                 } else {
                     this.logger.warn(`Sink "${adapterCode}" does not support DELETE`, { stepKey: step.key, count: deleteRecords.length });
                     fail += deleteRecords.length;
@@ -162,10 +182,24 @@ export class SinkExecutor {
                     }
                     if (deleteRecords.length > 0) {
                         if (typeof customSink.delete === 'function') {
-                            const ids = deleteRecords.map(r => String(getPath(r, idField) ?? ''));
-                            const result = await this.executeCustomSinkDelete(ctx, step, ids, customSink, pipelineContext);
-                            ok += result.ok;
-                            fail += result.fail;
+                            const deleteBatch = await this.prepareDeleteBatch(
+                                step,
+                                deleteRecords,
+                                idField,
+                                onRecordError,
+                            );
+                            fail += deleteBatch.invalid;
+                            if (deleteBatch.ids.length > 0) {
+                                const result = await this.executeCustomSinkDelete(
+                                    ctx,
+                                    step,
+                                    deleteBatch.ids,
+                                    customSink,
+                                    pipelineContext,
+                                );
+                                ok += result.ok;
+                                fail += result.fail;
+                            }
                         } else {
                             this.logger.warn(`Custom sink "${adapterCode}" does not support DELETE`, { stepKey: step.key, count: deleteRecords.length });
                             fail += deleteRecords.length;
@@ -189,6 +223,37 @@ export class SinkExecutor {
     }
 
     // ─── Utility methods ───────────────────────────────────────────────
+
+    private async prepareDeleteBatch(
+        step: PipelineStepDefinition,
+        records: RecordObject[],
+        idField: string,
+        onRecordError?: OnRecordErrorCallback,
+    ): Promise<{ records: RecordObject[]; ids: string[]; invalid: number }> {
+        const validRecords: RecordObject[] = [];
+        const ids: string[] = [];
+        let invalid = 0;
+
+        for (const record of records) {
+            const value = getPath(record, idField);
+            const id = value == null ? '' : String(value).trim();
+            if (id.length === 0) {
+                invalid++;
+                if (onRecordError) {
+                    await onRecordError(
+                        step.key,
+                        `DELETE record is missing identity field "${idField}"`,
+                        record,
+                    );
+                }
+                continue;
+            }
+            validRecords.push(record);
+            ids.push(id);
+        }
+
+        return { records: validRecords, ids, invalid };
+    }
 
     private logOperationResult(adapterCode: string, operation: string, ok: number, fail: number, startTime: number, stepKey: string): void {
         const durationMs = Date.now() - startTime;

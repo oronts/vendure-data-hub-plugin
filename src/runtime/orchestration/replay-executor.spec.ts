@@ -41,6 +41,11 @@ describe('replayFromStepLinear', () => {
             definition.steps[0],
             SEED,
             undefined,
+            undefined,
+            expect.objectContaining({
+                channelStrategy: 'INHERIT',
+                validationMode: 'STRICT',
+            }),
         );
         expect(result).toEqual({ processed: 1, succeeded: 1, failed: 0, skipped: 0 });
     });
@@ -101,12 +106,21 @@ describe('replayFromStepGraph', () => {
             definition.steps[0],
             SEED,
             {},
+            expect.objectContaining({
+                channelStrategy: 'INHERIT',
+                validationMode: 'STRICT',
+            }),
         );
         expect(load).toHaveBeenCalledWith(
             {},
             definition.steps[1],
             transformed,
             undefined,
+            undefined,
+            expect.objectContaining({
+                channelStrategy: 'INHERIT',
+                validationMode: 'STRICT',
+            }),
         );
         expect(result).toEqual({ processed: 1, succeeded: 1, failed: 0, skipped: 0 });
     });
