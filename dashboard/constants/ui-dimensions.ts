@@ -95,7 +95,7 @@ export const SKELETON_WIDTHS = [80, 120, 100, 140] as const;
 export const PANEL_WIDTHS = {
     PROPERTIES_DEFAULT: '520px',
     PROPERTIES_MIN: '380px',
-    NODE_PALETTE: 'w-[260px]',
+    NODE_PALETTE: 'w-full lg:w-[260px] lg:shrink-0',
     MAX_VW: '90vw',
 } as const;
 

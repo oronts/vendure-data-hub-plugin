@@ -67,6 +67,7 @@ export {
     PipelineStatusBadge,
 } from './PipelineStatusBadge';
 export { PipelineSelector } from './PipelineSelector';
+export { PipelineCapabilityBadges } from './PipelineCapabilityBadges';
 export { SchemaReferenceSelector } from './SchemaReferenceSelector';
 export type {
     PipelineSelectorOption,

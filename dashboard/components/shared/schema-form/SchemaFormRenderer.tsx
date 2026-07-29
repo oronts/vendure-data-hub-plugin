@@ -3,6 +3,7 @@ import { useCallback, useMemo } from 'react';
 import { Label } from '@vendure/dashboard';
 import type { AdapterSchemaField, SchemaFormRendererProps } from '../../../types';
 import { normalizeFieldType } from './utils';
+import { getNestedValue, setNestedValue } from '../../../../shared/utils/object-path';
 import {
     StringField,
     NumberField,
@@ -23,10 +24,6 @@ export interface FieldRendererProps {
     compact: boolean;
     disabled: boolean;
     error?: string;
-    /** Secret codes available for reference fields. */
-    secretCodes: string[];
-    /** Connection codes available for reference fields. */
-    connectionCodes: string[];
 }
 
 /** A render function that returns a React element for a given field type. */
@@ -73,14 +70,14 @@ const renderSelectField: FieldRendererFn = ({ field, value, onChange, compact, d
         <SelectField field={field} value={value as string} onChange={onChange as (v: string) => void} compact={compact} disabled={disabled} />,
     );
 
-const renderSecretField: FieldRendererFn = ({ field, value, onChange, compact, disabled, error, secretCodes }) =>
+const renderSecretField: FieldRendererFn = ({ field, value, onChange, compact, disabled, error }) =>
     wrapField(field, compact, error,
-        <ReferenceField field={field} value={value as string} onChange={onChange as (v: string) => void} options={secretCodes} placeholder="Select secret..." compact={compact} disabled={disabled} />,
+        <ReferenceField resource="secret" value={value as string} onChange={onChange as (v: string) => void} compact={compact} disabled={disabled} />,
     );
 
-const renderConnectionField: FieldRendererFn = ({ field, value, onChange, compact, disabled, error, connectionCodes }) =>
+const renderConnectionField: FieldRendererFn = ({ field, value, onChange, compact, disabled, error }) =>
     wrapField(field, compact, error,
-        <ReferenceField field={field} value={value as string} onChange={onChange as (v: string) => void} options={connectionCodes} placeholder="Select connection..." compact={compact} disabled={disabled} />,
+        <ReferenceField resource="connection" value={value as string} onChange={onChange as (v: string) => void} compact={compact} disabled={disabled} />,
     );
 
 const renderJsonField: FieldRendererFn = ({ field, value, onChange, compact, disabled, error }) =>
@@ -124,6 +121,9 @@ export const FIELD_TYPE_RENDERERS: Record<string, FieldRendererFn> = {
     password: renderStringField,
     email: renderStringField,
     url: renderStringField,
+    date: renderStringField,
+    datetime: renderStringField,
+    cron: renderStringField,
     number: renderNumberField,
     int: renderNumberField,
     float: renderNumberField,
@@ -144,11 +144,14 @@ export const FIELD_TYPE_RENDERERS: Record<string, FieldRendererFn> = {
 
 function evaluateDependency(
     dependsOn: AdapterSchemaField['dependsOn'] | undefined,
-    values: Record<string, unknown>
+    values: Record<string, unknown>,
+    fields: AdapterSchemaField[],
 ): boolean {
     if (!dependsOn) return true;
 
-    const fieldValue = values[dependsOn.field];
+    const configuredValue = getNestedValue(values, dependsOn.field);
+    const dependencyField = fields.find(field => field.key === dependsOn.field);
+    const fieldValue = configuredValue === undefined ? dependencyField?.default : configuredValue;
     const targetValue = dependsOn.value;
     const operator = dependsOn.operator ?? 'eq';
 
@@ -158,7 +161,9 @@ function evaluateDependency(
         case 'ne':
             return fieldValue !== targetValue;
         case 'in':
-            return Array.isArray(targetValue) && targetValue.includes(fieldValue);
+            return Array.isArray(targetValue) && targetValue.some(value => value === fieldValue);
+        case 'notIn':
+            return Array.isArray(targetValue) && !targetValue.some(value => value === fieldValue);
         case 'exists':
             return fieldValue !== undefined && fieldValue !== null && fieldValue !== '';
         default:
@@ -173,8 +178,6 @@ export function SchemaFormRenderer({
     errors = {},
     readOnly = false,
     hideOptional = false,
-    secretCodes = [],
-    connectionCodes = [],
     compact = false,
 }: SchemaFormRendererProps) {
     const visibleFields = useMemo(() => {
@@ -182,10 +185,15 @@ export function SchemaFormRenderer({
         return schema.fields.filter((field) => {
             if (field.hidden) return false;
             if (hideOptional && !field.required && !field.advanced) return false;
-            if (!evaluateDependency(field.dependsOn, values)) return false;
+            if (!evaluateDependency(field.dependsOn, values, schema.fields)) return false;
             return true;
         });
     }, [schema?.fields, values, hideOptional]);
+
+    const groupMetadata = useMemo(
+        () => new Map((schema.groups ?? []).map(group => [group.key, group])),
+        [schema.groups],
+    );
 
     const groupedFields = useMemo(() => {
         const groups: Record<string, AdapterSchemaField[]> = { _default: [] };
@@ -198,11 +206,11 @@ export function SchemaFormRenderer({
     }, [visibleFields]);
 
     const handleFieldChange = useCallback((key: string, value: unknown) => {
-        onChange({ ...values, [key]: value });
+        onChange(setNestedValue(values, key, value));
     }, [onChange, values]);
 
     const renderField = (field: AdapterSchemaField) => {
-        const value = values[field.key];
+        const value = getNestedValue(values, field.key);
         const error = errors[field.key];
         const fieldType = normalizeFieldType(field.type);
 
@@ -213,8 +221,6 @@ export function SchemaFormRenderer({
             compact,
             disabled: readOnly,
             error,
-            secretCodes,
-            connectionCodes,
         };
 
         const renderer = FIELD_TYPE_RENDERERS[fieldType];
@@ -234,9 +240,16 @@ export function SchemaFormRenderer({
             {Object.entries(groupedFields).map(([groupName, fields]) => (
                 <div key={groupName} className={compact ? 'space-y-2' : 'space-y-4'}>
                     {groupName !== '_default' && (
-                        <h4 className="text-sm font-medium text-muted-foreground border-b pb-2 capitalize">
-                            {groupName.replace(/-/g, ' ')}
-                        </h4>
+                        <div className="border-b pb-2">
+                            <h4 className="text-sm font-medium text-muted-foreground">
+                                {groupMetadata.get(groupName)?.label ?? groupName.replace(/-/g, ' ')}
+                            </h4>
+                            {!compact && groupMetadata.get(groupName)?.description && (
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                    {groupMetadata.get(groupName)?.description}
+                                </p>
+                            )}
+                        </div>
                     )}
                     <div className={groupName !== '_default' ? 'pl-2 border-l-2 space-y-3' : ''}>
                         {fields.map(renderField)}

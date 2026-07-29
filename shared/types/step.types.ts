@@ -158,8 +158,6 @@ export interface PipelineStepDefinition {
     parallel?: boolean;
     /** Whether to run asynchronously */
     async?: boolean;
-    /** Number of concurrent operations */
-    concurrency?: number;
     /** Throughput/rate limiting configuration */
     throughput?: Throughput;
     /** Per-step execution context overrides */

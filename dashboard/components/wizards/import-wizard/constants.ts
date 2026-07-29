@@ -10,7 +10,7 @@ import {
     LayoutTemplate,
 } from 'lucide-react';
 import type { WizardStep, ImportStrategies } from '../../../types/wizard';
-import { CLEANUP_STRATEGY, BATCH_SIZES, UI_DEFAULTS } from '../../../constants';
+import { BATCH_SIZES } from '../../../constants';
 
 export const IMPORT_STEP_ID = {
     TEMPLATE: 'template',
@@ -29,76 +29,32 @@ export type {
 } from '../shared';
 
 export const WIZARD_STEPS: WizardStep[] = [
-    { id: 'template', label: 'Choose Template', icon: LayoutTemplate },
-    { id: 'source', label: 'Data Source', icon: Database },
-    { id: 'preview', label: 'Preview Data', icon: Eye },
-    { id: 'target', label: 'Target Entity', icon: Table },
-    { id: 'mapping', label: 'Field Mapping', icon: Columns },
-    { id: 'transform', label: 'Transformations', icon: Zap },
-    { id: 'strategy', label: 'Import Strategy', icon: Settings },
-    { id: 'trigger', label: 'Trigger & Schedule', icon: Clock },
-    { id: 'review', label: 'Review & Create', icon: Check },
+    { id: 'template', label: 'Template', icon: LayoutTemplate },
+    { id: 'source', label: 'Source', icon: Database },
+    { id: 'preview', label: 'Preview', icon: Eye },
+    { id: 'target', label: 'Target', icon: Table },
+    { id: 'mapping', label: 'Mapping', icon: Columns },
+    { id: 'transform', label: 'Transform', icon: Zap },
+    { id: 'strategy', label: 'Strategy', icon: Settings },
+    { id: 'trigger', label: 'Trigger', icon: Clock },
+    { id: 'review', label: 'Review', icon: Check },
 ];
 
 /** Steps to show when using a template (skips template selection) */
 export const WIZARD_STEPS_FROM_TEMPLATE: WizardStep[] = WIZARD_STEPS.slice(1);
 
-export const STEP_CONTENT = {
-    template: {
-        title: 'Choose a Template',
-        description: 'Start with a pre-built template or create your own custom import',
-    },
-    source: {
-        title: 'Select Data Source',
-        description: 'Choose where your data will come from',
-    },
-    preview: {
-        title: 'Data Preview',
-        emptyTitle: 'No data to preview',
-        emptyDescription: 'Please upload a file first.',
-    },
-    target: {
-        title: 'Select Target Entity',
-        description: 'Choose which Vendure entity to import data into',
-    },
-    mapping: {
-        title: 'Field Mapping',
-        description: 'Map source fields to target entity fields',
-    },
-    transform: {
-        title: 'Data Transformations',
-        description: 'Add transformations to process data before import (optional)',
-        emptyTitle: 'No transformations added',
-        emptyDescription: 'Click a transformation type above to add it to the pipeline',
-    },
-    strategy: {
-        title: 'Import Strategy',
-        description: 'Configure how to handle existing and new records',
-    },
-    trigger: {
-        title: 'Trigger & Schedule',
-        description: 'Configure when and how the import should run',
-    },
-    review: {
-        title: 'Review & Create',
-        description: 'Review your import configuration before creating',
-        cardTitle: 'Import Configuration',
-    },
-} as const;
-
 export const IMPORT_PLACEHOLDERS = {
     apiUrl: 'https://api.example.com/data',
-    configName: 'My Product Import',
+    jsonItemsPath: 'data.items',
+    xmlRecordPath: 'catalog.product',
+    xmlAttributePrefix: '@',
+    xlsxSheet: 'Sheet1 or 0',
 } as const;
 
 export const DEFAULT_IMPORT_STRATEGIES: ImportStrategies = {
     existingRecords: 'UPDATE',
     lookupFields: [],
-    newRecords: 'CREATE',
-    publishAfterImport: false,
-    cleanupStrategy: CLEANUP_STRATEGY.NONE,
     batchSize: BATCH_SIZES.IMPORT_DEFAULT,
     parallelBatches: 1,
-    errorThreshold: UI_DEFAULTS.DEFAULT_ERROR_THRESHOLD_PERCENT,
     continueOnError: true,
 };

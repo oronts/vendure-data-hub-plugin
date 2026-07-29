@@ -34,6 +34,7 @@ export interface AdapterListItem {
 }
 
 export interface AdapterSelectorProps {
+    id?: string;
     stepType: StepType;
     value?: string;
     onChange: (code: string) => void;
@@ -47,7 +48,6 @@ export interface TriggerFormProps {
     onChange: (trigger: PipelineTrigger) => void;
     onRemove?: () => void;
     readOnly?: boolean;
-    secretCodes?: string[];
     compact?: boolean;
 }
 
@@ -58,8 +58,6 @@ export interface SchemaFormRendererProps {
     errors?: Record<string, string>;
     readOnly?: boolean;
     hideOptional?: boolean;
-    secretCodes?: string[];
-    connectionCodes?: string[];
     compact?: boolean;
 }
 
@@ -165,7 +163,19 @@ export interface PipelineEditorProps {
  */
 export type PipelineEntity = Pick<
     DataHubPipeline,
-    'id' | 'code' | 'name' | 'enabled' | 'status' | 'version' | 'publishedAt' | 'definition'
+    | 'id'
+    | 'code'
+    | 'name'
+    | 'enabled'
+    | 'configurationSource'
+    | 'status'
+    | 'version'
+    | 'currentRevisionId'
+    | 'publishedVersionCount'
+    | 'publishedAt'
+    | 'requiredCapabilities'
+    | 'writeCapabilities'
+    | 'definition'
 >;
 
 export interface PipelineStep {
@@ -212,7 +222,11 @@ export interface RunDetailsPanelProps {
     runId: string;
     initialData: RunRow;
     onCancel: (id: string) => void;
-    onRerun: (pipelineId: string) => void;
+    onRerun: (
+        pipelineId: string,
+        expectedRevisionId?: string | number | null,
+    ) => void;
+    canRerun: boolean;
     isCancelling: boolean;
 }
 
@@ -254,6 +268,7 @@ export interface SelectableCardProps {
     onClick: () => void;
     disabled?: boolean;
     className?: string;
+    'data-testid'?: string;
 }
 
 /**
@@ -374,7 +389,6 @@ export interface TriggersPanelExplicitProps {
     removeTrigger: (index: number) => void;
     onChange?: never;
     readOnly?: boolean;
-    secretCodes?: string[];
     variant?: 'compact' | 'full';
 }
 
@@ -385,7 +399,6 @@ export interface TriggersPanelOnChangeProps {
     updateTrigger?: never;
     removeTrigger?: never;
     readOnly?: boolean;
-    secretCodes?: string[];
     variant?: 'compact' | 'full';
 }
 

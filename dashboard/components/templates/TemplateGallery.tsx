@@ -8,6 +8,7 @@ import * as React from 'react';
 import { memo } from 'react';
 import { CheckCircle, Package, Search } from 'lucide-react';
 import { Badge, Input } from '@vendure/dashboard';
+import { Trans, useLingui } from '@lingui/react/macro';
 import type { TemplateCategory } from '../../types';
 import type { ImportTemplate, CategoryInfo } from '../../hooks/use-import-templates';
 import { resolveIconName } from '../../utils';
@@ -29,12 +30,17 @@ function TemplateCardComponent({
     selected: boolean;
     onSelect: () => void;
 }) {
+    const { t } = useLingui();
     const IconComponent = resolveIconName(template.icon) ?? Package;
 
     return (
         <button
             type="button"
             onClick={onSelect}
+            aria-pressed={selected}
+            aria-label={selected
+                ? t`Selected template ${template.name}`
+                : t`Select template ${template.name}`}
             className={`
                 relative p-4 rounded-lg border text-left transition-all w-full
                 ${selected
@@ -89,12 +95,15 @@ function CategoryTabComponent({
     selected: boolean;
     onSelect: () => void;
 }) {
+    const { t } = useLingui();
     const IconComponent = resolveIconName(category.icon) ?? Package;
 
     return (
         <button
             type="button"
             onClick={onSelect}
+            aria-pressed={selected}
+            aria-label={t`Show ${category.label} templates (${category.count})`}
             className={`
                 flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors whitespace-nowrap
                 ${selected
@@ -120,6 +129,7 @@ function TemplateGalleryComponent({
     selectedTemplate,
     onSelectTemplate,
 }: TemplateGalleryProps) {
+    const { t } = useLingui();
     const [searchQuery, setSearchQuery] = React.useState('');
     const [selectedCategory, setSelectedCategory] = React.useState<TemplateCategory | 'all'>('all');
 
@@ -134,14 +144,15 @@ function TemplateGalleryComponent({
     }, [templates, selectedCategory, searchQuery]);
 
     return (
-        <div className="flex flex-col h-full">
+        <div className="flex h-full min-w-0 max-w-full flex-col">
             {/* Search Bar */}
             <div className="mb-4">
                 <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
                         type="text"
-                        placeholder="Search templates..."
+                        placeholder={t`Search templates...`}
+                        aria-label={t`Search templates`}
                         value={searchQuery}
                         onChange={e => setSearchQuery(e.target.value)}
                         className="pl-9"
@@ -150,10 +161,11 @@ function TemplateGalleryComponent({
             </div>
 
             {/* Category Tabs */}
-            <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
+            <div className="mb-4 flex min-w-0 max-w-full gap-2 overflow-x-auto pb-2">
                 <button
                     type="button"
                     onClick={() => setSelectedCategory('all')}
+                    aria-pressed={selectedCategory === 'all'}
                     className={`
                         flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors whitespace-nowrap
                         ${selectedCategory === 'all'
@@ -162,7 +174,7 @@ function TemplateGalleryComponent({
                         }
                     `}
                 >
-                    All Templates
+                    <Trans>All templates</Trans>
                     <Badge variant="secondary" className="ml-1 text-xs">
                         {templates.length}
                     </Badge>
@@ -182,9 +194,11 @@ function TemplateGalleryComponent({
                 {filteredTemplates.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-12 text-center">
                         <Package className="h-12 w-12 text-muted-foreground/50 mb-4" />
-                        <h3 className="text-lg font-medium">No templates found</h3>
+                        <h3 className="text-lg font-medium">
+                            <Trans>No templates found</Trans>
+                        </h3>
                         <p className="text-sm text-muted-foreground mt-1">
-                            Try adjusting your search or category filter
+                            <Trans>Try adjusting your search or category filter</Trans>
                         </p>
                     </div>
                 ) : (

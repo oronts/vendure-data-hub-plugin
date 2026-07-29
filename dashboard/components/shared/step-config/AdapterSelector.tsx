@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { Trans, useLingui } from '@lingui/react/macro';
 import {
     Select,
     SelectContent,
@@ -16,13 +17,15 @@ import { COMPONENT_HEIGHTS, SELECT_WIDTHS } from '../../../constants';
 import type { AdapterSelectorProps } from '../../../types';
 
 export function AdapterSelector({
+    id,
     stepType,
     value,
     onChange,
-    placeholder = 'Select adapter...',
+    placeholder,
     disabled = false,
     adapters: propAdapters,
 }: AdapterSelectorProps) {
+    const { t } = useLingui();
     const [search, setSearch] = React.useState('');
     const { data: hookAdapters, isLoading } = useAdaptersByType(stepType);
     const adapters = propAdapters || hookAdapters;
@@ -38,15 +41,15 @@ export function AdapterSelector({
         return (
             <div className="flex items-center gap-2 h-10 px-3 border rounded-md bg-muted">
                 <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                <span className="text-sm text-muted-foreground">Loading adapters...</span>
+                <span className="text-sm text-muted-foreground"><Trans>Loading adapters...</Trans></span>
             </div>
         );
     }
 
     return (
         <Select value={value ?? ''} onValueChange={onChange} disabled={disabled}>
-            <SelectTrigger className="w-full">
-                <SelectValue placeholder={placeholder}>
+            <SelectTrigger id={id} className="w-full">
+                <SelectValue placeholder={placeholder ?? t`Select adapter...`}>
                     {selectedAdapter && (
                         <div className="flex items-center gap-2">
                             <span>{selectedAdapter.name}</span>
@@ -64,7 +67,7 @@ export function AdapterSelector({
                     <div className="relative">
                         <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                         <Input
-                            placeholder="Search adapters..."
+                            placeholder={t`Search adapters...`}
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
                             className="pl-8"
@@ -75,7 +78,7 @@ export function AdapterSelector({
                 <ScrollArea className={COMPONENT_HEIGHTS.LIST_PANE_MD}>
                     {Object.keys(groupedAdapters).length === 0 ? (
                         <div className="p-4 text-center text-sm text-muted-foreground">
-                            No adapters found
+                            <Trans>No adapters found</Trans>
                         </div>
                     ) : (
                         Object.entries(groupedAdapters).map(([category, categoryAdapters]) => (

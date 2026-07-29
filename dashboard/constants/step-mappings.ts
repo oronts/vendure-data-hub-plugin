@@ -41,7 +41,7 @@ export interface StepMappings {
     stepTypeToCategory: Record<string, VisualNodeCategory>;
     categoryToStepType: Record<string, StepType>;
     categoryToAdapterType: Record<string, string>;
-    adapterTypeToNodeType: Record<string, string>;
+    adapterTypeToNodeType: Record<string, VisualNodeCategory>;
     adapterTypeToCategory: Record<string, string>;
     categoryColors: Record<VisualNodeCategory, string>;
 }
@@ -80,7 +80,7 @@ function buildStepMappingsInternal(
     const stepTypeToCategory: Record<string, VisualNodeCategory> = {};
     const categoryToStepType: Record<string, StepType> = {};
     const categoryToAdapterType: Record<string, string> = { filter: 'OPERATOR' };
-    const adapterTypeToNodeType: Record<string, string> = {};
+    const adapterTypeToNodeType: Record<string, VisualNodeCategory> = {};
     const categoryColors: Record<string, string> = {};
 
     for (const config of Object.values(stepConfigs)) {
@@ -143,8 +143,6 @@ const _derived = buildStepMappingsInternal(DEFAULT_STEP_CONFIGS, ADAPTER_TYPE_CA
 export const STEP_TYPE_TO_CATEGORY = _derived.stepTypeToCategory;
 export const CATEGORY_TO_STEP_TYPE = _derived.categoryToStepType;
 export const CATEGORY_TO_ADAPTER_TYPE = _derived.categoryToAdapterType;
-export const ADAPTER_TYPE_TO_NODE_TYPE = _derived.adapterTypeToNodeType;
-export const ADAPTER_TYPE_TO_CATEGORY = _derived.adapterTypeToCategory;
 export const CATEGORY_COLORS = _derived.categoryColors;
 
 /** Static fallback mappings used during loading before backend data arrives. */
@@ -156,11 +154,19 @@ export const FALLBACK_STEP_MAPPINGS: StepMappings = _derived;
 
 export function mapStepTypeToCategory(stepType: string): VisualNodeCategory {
     const type = String(stepType).toUpperCase();
-    return STEP_TYPE_TO_CATEGORY[type] ?? 'transform';
+    const category = STEP_TYPE_TO_CATEGORY[type];
+    if (!category) {
+        throw new Error(`Unsupported pipeline step type "${stepType}"`);
+    }
+    return category;
 }
 
 export function mapCategoryToStepType(category: string): StepType {
-    return CATEGORY_TO_STEP_TYPE[category] ?? 'TRANSFORM';
+    const stepType = CATEGORY_TO_STEP_TYPE[category];
+    if (!stepType) {
+        throw new Error(`Unsupported visual node category "${category}"`);
+    }
+    return stepType;
 }
 
 export function getStepTypeIcon(stepType: string): LucideIcon | undefined {

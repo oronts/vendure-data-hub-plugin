@@ -1,59 +1,136 @@
-import * as React from 'react';
-import { memo } from 'react';
-import { Badge } from '@vendure/dashboard';
-import { Check } from 'lucide-react';
-import { VENDURE_ENTITY_LIST, VENDURE_ENTITY_SCHEMAS } from '../../../../shared';
-import { useEntityLoaders } from '../../../hooks/api/use-entity-loaders';
-import { useEntityFieldSchemas } from '../../../hooks/api/use-entity-field-schemas';
-import type { EntitySelectorProps } from '../../../types';
+import * as React from "react";
+import { memo } from "react";
+import { useLingui } from "@lingui/react/macro";
+import { Badge } from "@vendure/dashboard";
+import { Check } from "lucide-react";
+import { useEntityLoaders } from "../../../hooks/api/use-entity-loaders";
+import { useEntityFieldSchemas } from "../../../hooks/api/use-entity-field-schemas";
+import type { EntitySelectorProps } from "../../../types";
+import { EmptyState, ErrorState, LoadingState } from "../feedback";
+import { getErrorMessage, screamingSnakeToKebab } from "../../../../shared";
 
-function EntitySelectorComponent({ value, onChange, className = '' }: EntitySelectorProps) {
-    const { entities, isLoading } = useEntityLoaders();
-    const { getFields: getBackendFields } = useEntityFieldSchemas();
+export interface EntitySelectorItem {
+  code: string;
+  name: string;
+  description?: string | null;
+  fieldCount: number;
+}
 
-    // Use dynamic entities from backend, fall back to hardcoded while loading
-    const displayEntities = entities.length > 0
-        ? entities.map(e => ({ code: e.code, name: e.name, description: e.description ?? '' }))
-        : VENDURE_ENTITY_LIST;
+interface EntitySelectorViewProps extends EntitySelectorProps {
+  entities: readonly EntitySelectorItem[];
+  isLoading: boolean;
+  isError: boolean;
+  error?: unknown;
+  onRetry: () => void;
+}
 
+function EntitySelectorComponent({
+  value,
+  onChange,
+  className = "",
+}: EntitySelectorProps) {
+  const entitiesQuery = useEntityLoaders();
+  const fieldsQuery = useEntityFieldSchemas();
+  const entities = entitiesQuery.entities.map((entity) => ({
+    ...entity,
+    fieldCount: fieldsQuery.getFields(entity.code).length,
+  }));
+
+  return (
+    <EntitySelectorView
+      value={value}
+      onChange={onChange}
+      className={className}
+      entities={entities}
+      isLoading={entitiesQuery.isLoading || fieldsQuery.isLoading}
+      isError={entitiesQuery.isError || fieldsQuery.isError}
+      error={entitiesQuery.error ?? fieldsQuery.error}
+      onRetry={() => {
+        void entitiesQuery.refetch();
+        void fieldsQuery.refetch();
+      }}
+    />
+  );
+}
+
+export function EntitySelectorView({
+  value,
+  onChange,
+  className = "",
+  entities,
+  isLoading,
+  isError,
+  error,
+  onRetry,
+}: EntitySelectorViewProps) {
+  const { t } = useLingui();
+
+  if (isLoading) {
     return (
-        <div className={`grid grid-cols-2 md:grid-cols-3 gap-4 ${className}`}>
-            {displayEntities.map(entity => {
-                const isSelected = value === entity.code;
-                // Use backend field data as primary, fall back to static schemas during loading
-                const backendFields = getBackendFields(entity.code);
-                const fieldCount = backendFields.length > 0
-                    ? backendFields.length
-                    : Object.keys(VENDURE_ENTITY_SCHEMAS[entity.code]?.fields ?? {}).length;
-
-                return (
-                    <button
-                        key={entity.code}
-                        type="button"
-                        aria-label={`Select ${entity.name}`}
-                        className={`p-4 border rounded-lg text-left transition-all ${
-                            isSelected
-                                ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
-                                : 'hover:border-primary/50'
-                        }`}
-                        onClick={() => onChange(entity.code)}
-                        data-testid={`datahub-entityselector-entity-${entity.code}`}
-                    >
-                        <div className="flex items-center justify-between mb-2">
-                            <span className="font-medium">{entity.name}</span>
-                            {isSelected && <Check className="w-4 h-4 text-primary" />}
-                        </div>
-                        <p className="text-sm text-muted-foreground mb-2">
-                            {entity.description}
-                        </p>
-                        <Badge variant="secondary" className="text-xs">
-                            {fieldCount} fields
-                        </Badge>
-                    </button>
-                );
-            })}
-        </div>
+      <LoadingState
+        type="card"
+        rows={3}
+        message={t`Loading entity catalog...`}
+      />
     );
+  }
+
+  if (isError) {
+    return (
+      <ErrorState
+        title={t`Entity catalog unavailable`}
+        message={
+          (error ? getErrorMessage(error) : undefined) ||
+          t`Entity metadata could not be loaded.`
+        }
+        onRetry={onRetry}
+      />
+    );
+  }
+
+  if (entities.length === 0) {
+    return (
+      <EmptyState
+        title={t`No supported entities`}
+        description={t`No entity loaders are registered on this server.`}
+      />
+    );
+  }
+
+  return (
+    <div className={`grid grid-cols-2 md:grid-cols-3 gap-4 ${className}`}>
+      {entities.map((entity) => {
+        const isSelected = value === entity.code;
+        return (
+          <button
+            key={entity.code}
+            type="button"
+            aria-label={t`Select ${entity.name}`}
+            className={`p-4 border rounded-lg text-left transition-all ${
+              isSelected
+                ? "border-primary bg-primary/5 ring-2 ring-primary/20"
+                : "hover:border-primary/50"
+            }`}
+            onClick={() => onChange(entity.code)}
+            data-testid={`datahub-entityselector-entity-${screamingSnakeToKebab(entity.code)}`}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className="font-medium">{entity.name}</span>
+              {isSelected && <Check className="w-4 h-4 text-primary" />}
+            </div>
+            <p className="text-sm text-muted-foreground mb-2">
+              {entity.description}
+            </p>
+            <Badge variant="secondary" className="text-xs">
+              {entity.fieldCount === 1
+                ? t`${entity.fieldCount} field`
+                : t`${entity.fieldCount} fields`}
+            </Badge>
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 export const EntitySelector = memo(EntitySelectorComponent);

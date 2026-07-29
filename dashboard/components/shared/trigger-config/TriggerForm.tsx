@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { useCallback, useMemo } from 'react';
+import { Trans, useLingui } from '@lingui/react/macro';
 import {
     Card,
     CardContent,
@@ -25,6 +26,7 @@ import {
     useTriggerIconResolver,
     type TypedOptionValue,
     type ConfigOptionValue,
+    type ConfigOptionsData,
     type ConnectionSchemaField,
 } from '../../../hooks';
 import { screamingSnakeToKebab } from '../../../../shared/utils/string-case';
@@ -34,6 +36,7 @@ import {
     isTriggerSchemaFieldVisible,
     resolveTriggerFieldOptions,
 } from '../../../utils/trigger-schema';
+import { ResourceReferenceSelector } from '../ResourceReferenceSelector';
 
 // ---------------------------------------------------------------------------
 // Nested path helpers
@@ -80,8 +83,6 @@ function setDeep(obj: Record<string, unknown>, path: string, value: unknown): vo
 // Option resolution
 // ---------------------------------------------------------------------------
 
-type ConfigOptionsData = Record<string, ConfigOptionValue[] | unknown>;
-
 /** Resolve optionsRef to the actual option list from configOptions data */
 // ---------------------------------------------------------------------------
 // Schema-driven field renderer
@@ -91,17 +92,18 @@ function SchemaDrivenFields({
     trigger,
     schema,
     configData,
-    secretCodes,
     onChange,
     readOnly,
 }: {
     trigger: PipelineTrigger;
     schema: TypedOptionValue;
     configData: ConfigOptionsData | undefined;
-    secretCodes: string[];
     onChange: (trigger: PipelineTrigger) => void;
     readOnly: boolean;
 }) {
+    const { t } = useLingui();
+    const fieldIdPrefix = React.useId();
+
     if (schema.fields.length === 0) return null;
 
     const keyMap = schema.configKeyMap ?? {};
@@ -135,14 +137,18 @@ function SchemaDrivenFields({
                 const fieldType = field.type.toLowerCase();
                 const currentValue = getFieldValue(field);
                 const options = resolveTriggerFieldOptions(field, configData);
+                const fieldId = `${fieldIdPrefix}-${field.key.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
 
                 // String field with optionsRef='cronPresets' renders a side-by-side presets picker
                 if (fieldType === 'string' && field.optionsRef === 'cronPresets') {
                     return (
                         <div key={field.key} className="space-y-2">
-                            <Label>{field.label}{field.required ? ' *' : ''}</Label>
+                            <Label htmlFor={fieldId}>
+                                {field.label}{field.required ? ' *' : ''}
+                            </Label>
                             <div className="flex gap-2">
                                 <Input
+                                    id={fieldId}
                                     value={String(currentValue ?? '')}
                                     onChange={(e) => handleFieldChange(field, e.target.value)}
                                     placeholder={field.placeholder ?? undefined}
@@ -154,9 +160,12 @@ function SchemaDrivenFields({
                                     onValueChange={(v) => handleFieldChange(field, v)}
                                     disabled={readOnly}
                                 >
-                                    <SelectTrigger className={SELECT_WIDTHS.TRIGGER_TYPE}>
+                                    <SelectTrigger
+                                        className={SELECT_WIDTHS.TRIGGER_TYPE}
+                                        aria-label={t`Presets`}
+                                    >
                                         <Calendar className="h-4 w-4 mr-2" />
-                                        <span>Presets</span>
+                                        <span><Trans>Presets</Trans></span>
                                     </SelectTrigger>
                                     <SelectContent>
                                         {options.map((p) => (
@@ -183,20 +192,24 @@ function SchemaDrivenFields({
                         // Group options by category (e.g. vendureEvents)
                         const grouped: Record<string, ConfigOptionValue[]> = {};
                         for (const opt of options) {
-                            const cat = opt.category || 'Other';
+                            const cat = opt.category || t`Other`;
                             if (!grouped[cat]) grouped[cat] = [];
                             grouped[cat].push(opt);
                         }
                         return (
                             <div key={field.key} className="space-y-2">
-                                <Label>{field.label}{field.required ? ' *' : ''}</Label>
+                                <Label htmlFor={fieldId}>
+                                    {field.label}{field.required ? ' *' : ''}
+                                </Label>
                                 <Select
                                     value={selectValue}
                                     onValueChange={(v) => handleFieldChange(field, v)}
                                     disabled={readOnly}
                                 >
-                                    <SelectTrigger>
-                                        <SelectValue placeholder={field.placeholder ?? `Select ${field.label}`} />
+                                    <SelectTrigger id={fieldId}>
+                                        <SelectValue
+                                            placeholder={field.placeholder ?? t`Select ${field.label}`}
+                                        />
                                     </SelectTrigger>
                                     <SelectContent>
                                         {Object.entries(grouped).map(([category, catOptions]) => (
@@ -222,14 +235,18 @@ function SchemaDrivenFields({
 
                     return (
                         <div key={field.key} className="space-y-2">
-                            <Label>{field.label}{field.required ? ' *' : ''}</Label>
+                            <Label htmlFor={fieldId}>
+                                {field.label}{field.required ? ' *' : ''}
+                            </Label>
                             <Select
                                 value={selectValue}
                                 onValueChange={(v) => handleFieldChange(field, v)}
                                 disabled={readOnly}
                             >
-                                <SelectTrigger>
-                                    <SelectValue placeholder={field.placeholder ?? `Select ${field.label}`} />
+                                <SelectTrigger id={fieldId}>
+                                    <SelectValue
+                                        placeholder={field.placeholder ?? t`Select ${field.label}`}
+                                    />
                                 </SelectTrigger>
                                 <SelectContent>
                                     {options.map((opt) => (
@@ -251,27 +268,22 @@ function SchemaDrivenFields({
                     );
                 }
 
-                // Secret reference fields (select from secretCodes prop)
-                if (fieldType === 'secret') {
+                if (fieldType === 'secret' || fieldType === 'connection') {
                     return (
                         <div key={field.key} className="space-y-2">
-                            <Label>{field.label}{field.required ? ' *' : ''}</Label>
-                            <Select
+                            <Label htmlFor={fieldId}>
+                                {field.label}{field.required ? ' *' : ''}
+                            </Label>
+                            <ResourceReferenceSelector
+                                id={fieldId}
+                                resource={fieldType}
                                 value={String(currentValue ?? '')}
-                                onValueChange={(v) => handleFieldChange(field, v)}
+                                onValueChange={value => handleFieldChange(field, value)}
+                                placeholder={field.placeholder ?? (fieldType === 'secret'
+                                    ? t`Select secret...`
+                                    : t`Select connection...`)}
                                 disabled={readOnly}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue placeholder={field.placeholder ?? 'Select secret...'} />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {secretCodes.map((code) => (
-                                        <SelectItem key={code} value={code}>
-                                            {code}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                            />
                             {field.description && (
                                 <p className="text-xs text-muted-foreground">{field.description}</p>
                             )}
@@ -284,8 +296,11 @@ function SchemaDrivenFields({
                     const numValue = currentValue != null ? Number(currentValue) : (field.defaultValue as number ?? 0);
                     return (
                         <div key={field.key} className="space-y-2">
-                            <Label>{field.label}{field.required ? ' *' : ''}</Label>
+                            <Label htmlFor={fieldId}>
+                                {field.label}{field.required ? ' *' : ''}
+                            </Label>
                             <Input
+                                id={fieldId}
                                 type="number"
                                 value={numValue}
                                 onChange={(e) => handleFieldChange(field, e.target.value)}
@@ -307,11 +322,12 @@ function SchemaDrivenFields({
                     return (
                         <div key={field.key} className="flex items-center gap-2">
                             <Switch
+                                id={fieldId}
                                 checked={boolValue}
                                 onCheckedChange={(checked) => handleFieldChange(field, checked)}
                                 disabled={readOnly}
                             />
-                            <Label>{field.label}</Label>
+                            <Label htmlFor={fieldId}>{field.label}</Label>
                         </div>
                     );
                 }
@@ -319,8 +335,11 @@ function SchemaDrivenFields({
                 // Default: string/text input
                 return (
                     <div key={field.key} className="space-y-2">
-                        <Label>{field.label}{field.required ? ' *' : ''}</Label>
+                        <Label htmlFor={fieldId}>
+                            {field.label}{field.required ? ' *' : ''}
+                        </Label>
                         <Input
+                            id={fieldId}
                             value={String(currentValue ?? '')}
                             onChange={(e) => handleFieldChange(field, e.target.value)}
                             placeholder={field.placeholder ?? undefined}
@@ -345,9 +364,12 @@ export function TriggerForm({
     onChange,
     onRemove,
     readOnly = false,
-    secretCodes = [],
     compact = false,
 }: TriggerFormProps) {
+    const { t } = useLingui();
+    const formId = React.useId();
+    const enabledId = `${formId}-enabled`;
+    const typeId = `${formId}-type`;
     const { data: configData } = useConfigOptions();
     const { configList, triggerSchemas } = useTriggerTypes();
     const resolveTriggerIcon = useTriggerIconResolver();
@@ -379,9 +401,11 @@ export function TriggerForm({
         <>
             {!compact && (
                 <div className="flex items-center justify-between">
-                    <Label htmlFor="trigger-enabled">Enabled</Label>
+                    <Label htmlFor={enabledId}>
+                        <Trans>Enabled</Trans>
+                    </Label>
                     <Switch
-                        id="trigger-enabled"
+                        id={enabledId}
                         checked={trigger.enabled !== false}
                         onCheckedChange={(checked) => handleChange('enabled', checked)}
                         disabled={readOnly}
@@ -390,13 +414,15 @@ export function TriggerForm({
             )}
 
             <div className="space-y-2" data-testid="datahub-triggerform-field-type">
-                <Label>Trigger Type</Label>
+                <Label htmlFor={typeId}>
+                    <Trans>Trigger Type</Trans>
+                </Label>
                 <Select
                     value={trigger.type}
                     onValueChange={handleTriggerTypeChange}
                     disabled={readOnly}
                 >
-                    <SelectTrigger>
+                    <SelectTrigger id={typeId}>
                         <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -419,8 +445,7 @@ export function TriggerForm({
                 <SchemaDrivenFields
                     trigger={trigger}
                     schema={currentSchema}
-                    configData={configData as unknown as ConfigOptionsData}
-                    secretCodes={secretCodes}
+                    configData={configData}
                     onChange={onChange}
                     readOnly={readOnly}
                 />
@@ -438,10 +463,10 @@ export function TriggerForm({
                 <div className="flex items-center justify-between">
                     <CardTitle className="text-sm flex items-center gap-2">
                         <TriggerIcon className="h-4 w-4" />
-                        Trigger Configuration
+                        <Trans>Trigger Configuration</Trans>
                         {trigger.enabled !== false && (
                             <Badge variant="secondary" className="text-xs">
-                                Active
+                                <Trans>Active</Trans>
                             </Badge>
                         )}
                     </CardTitle>
@@ -451,7 +476,7 @@ export function TriggerForm({
                             size="sm"
                             onClick={onRemove}
                             className="text-destructive hover:text-destructive"
-                            aria-label="Remove trigger"
+                            aria-label={t`Remove trigger`}
                             data-testid="datahub-trigger-remove-btn"
                         >
                             <Trash2 className="h-4 w-4" />

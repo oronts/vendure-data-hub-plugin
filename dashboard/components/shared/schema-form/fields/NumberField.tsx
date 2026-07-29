@@ -12,6 +12,7 @@ export interface NumberFieldProps {
 }
 
 export function NumberField({ field, value, onChange, compact, disabled }: NumberFieldProps) {
+    const defaultValue = typeof field.default === 'number' ? field.default : '';
     const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
         const val = e.target.value;
         onChange(val === '' ? undefined : Number(val));
@@ -21,10 +22,11 @@ export function NumberField({ field, value, onChange, compact, disabled }: Numbe
         <Input
             id={field.key}
             type="number"
-            value={value ?? field.default ?? ''}
+            value={value ?? defaultValue}
             onChange={handleChange}
             placeholder={field.placeholder}
             disabled={disabled}
+            required={field.required}
             min={field.validation?.min}
             max={field.validation?.max}
             className={compact ? 'h-8 text-sm' : ''}

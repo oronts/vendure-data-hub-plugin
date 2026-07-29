@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useId, useRef } from 'react';
+import { Trans } from '@lingui/react/macro';
 import {
     Label,
     Select,
@@ -22,6 +23,7 @@ export function GateConfigComponent({
     const { schemas: approvalTypeSchemas } = useApprovalTypeSchemas();
     const approvalType = (config.approvalType as string) || 'MANUAL';
     const currentSchema = approvalTypeSchemas.find(s => s.value === approvalType);
+    const approvalTypeId = useId();
 
     // Use refs to avoid stale closures in the initialization effect
     const configRef = useRef(config);
@@ -43,12 +45,18 @@ export function GateConfigComponent({
     return (
         <div className="space-y-4">
             <div className="space-y-2">
-                <Label className="text-sm font-medium">Approval Type</Label>
+                <Label htmlFor={approvalTypeId} className="text-sm font-medium">
+                    <Trans>Approval type</Trans>
+                </Label>
                 <Select
                     value={approvalType}
                     onValueChange={(v) => updateField('approvalType', v)}
                 >
-                    <SelectTrigger className="w-full" data-testid="datahub-gate-approval-type-select">
+                    <SelectTrigger
+                        id={approvalTypeId}
+                        className="w-full"
+                        data-testid="datahub-gate-approval-type-select"
+                    >
                         <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -87,11 +95,13 @@ interface GateSchemaFieldProps {
 }
 
 function GateSchemaField({ field, value, onChange }: GateSchemaFieldProps) {
+    const inputId = useId();
     if (field.type === 'number') {
         return (
             <div className="space-y-2">
-                <Label className="text-sm font-medium">{field.label}</Label>
+                <Label htmlFor={inputId} className="text-sm font-medium">{field.label}</Label>
                 <Input
+                    id={inputId}
                     type="number"
                     value={value != null ? String(value) : ''}
                     onChange={(e) => {
@@ -99,6 +109,10 @@ function GateSchemaField({ field, value, onChange }: GateSchemaFieldProps) {
                         onChange(val);
                     }}
                     placeholder={field.placeholder ?? undefined}
+                    required={field.required ?? false}
+                    min={field.min ?? undefined}
+                    max={field.max ?? undefined}
+                    step={1}
                     data-testid={`datahub-gate-${field.key}-input`}
                 />
                 {field.description && (
@@ -111,8 +125,9 @@ function GateSchemaField({ field, value, onChange }: GateSchemaFieldProps) {
     // Default: string/text input
     return (
         <div className="space-y-2">
-            <Label className="text-sm font-medium">{field.label}</Label>
+            <Label htmlFor={inputId} className="text-sm font-medium">{field.label}</Label>
             <Input
+                id={inputId}
                 value={value != null ? String(value) : ''}
                 onChange={(e) => onChange(e.target.value)}
                 placeholder={field.placeholder ?? undefined}

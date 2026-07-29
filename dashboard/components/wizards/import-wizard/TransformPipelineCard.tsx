@@ -1,8 +1,7 @@
 import { memo, useCallback, useMemo } from 'react';
-import { useLingui } from '@lingui/react';
+import { Trans, useLingui } from '@lingui/react/macro';
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@vendure/dashboard';
 import { ArrowRight, Check, ChevronRight, GripVertical, Settings, Trash2 } from 'lucide-react';
-import { IMPORT_WIZARD_TRANSLATION_IDS } from '../../../constants';
 import type { WizardTransformationStep } from '../../../types/wizard';
 import { resolveIconName } from '../../../utils/icon-resolver';
 import { summarizeConfig } from './transform-config-summary';
@@ -25,7 +24,7 @@ export function TransformPipelineCard({
     onRemove,
     onSettings,
 }: TransformPipelineCardProps) {
-    const { i18n } = useLingui();
+    const { t } = useLingui();
 
     return (
         <Card>
@@ -35,14 +34,11 @@ export function TransformPipelineCard({
                         <ChevronRight className="w-3.5 h-3.5 text-primary" />
                     </div>
                     <div>
-                        <CardTitle className="text-sm">{i18n._(IMPORT_WIZARD_TRANSLATION_IDS.TRANSFORM_PIPELINE_TITLE)}</CardTitle>
+                        <CardTitle className="text-sm"><Trans>Transformation pipeline</Trans></CardTitle>
                         <CardDescription className="text-xs">
-                            {i18n._(
-                                transformations.length === 1
-                                    ? IMPORT_WIZARD_TRANSLATION_IDS.TRANSFORM_PIPELINE_STEP_ONE
-                                    : IMPORT_WIZARD_TRANSLATION_IDS.TRANSFORM_PIPELINE_STEP_MULTIPLE,
-                                { count: transformations.length },
-                            )}
+                            {transformations.length === 1
+                                ? t`${transformations.length} step applied in order from top to bottom`
+                                : t`${transformations.length} steps applied in order from top to bottom`}
                         </CardDescription>
                     </div>
                 </div>
@@ -81,7 +77,7 @@ const TransformPipelineRow = memo(function TransformPipelineRow({
     onRemove,
     onSettings,
 }: TransformPipelineRowProps) {
-    const { i18n } = useLingui();
+    const { t } = useLingui();
     const handleRemove = useCallback(() => onRemove(transform.id), [transform.id, onRemove]);
     const handleSettings = useCallback(() => onSettings(transform), [transform, onSettings]);
     const hasConfig = Object.keys(transform.config).length > 0;
@@ -92,7 +88,16 @@ const TransformPipelineRow = memo(function TransformPipelineRow({
     const colors = getCategoryColor(typeMeta?.category ?? 'DATA');
     const IconComponent = resolveIconName(typeMeta?.icon ?? undefined);
     const summary = hasConfig
-        ? summarizeConfig(transform.type, transform.config, (id, values) => i18n._(id, values))
+        ? summarizeConfig(transform.type, transform.config, {
+            empty: t`(empty)`,
+            remove: fields => t`Remove: ${fields}`,
+            keep: fields => t`Keep: ${fields}`,
+            rule: (action, count) => count === 1
+                ? t`${action} (${count} rule)`
+                : t`${action} (${count} rules)`,
+            lookup: field => t`Lookup: ${field}`,
+            fields: count => t`${count} fields configured`,
+        })
         : '';
 
     return (
@@ -125,19 +130,17 @@ const TransformPipelineRow = memo(function TransformPipelineRow({
                         className="h-7 text-xs gap-1"
                         onClick={handleSettings}
                         data-testid={`datahub-transform-settings-${transform.id}-button`}
-                        aria-label={i18n._(IMPORT_WIZARD_TRANSLATION_IDS.TRANSFORM_CONFIGURE_ARIA, { operator: typeMeta?.label ?? transform.type })}
+                        aria-label={t`Configure ${typeMeta?.label ?? transform.type} transformation`}
                     >
                         <Settings className="w-3.5 h-3.5" />
-                        {i18n._(hasConfig
-                            ? IMPORT_WIZARD_TRANSLATION_IDS.TRANSFORM_EDIT
-                            : IMPORT_WIZARD_TRANSLATION_IDS.TRANSFORM_CONFIGURE)}
+                        {hasConfig ? t`Edit` : t`Configure`}
                     </Button>
                     <Button
                         variant="ghost"
                         size="icon"
                         className="h-7 w-7 opacity-50 hover:opacity-100"
                         onClick={handleRemove}
-                        aria-label={i18n._(IMPORT_WIZARD_TRANSLATION_IDS.TRANSFORM_REMOVE_ARIA, { operator: typeMeta?.label ?? transform.type })}
+                        aria-label={t`Remove ${typeMeta?.label ?? transform.type} transformation`}
                         data-testid={`datahub-transform-remove-${transform.id}-button`}
                     >
                         <Trash2 className="w-3.5 h-3.5 text-destructive" />

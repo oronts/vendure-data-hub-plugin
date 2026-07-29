@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { Trans, useLingui } from '@lingui/react/macro';
 import { Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Textarea } from '@vendure/dashboard';
 import { FIELD_TYPE } from '../../../constants';
 import { CodeEditorWithExpand } from '../CodeEditor';
@@ -21,15 +22,21 @@ interface OperatorFieldInputProps {
 }
 
 /** Renders the field label with an improved required indicator */
-function FieldLabel({ field }: { field: OperatorSchemaField }) {
+function FieldLabel({
+    field,
+    htmlFor,
+}: {
+    field: OperatorSchemaField;
+    htmlFor: string;
+}) {
     return (
         <div className="flex items-center gap-1.5">
-            <Label className="text-xs font-medium text-foreground/80">
+            <Label htmlFor={htmlFor} className="text-xs font-medium text-foreground/80">
                 {field.label || field.key}
             </Label>
             {field.required && (
                 <span className="inline-flex items-center px-1 py-0 rounded text-[9px] font-medium bg-destructive/10 text-destructive leading-tight">
-                    required
+                    <Trans>required</Trans>
                 </span>
             )}
         </div>
@@ -49,6 +56,8 @@ function FieldDescription({ text }: { text?: string }) {
  * Handles: select, boolean, number, text, json/object/array field types.
  */
 export function OperatorFieldInput({ field, value, onChange }: OperatorFieldInputProps) {
+    const { t } = useLingui();
+    const inputId = React.useId();
     const isObject = field.type === FIELD_TYPE.JSON || field.type === FIELD_TYPE.OBJECT || field.type === FIELD_TYPE.ARRAY;
 
     const handleChange = (newValue: unknown) => {
@@ -59,12 +68,12 @@ export function OperatorFieldInput({ field, value, onChange }: OperatorFieldInpu
     if (field.type === FIELD_TYPE.SELECT && field.options) {
         return (
             <div className="space-y-1.5">
-                <FieldLabel field={field} />
+                <FieldLabel field={field} htmlFor={inputId} />
                 <Select
                     value={String(value ?? '')}
                     onValueChange={(v) => handleChange(v)}
                 >
-                    <SelectTrigger className="h-9 text-sm">
+                    <SelectTrigger id={inputId} className="h-9 text-sm">
                         <SelectValue placeholder={field.placeholder || `Select ${field.label || field.key}`} />
                     </SelectTrigger>
                     <SelectContent>
@@ -84,9 +93,9 @@ export function OperatorFieldInput({ field, value, onChange }: OperatorFieldInpu
     if (field.type === FIELD_TYPE.CODE || field.type === FIELD_TYPE.EXPRESSION) {
         return (
             <div className="space-y-1.5">
-                <FieldLabel field={field} />
+                <FieldLabel field={field} htmlFor={inputId} />
                 <CodeEditorWithExpand
-                    id={`operator-${field.key}`}
+                    id={inputId}
                     label={field.label || field.key}
                     value={String(value ?? '')}
                     onChange={(v) => handleChange(v)}
@@ -102,8 +111,9 @@ export function OperatorFieldInput({ field, value, onChange }: OperatorFieldInpu
     if (isObject) {
         return (
             <div className="space-y-1.5">
-                <FieldLabel field={field} />
+                <FieldLabel field={field} htmlFor={inputId} />
                 <Textarea
+                    id={inputId}
                     className="font-mono text-xs"
                     rows={3}
                     placeholder={field.placeholder || '{}'}
@@ -125,8 +135,9 @@ export function OperatorFieldInput({ field, value, onChange }: OperatorFieldInpu
     if (field.type === FIELD_TYPE.NUMBER) {
         return (
             <div className="space-y-1.5">
-                <FieldLabel field={field} />
+                <FieldLabel field={field} htmlFor={inputId} />
                 <Input
+                    id={inputId}
                     type="number"
                     className="h-9 text-sm"
                     placeholder={field.placeholder}
@@ -145,17 +156,17 @@ export function OperatorFieldInput({ field, value, onChange }: OperatorFieldInpu
     if (field.type === FIELD_TYPE.BOOLEAN) {
         return (
             <div className="space-y-1.5">
-                <FieldLabel field={field} />
+                <FieldLabel field={field} htmlFor={inputId} />
                 <Select
                     value={value === true ? 'true' : value === false ? 'false' : ''}
                     onValueChange={(v) => handleChange(v === 'true')}
                 >
-                    <SelectTrigger className="h-9 text-sm">
-                        <SelectValue placeholder="Select..." />
+                    <SelectTrigger id={inputId} className="h-9 text-sm">
+                        <SelectValue placeholder={t`Select...`} />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="true">Yes</SelectItem>
-                        <SelectItem value="false">No</SelectItem>
+                        <SelectItem value="true"><Trans>Yes</Trans></SelectItem>
+                        <SelectItem value="false"><Trans>No</Trans></SelectItem>
                     </SelectContent>
                 </Select>
                 <FieldDescription text={field.description} />
@@ -166,8 +177,9 @@ export function OperatorFieldInput({ field, value, onChange }: OperatorFieldInpu
     // Default: text field type
     return (
         <div className="space-y-1.5">
-            <FieldLabel field={field} />
+            <FieldLabel field={field} htmlFor={inputId} />
             <Input
+                id={inputId}
                 className="h-9 text-sm"
                 placeholder={field.placeholder}
                 value={String(value ?? '')}
@@ -190,12 +202,18 @@ interface GenericArgInputProps {
  * Automatically handles object vs string values.
  */
 export function GenericArgInput({ argKey, value, onChange, onRemove }: GenericArgInputProps) {
+    const { t } = useLingui();
+    const inputId = React.useId();
+
     return (
         <div className="flex items-start gap-2 p-2 rounded-md bg-muted/30 border border-border/50">
             <div className="flex-1">
-                <Label className="text-xs font-medium text-foreground/80">{argKey}</Label>
+                <Label htmlFor={inputId} className="text-xs font-medium text-foreground/80">
+                    {argKey}
+                </Label>
                 {typeof value === 'object' ? (
                     <Textarea
+                        id={inputId}
                         className="font-mono text-xs mt-1"
                         rows={3}
                         value={JSON.stringify(value, null, 2)}
@@ -209,6 +227,7 @@ export function GenericArgInput({ argKey, value, onChange, onRemove }: GenericAr
                     />
                 ) : (
                     <Input
+                        id={inputId}
                         className="mt-1 h-9 text-sm"
                         value={String(value ?? '')}
                         onChange={(e) => onChange(argKey, e.target.value)}
@@ -219,7 +238,7 @@ export function GenericArgInput({ argKey, value, onChange, onRemove }: GenericAr
                 type="button"
                 className="h-6 w-6 p-0 mt-5 text-destructive/70 hover:text-destructive hover:bg-destructive/10 rounded-md inline-flex items-center justify-center transition-colors"
                 onClick={() => onRemove(argKey)}
-                aria-label={`Remove argument ${argKey}`}
+                aria-label={t`Remove argument ${argKey}`}
             >
                 {'\u00D7'}
             </button>

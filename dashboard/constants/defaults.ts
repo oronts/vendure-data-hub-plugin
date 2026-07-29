@@ -14,5 +14,6 @@ export {
     BATCH,
     RETENTION,
     UI_TIMEOUTS,
+    PIPELINE_RETRY,
+    PARALLEL_EXECUTION,
 } from '../../shared/constants';
-

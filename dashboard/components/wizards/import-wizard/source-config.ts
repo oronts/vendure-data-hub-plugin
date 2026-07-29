@@ -4,6 +4,21 @@ type ImportSource = ImportConfiguration['source'];
 type FileSourceConfig = NonNullable<ImportSource['fileConfig']>;
 type ApiSourceConfig = NonNullable<ImportSource['apiConfig']>;
 
+export function createImportTemplateSource(
+    sourceType: ImportSource['type'],
+    fileFormat?: FileSourceConfig['format'],
+): ImportSource {
+    if (sourceType === 'FILE') {
+        return mergeFileSourceConfig(undefined, {
+            format: fileFormat ?? 'CSV',
+        });
+    }
+    if (sourceType === 'API') {
+        return mergeApiSourceConfig(undefined, {});
+    }
+    return { type: sourceType };
+}
+
 export function isImportSourceAvailable(
     sourceType: string | undefined,
     canManageFiles: boolean,

@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { useLingui } from '@lingui/react';
+import { Trans, useLingui } from '@lingui/react/macro';
 import {
     Button,
     Dialog,
@@ -13,7 +13,6 @@ import {
     Textarea,
 } from '@vendure/dashboard';
 import { Settings } from 'lucide-react';
-import { IMPORT_WIZARD_TRANSLATION_IDS } from '../../../constants';
 import type { WizardTransformationStep } from '../../../types/wizard';
 import { mapAdapterSchema } from '../../../utils/adapter-schema';
 import { resolveIconName } from '../../../utils/icon-resolver';
@@ -44,7 +43,7 @@ export function TransformConfigDialog({
     onSave,
     onClose,
 }: TransformConfigDialogProps) {
-    const { i18n } = useLingui();
+    const { t } = useLingui();
     const [localConfig, setLocalConfig] = useState<Record<string, unknown>>(transform.config);
     const handleSave = useCallback(() => {
         const cleaned = Object.fromEntries(
@@ -75,9 +74,7 @@ export function TransformConfigDialog({
                         </div>
                         <div>
                             <DialogTitle className="text-base">
-                                {i18n._(IMPORT_WIZARD_TRANSLATION_IDS.TRANSFORM_CONFIGURE_TITLE, {
-                                    operator: typeMeta?.label ?? transform.type,
-                                })}
+                                {t`Configure ${typeMeta?.label ?? transform.type}`}
                             </DialogTitle>
                             <DialogDescription className="mt-0.5">
                                 {typeMeta?.description}
@@ -88,12 +85,9 @@ export function TransformConfigDialog({
                         <div className="mt-3">
                             <Separator />
                             <p className="text-[11px] text-muted-foreground mt-2">
-                                {i18n._(
-                                    fieldCount === 1
-                                        ? IMPORT_WIZARD_TRANSLATION_IDS.TRANSFORM_CONFIG_FIELD_ONE
-                                        : IMPORT_WIZARD_TRANSLATION_IDS.TRANSFORM_CONFIG_FIELD_MULTIPLE,
-                                    { count: fieldCount },
-                                )}
+                                {fieldCount === 1
+                                    ? t`${fieldCount} configuration field available`
+                                    : t`${fieldCount} configuration fields available`}
                             </p>
                         </div>
                     )}
@@ -109,10 +103,10 @@ export function TransformConfigDialog({
                 <Separator />
                 <DialogFooter className="pt-2">
                     <Button variant="outline" onClick={onClose}>
-                        {i18n._(IMPORT_WIZARD_TRANSLATION_IDS.TRANSFORM_CANCEL)}
+                        <Trans>Cancel</Trans>
                     </Button>
                     <Button onClick={handleSave}>
-                        {i18n._(IMPORT_WIZARD_TRANSLATION_IDS.TRANSFORM_SAVE_CONFIGURATION)}
+                        <Trans>Save configuration</Trans>
                     </Button>
                 </DialogFooter>
             </DialogContent>
@@ -128,7 +122,6 @@ interface TransformConfigFieldsProps {
 }
 
 function TransformConfigFields({ type, config, onUpdate, operators }: TransformConfigFieldsProps) {
-    const { i18n } = useLingui();
     const operator = operators?.find(candidate => candidate.code === type);
     const schema = useMemo(() => mapAdapterSchema(operator?.schema), [operator?.schema]);
 
@@ -152,7 +145,7 @@ function TransformConfigFields({ type, config, onUpdate, operators }: TransformC
     return (
         <div className="space-y-2">
             <Label htmlFor={configInputId} className="text-sm font-medium">
-                {i18n._(IMPORT_WIZARD_TRANSLATION_IDS.TRANSFORM_CONFIGURATION_JSON)}
+                <Trans>Configuration (JSON)</Trans>
             </Label>
             <Textarea
                 id={configInputId}

@@ -3,29 +3,21 @@ import {
     simulateTransform,
     simulateLoad,
     simulateValidate,
-    previewFeed,
 } from '../../../hooks';
-import { STEP_TYPE } from '../../../constants';
+import { STEP_CONFIG_TRANSLATION_IDS, STEP_TYPE } from '../../../constants';
 import { getErrorMessage } from '../../../../shared';
+import { getFeedStepTestResult } from './step-test-capabilities';
+import type { TestResult } from './step-test-types';
 
-/**
- * Result from running a step test
- */
-export interface TestResult {
-    status: 'success' | 'error' | 'warning';
-    message?: string;
-    data?: unknown;
-    records?: Array<Record<string, unknown>>;
-    beforeAfter?: Array<{ before: Record<string, unknown>; after: Record<string, unknown> }>;
-    feedContent?: { content: string; contentType: string; itemCount: number };
-    loadSimulation?: Record<string, unknown>;
-}
+export { canTestStepType } from './step-test-capabilities';
+export type { TestResult, TestResultMessage } from './step-test-types';
 
 /**
  * Options for running step tests
  */
 export interface StepTestOptions {
     config: Record<string, unknown>;
+    schemaRef?: { schemaId: string; version: string };
     sampleInput?: string;
     limit?: number;
 }
@@ -33,27 +25,55 @@ export interface StepTestOptions {
 /**
  * Parse sample input JSON, returning records or throwing an error
  */
-function parseSampleInput(sampleInput: string): Array<Record<string, unknown>> {
-    const inputRecords = JSON.parse(sampleInput);
-    if (!Array.isArray(inputRecords)) {
-        throw new Error('Input must be a JSON array');
+class StepTestInputError extends Error {
+    constructor(readonly messageId: string) {
+        super(messageId);
     }
-    return inputRecords;
+}
+
+function parseSampleInput(sampleInput: string): Array<Record<string, unknown>> {
+    let inputRecords: unknown;
+    try {
+        inputRecords = JSON.parse(sampleInput);
+    } catch {
+        throw new StepTestInputError(STEP_CONFIG_TRANSLATION_IDS.INVALID_JSON_ARRAY);
+    }
+    if (!Array.isArray(inputRecords)) {
+        throw new StepTestInputError(
+            STEP_CONFIG_TRANSLATION_IDS.INPUT_MUST_BE_JSON_ARRAY,
+        );
+    }
+    if (
+        inputRecords.some(
+            (record) =>
+                record === null ||
+                typeof record !== 'object' ||
+                Array.isArray(record),
+        )
+    ) {
+        throw new StepTestInputError(
+            STEP_CONFIG_TRANSLATION_IDS.EACH_INPUT_RECORD_MUST_BE_OBJECT,
+        );
+    }
+    return inputRecords as Array<Record<string, unknown>>;
 }
 
 /**
  * Test an EXTRACT step by running the extractor and returning sample records
  */
 async function testExtractStep(options: StepTestOptions): Promise<TestResult> {
-    const { config, limit = 10 } = options;
+    const { config, schemaRef, limit = 10 } = options;
 
-    const records = await previewExtract(config || {}, limit);
+    const records = await previewExtract({ config, schemaRef }, limit);
 
     return {
         status: records.length > 0 ? 'success' : 'warning',
         message: records.length > 0
-            ? `Extracted ${records.length} record(s)`
-            : 'No records extracted. Check your extractor configuration.',
+            ? {
+                id: STEP_CONFIG_TRANSLATION_IDS.EXTRACTED_RECORDS,
+                values: { count: records.length },
+            }
+            : { id: STEP_CONFIG_TRANSLATION_IDS.NO_RECORDS_EXTRACTED },
         records: records as Array<Record<string, unknown>>,
     };
 }
@@ -61,7 +81,9 @@ async function testExtractStep(options: StepTestOptions): Promise<TestResult> {
 /**
  * Test a TRANSFORM step by applying transformations to sample records
  */
-async function testTransformStep(options: StepTestOptions): Promise<TestResult> {
+async function testTransformStep(
+    options: StepTestOptions,
+): Promise<TestResult> {
     const { config, sampleInput = '[]' } = options;
 
     let inputRecords: Array<Record<string, unknown>>;
@@ -70,11 +92,16 @@ async function testTransformStep(options: StepTestOptions): Promise<TestResult> 
     } catch (e) {
         return {
             status: 'error',
-            message: `Invalid sample input: ${getErrorMessage(e)}`,
+            message: e instanceof StepTestInputError
+                ? { id: e.messageId }
+                : {
+                    id: STEP_CONFIG_TRANSLATION_IDS.INVALID_SAMPLE_INPUT,
+                    values: { error: getErrorMessage(e) },
+                },
         };
     }
 
-    const outputRecords = await simulateTransform(config || {}, inputRecords);
+    const outputRecords = await simulateTransform({ config }, inputRecords);
 
     const beforeAfter = inputRecords.map((before, idx) => ({
         before,
@@ -83,7 +110,10 @@ async function testTransformStep(options: StepTestOptions): Promise<TestResult> 
 
     return {
         status: 'success',
-        message: `Transformed ${inputRecords.length} record(s)`,
+        message: {
+            id: STEP_CONFIG_TRANSLATION_IDS.TRANSFORMED_RECORDS,
+            values: { count: inputRecords.length },
+        },
         records: outputRecords,
         beforeAfter,
     };
@@ -93,7 +123,7 @@ async function testTransformStep(options: StepTestOptions): Promise<TestResult> 
  * Test a VALIDATE step by running validation rules on sample records
  */
 async function testValidateStep(options: StepTestOptions): Promise<TestResult> {
-    const { config, sampleInput = '[]' } = options;
+    const { config, schemaRef, sampleInput = '[]' } = options;
 
     let inputRecords: Array<Record<string, unknown>>;
     try {
@@ -101,19 +131,36 @@ async function testValidateStep(options: StepTestOptions): Promise<TestResult> {
     } catch (e) {
         return {
             status: 'error',
-            message: `Invalid sample input: ${getErrorMessage(e)}`,
+            message: e instanceof StepTestInputError
+                ? { id: e.messageId }
+                : {
+                    id: STEP_CONFIG_TRANSLATION_IDS.INVALID_SAMPLE_INPUT,
+                    values: { error: getErrorMessage(e) },
+                },
         };
     }
 
-    const validateResult = await simulateValidate(config || {}, inputRecords);
-    const outputRecords = (validateResult?.records ?? []) as Array<Record<string, unknown>>;
+    const validateResult = await simulateValidate({ config, schemaRef }, inputRecords);
+    const outputRecords = (validateResult?.records ?? []) as Array<
+        Record<string, unknown>
+    >;
     const summary = validateResult?.summary;
 
     return {
         status: summary?.failed ? 'warning' : 'success',
         message: summary
-            ? `Validation: ${summary.passed}/${summary.input} passed (${summary.passRate}%)`
-            : `Validated ${outputRecords.length} record(s)`,
+            ? {
+                id: STEP_CONFIG_TRANSLATION_IDS.VALIDATION_SUMMARY,
+                values: {
+                    passed: summary.passed,
+                    input: summary.input,
+                    passRate: summary.passRate,
+                },
+            }
+            : {
+                id: STEP_CONFIG_TRANSLATION_IDS.VALIDATED_RECORDS,
+                values: { count: outputRecords.length },
+            },
         records: outputRecords,
         data: summary ? { validationSummary: summary } : undefined,
     };
@@ -131,53 +178,22 @@ async function testLoadStep(options: StepTestOptions): Promise<TestResult> {
     } catch (e) {
         return {
             status: 'error',
-            message: `Invalid sample input: ${getErrorMessage(e)}`,
+            message: e instanceof StepTestInputError
+                ? { id: e.messageId }
+                : {
+                    id: STEP_CONFIG_TRANSLATION_IDS.INVALID_SAMPLE_INPUT,
+                    values: { error: getErrorMessage(e) },
+                },
         };
     }
 
-    const simulation = await simulateLoad(config || {}, inputRecords);
+    const simulation = await simulateLoad({ config }, inputRecords);
 
     return {
         status: 'success',
-        message: 'Load simulation completed',
+        message: { id: STEP_CONFIG_TRANSLATION_IDS.LOAD_SIMULATION_COMPLETED },
         loadSimulation: simulation,
         records: inputRecords,
-    };
-}
-
-/**
- * Test a FEED step by generating feed output
- */
-async function testFeedStep(options: StepTestOptions): Promise<TestResult> {
-    const { config, limit = 10 } = options;
-
-    const feedConfig = config as { code?: string; feedCode?: string };
-    const feedCode = String(feedConfig.code || feedConfig.feedCode || '');
-
-    if (!feedCode) {
-        return {
-            status: 'error',
-            message: 'No feed code configured. Set the feed code in step configuration.',
-        };
-    }
-
-    const feed = await previewFeed(feedCode, limit);
-
-    if (feed) {
-        return {
-            status: 'success',
-            message: `Feed preview: ${feed.itemCount} item(s)`,
-            feedContent: {
-                content: feed.content ?? '',
-                contentType: feed.contentType ?? 'text/plain',
-                itemCount: feed.itemCount ?? 0,
-            },
-        };
-    }
-
-    return {
-        status: 'warning',
-        message: 'No feed content returned',
     };
 }
 
@@ -188,7 +204,7 @@ function getTriggerStepResult(config: Record<string, unknown>): TestResult {
     const triggerConfig = config as { type?: string };
     return {
         status: 'success',
-        message: 'Trigger steps cannot be tested directly. Run a full pipeline dry run instead.',
+        message: { id: STEP_CONFIG_TRANSLATION_IDS.TRIGGER_PIPELINE_DRY_RUN },
         data: {
             triggerType: triggerConfig.type || 'unknown',
             config: config,
@@ -199,10 +215,16 @@ function getTriggerStepResult(config: Record<string, unknown>): TestResult {
 /**
  * Get a result for EXPORT/SINK steps (cannot be tested directly)
  */
-function getOutputStepResult(effectiveType: string, config: Record<string, unknown>): TestResult {
+function getOutputStepResult(
+    effectiveType: string,
+    config: Record<string, unknown>,
+): TestResult {
     return {
         status: 'success',
-        message: `${effectiveType} steps write to external destinations. Use the full pipeline dry run to test.`,
+        message: {
+            id: STEP_CONFIG_TRANSLATION_IDS.OUTPUT_PIPELINE_DRY_RUN,
+            values: { type: effectiveType },
+        },
         data: { config },
     };
 }
@@ -213,7 +235,10 @@ function getOutputStepResult(effectiveType: string, config: Record<string, unkno
 function getUnknownStepResult(effectiveType: string): TestResult {
     return {
         status: 'warning',
-        message: `Unknown step type: ${effectiveType}`,
+        message: {
+            id: STEP_CONFIG_TRANSLATION_IDS.UNKNOWN_STEP_TYPE,
+            values: { type: effectiveType },
+        },
     };
 }
 
@@ -222,7 +247,7 @@ function getUnknownStepResult(effectiveType: string): TestResult {
  */
 export async function runStepTest(
     effectiveType: string,
-    options: StepTestOptions
+    options: StepTestOptions,
 ): Promise<TestResult> {
     try {
         switch (effectiveType) {
@@ -239,7 +264,7 @@ export async function runStepTest(
                 return await testLoadStep(options);
 
             case STEP_TYPE.FEED:
-                return await testFeedStep(options);
+                return getFeedStepTestResult();
 
             case STEP_TYPE.TRIGGER:
                 return getTriggerStepResult(options.config);
@@ -251,21 +276,27 @@ export async function runStepTest(
             case STEP_TYPE.ENRICH:
                 return {
                     status: 'success',
-                    message: 'Enrich steps perform live lookups during pipeline execution. Use dry-run to test enrichment.',
+                    message: {
+                        id: STEP_CONFIG_TRANSLATION_IDS.ENRICH_PIPELINE_DRY_RUN,
+                    },
                     data: { config: options.config },
                 };
 
             case STEP_TYPE.ROUTE:
                 return {
                     status: 'success',
-                    message: 'Route steps evaluate conditions during pipeline execution. Use dry-run to test routing logic.',
+                    message: {
+                        id: STEP_CONFIG_TRANSLATION_IDS.ROUTE_PIPELINE_DRY_RUN,
+                    },
                     data: { config: options.config },
                 };
 
             case STEP_TYPE.GATE:
                 return {
                     status: 'success',
-                    message: 'Gate steps require approval during pipeline execution. They cannot be tested in isolation.',
+                    message: {
+                        id: STEP_CONFIG_TRANSLATION_IDS.GATE_TEST_UNSUPPORTED,
+                    },
                     data: { config: options.config },
                 };
 
@@ -277,21 +308,8 @@ export async function runStepTest(
         return {
             status: 'error',
             message: message.includes('GraphQL')
-                ? 'API endpoint not available. Make sure the server is running.'
-                : message,
+                ? { id: STEP_CONFIG_TRANSLATION_IDS.API_ENDPOINT_UNAVAILABLE }
+                : { text: message },
         };
     }
-}
-
-/**
- * Check if a step type supports direct testing
- */
-export function canTestStepType(effectiveType: string): boolean {
-    return [
-        STEP_TYPE.EXTRACT,
-        STEP_TYPE.TRANSFORM,
-        STEP_TYPE.VALIDATE,
-        STEP_TYPE.LOAD,
-        STEP_TYPE.FEED,
-    ].includes(effectiveType as typeof STEP_TYPE[keyof typeof STEP_TYPE]);
 }

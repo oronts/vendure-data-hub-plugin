@@ -96,8 +96,6 @@ export interface RevertOptions {
 export interface AutoSaveConfig {
     /** Whether auto-save is enabled */
     enabled: boolean;
-    /** Minimum time between saves in ms */
-    throttleMs: number;
     /** Maximum number of drafts to keep per pipeline */
     maxDraftsToKeep: number;
     /** Whether to prune drafts when publishing */
@@ -111,7 +109,6 @@ export interface AutoSaveConfig {
  */
 export const DEFAULT_AUTO_SAVE_CONFIG: AutoSaveConfig = {
     enabled: true,
-    throttleMs: 30000,
     maxDraftsToKeep: 10,
     pruneOnPublish: true,
     maxDraftAgeDays: 7,

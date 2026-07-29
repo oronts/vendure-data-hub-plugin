@@ -1,6 +1,5 @@
 import { memo, useCallback, useMemo } from 'react';
-import { useLingui } from '@lingui/react';
-import { IMPORT_WIZARD_TRANSLATION_IDS } from '../../../constants';
+import { Trans } from '@lingui/react/macro';
 import { resolveIconName } from '../../../utils/icon-resolver';
 import type { TransformationType } from './types';
 import {
@@ -56,7 +55,6 @@ function useTransformGroupsFromData(operators: OperatorData | undefined): Operat
 }
 
 export function TransformTypeButtons({ onAdd, operators }: TransformTypeButtonsProps) {
-    const { i18n } = useLingui();
     const groups = useTransformGroupsFromData(operators);
 
     if (!operators) {
@@ -78,7 +76,7 @@ export function TransformTypeButtons({ onAdd, operators }: TransformTypeButtonsP
     if (groups.length === 0) {
         return (
             <div className="text-sm text-muted-foreground p-4 text-center" data-testid="datahub-transform-type-buttons">
-                {i18n._(IMPORT_WIZARD_TRANSLATION_IDS.TRANSFORM_NO_OPERATORS)}
+                <Trans>No operator types available</Trans>
             </div>
         );
     }

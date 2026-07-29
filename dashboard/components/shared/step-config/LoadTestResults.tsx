@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { Trans, useLingui } from '@lingui/react/macro';
 import { formatKey, formatValue } from '../../../utils';
 import { COMPONENT_HEIGHTS } from '../../../constants';
 import { TestResultContainer, JsonDisplay } from './TestResultContainer';
@@ -23,7 +24,7 @@ function LoadSimulationResult({
     const entries = Object.entries(simulation);
 
     if (!entries.length) {
-        return <div className="text-muted-foreground text-sm">No simulation data returned</div>;
+        return <div className="text-muted-foreground text-sm"><Trans>No simulation data returned</Trans></div>;
     }
 
     return (
@@ -42,18 +43,19 @@ function LoadSimulationResult({
  * Display component for FEED step preview results
  */
 function FeedPreview({ feedContent }: FeedPreviewProps) {
+    const { t } = useLingui();
     return (
         <div className="space-y-2">
             <div className="flex items-center gap-4 text-sm">
                 <span>
-                    <strong>Items:</strong> {feedContent.itemCount}
+                    <strong><Trans>Items</Trans>:</strong> {feedContent.itemCount}
                 </span>
                 <span>
-                    <strong>Type:</strong> {feedContent.contentType}
+                    <strong><Trans>Type</Trans>:</strong> {feedContent.contentType}
                 </span>
             </div>
             <pre className={`text-xs bg-muted p-3 rounded overflow-auto ${COMPONENT_HEIGHTS.SCROLL_AREA_SM} whitespace-pre-wrap`}>
-                {feedContent.content || '(empty)'}
+                {feedContent.content || t`(empty)`}
             </pre>
         </div>
     );
@@ -96,7 +98,7 @@ export function FeedTestResults({ result }: LoadTestResultsProps) {
 export function GenericTestResults({ result }: LoadTestResultsProps) {
     return (
         <TestResultContainer result={result}>
-            {result.data && (
+            {result.data !== undefined && result.data !== null && (
                 <JsonDisplay data={result.data} maxHeight="200px" />
             )}
         </TestResultContainer>

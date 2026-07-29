@@ -1,12 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { IMPORT_WIZARD_TRANSLATION_IDS } from '../../../constants';
 import type { FormValidationResult } from '../../../utils/form-validation';
-import { localizeImportWizardValidation } from './localize-validation';
+import {
+    type ImportWizardValidationMessages,
+    localizeImportWizardValidation,
+} from './localize-validation';
 
-const translate = (
-    id: string,
-    values?: Record<string, string | number>,
-): string => values ? `${id}:${JSON.stringify(values)}` : id;
+const messages: ImportWizardValidationMessages = {
+    uploadFile: 'Upload a file to continue',
+    unknownSourceAdapter: adapter => `Unknown source adapter: ${adapter}`,
+    sourceConfigurationRequired: 'Source configuration is required',
+    targetEntityRequired: 'Select a target entity',
+    requiredFieldsMapped: fields => `Map all required fields: ${fields}`,
+    mappingRequired: 'Add at least one field mapping',
+    existingRecordsStrategy: 'Select a strategy for existing records',
+    lookupFieldRequired: 'Select at least one lookup field',
+    nameRequired: 'Name is required',
+    invalidUrl: 'Enter a valid URL',
+    required: field => `${field} is required`,
+};
 
 function result(
     field: string,
@@ -38,11 +49,11 @@ describe('localizeImportWizardValidation', () => {
                     }],
                 }],
             },
-            translate,
+            messages,
         );
 
         expect(localized.errors[0]?.message).toBe(
-            `${IMPORT_WIZARD_TRANSLATION_IDS.VALIDATION_REQUIRED}:{"field":"Cron expression"}`,
+            'Cron expression is required',
         );
         expect(localized.errorsByField.cron).toBe(localized.errors[0]?.message);
     });
@@ -61,11 +72,11 @@ describe('localizeImportWizardValidation', () => {
                     }],
                 },
             },
-            translate,
+            messages,
         );
 
         expect(localized.errors[0]?.message).toBe(
-            `${IMPORT_WIZARD_TRANSLATION_IDS.VALIDATION_REQUIRED_FIELDS_MAPPED}:{"fields":"sku"}`,
+            'Map all required fields: sku',
         );
     });
 
@@ -73,7 +84,7 @@ describe('localizeImportWizardValidation', () => {
         const localized = localizeImportWizardValidation(
             result('custom', 'Backend-provided diagnostic', 'custom'),
             { stepId: 'source', config: {} },
-            translate,
+            messages,
         );
 
         expect(localized.errors[0]?.message).toBe('Backend-provided diagnostic');

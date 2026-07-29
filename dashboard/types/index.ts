@@ -23,9 +23,9 @@ export type {
     PipelineContext,
     ParallelExecutionConfig,
     ErrorHandlingConfig,
-    CheckpointingConfig,
-    CheckpointStrategy,
-    RunModeValue,
+    ChannelStrategy,
+    ValidationModeType,
+    StepContextOverride,
 } from '../../shared/types';
 
 export type {

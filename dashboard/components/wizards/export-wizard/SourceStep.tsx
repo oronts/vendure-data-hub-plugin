@@ -1,11 +1,11 @@
 import { useMemo } from 'react';
+import { Trans, useLingui } from '@lingui/react/macro';
 import {
     Card,
     CardContent,
     CardHeader,
     CardTitle,
     CardDescription,
-    Input,
     Label,
     Select,
     SelectContent,
@@ -13,59 +13,51 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@vendure/dashboard';
-import { VENDURE_ENTITY_SCHEMAS } from '../../../../shared';
-import { QUERY_LIMITS } from '../../../constants';
-import { useEntityFieldSchemas, useQueryTypeOptions } from '../../../hooks/api';
+import { useExportEntitySchemas, useQueryTypeOptions } from '../../../hooks/api';
 import { WizardStepContainer } from '../shared';
-import { EntitySelector } from '../../shared/entity-selector';
+import { ExportEntitySelector } from '../../shared/entity-selector';
 import { FilterConditionsEditor } from '../../shared/filter-conditions-editor';
-import { STEP_CONTENT } from './constants';
 import type { ExportConfiguration, QueryType } from './types';
 
 interface SourceStepProps {
     config: Partial<ExportConfiguration>;
     updateConfig: (updates: Partial<ExportConfiguration>) => void;
-    errors?: Record<string, string>;
 }
 
-export function SourceStep({ config, updateConfig, errors = {} }: SourceStepProps) {
+export function SourceStep({ config, updateConfig }: SourceStepProps) {
+    const { t } = useLingui();
     const query = config.sourceQuery ?? { type: 'all' };
 
     return (
         <WizardStepContainer
-            title={STEP_CONTENT.source.title}
-            description={STEP_CONTENT.source.description}
+            title={t`Select Data Source`}
+            description={t`Choose which Vendure entity to export`}
         >
-            <EntitySelector
+            <ExportEntitySelector
                 value={config.sourceEntity}
-                onChange={(entityCode) => updateConfig({ sourceEntity: entityCode })}
+                onChange={(entityCode) =>
+                    updateConfig({ sourceEntity: entityCode })
+                }
             />
 
             {config.sourceEntity && (
-                <QueryConfiguration config={config} updateConfig={updateConfig} query={query} />
+                <QueryConfiguration
+                    config={config}
+                    updateConfig={updateConfig}
+                    query={query}
+                />
             )}
         </WizardStepContainer>
     );
 }
 
-/**
- * Resolve entity field names dynamically from the backend, falling back
- * to the static VENDURE_ENTITY_SCHEMAS while the query is loading or
- * if the entity is not known to the backend.
- */
 function useEntityFields(entityCode: string | undefined): string[] {
-    const { getFieldNames, isLoading } = useEntityFieldSchemas();
+    const { getQueryFieldNames } = useExportEntitySchemas();
 
     return useMemo(() => {
         if (!entityCode) return [];
-        // Try dynamic fields from backend first
-        const dynamicFields = getFieldNames(entityCode);
-        if (dynamicFields.length > 0) return dynamicFields;
-        // Fall back to static schemas while loading or for unknown entities
-        const staticSchema = VENDURE_ENTITY_SCHEMAS[entityCode];
-        if (staticSchema) return Object.keys(staticSchema.fields);
-        return [];
-    }, [entityCode, getFieldNames]);
+        return getQueryFieldNames(entityCode);
+    }, [entityCode, getQueryFieldNames]);
 }
 
 interface QueryConfigurationProps {
@@ -74,63 +66,109 @@ interface QueryConfigurationProps {
     query: NonNullable<ExportConfiguration['sourceQuery']>;
 }
 
-function QueryConfiguration({ config, updateConfig, query }: QueryConfigurationProps) {
+function QueryConfiguration({
+    config,
+    updateConfig,
+    query,
+}: QueryConfigurationProps) {
+    const { t } = useLingui();
     const entityFields = useEntityFields(config.sourceEntity);
     const { options: queryTypeOptions } = useQueryTypeOptions();
 
     return (
         <Card>
             <CardHeader>
-                <CardTitle>Query Options</CardTitle>
-                <CardDescription>Configure how to fetch data</CardDescription>
+                <CardTitle>
+                    <Trans>Query Options</Trans>
+                </CardTitle>
+                <CardDescription>
+                    <Trans>Configure how to fetch data</Trans>
+                </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
-                        <Label>Query Type</Label>
+                        <Label htmlFor="export-query-type">
+                            <Trans>Query Type</Trans>
+                        </Label>
                         <Select
                             value={query.type}
-                            onValueChange={type => updateConfig({
-                                sourceQuery: { ...query, type: type as QueryType },
-                            })}
+                            onValueChange={(type) =>
+                                updateConfig({
+                                    sourceQuery: {
+                                        ...query,
+                                        type: type as QueryType,
+                                    },
+                                })
+                            }
                         >
-                            <SelectTrigger>
+                            <SelectTrigger id="export-query-type">
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                                {queryTypeOptions.map(option => (
-                                    <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                                {queryTypeOptions.map((option) => (
+                                    <SelectItem
+                                        key={option.value}
+                                        value={option.value}
+                                    >
+                                        {option.label}
+                                    </SelectItem>
                                 ))}
                             </SelectContent>
                         </Select>
                     </div>
 
                     <div>
-                        <Label>Limit</Label>
-                        <Input
-                            type="number"
-                            value={query.limit ?? QUERY_LIMITS.EXPORT_DEFAULT}
-                            onChange={e => updateConfig({
-                                sourceQuery: { ...query, limit: parseInt(e.target.value) || QUERY_LIMITS.EXPORT_DEFAULT },
-                            })}
-                        />
-                    </div>
-
-                    <div>
-                        <Label>Order By</Label>
+                        <Label htmlFor="export-order-by">
+                            <Trans>Order By</Trans>
+                        </Label>
                         <Select
                             value={query.orderBy ?? 'id'}
-                            onValueChange={orderBy => updateConfig({
-                                sourceQuery: { ...query, orderBy },
-                            })}
+                            onValueChange={(orderBy) =>
+                                updateConfig({
+                                    sourceQuery: { ...query, orderBy },
+                                })
+                            }
                         >
-                            <SelectTrigger>
+                            <SelectTrigger id="export-order-by">
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                                {entityFields.map(field => (
-                                    <SelectItem key={field} value={field}>{field}</SelectItem>
+                                {entityFields.map((field) => (
+                                    <SelectItem key={field} value={field}>
+                                        {field}
+                                    </SelectItem>
                                 ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    <div>
+                        <Label htmlFor="export-order-direction">
+                            <Trans>Direction</Trans>
+                        </Label>
+                        <Select
+                            value={query.orderDirection ?? 'ASC'}
+                            onValueChange={(orderDirection) =>
+                                updateConfig({
+                                    sourceQuery: {
+                                        ...query,
+                                        orderDirection: orderDirection as
+                                            'ASC' | 'DESC',
+                                    },
+                                })
+                            }
+                        >
+                            <SelectTrigger id="export-order-direction">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="ASC">
+                                    <Trans>Ascending</Trans>
+                                </SelectItem>
+                                <SelectItem value="DESC">
+                                    <Trans>Descending</Trans>
+                                </SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
@@ -142,10 +180,20 @@ function QueryConfiguration({ config, updateConfig, query }: QueryConfigurationP
                         onChange={(filters) => updateConfig({ filters })}
                         fields={entityFields}
                         showLogicSelector={false}
-                        fieldPlaceholder="Select field..."
-                        valuePlaceholder="Value"
-                        emptyMessage="No filters - all records will be exported"
-                        addLabel="Add Filter"
+                        fieldPlaceholder={t`Select field...`}
+                        valuePlaceholder={t`Value`}
+                        emptyMessage={t`No filters - all records will be exported`}
+                        addLabel={t`Add Filter`}
+                        allowedOperators={[
+                            'eq',
+                            'ne',
+                            'gt',
+                            'gte',
+                            'lt',
+                            'lte',
+                            'in',
+                            'contains',
+                        ]}
                     />
                 )}
             </CardContent>

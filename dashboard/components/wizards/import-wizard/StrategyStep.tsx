@@ -1,4 +1,5 @@
 import { useCallback, memo } from 'react';
+import { Trans, useLingui } from '@lingui/react/macro';
 import {
     Button,
     Card,
@@ -8,21 +9,15 @@ import {
     CardDescription,
     Input,
     Label,
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
     Switch,
     Badge,
 } from '@vendure/dashboard';
 import { WizardStepContainer } from '../shared';
-import type { ImportConfiguration, ImportStrategies } from './types';
+import type { ImportConfiguration } from './types';
 import { UI_DEFAULTS } from '../../../constants';
-import { useOptionValues, type ConfigOptionValue } from '../../../hooks/api/use-config-options';
-import { STEP_CONTENT, DEFAULT_IMPORT_STRATEGIES } from './constants';
-
-type CleanupStrategy = ImportStrategies['cleanupStrategy'];
+import { useWizardStrategyMappings } from '../../../hooks/api/use-config-options';
+import type { WizardStrategyMapping } from '../../../types/wizard';
+import { DEFAULT_IMPORT_STRATEGIES } from './constants';
 
 interface StrategyStepProps {
     config: Partial<ImportConfiguration>;
@@ -30,21 +25,20 @@ interface StrategyStepProps {
 }
 
 export function StrategyStep({ config, updateConfig }: StrategyStepProps) {
+    const { t } = useLingui();
     const strategies = config.strategies ?? { ...DEFAULT_IMPORT_STRATEGIES };
     const primaryKeyFields = config.targetSchema?.primaryKey
-        ? (Array.isArray(config.targetSchema.primaryKey)
+        ? Array.isArray(config.targetSchema.primaryKey)
             ? config.targetSchema.primaryKey
-            : [config.targetSchema.primaryKey])
+            : [config.targetSchema.primaryKey]
         : [];
 
-    const { options: existingRecordOptions } = useOptionValues('loadStrategies');
-    const { options: cleanupOptions } = useOptionValues('cleanupStrategies');
-    const { options: recordOptions } = useOptionValues('newRecordStrategies');
+    const { mappings: existingRecordOptions } = useWizardStrategyMappings();
 
     return (
         <WizardStepContainer
-            title={STEP_CONTENT.strategy.title}
-            description={STEP_CONTENT.strategy.description}
+            title={t`Configure import strategy`}
+            description={t`Define how records are matched, updated, and processed.`}
         >
             <LookupFieldsCard
                 config={config}
@@ -52,9 +46,15 @@ export function StrategyStep({ config, updateConfig }: StrategyStepProps) {
                 strategies={strategies}
                 primaryKeyFields={primaryKeyFields}
             />
-            <ExistingRecordsCard strategies={strategies} updateConfig={updateConfig} options={existingRecordOptions} />
-            <NewRecordsCard strategies={strategies} updateConfig={updateConfig} options={recordOptions} />
-            <AdvancedOptionsCard strategies={strategies} updateConfig={updateConfig} cleanupOptions={cleanupOptions} />
+            <ExistingRecordsCard
+                strategies={strategies}
+                updateConfig={updateConfig}
+                options={existingRecordOptions}
+            />
+            <AdvancedOptionsCard
+                strategies={strategies}
+                updateConfig={updateConfig}
+            />
         </WizardStepContainer>
     );
 }
@@ -66,31 +66,48 @@ interface LookupFieldsCardProps {
     primaryKeyFields: string[];
 }
 
-function LookupFieldsCard({ config, updateConfig, strategies, primaryKeyFields }: LookupFieldsCardProps) {
+function LookupFieldsCard({
+    config,
+    updateConfig,
+    strategies,
+    primaryKeyFields,
+}: LookupFieldsCardProps) {
+    const { t } = useLingui();
+
     return (
         <Card>
             <CardHeader>
-                <CardTitle>Record Lookup</CardTitle>
+                <CardTitle><Trans>Record lookup</Trans></CardTitle>
                 <CardDescription>
-                    Which fields should be used to find existing records?
+                    <Trans>Which fields should be used to find existing records?</Trans>
                 </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
                 <div>
-                    <Label className="mb-2 block">Lookup Fields (for matching existing records)</Label>
-                    <div className="flex flex-wrap gap-2" role="group" aria-label="Lookup field selection">
-                        {config.targetSchema && Object.keys(config.targetSchema.fields).map(field => (
-                            <LookupFieldButton
-                                key={field}
-                                field={field}
-                                strategies={strategies}
-                                primaryKeyFields={primaryKeyFields}
-                                updateConfig={updateConfig}
-                            />
-                        ))}
+                    <Label id="import-strategy-lookup-fields-label" className="mb-2 block">
+                        <Trans>Lookup fields (for matching existing records)</Trans>
+                    </Label>
+                    <div
+                        className="flex flex-wrap gap-2"
+                        role="group"
+                        aria-labelledby="import-strategy-lookup-fields-label"
+                    >
+                        {config.targetSchema &&
+                            Object.keys(config.targetSchema.fields).map(
+                                (field) => (
+                                    <LookupFieldButton
+                                        key={field}
+                                        field={field}
+                                        strategies={strategies}
+                                        primaryKeyFields={primaryKeyFields}
+                                        updateConfig={updateConfig}
+                                    />
+                                ),
+                            )}
                     </div>
                     <p className="text-xs text-muted-foreground mt-2">
-                        Selected: {strategies.lookupFields.join(', ') || 'None'}
+                        <Trans>Selected</Trans>:{' '}
+                        {strategies.lookupFields.join(', ') || t`None`}
                     </p>
                 </div>
             </CardContent>
@@ -111,12 +128,13 @@ const LookupFieldButton = memo(function LookupFieldButton({
     primaryKeyFields,
     updateConfig,
 }: LookupFieldButtonProps) {
+    const { t } = useLingui();
     const isSelected = strategies.lookupFields.includes(field);
     const isPrimaryKey = primaryKeyFields.includes(field);
 
     const handleClick = useCallback(() => {
         const newFields = isSelected
-            ? strategies.lookupFields.filter(f => f !== field)
+            ? strategies.lookupFields.filter((f) => f !== field)
             : [...strategies.lookupFields, field];
         updateConfig({
             strategies: { ...strategies, lookupFields: newFields },
@@ -129,11 +147,17 @@ const LookupFieldButton = memo(function LookupFieldButton({
             size="sm"
             onClick={handleClick}
             aria-pressed={isSelected}
-            aria-label={`${isSelected ? 'Remove' : 'Add'} ${field} as lookup field${isPrimaryKey ? ' (primary key)' : ''}`}
+            aria-label={isSelected
+                ? t`Remove ${field} as a lookup field ${isPrimaryKey ? t`(primary key)` : ''}`
+                : t`Add ${field} as a lookup field ${isPrimaryKey ? t`(primary key)` : ''}`}
             data-testid={`datahub-wizard-lookup-field-${field}-btn`}
         >
             {field}
-            {isPrimaryKey && <Badge variant="secondary" className="ml-1 text-[10px]">PK</Badge>}
+            {isPrimaryKey && (
+                <Badge variant="secondary" className="ml-1 text-[10px]">
+                    <Trans>PK</Trans>
+                </Badge>
+            )}
         </Button>
     );
 });
@@ -141,59 +165,39 @@ const LookupFieldButton = memo(function LookupFieldButton({
 interface ExistingRecordsCardProps {
     strategies: ImportConfiguration['strategies'];
     updateConfig: (updates: Partial<ImportConfiguration>) => void;
-    options: ConfigOptionValue[];
+    options: WizardStrategyMapping[];
 }
 
-function ExistingRecordsCard({ strategies, updateConfig, options }: ExistingRecordsCardProps) {
+function ExistingRecordsCard({
+    strategies,
+    updateConfig,
+    options,
+}: ExistingRecordsCardProps) {
+    const { t } = useLingui();
+
     return (
         <Card>
             <CardHeader>
-                <CardTitle>Existing Records</CardTitle>
-                <CardDescription>What to do when a record already exists</CardDescription>
+                <CardTitle><Trans>Existing records</Trans></CardTitle>
+                <CardDescription>
+                    <Trans>What to do when a record already exists</Trans>
+                </CardDescription>
             </CardHeader>
             <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3" role="group" aria-label="Existing records strategy options">
-                    {options.map(option => (
+                <div
+                    className="grid grid-cols-2 md:grid-cols-4 gap-3"
+                    role="group"
+                    aria-label={t`Existing record strategy options`}
+                >
+                    {options.map((option) => (
                         <StrategyOptionButton
-                            key={option.value}
+                            key={option.wizardValue}
                             option={option}
-                            isSelected={strategies.existingRecords === option.value}
+                            isSelected={
+                                strategies.existingRecords === option.wizardValue
+                            }
                             strategies={strategies}
                             updateConfig={updateConfig}
-                            strategyKey="existingRecords"
-                            testIdPrefix="existing"
-                        />
-                    ))}
-                </div>
-            </CardContent>
-        </Card>
-    );
-}
-
-interface NewRecordsCardProps {
-    strategies: ImportConfiguration['strategies'];
-    updateConfig: (updates: Partial<ImportConfiguration>) => void;
-    options: ConfigOptionValue[];
-}
-
-function NewRecordsCard({ strategies, updateConfig, options }: NewRecordsCardProps) {
-    return (
-        <Card>
-            <CardHeader>
-                <CardTitle>New Records</CardTitle>
-                <CardDescription>What to do with records that don't exist yet</CardDescription>
-            </CardHeader>
-            <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3" role="group" aria-label="New records strategy options">
-                    {options.map(option => (
-                        <StrategyOptionButton
-                            key={option.value}
-                            option={option}
-                            isSelected={strategies.newRecords === option.value}
-                            strategies={strategies}
-                            updateConfig={updateConfig}
-                            strategyKey="newRecords"
-                            testIdPrefix="new"
                         />
                     ))}
                 </div>
@@ -203,12 +207,10 @@ function NewRecordsCard({ strategies, updateConfig, options }: NewRecordsCardPro
 }
 
 interface StrategyOptionButtonProps {
-    option: { value: string; label: string };
+    option: WizardStrategyMapping;
     isSelected: boolean;
     strategies: ImportConfiguration['strategies'];
     updateConfig: (updates: Partial<ImportConfiguration>) => void;
-    strategyKey: 'existingRecords' | 'newRecords';
-    testIdPrefix: string;
 }
 
 const StrategyOptionButton = memo(function StrategyOptionButton({
@@ -216,14 +218,16 @@ const StrategyOptionButton = memo(function StrategyOptionButton({
     isSelected,
     strategies,
     updateConfig,
-    strategyKey,
-    testIdPrefix,
 }: StrategyOptionButtonProps) {
+    const { t } = useLingui();
     const handleClick = useCallback(() => {
         updateConfig({
-            strategies: { ...strategies, [strategyKey]: option.value },
+            strategies: {
+                ...strategies,
+                existingRecords: option.wizardValue,
+            },
         });
-    }, [option.value, strategies, strategyKey, updateConfig]);
+    }, [option.wizardValue, strategies, updateConfig]);
 
     return (
         <Button
@@ -231,8 +235,8 @@ const StrategyOptionButton = memo(function StrategyOptionButton({
             className="h-auto p-3 justify-start"
             onClick={handleClick}
             aria-pressed={isSelected}
-            aria-label={`${option.label} strategy for ${testIdPrefix} records`}
-            data-testid={`datahub-wizard-strategy-${testIdPrefix}-${option.value}-btn`}
+            aria-label={t`${option.label} strategy for existing records`}
+            data-testid={`datahub-wizard-strategy-existing-${option.wizardValue}-btn`}
         >
             <span className="font-medium">{option.label}</span>
         </Button>
@@ -242,84 +246,55 @@ const StrategyOptionButton = memo(function StrategyOptionButton({
 interface AdvancedOptionsCardProps {
     strategies: ImportConfiguration['strategies'];
     updateConfig: (updates: Partial<ImportConfiguration>) => void;
-    cleanupOptions: ConfigOptionValue[];
 }
 
-function AdvancedOptionsCard({ strategies, updateConfig, cleanupOptions }: AdvancedOptionsCardProps) {
+function AdvancedOptionsCard({
+    strategies,
+    updateConfig,
+}: AdvancedOptionsCardProps) {
     return (
         <Card>
             <CardHeader>
-                <CardTitle>Advanced Options</CardTitle>
+                <CardTitle><Trans>Advanced options</Trans></CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                    <div>
-                        <Label htmlFor="strategy-batch-size">Batch Size</Label>
-                        <Input
-                            id="strategy-batch-size"
-                            type="number"
-                            value={strategies.batchSize}
-                            onChange={e => updateConfig({
-                                strategies: { ...strategies, batchSize: parseInt(e.target.value) || UI_DEFAULTS.IMPORT_BATCH_SIZE },
-                            })}
-                        />
-                    </div>
-                    <div>
-                        <Label htmlFor="strategy-error-threshold">Error Threshold (%)</Label>
-                        <Input
-                            id="strategy-error-threshold"
-                            type="number"
-                            value={strategies.errorThreshold}
-                            onChange={e => updateConfig({
-                                strategies: { ...strategies, errorThreshold: parseInt(e.target.value) || UI_DEFAULTS.DEFAULT_ERROR_THRESHOLD_PERCENT },
-                            })}
-                        />
-                    </div>
+                <div>
+                    <Label htmlFor="strategy-batch-size"><Trans>Batch size</Trans></Label>
+                    <Input
+                        id="strategy-batch-size"
+                        type="number"
+                        value={strategies.batchSize}
+                        onChange={(e) =>
+                            updateConfig({
+                                strategies: {
+                                    ...strategies,
+                                    batchSize:
+                                        parseInt(e.target.value) ||
+                                        UI_DEFAULTS.IMPORT_BATCH_SIZE,
+                                },
+                            })
+                        }
+                    />
                 </div>
 
                 <div className="flex items-center gap-6">
                     <div className="flex items-center gap-2">
                         <Switch
-                            id="publish-after-import"
-                            checked={strategies.publishAfterImport}
-                            onCheckedChange={publishAfterImport => updateConfig({
-                                strategies: { ...strategies, publishAfterImport },
-                            })}
-                        />
-                        <Label htmlFor="publish-after-import">Publish after import</Label>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                        <Switch
                             id="continue-on-error"
                             checked={strategies.continueOnError}
-                            onCheckedChange={continueOnError => updateConfig({
-                                strategies: { ...strategies, continueOnError },
-                            })}
+                            onCheckedChange={(continueOnError) =>
+                                updateConfig({
+                                    strategies: {
+                                        ...strategies,
+                                        continueOnError,
+                                    },
+                                })
+                            }
                         />
-                        <Label htmlFor="continue-on-error">Continue on error</Label>
+                        <Label htmlFor="continue-on-error">
+                            <Trans>Continue on error</Trans>
+                        </Label>
                     </div>
-                </div>
-
-                <div>
-                    <Label>Cleanup Strategy</Label>
-                    <Select
-                        value={strategies.cleanupStrategy}
-                        onValueChange={cleanupStrategy => updateConfig({
-                            strategies: { ...strategies, cleanupStrategy: cleanupStrategy as CleanupStrategy },
-                        })}
-                    >
-                        <SelectTrigger>
-                            <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {cleanupOptions.map(option => (
-                                <SelectItem key={option.value} value={option.value}>
-                                    {option.label}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
                 </div>
             </CardContent>
         </Card>

@@ -1,4 +1,5 @@
 import type { AuthConfig, RateLimitConfig, RetryConfig } from './extractor.types';
+import type { JsonValue } from './json.types';
 
 /**
  * Typed Adapter Configuration Types
@@ -163,12 +164,42 @@ export interface VendureQueryExtractorConfig {
 /** Database Extractor - Query SQL databases */
 export interface DatabaseExtractorConfig {
     adapterCode: 'database';
-    /** Connection code */
-    connectionCode: string;
+    connectionCode?: string;
+    databaseType?: 'POSTGRESQL' | 'MYSQL' | 'SQLITE';
+    host?: string;
+    port?: number;
+    database?: string;
+    username?: string;
+    passwordSecretCode?: string;
+    connectionStringSecretCode?: string;
+    ssl?: {
+        enabled: boolean;
+        rejectUnauthorized?: boolean;
+        caSecretCode?: string;
+        certSecretCode?: string;
+        keySecretCode?: string;
+    };
     /** SQL query */
     query: string;
     /** Query parameters */
-    params?: unknown[];
+    parameters?: JsonValue[];
+    pagination?: {
+        enabled: boolean;
+        type: 'OFFSET' | 'CURSOR';
+        pageSize: number;
+        cursorColumn?: string;
+        cursorTieBreakerColumn?: string;
+        maxPages?: number;
+    };
+    incremental?: {
+        enabled: boolean;
+        column: string;
+    };
+    pool?: {
+        max?: number;
+        idleTimeoutMs?: number;
+    };
+    queryTimeoutMs?: number;
 }
 
 /** CDC Extractor - Poll for database changes via timestamp or version column */
@@ -380,7 +411,7 @@ export interface CustomerUpsertLoaderConfig extends CreateDuplicateHandlingConfi
     addressesMode?: AddressesMode;
     /** Comma-separated fields to match existing addresses (for UPSERT_BY_MATCH mode) */
     addressMatchFields?: string;
-    /** Field containing group codes */
+    /** Field containing existing customer group names */
     groupsField?: string;
     /** Groups mode */
     groupsMode?: GroupsMode;

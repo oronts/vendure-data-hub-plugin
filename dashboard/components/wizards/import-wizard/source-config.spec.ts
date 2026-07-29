@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     createDefaultImportSource,
+    createImportTemplateSource,
     isImportSourceAvailable,
     mergeApiSourceConfig,
     mergeFileSourceConfig,
@@ -60,6 +61,20 @@ describe('import source config mergers', () => {
         expect(createDefaultImportSource(true)).toEqual({
             type: 'FILE',
             fileConfig: { format: 'CSV', hasHeaders: true },
+        });
+    });
+
+    it('creates source-specific template configuration', () => {
+        expect(createImportTemplateSource('FILE', 'JSON')).toEqual({
+            type: 'FILE',
+            fileConfig: { format: 'JSON', hasHeaders: true },
+        });
+        expect(createImportTemplateSource('API')).toEqual({
+            type: 'API',
+            apiConfig: { url: '', method: 'GET' },
+        });
+        expect(createImportTemplateSource('pimcoreGraphQL')).toEqual({
+            type: 'pimcoreGraphQL',
         });
     });
 });

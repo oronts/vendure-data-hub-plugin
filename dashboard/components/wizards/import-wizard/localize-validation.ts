@@ -1,11 +1,21 @@
 import { SOURCE_TYPE } from '../../../constants';
-import { IMPORT_WIZARD_TRANSLATION_IDS } from '../../../constants';
 import type { TypedOptionValue } from '../../../hooks/api/use-config-options';
 import type { FormValidationResult } from '../../../utils/form-validation';
 import type { ImportConfiguration } from './types';
 
-type TranslationValues = Record<string, string | number>;
-type Translate = (id: string, values?: TranslationValues) => string;
+export interface ImportWizardValidationMessages {
+    uploadFile: string;
+    unknownSourceAdapter: (adapter: string) => string;
+    sourceConfigurationRequired: string;
+    targetEntityRequired: string;
+    requiredFieldsMapped: (fields: string) => string;
+    mappingRequired: string;
+    existingRecordsStrategy: string;
+    lookupFieldRequired: string;
+    nameRequired: string;
+    invalidUrl: string;
+    required: (field: string) => string;
+}
 
 interface AdapterSchema {
     code: string;
@@ -62,62 +72,45 @@ function getRequiredUnmappedFields(config: Partial<ImportConfiguration>): string
 function localizeValidationMessage(
     error: FormValidationResult['errors'][number],
     context: ValidationContext,
-    translate: Translate,
+    messages: ImportWizardValidationMessages,
 ): string {
     if (context.stepId === 'source') {
         if (error.field === 'file') {
-            return translate(IMPORT_WIZARD_TRANSLATION_IDS.VALIDATION_UPLOAD_FILE);
+            return messages.uploadFile;
         }
         if (error.field === 'adapterCode') {
-            return translate(
-                IMPORT_WIZARD_TRANSLATION_IDS.VALIDATION_UNKNOWN_SOURCE_ADAPTER,
-                { adapter: context.config.source?.type ?? '' },
-            );
+            return messages.unknownSourceAdapter(context.config.source?.type ?? '');
         }
         if (error.field.endsWith('Config')) {
-            return translate(
-                IMPORT_WIZARD_TRANSLATION_IDS.VALIDATION_SOURCE_CONFIGURATION_REQUIRED,
-            );
+            return messages.sourceConfigurationRequired;
         }
     }
     if (context.stepId === 'target') {
-        return translate(
-            IMPORT_WIZARD_TRANSLATION_IDS.VALIDATION_TARGET_ENTITY_REQUIRED,
-        );
+        return messages.targetEntityRequired;
     }
     if (context.stepId === 'mapping') {
         const fields = getRequiredUnmappedFields(context.config);
         return fields
-            ? translate(
-                IMPORT_WIZARD_TRANSLATION_IDS.VALIDATION_REQUIRED_FIELDS_MAPPED,
-                { fields },
-            )
-            : translate(IMPORT_WIZARD_TRANSLATION_IDS.VALIDATION_MAPPING_REQUIRED);
+            ? messages.requiredFieldsMapped(fields)
+            : messages.mappingRequired;
     }
     if (context.stepId === 'strategy' && error.field === 'existingRecords') {
-        return translate(
-            IMPORT_WIZARD_TRANSLATION_IDS.VALIDATION_EXISTING_RECORDS_STRATEGY,
-        );
+        return messages.existingRecordsStrategy;
     }
     if (context.stepId === 'strategy' && error.field === 'lookupFields') {
-        return translate(
-            IMPORT_WIZARD_TRANSLATION_IDS.VALIDATION_LOOKUP_FIELD_REQUIRED,
-        );
+        return messages.lookupFieldRequired;
     }
     if (context.stepId === 'review') {
-        return translate(IMPORT_WIZARD_TRANSLATION_IDS.VALIDATION_NAME_REQUIRED);
+        return messages.nameRequired;
     }
     if (error.type === 'format') {
-        return translate(IMPORT_WIZARD_TRANSLATION_IDS.TOAST_INVALID_URL);
+        return messages.invalidUrl;
     }
     if (error.type === 'required') {
         const field = context.stepId === 'trigger'
             ? getTriggerFieldLabel(error.field, context)
             : getSourceFieldLabel(error.field, context);
-        return translate(
-            IMPORT_WIZARD_TRANSLATION_IDS.VALIDATION_REQUIRED,
-            { field: field ?? error.field },
-        );
+        return messages.required(field ?? error.field);
     }
     return error.message;
 }
@@ -125,11 +118,11 @@ function localizeValidationMessage(
 export function localizeImportWizardValidation(
     result: FormValidationResult,
     context: ValidationContext,
-    translate: Translate,
+    messages: ImportWizardValidationMessages,
 ): FormValidationResult {
     const errors = result.errors.map(error => ({
         ...error,
-        message: localizeValidationMessage(error, context, translate),
+        message: localizeValidationMessage(error, context, messages),
     }));
     return {
         isValid: result.isValid,

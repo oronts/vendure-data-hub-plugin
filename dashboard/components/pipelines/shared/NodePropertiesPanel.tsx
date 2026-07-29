@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { useCallback, useMemo, memo } from 'react';
+import { Trans, useLingui } from '@lingui/react/macro';
 import type { Node } from '@xyflow/react';
 import {
     Button,
@@ -11,13 +12,15 @@ import {
 } from '@vendure/dashboard';
 import { Trash2, Settings2 } from 'lucide-react';
 
-import type { PipelineNodeData } from '../../../types';
+import type { JsonObject, PipelineNodeData, ValidationIssue } from '../../../types';
 import { useAdapterCatalog, AdapterMetadata } from '../../../hooks';
 import { StepConfigPanel, StepConfigData, OperatorCheatSheetButton } from '../../shared/step-config';
 import { PANEL_WIDTHS, SCROLL_HEIGHTS } from '../../../constants';
+import { clampPanelWidth, resizePanelWithKey } from './panel-resize';
 
 /** Minimum panel width (pixels) when resizing */
 const MIN_PANEL_WIDTH = parseInt(PANEL_WIDTHS.PROPERTIES_MIN, 10) || 380;
+const MAX_PANEL_WIDTH_RATIO = 0.9;
 
 export interface NodePropertiesPanelProps {
     node: Node<PipelineNodeData> | null;
@@ -25,12 +28,14 @@ export interface NodePropertiesPanelProps {
     onDelete: () => void;
     onClose: () => void;
     catalog?: AdapterMetadata[];
-    connectionCodes?: string[];
-    secretOptions?: Array<{ code: string; provider?: string }>;
     panelWidth?: string;
     showCheatSheet?: boolean;
     showStepTester?: boolean;
     showAdvancedEditors?: boolean;
+    readOnly?: boolean;
+    issues?: ValidationIssue[];
+    catalogLoading?: boolean;
+    catalogError?: Error | null;
 }
 
 function NodePropertiesPanelComponent({
@@ -39,42 +44,73 @@ function NodePropertiesPanelComponent({
     onDelete,
     onClose,
     catalog: externalCatalog,
-    connectionCodes: externalConnectionCodes,
-    secretOptions: externalSecretOptions,
     panelWidth = PANEL_WIDTHS.PROPERTIES_DEFAULT,
     showCheatSheet = true,
     showStepTester = true,
     showAdvancedEditors = true,
+    readOnly = false,
+    issues = [],
+    catalogLoading,
+    catalogError,
 }: NodePropertiesPanelProps) {
+    const { t } = useLingui();
     const hookResult = useAdapterCatalog();
     const catalog = externalCatalog ?? hookResult.adapters;
-    const connectionCodes = externalConnectionCodes ?? hookResult.connectionCodes;
-    const secretOptions = externalSecretOptions ?? hookResult.secretOptions;
 
     // Resizable panel width
     const defaultWidth = parseInt(panelWidth, 10) || 520;
     const [width, setWidth] = React.useState(defaultWidth);
-    const dragging = React.useRef(false);
+    const resizeStart = React.useRef<{
+        pointerId: number;
+        clientX: number;
+        width: number;
+    } | null>(null);
+    const maximumWidth = useCallback(() => (
+        typeof window === 'undefined'
+            ? defaultWidth
+            : Math.max(MIN_PANEL_WIDTH, window.innerWidth * MAX_PANEL_WIDTH_RATIO)
+    ), [defaultWidth]);
 
-    const onResizeStart = useCallback((e: React.MouseEvent) => {
+    const onResizeStart = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
         e.preventDefault();
-        dragging.current = true;
-        const startX = e.clientX;
-        const startW = width;
-        const onMove = (ev: MouseEvent) => {
-            if (!dragging.current) return;
-            // Panel opens from right, dragging left increases width
-            const delta = startX - ev.clientX;
-            setWidth(Math.max(MIN_PANEL_WIDTH, Math.min(window.innerWidth * 0.9, startW + delta)));
+        e.currentTarget.setPointerCapture(e.pointerId);
+        resizeStart.current = {
+            pointerId: e.pointerId,
+            clientX: e.clientX,
+            width,
         };
-        const onUp = () => {
-            dragging.current = false;
-            document.removeEventListener('mousemove', onMove);
-            document.removeEventListener('mouseup', onUp);
-        };
-        document.addEventListener('mousemove', onMove);
-        document.addEventListener('mouseup', onUp);
     }, [width]);
+
+    const onResizeMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+        const start = resizeStart.current;
+        if (!start || start.pointerId !== event.pointerId) return;
+        const delta = start.clientX - event.clientX;
+        setWidth(clampPanelWidth(
+            start.width + delta,
+            MIN_PANEL_WIDTH,
+            maximumWidth(),
+        ));
+    }, [maximumWidth]);
+
+    const onResizeEnd = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+        if (resizeStart.current?.pointerId !== event.pointerId) return;
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+        }
+        resizeStart.current = null;
+    }, []);
+
+    const onResizeKeyDown = useCallback((event: React.KeyboardEvent) => {
+        const nextWidth = resizePanelWithKey(
+            event.key,
+            width,
+            MIN_PANEL_WIDTH,
+            maximumWidth(),
+        );
+        if (nextWidth === null) return;
+        event.preventDefault();
+        setWidth(nextWidth);
+    }, [maximumWidth, width]);
 
     const data = node?.data;
 
@@ -90,28 +126,43 @@ function NodePropertiesPanelComponent({
             type: data.type,
             config: data.config ?? {},
             adapterCode: data.adapterCode,
+            context: data.context,
+            schemaRef: data.schemaRef,
         };
     }, [data]);
 
     const handleChange = useCallback((updated: StepConfigData) => {
-        if (!node || !data) return;
+        if (!node || !data || readOnly) return;
         onUpdate({
             ...node,
             data: {
                 ...data,
                 label: updated.key,
                 type: updated.type,
-                config: updated.config,
+                config: updated.config as JsonObject,
                 adapterCode: updated.adapterCode || data.adapterCode,
+                context: updated.context,
+                schemaRef: updated.schemaRef,
             },
         });
-    }, [node, data, onUpdate]);
+    }, [node, data, onUpdate, readOnly]);
+
+    const fieldErrors = useMemo(() => {
+        if (!node) return {};
+        return Object.fromEntries(
+            issues
+                .filter(issue => issue.stepKey === node.id && issue.field)
+                .map(issue => [String(issue.field), issue.message]),
+        );
+    }, [issues, node]);
 
     // Early return after all hooks
     if (!node || !data || !stepConfigData) return null;
 
     return (
-        <Sheet open={!!node} onOpenChange={() => onClose()}>
+        <Sheet open={!!node} onOpenChange={open => {
+            if (!open) onClose();
+        }}>
             <SheetContent
                 side="right"
                 className="overflow-y-auto p-0 !max-w-none"
@@ -119,15 +170,23 @@ function NodePropertiesPanelComponent({
             >
                 {/* Resize drag handle (left edge) */}
                 <div
-                    className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize z-50
-                               hover:bg-primary/20 active:bg-primary/30 transition-colors"
-                    onMouseDown={onResizeStart}
+                    className="absolute bottom-0 left-0 top-0 z-50 hidden w-2 cursor-col-resize touch-none sm:block
+                               transition-colors hover:bg-primary/20 active:bg-primary/30 focus:bg-primary/20 focus:outline-none"
+                    onPointerDown={onResizeStart}
+                    onPointerMove={onResizeMove}
+                    onPointerUp={onResizeEnd}
+                    onPointerCancel={onResizeEnd}
+                    onKeyDown={onResizeKeyDown}
                     role="separator"
+                    tabIndex={0}
                     aria-orientation="vertical"
-                    aria-label="Resize panel"
+                    aria-valuemin={MIN_PANEL_WIDTH}
+                    aria-valuemax={Math.round(maximumWidth())}
+                    aria-valuenow={Math.round(width)}
+                    aria-label={t`Resize panel`}
                 />
-                <SheetHeader className="px-4 py-3 border-b bg-muted/30">
-                    <SheetTitle className="flex items-center justify-between">
+                <SheetHeader className="flex-row items-center justify-between border-b bg-muted/30 px-4 py-3 pr-12">
+                    <SheetTitle>
                         <div className="flex items-center gap-2">
                             {selectedAdapter ? (
                                 <div
@@ -139,32 +198,36 @@ function NodePropertiesPanelComponent({
                             ) : (
                                 <Settings2 className="w-5 h-5" />
                             )}
-                            <span className="text-base">Configure Node</span>
+                            <span className="text-base">
+                                <Trans>Configure Node</Trans>
+                            </span>
                         </div>
-                        <div className="flex items-center gap-1">
-                            {showCheatSheet && <OperatorCheatSheetButton label="Help" />}
+                    </SheetTitle>
+                    <div className="flex items-center gap-1">
+                        {showCheatSheet && (
+                            <OperatorCheatSheetButton label={t`Help`} />
+                        )}
+                        {!readOnly && (
                             <Button
                                 variant="ghost"
                                 size="sm"
                                 className="text-destructive hover:text-destructive"
                                 onClick={onDelete}
-                                aria-label="Delete node"
+                                aria-label={t`Delete node`}
                             >
                                 <Trash2 className="w-4 h-4" />
                             </Button>
-                        </div>
-                    </SheetTitle>
+                        )}
+                    </div>
                 </SheetHeader>
 
                 <ScrollArea className={SCROLL_HEIGHTS.PROPERTIES_PANEL}>
-                    <div className="px-4 py-4">
+                    <fieldset disabled={readOnly} className="px-4 py-4">
                         <StepConfigPanel
                             data={stepConfigData}
                             onChange={handleChange}
                             onDelete={onDelete}
                             catalog={catalog}
-                            connectionCodes={connectionCodes}
-                            secretOptions={secretOptions}
                             variant="panel"
                             showHeader={false}
                             showDeleteButton={false}
@@ -173,8 +236,11 @@ function NodePropertiesPanelComponent({
                             showStepTester={showStepTester}
                             showAdvancedEditors={showAdvancedEditors}
                             compact={true}
+                            errors={fieldErrors}
+                            catalogLoading={catalogLoading}
+                            catalogError={catalogError}
                         />
-                    </div>
+                    </fieldset>
                 </ScrollArea>
             </SheetContent>
         </Sheet>

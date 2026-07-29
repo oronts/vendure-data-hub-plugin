@@ -1,8 +1,7 @@
 import { Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Textarea } from '@vendure/dashboard';
-import { useLingui } from '@lingui/react';
+import { Trans, useLingui } from '@lingui/react/macro';
 import * as React from 'react';
 import { getErrorMessage } from '../../../shared';
-import { PIPELINE_DETAIL_TRANSLATION_IDS } from '../../constants';
 import { useValidatePipelineDefinition } from '../../hooks';
 import type { PipelineDefinition } from '../../types';
 import {
@@ -15,7 +14,7 @@ interface Props {
 }
 
 export function PipelineImportDialog({ onImport }: Readonly<Props>) {
-    const { i18n } = useLingui();
+    const { t } = useLingui();
     const [open, setOpen] = React.useState(false);
     const [text, setText] = React.useState('');
     const [errors, setErrors] = React.useState<string[]>([]);
@@ -37,7 +36,7 @@ export function PipelineImportDialog({ onImport }: Readonly<Props>) {
             } else {
                 const issueMessages = (result?.issues as Array<{ message: string }> | undefined)
                     ?.map(issue => issue.message)
-                    ?? [i18n._(PIPELINE_DETAIL_TRANSLATION_IDS.INVALID_DEFINITION)];
+                    ?? [t`Invalid definition`];
                 setErrors(issueMessages);
             }
         } catch (e) {
@@ -67,18 +66,16 @@ export function PipelineImportDialog({ onImport }: Readonly<Props>) {
     return (
         <>
             <Button variant="outline" onClick={() => setOpen(true)}>
-                {i18n._(PIPELINE_DETAIL_TRANSLATION_IDS.IMPORT_JSON)}
+                <Trans>Import JSON</Trans>
             </Button>
             <Dialog open={open} onOpenChange={setOpen}>
                 <DialogContent className="max-w-3xl">
                     <DialogHeader>
                         <DialogTitle>
-                            {i18n._(PIPELINE_DETAIL_TRANSLATION_IDS.IMPORT_FROM_JSON)}
+                            <Trans>Import pipeline from JSON</Trans>
                         </DialogTitle>
                         <DialogDescription>
-                            {i18n._(
-                                PIPELINE_DETAIL_TRANSLATION_IDS.IMPORT_JSON_DESCRIPTION,
-                            )}
+                            <Trans>Paste a PipelineDefinition JSON and validate it before importing.</Trans>
                         </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-3">
@@ -91,9 +88,7 @@ export function PipelineImportDialog({ onImport }: Readonly<Props>) {
                         {errors.length > 0 && (
                             <div className="border border-destructive/40 rounded-md p-3">
                                 <div className="text-sm font-medium text-destructive mb-1">
-                                    {i18n._(
-                                        PIPELINE_DETAIL_TRANSLATION_IDS.VALIDATION_ERRORS,
-                                    )}
+                                    <Trans>Validation errors</Trans>
                                 </div>
                                 <ul className="list-disc pl-5 text-sm">
                                     {/* Index as key acceptable - error messages are static after validation */}
@@ -106,11 +101,11 @@ export function PipelineImportDialog({ onImport }: Readonly<Props>) {
                         <div className="flex gap-2">
                             <Button variant="outline" onClick={handleValidate} disabled={validateMutation.isPending}>
                                 {validateMutation.isPending
-                                    ? i18n._(PIPELINE_DETAIL_TRANSLATION_IDS.VALIDATING)
-                                    : i18n._(PIPELINE_DETAIL_TRANSLATION_IDS.VALIDATE)}
+                                    ? <Trans>Validating…</Trans>
+                                    : <Trans>Validate</Trans>}
                             </Button>
                             <Button onClick={handleImport} disabled={!currentDefinition}>
-                                {i18n._(PIPELINE_DETAIL_TRANSLATION_IDS.IMPORT)}
+                                <Trans>Import</Trans>
                             </Button>
                         </div>
                     </div>

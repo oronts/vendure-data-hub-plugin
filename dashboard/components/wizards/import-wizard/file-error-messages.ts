@@ -1,43 +1,40 @@
 import { getErrorMessage } from '../../../../shared';
 import {
     FileParseError,
-    IMPORT_WIZARD_TRANSLATION_IDS,
 } from '../../../constants';
 import { FileUploadError } from '../../../utils/file-upload-error';
 
-type Translate = (
-    id: string,
-    values?: Record<string, string | number>,
-) => string;
+export interface FileParseErrorMessages {
+    invalidJson: string;
+    emptyExcelWorkbook: string;
+}
+
+export interface FileUploadErrorMessages {
+    missingFileId: string;
+    httpError: (status: number) => string;
+}
 
 export function getFileParseErrorMessage(
     error: unknown,
-    translate: Translate,
+    messages: FileParseErrorMessages,
 ): string {
     if (!(error instanceof FileParseError)) {
         return getErrorMessage(error);
     }
-    return translate(
-        error.code === 'INVALID_JSON'
-            ? IMPORT_WIZARD_TRANSLATION_IDS.INVALID_JSON_FILE
-            : IMPORT_WIZARD_TRANSLATION_IDS.EMPTY_EXCEL_WORKBOOK,
-    );
+    return error.code === 'INVALID_JSON'
+        ? messages.invalidJson
+        : messages.emptyExcelWorkbook;
 }
 
 export function getFileUploadErrorMessage(
     error: unknown,
-    translate: Translate,
+    messages: FileUploadErrorMessages,
 ): string {
     if (!(error instanceof FileUploadError)) {
         return getErrorMessage(error);
     }
     if (error.code === 'MISSING_FILE_ID') {
-        return translate(
-            IMPORT_WIZARD_TRANSLATION_IDS.UPLOAD_RESPONSE_MISSING_ID,
-        );
+        return messages.missingFileId;
     }
-    return translate(
-        IMPORT_WIZARD_TRANSLATION_IDS.UPLOAD_HTTP_ERROR,
-        { status: error.status ?? 0 },
-    );
+    return messages.httpError(error.status ?? 0);
 }

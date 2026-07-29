@@ -17,6 +17,7 @@ export interface StepConfig {
     readonly adapterType: string | null;
     /** Visual node type for the pipeline editor (e.g. source, transform, load). */
     readonly nodeType: string;
+    readonly defaultConfig?: Readonly<Record<string, unknown>>;
 }
 
 /**

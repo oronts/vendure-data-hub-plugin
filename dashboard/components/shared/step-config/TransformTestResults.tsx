@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { memo } from 'react';
+import { Trans, useLingui } from '@lingui/react/macro';
 import { RecordsTable } from './ExtractTestResults';
 import { TestResultContainer, JsonDisplay } from './TestResultContainer';
 import { UI_LIMITS, COMPONENT_HEIGHTS } from '../../../constants';
@@ -19,23 +20,24 @@ const BeforeAfterDiff = memo(function BeforeAfterDiff({
 }: {
     beforeAfter: Array<{ before: Record<string, unknown>; after: Record<string, unknown> }>;
 }) {
+    const { t } = useLingui();
     return (
         <div className="space-y-3">
             {/* Index as key acceptable - static test result data, not reordered */}
             {beforeAfter.slice(0, UI_LIMITS.DIFF_PREVIEW_RECORDS).map((pair, recordIndex) => (
                 <div key={`record-${recordIndex}`} className="border rounded overflow-hidden">
                     <div className="bg-muted/50 px-2 py-1 text-xs font-medium">
-                        Record {recordIndex + 1}
+                        {t`Record ${recordIndex + 1}`}
                     </div>
                     <div className="grid grid-cols-2 divide-x">
                         <div className="p-2">
-                            <div className="text-xs text-muted-foreground mb-1">Before</div>
+                            <div className="text-xs text-muted-foreground mb-1"><Trans>Before</Trans></div>
                             <pre className={`text-[10px] bg-red-50 dark:bg-red-950/30 p-2 rounded overflow-auto ${COMPONENT_HEIGHTS.SCROLL_AREA_XXS}`}>
                                 {JSON.stringify(pair.before, null, 2)}
                             </pre>
                         </div>
                         <div className="p-2">
-                            <div className="text-xs text-muted-foreground mb-1">After</div>
+                            <div className="text-xs text-muted-foreground mb-1"><Trans>After</Trans></div>
                             <pre className={`text-[10px] bg-green-50 dark:bg-green-950/30 p-2 rounded overflow-auto ${COMPONENT_HEIGHTS.SCROLL_AREA_XXS}`}>
                                 {JSON.stringify(pair.after, null, 2)}
                             </pre>
@@ -45,7 +47,7 @@ const BeforeAfterDiff = memo(function BeforeAfterDiff({
             ))}
             {beforeAfter.length > UI_LIMITS.DIFF_PREVIEW_RECORDS && (
                 <div className="text-xs text-muted-foreground">
-                    Showing {UI_LIMITS.DIFF_PREVIEW_RECORDS} of {beforeAfter.length} records
+                    {t`Showing ${UI_LIMITS.DIFF_PREVIEW_RECORDS} of ${beforeAfter.length} records`}
                 </div>
             )}
         </div>
@@ -122,7 +124,7 @@ export const ValidateTestResults = memo(function ValidateTestResults({
                 )
             )}
 
-            {result.data && (
+            {result.data !== undefined && result.data !== null && (
                 <JsonDisplay data={result.data} maxHeight="200px" />
             )}
         </TestResultContainer>

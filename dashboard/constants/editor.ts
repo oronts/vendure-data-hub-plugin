@@ -1,4 +1,4 @@
-import { PORTS, HTTP, BATCH, UI_TIMEOUTS, TIME_UNITS } from './defaults';
+import { PORTS, HTTP, BATCH, UI_TIMEOUTS } from './defaults';
 
 export const NODE_LAYOUT = {
     INITIAL_X: 120,
@@ -17,28 +17,16 @@ export const UI_DEFAULTS = {
     EVENTS_LIMIT: 50,
     AUTO_REFRESH_INTERVAL_MS: 10_000,
     COPY_FEEDBACK_TIMEOUT_MS: UI_TIMEOUTS.COPY_FEEDBACK_MS,
+    OBJECT_URL_REVOKE_DELAY_MS: 1000,
     PREVIEW_ROWS: 10,
     IMPORT_PREVIEW_ROWS: 100,
     EXPORT_BATCH_SIZE: BATCH.EXPORT_BATCH_SIZE,
     IMPORT_BATCH_SIZE: BATCH.SIZE,
     DEFAULT_MAX_RETRIES: HTTP.MAX_RETRIES,
-    DEFAULT_ERROR_THRESHOLD_PERCENT: 10,
     DEFAULT_SFTP_PORT: PORTS.SFTP,
     DEFAULT_CACHE_TTL_SECONDS: 3600,
     WEBHOOK_PATH_PREFIX: '/webhooks/data-hub/',
     CRON_PLACEHOLDER: '0 0 * * *',
-} as const;
-
-export const PIPELINE_RETRY_DEFAULTS = {
-    DELAY_MS: TIME_UNITS.SECOND,
-    MAX_DELAY_MS: HTTP.RETRY_MAX_DELAY_MS,
-    MIN_DELAY_MS: TIME_UNITS.SECOND,
-} as const;
-
-export const PIPELINE_CHECKPOINT_DEFAULTS = {
-    INTERVAL_RECORDS: 1000,
-    INTERVAL_MS: TIME_UNITS.MINUTE,
-    MIN_INTERVAL_MS: TIME_UNITS.SECOND,
 } as const;
 
 export const STEP_CONFIG_DEFAULTS = {
@@ -52,12 +40,6 @@ export const STEP_CONFIG_DEFAULTS = {
     GATE_PREVIEW_COUNT: 10,
 } as const;
 
-export const RETENTION_DEFAULTS = {
-    RUNS_DAYS: 7,
-    ERROR_DAYS: 30,
-    LOGS_DAYS: 30,
-} as const;
-
 /** Default edge style for ReactFlow pipeline connections */
 export const EDGE_STYLE = {
     STROKE_WIDTH: 2,
@@ -65,5 +47,3 @@ export const EDGE_STYLE = {
 
 /** Canvas CSS class for the ReactFlow editor background */
 export const CANVAS_BG_CLASS = 'bg-gray-50 dark:bg-gray-900' as const;
-
-

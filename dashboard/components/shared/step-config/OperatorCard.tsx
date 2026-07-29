@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { memo, useCallback } from 'react';
-import { Button, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Textarea, Separator } from '@vendure/dashboard';
+import { Trans, useLingui } from '@lingui/react/macro';
+import { Button, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Separator } from '@vendure/dashboard';
 import { ChevronDown, ChevronRight, ArrowUp, ArrowDown, X } from 'lucide-react';
 import { MOVE_DIRECTION } from '../../../constants';
 import type { MoveDirection } from '../../../constants';
@@ -52,8 +53,10 @@ function OperatorCardComponent({
     onRemove,
     onMove,
 }: OperatorCardProps) {
+    const { t } = useLingui();
     const [isAddingArg, setIsAddingArg] = React.useState(false);
     const [newArgKey, setNewArgKey] = React.useState('');
+    const operatorTypeId = React.useId();
     const operatorMeta = availableOperators.find(a => a.code === operator.op);
     const argEntries = Object.entries(operator.args || {});
 
@@ -96,29 +99,21 @@ function OperatorCardComponent({
         setNewArgKey('');
     }, []);
 
-    const handleKeyDown = React.useCallback((e: React.KeyboardEvent) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            onToggleExpand();
-        }
-    }, [onToggleExpand]);
-
     return (
         <div
             className={`border rounded-lg transition-all duration-150 ${isExpanded ? 'border-primary/40 bg-muted/30 shadow-sm' : 'border-border bg-background hover:bg-muted/20 hover:border-muted-foreground/30'}`}
             data-testid={`datahub-operatorcard-card-${index}`}
         >
-            {/* Header - always visible */}
             <div
-                role="button"
-                tabIndex={0}
-                aria-expanded={isExpanded}
-                aria-label={`Operator ${operator.op}, step ${index + 1} of ${totalCount}`}
-                className="flex items-center justify-between p-3 cursor-pointer"
-                onClick={onToggleExpand}
-                onKeyDown={handleKeyDown}
+                className="flex items-center p-3"
             >
-                <div className="flex items-center gap-2.5">
+                <button
+                    type="button"
+                    aria-expanded={isExpanded}
+                    aria-label={t`Operator ${operator.op}, step ${index + 1} of ${totalCount}`}
+                    className="flex min-w-0 flex-1 items-center gap-2.5 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    onClick={onToggleExpand}
+                >
                     <div className="w-6 h-6 rounded-md bg-primary/10 text-primary text-[10px] font-bold flex items-center justify-center shrink-0">
                         {index + 1}
                     </div>
@@ -132,7 +127,7 @@ function OperatorCardComponent({
                             ({argEntries.map(([k]) => k).join(', ')})
                         </span>
                     )}
-                </div>
+                </button>
                 <div className="flex items-center gap-0.5">
                     <Button
                         variant="ghost"
@@ -140,7 +135,7 @@ function OperatorCardComponent({
                         className="h-7 w-7 p-0"
                         onClick={(e) => { e.stopPropagation(); onMove(MOVE_DIRECTION.UP); }}
                         disabled={index === 0}
-                        aria-label="Move operator up"
+                        aria-label={t`Move operator up`}
                     >
                         <ArrowUp className="w-3.5 h-3.5" />
                     </Button>
@@ -150,7 +145,7 @@ function OperatorCardComponent({
                         className="h-7 w-7 p-0"
                         onClick={(e) => { e.stopPropagation(); onMove(MOVE_DIRECTION.DOWN); }}
                         disabled={index === totalCount - 1}
-                        aria-label="Move operator down"
+                        aria-label={t`Move operator down`}
                     >
                         <ArrowDown className="w-3.5 h-3.5" />
                     </Button>
@@ -159,7 +154,7 @@ function OperatorCardComponent({
                         size="sm"
                         className="h-7 w-7 p-0 text-destructive/70 hover:text-destructive"
                         onClick={(e) => { e.stopPropagation(); onRemove(); }}
-                        aria-label="Remove operator"
+                        aria-label={t`Remove operator`}
                     >
                         <X className="w-3.5 h-3.5" />
                     </Button>
@@ -172,12 +167,14 @@ function OperatorCardComponent({
                     <Separator />
                     {/* Operator type selector */}
                     <div>
-                        <Label className="text-xs font-medium">Operator Type</Label>
+                        <Label htmlFor={operatorTypeId} className="text-xs font-medium">
+                            <Trans>Operator type</Trans>
+                        </Label>
                         <Select
                             value={operator.op}
                             onValueChange={handleOperatorTypeChange}
                         >
-                            <SelectTrigger className="mt-1.5 h-9">
+                            <SelectTrigger id={operatorTypeId} className="mt-1.5 h-9">
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
@@ -192,9 +189,13 @@ function OperatorCardComponent({
                     {operatorMeta?.schema?.fields && operatorMeta.schema.fields.length > 0 ? (
                         <div className="space-y-4">
                             <div className="flex items-center gap-2">
-                                <Label className="text-xs font-medium">Configuration</Label>
+                                <h4 className="text-xs font-medium">
+                                    <Trans>Configuration</Trans>
+                                </h4>
                                 <span className="text-[10px] text-muted-foreground">
-                                    {operatorMeta.schema.fields.length} field{operatorMeta.schema.fields.length !== 1 ? 's' : ''}
+                                    {operatorMeta.schema.fields.length === 1
+                                        ? t`${operatorMeta.schema.fields.length} field`
+                                        : t`${operatorMeta.schema.fields.length} fields`}
                                 </span>
                             </div>
                             <div className="space-y-3 pl-0.5">
@@ -211,7 +212,9 @@ function OperatorCardComponent({
                     ) : (
                         <div>
                             <div className="flex items-center justify-between">
-                                <Label className="text-xs font-medium">Arguments</Label>
+                                <h4 className="text-xs font-medium">
+                                    <Trans>Arguments</Trans>
+                                </h4>
                                 {!isAddingArg && (
                                     <Button
                                         variant="outline"
@@ -219,16 +222,17 @@ function OperatorCardComponent({
                                         className="h-7 text-xs"
                                         onClick={handleAddArg}
                                     >
-                                        + Add Arg
+                                        <Trans>Add argument</Trans>
                                     </Button>
                                 )}
                             </div>
                             {isAddingArg && (
                                 <div className="flex items-center gap-2 mt-2">
                                     <Input
+                                        aria-label={t`Argument key`}
                                         value={newArgKey}
                                         onChange={(e) => setNewArgKey(e.target.value)}
-                                        placeholder="Argument key"
+                                        placeholder={t`Argument key`}
                                         className="h-9 text-sm"
                                         autoFocus
                                         onKeyDown={(e) => {
@@ -236,12 +240,12 @@ function OperatorCardComponent({
                                             if (e.key === 'Escape') handleCancelAddArg();
                                         }}
                                     />
-                                    <Button size="sm" className="h-8" onClick={handleConfirmAddArg}>Add</Button>
-                                    <Button size="sm" variant="ghost" className="h-8" onClick={handleCancelAddArg}>Cancel</Button>
+                                    <Button size="sm" className="h-8" onClick={handleConfirmAddArg}><Trans>Add</Trans></Button>
+                                    <Button size="sm" variant="ghost" className="h-8" onClick={handleCancelAddArg}><Trans>Cancel</Trans></Button>
                                 </div>
                             )}
                             {argEntries.length === 0 && !isAddingArg ? (
-                                <p className="text-xs text-muted-foreground mt-2">No arguments configured.</p>
+                                <p className="text-xs text-muted-foreground mt-2"><Trans>No arguments configured.</Trans></p>
                             ) : (
                                 <div className="mt-2 space-y-2">
                                     {argEntries.map(([key, value]) => (

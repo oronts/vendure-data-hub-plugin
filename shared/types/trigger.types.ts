@@ -2,7 +2,7 @@
  * Trigger Types
  */
 
-import { JsonValue, JsonObject } from './json.types';
+import { JsonValue } from './json.types';
 
 /**
  * Types of triggers that can start a pipeline execution
@@ -77,12 +77,6 @@ export interface ScheduleTriggerConfig {
     intervalSec?: number;
     /** Timezone for cron expressions (e.g., "Europe/Berlin") */
     timezone?: string;
-    /** Start time for the schedule (ISO 8601) */
-    startTime?: string;
-    /** End time for the schedule (ISO 8601) */
-    endTime?: string;
-    /** Maximum concurrent executions allowed */
-    maxConcurrent?: number;
 }
 
 /**
@@ -123,10 +117,6 @@ export interface WebhookTriggerConfig {
     idempotencyKeyHeader?: string;
     /** TTL for idempotency key in seconds */
     idempotencyTtlSec?: number;
-    /** Validate payload against schema */
-    validatePayload?: boolean;
-    /** JSON Schema for payload validation */
-    payloadSchema?: JsonObject;
 }
 
 /**
@@ -203,10 +193,6 @@ export interface TriggerConfig {
     type: TriggerType;
     /** Whether the trigger is enabled */
     enabled?: boolean;
-    /** Schedule trigger configuration */
-    schedule?: ScheduleTriggerConfig;
-    /** Webhook trigger configuration */
-    webhook?: WebhookTriggerConfig;
     /** Exact Vendure event class name (event triggers) */
     event?: VendureEventType;
     /** Message trigger configuration */

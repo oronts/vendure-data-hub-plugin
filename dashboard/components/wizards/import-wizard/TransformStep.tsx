@@ -1,11 +1,10 @@
 import { useCallback, useState } from 'react';
-import { useLingui } from '@lingui/react';
+import { useLingui } from '@lingui/react/macro';
 import { Zap } from 'lucide-react';
 import { useAdaptersByType } from '../../../hooks/api/use-adapters';
 import type { WizardTransformationStep } from '../../../types/wizard';
 import { EmptyState } from '../../shared/feedback';
 import { WizardStepContainer } from '../shared';
-import { STEP_CONTENT } from './constants';
 import { TransformConfigDialog } from './TransformConfigDialog';
 import { TransformPipelineCard } from './TransformPipelineCard';
 import { TransformTypeButtons } from './TransformTypeButtons';
@@ -18,7 +17,7 @@ interface TransformStepProps {
 }
 
 export function TransformStep({ config, updateConfig }: TransformStepProps) {
-    const { i18n } = useLingui();
+    const { t } = useLingui();
     const [editingTransform, setEditingTransform] = useState<WizardTransformationStep | null>(null);
     const { data: operators } = useAdaptersByType('OPERATOR');
     const transformTypes = useTransformTypesFromData(operators);
@@ -57,8 +56,8 @@ export function TransformStep({ config, updateConfig }: TransformStepProps) {
     const transformations = config.transformations ?? [];
     return (
         <WizardStepContainer
-            title={i18n._(STEP_CONTENT.transform.title)}
-            description={i18n._(STEP_CONTENT.transform.description)}
+            title={t`Add transformations`}
+            description={t`Configure optional transformations applied before loading records.`}
         >
             <TransformTypeButtons onAdd={addTransform} operators={operators} />
             {transformations.length > 0
@@ -73,8 +72,8 @@ export function TransformStep({ config, updateConfig }: TransformStepProps) {
                 : (
                     <EmptyState
                         icon={<Zap className="h-8 w-8" />}
-                        title={i18n._(STEP_CONTENT.transform.emptyTitle)}
-                        description={i18n._(STEP_CONTENT.transform.emptyDescription)}
+                        title={t`No transformations configured`}
+                        description={t`Add an operator above to build the transformation pipeline.`}
                     />
                 )}
             {editingTransform && (

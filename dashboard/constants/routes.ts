@@ -9,10 +9,16 @@ export const ROUTES = {
     QUEUES: `${DATAHUB_API_BASE}/queues`,
     SECRETS: `${DATAHUB_API_BASE}/secrets`,
     CONNECTIONS: `${DATAHUB_API_BASE}/connections`,
+    DESTINATIONS: `${DATAHUB_API_BASE}/destinations`,
+    FEEDS: `${DATAHUB_API_BASE}/feeds`,
     SCHEMAS: `${DATAHUB_API_BASE}/schemas`,
 } as const;
 
 export const DETAIL_ROUTES = {
     PIPELINE: `${ROUTES.PIPELINES}/$id`,
+    CONNECTION: `${ROUTES.CONNECTIONS}/$id`,
+    SECRET: `${ROUTES.SECRETS}/$id`,
+    FEED: `${ROUTES.FEEDS}/$id`,
     SCHEMA: `${ROUTES.SCHEMAS}/$id`,
+    SCHEMA_VERSION: `${ROUTES.SCHEMAS}/$id/version`,
 } as const;

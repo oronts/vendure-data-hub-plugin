@@ -39,6 +39,8 @@ export const PLACEHOLDERS = {
     // Headers
     HEADER_NAME: 'X-Custom-Header',
     HEADER_VALUE: 'header-value',
+    IDEMPOTENCY_KEY: '<unique-id>',
+    HMAC_SIGNATURE: '<hmac-of-body>',
 
     // Codes and identifiers
     PIPELINE_NAME: 'My Pipeline',

@@ -1,4 +1,5 @@
 import React from 'react';
+import { Trans, useLingui } from '@lingui/react/macro';
 import {
     Input,
     Label,
@@ -28,8 +29,13 @@ export function RetrySettingsComponent({
     onChange,
     defaultExpanded = false,
 }: RetrySettingsComponentProps) {
+    const { t } = useLingui();
     const { options: backoffStrategies } = useOptionValues('backoffStrategies');
     const [expanded, setExpanded] = React.useState(defaultExpanded);
+    const fieldIdPrefix = React.useId();
+    const maxRetriesId = `${fieldIdPrefix}-max-retries`;
+    const retryDelayId = `${fieldIdPrefix}-retry-delay`;
+    const backoffId = `${fieldIdPrefix}-backoff`;
 
     return (
         <div className="border-t pt-3">
@@ -37,17 +43,21 @@ export function RetrySettingsComponent({
                 type="button"
                 onClick={() => setExpanded(!expanded)}
                 className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+                aria-label={expanded ? t`Collapse retry settings` : t`Expand retry settings`}
                 data-testid="datahub-retry-settings-toggle"
             >
                 <span>{expanded ? '\u25BC' : '\u25B6'}</span>
-                <span>Retry Settings</span>
+                <span><Trans>Retry settings</Trans></span>
             </button>
 
             {expanded && (
                 <div className="mt-3 space-y-3 pl-4">
                     <div className="space-y-1">
-                        <Label className="text-sm text-muted-foreground">Max Retries</Label>
+                        <Label htmlFor={maxRetriesId} className="text-sm text-muted-foreground">
+                            <Trans>Maximum retries</Trans>
+                        </Label>
                         <Input
+                            id={maxRetriesId}
                             type="number"
                             value={retrySettings?.maxRetries ?? ''}
                             onChange={(e) => {
@@ -59,13 +69,16 @@ export function RetrySettingsComponent({
                             data-testid="datahub-retry-max-retries-input"
                         />
                         <p className="text-xs text-muted-foreground">
-                            Maximum number of retry attempts per record (0 = no retries)
+                            <Trans>Maximum number of retry attempts per record (0 = no retries)</Trans>
                         </p>
                     </div>
 
                     <div className="space-y-1">
-                        <Label className="text-sm text-muted-foreground">Retry Delay (ms)</Label>
+                        <Label htmlFor={retryDelayId} className="text-sm text-muted-foreground">
+                            <Trans>Retry delay (ms)</Trans>
+                        </Label>
                         <Input
+                            id={retryDelayId}
                             type="number"
                             value={retrySettings?.retryDelayMs ?? ''}
                             onChange={(e) => {
@@ -77,19 +90,25 @@ export function RetrySettingsComponent({
                             data-testid="datahub-retry-delay-input"
                         />
                         <p className="text-xs text-muted-foreground">
-                            Delay in milliseconds between retry attempts
+                            <Trans>Delay in milliseconds between retry attempts</Trans>
                         </p>
                     </div>
 
                     <div className="space-y-1">
-                        <Label className="text-sm text-muted-foreground">Backoff Strategy</Label>
+                        <Label htmlFor={backoffId} className="text-sm text-muted-foreground">
+                            <Trans>Backoff strategy</Trans>
+                        </Label>
                         <Select
                             value={retrySettings?.backoff ?? 'FIXED'}
                             onValueChange={(v) => {
                                 onChange({ ...retrySettings, backoff: v as RetrySettings['backoff'] });
                             }}
                         >
-                            <SelectTrigger className="w-full" data-testid="datahub-retry-backoff-select">
+                            <SelectTrigger
+                                id={backoffId}
+                                className="w-full"
+                                data-testid="datahub-retry-backoff-select"
+                            >
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
@@ -101,7 +120,7 @@ export function RetrySettingsComponent({
                             </SelectContent>
                         </Select>
                         <p className="text-xs text-muted-foreground">
-                            Fixed uses constant delay; Exponential doubles delay on each retry
+                            <Trans>Fixed uses a constant delay; exponential doubles the delay after each retry.</Trans>
                         </p>
                     </div>
                 </div>

@@ -1,6 +1,11 @@
 import { Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Textarea } from '@vendure/dashboard';
+import { Trans } from '@lingui/react/macro';
 import * as React from 'react';
-import { DIALOG_DIMENSIONS, TEXTAREA_HEIGHTS } from '../../constants';
+import {
+    DIALOG_DIMENSIONS,
+    TEXTAREA_HEIGHTS,
+} from '../../constants';
+import { toPipelineTs } from './pipeline-source';
 
 interface Props {
     definition: unknown;
@@ -31,20 +36,26 @@ export function PipelineExportDialog({ definition }: Readonly<Props>) {
     return (
         <>
             <Button variant="outline" onClick={() => setOpen(true)}>
-                Export to code
+                <Trans>Export to code</Trans>
             </Button>
             <Dialog open={open} onOpenChange={setOpen}>
                 <DialogContent className={`${DIALOG_DIMENSIONS.MAX_WIDTH_2XL} ${DIALOG_DIMENSIONS.MAX_HEIGHT_80VH} flex flex-col`}>
                     <DialogHeader className="flex-none">
-                        <DialogTitle>Export pipeline</DialogTitle>
-                        <DialogDescription>Copy or download TypeScript DSL</DialogDescription>
+                        <DialogTitle>
+                            <Trans>Export pipeline</Trans>
+                        </DialogTitle>
+                        <DialogDescription>
+                            <Trans>Copy or download the TypeScript DSL.</Trans>
+                        </DialogDescription>
                     </DialogHeader>
                     <div className="flex flex-col gap-3 flex-1 min-h-0">
                         <Textarea value={code} readOnly className={`font-mono text-xs flex-1 ${TEXTAREA_HEIGHTS.CODE_EXPORT_MIN} ${TEXTAREA_HEIGHTS.CODE_EXPORT_MAX} resize-none`} />
                         <div className="flex gap-2 flex-none">
-                            <Button onClick={copyToClipboard}>Copy</Button>
+                            <Button onClick={copyToClipboard}>
+                                <Trans>Copy</Trans>
+                            </Button>
                             <Button variant="secondary" onClick={downloadFile}>
-                                Download
+                                <Trans>Download</Trans>
                             </Button>
                         </div>
                     </div>
@@ -52,12 +63,4 @@ export function PipelineExportDialog({ definition }: Readonly<Props>) {
             </Dialog>
         </>
     );
-}
-
-function toPipelineTs(definition: unknown): string {
-    const json = JSON.stringify(definition, null, 2);
-    return `import { definePipeline } from '@vendure/data-hub';
-
-export default definePipeline(${json} as const);
-`;
 }

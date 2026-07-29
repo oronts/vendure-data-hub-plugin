@@ -1,8 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
-import {
-    FileParseError,
-    IMPORT_WIZARD_TRANSLATION_IDS,
-} from '../../../constants';
+import { describe, expect, it } from 'vitest';
+import { FileParseError } from '../../../constants';
 import { FileUploadError } from '../../../utils/file-upload-error';
 import {
     getFileParseErrorMessage,
@@ -10,37 +7,41 @@ import {
 } from './file-error-messages';
 
 describe('import file error messages', () => {
-    const translate = vi.fn(
-        (id: string, values?: Record<string, string | number>) =>
-            values ? `${id}:${JSON.stringify(values)}` : id,
-    );
+    const parseMessages = {
+        invalidJson: 'The selected file is not valid JSON.',
+        emptyExcelWorkbook: 'The selected Excel workbook contains no sheets.',
+    };
+    const uploadMessages = {
+        missingFileId: 'The upload response did not include a file ID.',
+        httpError: (status: number) => `Upload failed with status ${status}.`,
+    };
 
     it('maps client parse failures to stable translation IDs', () => {
         expect(getFileParseErrorMessage(
             new FileParseError('INVALID_JSON'),
-            translate,
-        )).toBe(IMPORT_WIZARD_TRANSLATION_IDS.INVALID_JSON_FILE);
+            parseMessages,
+        )).toBe(parseMessages.invalidJson);
         expect(getFileParseErrorMessage(
             new FileParseError('EMPTY_EXCEL_WORKBOOK'),
-            translate,
-        )).toBe(IMPORT_WIZARD_TRANSLATION_IDS.EMPTY_EXCEL_WORKBOOK);
+            parseMessages,
+        )).toBe(parseMessages.emptyExcelWorkbook);
     });
 
     it('maps malformed upload responses and status failures', () => {
         expect(getFileUploadErrorMessage(
             new FileUploadError('MISSING_FILE_ID'),
-            translate,
-        )).toBe(IMPORT_WIZARD_TRANSLATION_IDS.UPLOAD_RESPONSE_MISSING_ID);
+            uploadMessages,
+        )).toBe(uploadMessages.missingFileId);
         expect(getFileUploadErrorMessage(
             new FileUploadError('HTTP_ERROR', 503),
-            translate,
-        )).toContain('"status":503');
+            uploadMessages,
+        )).toBe('Upload failed with status 503.');
     });
 
     it('preserves server-provided errors', () => {
         expect(getFileUploadErrorMessage(
             new Error('Server rejected the file'),
-            translate,
+            uploadMessages,
         )).toBe('Server rejected the file');
     });
 });

@@ -18,8 +18,8 @@ import {
     ChevronRight,
 } from 'lucide-react';
 import { Badge, Button } from '@vendure/dashboard';
+import { Trans, useLingui } from '@lingui/react/macro';
 import { toast } from 'sonner';
-import { TOAST_TEMPLATE } from '../../constants';
 import type { ImportTemplate } from '../../hooks/use-import-templates';
 
 export interface TemplatePreviewProps {
@@ -28,6 +28,7 @@ export interface TemplatePreviewProps {
 }
 
 function TemplatePreviewComponent({ template, onUseTemplate }: TemplatePreviewProps) {
+    const { t } = useLingui();
     const [showSampleData, setShowSampleData] = React.useState(false);
 
     const handleCopySampleData = React.useCallback(() => {
@@ -39,12 +40,13 @@ function TemplatePreviewComponent({ template, onUseTemplate }: TemplatePreviewPr
                     .join(','),
             );
             const csv = [csvHeader, ...csvRows].join('\n');
-            navigator.clipboard.writeText(csv).catch(() => {
-                // Silently fail if clipboard API is not available
-            });
-            toast.success(TOAST_TEMPLATE.SAMPLE_COPIED);
+            void navigator.clipboard.writeText(csv)
+                .then(() => {
+                    toast.success(t`Sample data copied to clipboard`);
+                })
+                .catch(() => undefined);
         }
-    }, [template]);
+    }, [t, template]);
 
     const handleDownloadSample = React.useCallback(() => {
         if (template.sampleData) {
@@ -74,9 +76,9 @@ function TemplatePreviewComponent({ template, onUseTemplate }: TemplatePreviewPr
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
 
-            toast.success(TOAST_TEMPLATE.SAMPLE_DOWNLOADED);
+            toast.success(t`Sample file downloaded`);
         }
-    }, [template]);
+    }, [t, template]);
 
     return (
         <div className="border rounded-lg bg-card">
@@ -88,7 +90,7 @@ function TemplatePreviewComponent({ template, onUseTemplate }: TemplatePreviewPr
                         <p className="text-sm text-muted-foreground mt-1">{template.description}</p>
                     </div>
                     <Button onClick={onUseTemplate}>
-                        Use Template
+                        <Trans>Use template</Trans>
                     </Button>
                 </div>
 
@@ -118,7 +120,7 @@ function TemplatePreviewComponent({ template, onUseTemplate }: TemplatePreviewPr
             <div className="p-4 border-b">
                 <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
                     <FileText className="h-4 w-4" />
-                    Required Fields
+                    <Trans>Required fields</Trans>
                 </h4>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                     {template.requiredFields.map(field => (
@@ -136,7 +138,9 @@ function TemplatePreviewComponent({ template, onUseTemplate }: TemplatePreviewPr
             {/* Optional Fields */}
             {template.optionalFields.length > 0 && (
                 <div className="p-4 border-b">
-                    <h4 className="text-sm font-medium mb-3">Optional Fields</h4>
+                    <h4 className="text-sm font-medium mb-3">
+                        <Trans>Optional fields</Trans>
+                    </h4>
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                         {template.optionalFields.map(field => (
                             <div
@@ -157,6 +161,7 @@ function TemplatePreviewComponent({ template, onUseTemplate }: TemplatePreviewPr
                     <button
                         type="button"
                         onClick={() => setShowSampleData(!showSampleData)}
+                        aria-expanded={showSampleData}
                         className="flex items-center gap-2 text-sm font-medium w-full text-left"
                     >
                         {showSampleData ? (
@@ -164,7 +169,9 @@ function TemplatePreviewComponent({ template, onUseTemplate }: TemplatePreviewPr
                         ) : (
                             <ChevronRight className="h-4 w-4" />
                         )}
-                        Sample Data ({template.sampleData.length} rows)
+                        {template.sampleData.length === 1
+                            ? t`Sample data (${template.sampleData.length} row)`
+                            : t`Sample data (${template.sampleData.length} rows)`}
                     </button>
 
                     {showSampleData && (
@@ -172,11 +179,11 @@ function TemplatePreviewComponent({ template, onUseTemplate }: TemplatePreviewPr
                             <div className="flex justify-end gap-2 mb-2">
                                 <Button variant="ghost" size="sm" onClick={handleCopySampleData}>
                                     <Copy className="h-3.5 w-3.5 mr-1" />
-                                    Copy CSV
+                                    <Trans>Copy CSV</Trans>
                                 </Button>
                                 <Button variant="ghost" size="sm" onClick={handleDownloadSample}>
                                     <Download className="h-3.5 w-3.5 mr-1" />
-                                    Download
+                                    <Trans>Download</Trans>
                                 </Button>
                             </div>
                             <div className="overflow-x-auto border rounded">

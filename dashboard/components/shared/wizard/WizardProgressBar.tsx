@@ -38,7 +38,7 @@ const ProgressStepButton = memo(function ProgressStepButton({
         <React.Fragment>
             <button
                 type="button"
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${styleClass}`}
+                className={`flex shrink-0 items-center gap-2 px-3 py-2 rounded-lg transition-colors ${styleClass}`}
                 onClick={handleClick}
                 disabled={index > currentStep}
                 aria-current={isActive ? 'step' : undefined}
@@ -52,7 +52,7 @@ const ProgressStepButton = memo(function ProgressStepButton({
                 <span className="text-sm font-medium hidden lg:inline">{step.label}</span>
             </button>
             {index < stepsLength - 1 && (
-                <ChevronRight className={`${ICON_SIZES.SM} text-muted-foreground`} />
+                <ChevronRight className={`${ICON_SIZES.SM} shrink-0 text-muted-foreground`} />
             )}
         </React.Fragment>
     );
@@ -60,7 +60,7 @@ const ProgressStepButton = memo(function ProgressStepButton({
 
 function WizardProgressBarComponent({ steps, currentStep, onStepClick }: WizardProgressBarProps) {
     return (
-        <div className="flex items-center gap-2 p-4 border-b bg-muted/30">
+        <div className="flex min-w-0 max-w-full items-center gap-2 overflow-x-auto border-b bg-muted/30 p-4">
             {steps.map((step, index) => (
                 <ProgressStepButton
                     key={step.id}

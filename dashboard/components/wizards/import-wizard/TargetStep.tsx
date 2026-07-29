@@ -1,3 +1,4 @@
+import { Trans, useLingui } from '@lingui/react/macro';
 import {
     Card,
     CardContent,
@@ -10,8 +11,8 @@ import { VENDURE_ENTITY_LIST } from '../../../../shared';
 import type { EnhancedFieldDefinition } from '../../../types';
 import { WizardStepContainer } from '../shared';
 import { EntitySelector } from '../../shared/entity-selector';
-import { STEP_CONTENT } from './constants';
 import type { ImportConfiguration } from './types';
+import { createImportTargetChange } from './target-state';
 
 interface TargetStepProps {
     config: Partial<ImportConfiguration>;
@@ -19,14 +20,18 @@ interface TargetStepProps {
 }
 
 export function TargetStep({ config, updateConfig }: TargetStepProps) {
+    const { t } = useLingui();
+
     return (
         <WizardStepContainer
-            title={STEP_CONTENT.target.title}
-            description={STEP_CONTENT.target.description}
+            title={t`Choose a target`}
+            description={t`Select the Vendure entity to import records into.`}
         >
             <EntitySelector
                 value={config.targetEntity}
-                onChange={(entityCode) => updateConfig({ targetEntity: entityCode })}
+                onChange={entityCode => updateConfig(
+                    createImportTargetChange(config, entityCode),
+                )}
             />
 
             {config.targetEntity && config.targetSchema && (
@@ -41,6 +46,7 @@ interface SchemaFieldsCardProps {
 }
 
 function SchemaFieldsCard({ config }: SchemaFieldsCardProps) {
+    const { t } = useLingui();
     const entityName = VENDURE_ENTITY_LIST.find(e => e.code === config.targetEntity)?.name;
 
     if (!config.targetSchema) {
@@ -50,9 +56,9 @@ function SchemaFieldsCard({ config }: SchemaFieldsCardProps) {
     return (
         <Card>
             <CardHeader>
-                <CardTitle>Schema Fields</CardTitle>
+                <CardTitle><Trans>Schema fields</Trans></CardTitle>
                 <CardDescription>
-                    Available fields for {entityName}
+                    {t`Available fields for ${entityName ?? config.targetEntity ?? ''}`}
                 </CardDescription>
             </CardHeader>
             <CardContent>
@@ -64,7 +70,7 @@ function SchemaFieldsCard({ config }: SchemaFieldsCardProps) {
                         >
                             <span className="font-mono text-sm">{name}</span>
                             {(field as EnhancedFieldDefinition).required && (
-                                <Badge variant="destructive" className="text-[10px] px-1">req</Badge>
+                                <Badge variant="destructive" className="text-[10px] px-1"><Trans>Required</Trans></Badge>
                             )}
                         </div>
                     ))}

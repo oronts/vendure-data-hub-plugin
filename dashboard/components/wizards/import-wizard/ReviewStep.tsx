@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { Trans, useLingui } from '@lingui/react/macro';
 import {
     Badge,
     Accordion,
@@ -18,7 +19,6 @@ import { WizardStepContainer } from '../shared';
 import { ConfigurationNameCard, SummaryCard, SummaryCardGrid, SummaryField } from '../../shared/wizard';
 import { useAdaptersByType } from '../../../hooks/api/use-adapters';
 import { formatKey } from '../../../utils/formatters';
-import { STEP_CONTENT, IMPORT_PLACEHOLDERS } from './constants';
 import type { ImportConfiguration } from './types';
 import type { ImportSourceConfig } from '../../../types/wizard';
 
@@ -29,23 +29,24 @@ interface ReviewStepProps {
 }
 
 export function ReviewStep({ config, updateConfig, errors = {} }: ReviewStepProps) {
+    const { t } = useLingui();
     const mappedFieldsCount = config.mappings?.filter(m => m.sourceField && m.targetField).length ?? 0;
     const requiredFieldsCount = config.mappings?.filter(m => m.required).length ?? 0;
 
     return (
         <WizardStepContainer
-            title={STEP_CONTENT.review.title}
-            description={STEP_CONTENT.review.description}
+            title={t`Review import`}
+            description={t`Review the configuration before creating the import.`}
         >
             <ConfigurationNameCard
-                title={STEP_CONTENT.review.cardTitle}
+                title={t`Import details`}
                 name={config.name ?? ''}
                 description={config.description ?? ''}
                 onNameChange={name => updateConfig({ name })}
                 onDescriptionChange={description => updateConfig({ description })}
-                namePlaceholder={IMPORT_PLACEHOLDERS.configName}
+                namePlaceholder={t`My product import`}
                 nameError={errors.name}
-                nameHelperText="A descriptive name to identify this import configuration"
+                nameHelperText={t`A descriptive name to identify this import configuration`}
             />
             <SummaryCards
                 config={config}
@@ -67,26 +68,30 @@ interface SummaryCardsProps {
 }
 
 function SummaryCards({ config, mappedFieldsCount, requiredFieldsCount }: SummaryCardsProps) {
+    const { t } = useLingui();
+
     return (
         <SummaryCardGrid columns={4}>
             <SummaryCard
                 icon={Database}
-                label="Source"
+                label={t`Source`}
                 value={<span className="capitalize">{config.source?.type}</span>}
             />
             <SummaryCard
                 icon={Table}
-                label="Target"
+                label={t`Target`}
                 value={VENDURE_ENTITY_LIST.find(e => e.code === config.targetEntity)?.name}
             />
             <SummaryCard
                 icon={Columns}
-                label="Mappings"
-                value={`${mappedFieldsCount} fields (${requiredFieldsCount} required)`}
+                label={t`Mappings`}
+                value={mappedFieldsCount === 1
+                    ? t`${mappedFieldsCount} field (${requiredFieldsCount} required)`
+                    : t`${mappedFieldsCount} fields (${requiredFieldsCount} required)`}
             />
             <SummaryCard
                 icon={Clock}
-                label="Trigger"
+                label={t`Trigger`}
                 value={<span className="capitalize">{config.trigger?.type}</span>}
             />
         </SummaryCardGrid>
@@ -99,17 +104,19 @@ interface DetailedConfigAccordionProps {
 }
 
 function DetailedConfigAccordion({ config, mappedFieldsCount }: DetailedConfigAccordionProps) {
+    const { t } = useLingui();
+
     return (
         <Accordion type="multiple" defaultValue={['source', 'mappings', 'strategy']}>
             <AccordionItem value="source">
-                <AccordionTrigger>Source Configuration</AccordionTrigger>
+                <AccordionTrigger><Trans>Source configuration</Trans></AccordionTrigger>
                 <AccordionContent>
                     <SourceConfigSummary source={config.source} />
                 </AccordionContent>
             </AccordionItem>
 
             <AccordionItem value="mappings">
-                <AccordionTrigger>Field Mappings ({mappedFieldsCount})</AccordionTrigger>
+                <AccordionTrigger>{t`Field mappings (${mappedFieldsCount})`}</AccordionTrigger>
                 <AccordionContent>
                     <div className="space-y-2">
                         {config.mappings?.filter(m => m.sourceField && m.targetField).map(m => (
@@ -117,7 +124,11 @@ function DetailedConfigAccordion({ config, mappedFieldsCount }: DetailedConfigAc
                                 <code className="text-xs">{m.sourceField}</code>
                                 <ArrowRight className="w-4 h-4" />
                                 <code className="text-xs">{m.targetField}</code>
-                                {m.required && <Badge variant="destructive" className="text-[10px]">req</Badge>}
+                                {m.required && (
+                                    <Badge variant="destructive" className="text-[10px]">
+                                        <Trans>Required</Trans>
+                                    </Badge>
+                                )}
                             </div>
                         ))}
                     </div>
@@ -125,20 +136,19 @@ function DetailedConfigAccordion({ config, mappedFieldsCount }: DetailedConfigAc
             </AccordionItem>
 
             <AccordionItem value="strategy">
-                <AccordionTrigger>Import Strategy</AccordionTrigger>
+                <AccordionTrigger><Trans>Import strategy</Trans></AccordionTrigger>
                 <AccordionContent>
                     <div className="grid grid-cols-2 gap-4 text-sm">
-                        <SummaryField label="Existing records">{config.strategies?.existingRecords}</SummaryField>
-                        <SummaryField label="New records">{config.strategies?.newRecords}</SummaryField>
-                        <SummaryField label="Lookup fields">{config.strategies?.lookupFields?.join(', ')}</SummaryField>
-                        <SummaryField label="Batch size">{config.strategies?.batchSize}</SummaryField>
+                        <SummaryField label={t`Existing records`}>{config.strategies?.existingRecords}</SummaryField>
+                        <SummaryField label={t`Lookup fields`}>{config.strategies?.lookupFields?.join(', ')}</SummaryField>
+                        <SummaryField label={t`Batch size`}>{config.strategies?.batchSize}</SummaryField>
                     </div>
                 </AccordionContent>
             </AccordionItem>
 
             {(config.transformations?.length ?? 0) > 0 && (
                 <AccordionItem value="transforms">
-                    <AccordionTrigger>Transformations ({config.transformations?.length})</AccordionTrigger>
+                    <AccordionTrigger>{t`Transformations (${config.transformations?.length ?? 0})`}</AccordionTrigger>
                     <AccordionContent>
                         <div className="space-y-2">
                             {config.transformations?.map((t, i) => (
@@ -166,8 +176,6 @@ interface SourceSummaryFieldDef {
     label: string;
     colSpan?: 2;
     className?: string;
-    /** Custom value formatter. Return null to skip the field. */
-    format?: (value: unknown, config: Record<string, unknown>) => React.ReactNode | null;
 }
 
 /**
@@ -182,14 +190,8 @@ const SOURCE_SUMMARY_REGISTRY: Record<string, {
         configKey: 'fileConfig',
         fields: [
             { field: 'format', label: 'Format' },
-            { field: 'hasHeaders', label: 'Has headers', format: (v) => v ? 'Yes' : 'No' },
-            {
-                field: 'delimiter', label: 'Delimiter',
-                format: (v) => {
-                    if (!v || v === ',') return null;
-                    return v === '\t' ? 'Tab' : String(v);
-                },
-            },
+            { field: 'hasHeaders', label: 'Has headers' },
+            { field: 'delimiter', label: 'Delimiter' },
         ],
     },
     API: {
@@ -202,27 +204,50 @@ const SOURCE_SUMMARY_REGISTRY: Record<string, {
 };
 
 function SourceConfigSummary({ source }: { source?: ImportSourceConfig }) {
+    const { t } = useLingui();
     const { data: extractors } = useAdaptersByType('EXTRACTOR');
 
-    if (!source) return <p className="text-sm text-muted-foreground">No source configured</p>;
+    if (!source) {
+        return (
+            <p className="text-sm text-muted-foreground">
+                <Trans>No source configured</Trans>
+            </p>
+        );
+    }
 
     const registry = SOURCE_SUMMARY_REGISTRY[source.type];
+    const sourceRecord: Record<string, unknown> = { ...source };
     const configObj = registry
-        ? (source as Record<string, unknown>)[registry.configKey] as Record<string, unknown> | undefined
+        ? sourceRecord[registry.configKey] as Record<string, unknown> | undefined
         : undefined;
 
     return (
         <div className="grid grid-cols-2 gap-4 text-sm">
-            <SummaryField label="Type" className="capitalize">{source.type?.toLowerCase()}</SummaryField>
+            <SummaryField label={t`Type`} className="capitalize">{source.type?.toLowerCase()}</SummaryField>
 
             {registry && configObj ? (
                 registry.fields.map(def => {
                     const rawValue = configObj[def.field];
-                    const displayValue = def.format ? def.format(rawValue, configObj) : rawValue;
+                    const displayValue = def.field === 'hasHeaders'
+                        ? rawValue ? t`Yes` : t`No`
+                        : def.field === 'delimiter'
+                            ? !rawValue || rawValue === ','
+                                ? null
+                                : rawValue === '\t' ? t`Tab` : String(rawValue)
+                            : rawValue;
                     if (displayValue == null || displayValue === '') return null;
+                    const label = def.field === 'format'
+                        ? t`Format`
+                        : def.field === 'hasHeaders'
+                            ? t`Has headers`
+                            : def.field === 'delimiter'
+                                ? t`Delimiter`
+                                : def.field === 'method'
+                                    ? t`Method`
+                                    : t`URL`;
                     return (
-                        <SummaryField key={def.field} label={def.label} colSpan={def.colSpan} className={def.className}>
-                            {typeof displayValue === 'object' ? String(displayValue) : displayValue}
+                        <SummaryField key={def.field} label={label} colSpan={def.colSpan} className={def.className}>
+                            {String(displayValue)}
                         </SummaryField>
                     );
                 })

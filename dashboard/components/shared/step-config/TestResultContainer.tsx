@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { useLingui } from '@lingui/react/macro';
 import { StatusBadge, ViewToggle } from './ExtractTestResults';
 import type { TestResult } from './step-test-handlers';
 
@@ -24,13 +25,20 @@ export function TestResultContainer({
     resultView = 'table',
     onViewChange,
 }: TestResultContainerProps) {
+    const { i18n } = useLingui();
+    const message = result.message
+        ? 'id' in result.message && result.message.id
+            ? i18n._(result.message.id, result.message.values)
+            : result.message.text
+        : undefined;
+
     return (
         <div className="space-y-3 pt-3 border-t">
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                     <StatusBadge status={result.status} />
-                    {result.message && (
-                        <span className="text-sm text-muted-foreground">{result.message}</span>
+                    {message && (
+                        <span className="text-sm text-muted-foreground">{message}</span>
                     )}
                 </div>
                 {showViewToggle && onViewChange && (

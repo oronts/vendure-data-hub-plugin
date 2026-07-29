@@ -1,3 +1,4 @@
+import { Trans, useLingui } from '@lingui/react/macro';
 import {
     Card,
     Badge,
@@ -7,7 +8,6 @@ import { FileText } from 'lucide-react';
 import { LoadingState, EmptyState } from '../../shared/feedback';
 import type { ParsedData } from '../../../types/wizard';
 import { UI_LIMITS, COMPONENT_HEIGHTS } from '../../../constants';
-import { STEP_CONTENT } from './constants';
 
 interface PreviewStepProps {
     parsedData: ParsedData | null;
@@ -15,16 +15,17 @@ interface PreviewStepProps {
 }
 
 export function PreviewStep({ parsedData, isParsing }: PreviewStepProps) {
+    const { t } = useLingui();
     if (isParsing) {
-        return <LoadingState type="spinner" message="Parsing file..." />;
+        return <LoadingState type="spinner" message={t`Parsing file...`} />;
     }
 
     if (!parsedData) {
         return (
             <EmptyState
                 icon={<FileText className="h-12 w-12" />}
-                title={STEP_CONTENT.preview.emptyTitle}
-                description={STEP_CONTENT.preview.emptyDescription}
+                title={t`No data to preview`}
+                description={t`Upload and parse a file to preview its records.`}
             />
         );
     }
@@ -33,13 +34,15 @@ export function PreviewStep({ parsedData, isParsing }: PreviewStepProps) {
         <div className="max-w-4xl mx-auto space-y-6">
             <div className="flex items-center justify-between">
                 <div>
-                    <h2 className="text-lg font-semibold mb-2">{STEP_CONTENT.preview.title}</h2>
+                    <h2 className="text-lg font-semibold mb-2"><Trans>Preview data</Trans></h2>
                     <p className="text-muted-foreground">
-                        Showing first {Math.min(parsedData.rows.length, UI_LIMITS.MAX_PREVIEW_ROWS)} of {parsedData.rows.length} records
+                        {t`Showing ${Math.min(parsedData.rows.length, UI_LIMITS.MAX_PREVIEW_ROWS)} of ${parsedData.rows.length} records`}
                     </p>
                 </div>
                 <Badge variant="secondary">
-                    {parsedData.headers.length} columns
+                    {parsedData.headers.length === 1
+                        ? t`${parsedData.headers.length} column`
+                        : t`${parsedData.headers.length} columns`}
                 </Badge>
             </div>
 
