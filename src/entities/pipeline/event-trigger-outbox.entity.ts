@@ -9,6 +9,7 @@ export const EventTriggerOutboxStatus = {
     QUEUED: 'QUEUED',
     PROCESSING: 'PROCESSING',
     DELIVERED: 'DELIVERED',
+    FAILED: 'FAILED',
 } as const;
 
 export type EventTriggerOutboxStatus =
@@ -17,6 +18,8 @@ export type EventTriggerOutboxStatus =
 @Entity(TABLE_NAMES.EVENT_TRIGGER_OUTBOX)
 @Index(['status', 'availableAt'])
 @Index(['status', 'leaseExpiresAt'])
+@Index(['status', 'deliveredAt'])
+@Index(['status', 'failedAt'])
 @Index(['pipelineId', 'createdAt'])
 export class DataHubEventTriggerOutbox extends VendureEntity {
     constructor(input?: DeepPartial<DataHubEventTriggerOutbox>) {
@@ -32,6 +35,9 @@ export class DataHubEventTriggerOutbox extends VendureEntity {
 
     @EntityId()
     pipelineId!: ID;
+
+    @EntityId({ nullable: true })
+    revisionId!: ID | null;
 
     @Column({ type: 'varchar', length: 255 })
     pipelineCode!: string;
@@ -77,4 +83,7 @@ export class DataHubEventTriggerOutbox extends VendureEntity {
 
     @Column({ type: Date, nullable: true })
     deliveredAt!: Date | null;
+
+    @Column({ type: Date, nullable: true })
+    failedAt!: Date | null;
 }

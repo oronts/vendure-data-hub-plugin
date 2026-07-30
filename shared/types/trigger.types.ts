@@ -2,8 +2,6 @@
  * Trigger Types
  */
 
-import { JsonValue } from './json.types';
-
 /**
  * Types of triggers that can start a pipeline execution
  */
@@ -46,26 +44,6 @@ export const VENDURE_EVENT_TYPES = [
 ] as const;
 
 export type VendureEventType = (typeof VENDURE_EVENT_TYPES)[number];
-
-/**
- * Operators for trigger condition evaluation
- *
- * Values are lowercase/camelCase (serialized to DB, changing requires migration)
- */
-export type TriggerConditionOperator =
-    | 'eq' | 'ne' | 'gt' | 'gte' | 'lt' | 'lte' | 'contains' | 'in' | 'exists';
-
-/**
- * Condition for filtering trigger events
- */
-export interface TriggerCondition {
-    /** Field path to evaluate in the event payload */
-    field: string;
-    /** Comparison operator */
-    operator: TriggerConditionOperator;
-    /** Value to compare against */
-    value: JsonValue;
-}
 
 /**
  * Configuration for schedule-based triggers
@@ -199,14 +177,6 @@ export interface TriggerConfig {
     message?: MessageTriggerConfig;
     /** File watch trigger configuration */
     fileWatch?: FileWatchTriggerConfig;
-    /** Conditions to filter trigger events */
-    conditions?: TriggerCondition[];
-    /** Maximum retries on failure */
-    maxRetries?: number;
-    /** Delay between retries in milliseconds */
-    retryDelayMs?: number;
-    /** Timeout for trigger execution in milliseconds */
-    timeoutMs?: number;
 }
 
 /**

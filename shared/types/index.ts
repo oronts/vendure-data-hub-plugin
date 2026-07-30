@@ -168,8 +168,6 @@ export type {
     WebhookAuthType,
     HmacAlgorithm,
     VendureEventType,
-    TriggerConditionOperator,
-    TriggerCondition,
     ScheduleTriggerConfig,
     WebhookTriggerConfig,
     EventTriggerConfig,

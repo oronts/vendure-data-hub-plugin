@@ -26,6 +26,8 @@ export const pipelineSchema = `
         in: [String!]
         "Excludes pipelines containing any capability code in this set"
         notIn: [String!]
+        "Matches when any capability code satisfies this safe regular expression"
+        regex: String
         "Matches pipelines with no capabilities when true, or at least one when false"
         isNull: Boolean
     }

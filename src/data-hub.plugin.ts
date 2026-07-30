@@ -19,9 +19,18 @@ import { DataHubQueueAdminResolver } from './api/resolvers/queue.resolver';
 import { DataHubWebhookController } from './api/controllers/webhook.controller';
 import { dataHubJsonBodyParser } from './api/controllers/webhook-body.middleware';
 import {
+    PipelineQueryService,
+    PipelineMutationService,
+    PipelineLifecycleService,
+    PipelineRunCreationService,
+    PipelineRunGateService,
+    PipelineRunService,
     PipelineService,
     PipelineExecutionPermissionService,
+    PipelineExecutionProcessorService,
+    PipelineRunOutcomeService,
     PipelineRunnerService,
+    RemoteSourceAcknowledgementService,
     GateTimeoutService,
     DefinitionValidationService,
     PipelineFormatService,
@@ -51,11 +60,14 @@ import {
     StepTestService,
     SchemaRegistryService,
     TemplateRegistryService,
+    FileWatchSourceService,
     FileWatchService,
 } from './services';
 import { RateLimitServiceHolder } from './decorators';
 import { DATAHUB_PERMISSION_DEFINITIONS } from './permissions';
 import { DataHubRunQueueHandler, DataHubScheduleHandler } from './jobs';
+import { ScheduledPipelineExecutionService } from './jobs/handlers/schedule-execution.service';
+import { ScheduleTimerService } from './jobs/handlers/schedule-timer.service';
 import { DataHubRegistryService } from './sdk/registry.service';
 import { AdapterBootstrapService, ConfigSyncService } from './bootstrap';
 import { AdapterUpgradeGuardService } from './services/pipeline/adapter-upgrade-guard.service';
@@ -138,8 +150,17 @@ import { LOADER_HANDLER_PROVIDERS } from './runtime/executors/loaders';
         DistributedLockService,
         // Core Services
         PipelineExecutionPermissionService,
+        PipelineRunCreationService,
+        PipelineRunGateService,
+        PipelineRunService,
+        PipelineQueryService,
+        PipelineMutationService,
+        PipelineLifecycleService,
         PipelineService,
+        PipelineExecutionProcessorService,
+        PipelineRunOutcomeService,
         PipelineRunnerService,
+        RemoteSourceAcknowledgementService,
         GateTimeoutService,
         AdapterRuntimeService,
         DataHubRegistryService,
@@ -152,6 +173,8 @@ import { LOADER_HANDLER_PROVIDERS } from './runtime/executors/loaders';
         RecordRetryAuditService,
         ErrorReplayService,
         RecordRetryService,
+        ScheduledPipelineExecutionService,
+        ScheduleTimerService,
         DataHubScheduleHandler,
         SecretService,
         HookScriptRegistryService,
@@ -159,6 +182,7 @@ import { LOADER_HANDLER_PROVIDERS } from './runtime/executors/loaders';
         EventTriggerOutboxService,
         DataHubEventTriggerService,
         MessageConsumerService,
+        FileWatchSourceService,
         FileWatchService,
         DataHubRetentionService,
         ConnectionService,

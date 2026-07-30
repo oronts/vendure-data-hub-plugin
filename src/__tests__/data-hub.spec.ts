@@ -120,6 +120,15 @@ describe('VALIDATE Step Processing', () => {
             const errors = validateAgainstSimpleSpec(record, fields);
             expect(errors).toHaveLength(0);
         });
+
+        it('uses a configured field error message', () => {
+            const errors = validateAgainstSimpleSpec(
+                { price: -10 },
+                { price: { min: 0, max: 1000, error: 'Price must be between 0 and 1000' } },
+            );
+
+            expect(errors).toEqual(['Price must be between 0 and 1000']);
+        });
     });
 
     describe('rules to fields conversion', () => {

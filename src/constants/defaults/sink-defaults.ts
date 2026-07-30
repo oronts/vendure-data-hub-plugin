@@ -24,10 +24,28 @@ export const SINK = {
  * Webhook queue defaults
  */
 export const WEBHOOK_QUEUE = {
-    /** Maximum number of deliveries in queue */
-    MAX_DELIVERY_QUEUE_SIZE: 10000,
-    /** Maximum number of webhook configurations to cache */
-    MAX_WEBHOOK_CONFIGS: 500,
+    /** Rows claimed and enqueued per dispatcher pass */
+    DISPATCH_BATCH_SIZE: 100,
+    /** Rows updated or deleted by one maintenance statement */
+    MAINTENANCE_BATCH_SIZE: 100,
+    /** Maximum rows deleted per status during one history cleanup */
+    MAX_MAINTENANCE_ROWS_PER_PASS: 1_000,
+    /** Interval between bounded webhook history cleanup passes */
+    HISTORY_CLEANUP_INTERVAL_MS: 60 * 60 * 1000,
+    /** Lease held while a queued delivery waits for or runs in a worker */
+    DISPATCH_LEASE_MS: 120_000,
+    /** Delay before re-enqueueing after a queue publication failure */
+    ENQUEUE_RETRY_DELAY_MS: 5_000,
+    /** Vendure queue retries stay disabled because the database outbox owns retries */
+    JOB_RETRIES: 0,
+    /** Maximum operator-visible error length */
+    LAST_ERROR_MAX_LENGTH: 1_000,
+    /** Hard ceiling for configured delivery attempts */
+    MAX_RETRY_ATTEMPTS: 20,
+    /** Hard ceiling for configured retry delays (24 hours) */
+    MAX_RETRY_DELAY_MS: 86_400_000,
+    /** Hard ceiling for exponential backoff multipliers */
+    MAX_BACKOFF_MULTIPLIER: 10,
     /** Retention time for delivered webhooks (1 minute) */
     DELIVERED_RETENTION_MS: 60_000,
     /** Retention time for dead letter webhooks (24 hours) */

@@ -31,7 +31,7 @@ export const testQueries = ``;
 
 export const testMutations = `
     extend type Mutation {
-        "Preview extract step - runs extractor and returns sample records"
+        "Preview extract step - runs extractor and returns 1 to 1000 sample records"
         previewDataHubExtract(step: JSON!, limit: Int = 20): DataHubPreviewResult!
 
         """
@@ -39,13 +39,12 @@ export const testMutations = `
         The step argument expects a JSON object with shape:
         { config: { operators: [{ op: string, args: Record<string, any> }] } }
         """
-        simulateDataHubTransform(step: JSON!, records: JSON!): [JSON!]!
+        simulateDataHubTransform(step: JSON!, records: [JSON!]!): [JSON!]!
 
         "Simulate validate step - runs validation rules on input records"
-        simulateDataHubValidate(step: JSON!, records: JSON!): DataHubValidateResult!
+        simulateDataHubValidate(step: JSON!, records: [JSON!]!): DataHubValidateResult!
 
         "Simulate load step - checks what would be created/updated without writing"
-        simulateDataHubLoad(step: JSON!, records: JSON!): JSON!
+        simulateDataHubLoad(step: JSON!, records: [JSON!]!): JSON!
     }
 `;
-

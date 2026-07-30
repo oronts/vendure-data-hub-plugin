@@ -6,7 +6,6 @@ import { TABLE_NAMES } from '../../constants/table-names';
 
 @Entity(TABLE_NAMES.SECRET)
 @Index(['provider'])
-@Index(['code']) // Index for code lookups (unique constraint doesn't auto-create index on all DBs)
 export class DataHubSecret extends VendureEntity implements ChannelAware {
     constructor(input?: DeepPartial<DataHubSecret>) {
         super(input);

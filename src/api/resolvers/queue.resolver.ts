@@ -1,5 +1,5 @@
 import { Args, Query, Resolver, Mutation } from '@nestjs/graphql';
-import { Allow, RequestContext, Ctx, Transaction, TransactionalConnection } from '@vendure/core';
+import { Allow, RequestContext, Ctx, TransactionalConnection } from '@vendure/core';
 import {
     RunDataHubPipelinePermission,
     ViewDataHubRunsPermission,
@@ -23,6 +23,8 @@ interface QueueStats {
 interface ConsumerStatus {
     pipelineCode: string;
     triggerKey: string;
+    autoStart: boolean;
+    desiredEnabled: boolean;
     queueName: string;
     isActive: boolean;
     messagesProcessed: number;
@@ -120,7 +122,7 @@ export class DataHubQueueAdminResolver {
     @Query()
     @Allow(ViewDataHubRunsPermission.Permission)
     async dataHubConsumers(@Ctx() ctx: RequestContext): Promise<ConsumerStatus[]> {
-        const statuses = this.messageConsumer.getConsumerStatus();
+        const statuses = await this.messageConsumer.getConsumerStatus();
         const pipelineCodes = [...new Set(statuses.map(status => status.pipelineCode))];
         const accessiblePipelines = await this.pipelineService.findByCodes(ctx, pipelineCodes);
         const accessibleCodes = new Set(accessiblePipelines.map(pipeline => pipeline.code));
@@ -134,11 +136,12 @@ export class DataHubQueueAdminResolver {
                 messagesProcessed: s.messagesProcessed,
                 messagesFailed: s.messagesFailed,
                 lastMessageAt: s.lastMessageAt ?? null,
+                autoStart: s.autoStart,
+                desiredEnabled: s.desiredEnabled,
             }));
     }
 
     @Mutation()
-    @Transaction()
     @Allow(RunDataHubPipelinePermission.Permission)
     async startDataHubConsumer(
         @Ctx() ctx: RequestContext,
@@ -148,7 +151,7 @@ export class DataHubQueueAdminResolver {
             const pipeline = await this.pipelineService.findByCode(ctx, args.pipelineCode);
             if (!pipeline) return false;
             await this.executionPermissions.assertAllowed(ctx, pipeline.definition);
-            await this.messageConsumer.startConsumerByCode(args.pipelineCode, args.triggerKey);
+            await this.messageConsumer.startConsumerByCode(args.pipelineCode, args.triggerKey, ctx);
             return true;
         } catch (error) {
             this.logger.debug(`Consumer start failed for pipeline ${args.pipelineCode}`, {
@@ -160,7 +163,6 @@ export class DataHubQueueAdminResolver {
     }
 
     @Mutation()
-    @Transaction()
     @Allow(RunDataHubPipelinePermission.Permission)
     async stopDataHubConsumer(
         @Ctx() ctx: RequestContext,
@@ -169,7 +171,7 @@ export class DataHubQueueAdminResolver {
         try {
             const pipeline = await this.pipelineService.findByCode(ctx, args.pipelineCode);
             if (!pipeline) return false;
-            await this.messageConsumer.stopConsumerByCode(args.pipelineCode, args.triggerKey);
+            await this.messageConsumer.stopConsumerByCode(args.pipelineCode, args.triggerKey, ctx);
             return true;
         } catch (error) {
             this.logger.debug(`Consumer stop failed for pipeline ${args.pipelineCode}`, {

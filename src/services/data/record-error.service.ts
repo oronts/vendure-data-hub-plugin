@@ -16,6 +16,7 @@ import {
     parseRecordErrorPageSize,
 } from './record-error-page';
 import type { RecordErrorPage, RecordErrorPageOptions } from './record-error-page';
+import { getActivePipelineRunChannelId } from '../pipeline/pipeline-run-channel';
 
 @Injectable()
 export class RecordErrorService {
@@ -39,7 +40,13 @@ export class RecordErrorService {
         stackTrace?: string,
     ): Promise<DataHubRecordError> {
         const repo = this.connection.getRepository(ctx, DataHubRecordError);
-        const run = await this.connection.getEntityOrThrow(ctx, PipelineRun, runId);
+        const channelId = getActivePipelineRunChannelId(ctx);
+        const run = await this.connection.getRepository(ctx, PipelineRun).findOne({
+            where: { id: runId, channelId },
+        });
+        if (!run) {
+            throw new Error(`Pipeline run not found: ${String(runId)}`);
+        }
         const errorEntity = new DataHubRecordError();
         errorEntity.run = run;
         errorEntity.runId = runId;
@@ -68,8 +75,9 @@ export class RecordErrorService {
     }
 
     async getById(ctx: RequestContext, id: ID): Promise<DataHubRecordError | null> {
+        const channelId = getActivePipelineRunChannelId(ctx);
         return this.connection.getRepository(ctx, DataHubRecordError).findOne({
-            where: { id },
+            where: { id, run: { channelId } },
             relations: { run: { pipeline: true } },
         });
     }
@@ -87,14 +95,19 @@ export class RecordErrorService {
         options: RecordErrorPageOptions,
     ): Promise<RecordErrorPage> {
         const repository = this.connection.getRepository(ctx, DataHubRecordError);
+        const channelId = getActivePipelineRunChannelId(ctx);
+        const scopedBaseWhere: FindOptionsWhere<DataHubRecordError> = {
+            ...baseWhere,
+            run: { channelId },
+        };
         const pageSize = parseRecordErrorPageSize(options.first);
         const cursor = decodeRecordErrorCursor(options.after);
         const where: FindOptionsWhere<DataHubRecordError> | FindOptionsWhere<DataHubRecordError>[] = cursor
             ? [
-                { ...baseWhere, createdAt: LessThan(cursor.createdAt) },
-                { ...baseWhere, createdAt: Equal(cursor.createdAt), id: LessThan(cursor.id) },
+                { ...scopedBaseWhere, createdAt: LessThan(cursor.createdAt) },
+                { ...scopedBaseWhere, createdAt: Equal(cursor.createdAt), id: LessThan(cursor.id) },
             ]
-            : baseWhere;
+            : scopedBaseWhere;
         const [rows, totalItems] = await Promise.all([
             repository.find({
                 where,
@@ -102,7 +115,7 @@ export class RecordErrorService {
                 order: { createdAt: SortOrder.DESC, id: SortOrder.DESC },
                 take: pageSize + 1,
             }),
-            repository.count({ where: baseWhere }),
+            repository.count({ where: scopedBaseWhere }),
         ]);
         const hasNextPage = rows.length > pageSize;
         const items = hasNextPage ? rows.slice(0, pageSize) : rows;
@@ -116,30 +129,24 @@ export class RecordErrorService {
 
     async markDeadLetter(ctx: RequestContext, id: ID, value: boolean): Promise<boolean> {
         const repo = this.connection.getRepository(ctx, DataHubRecordError);
-        const ent = await this.connection.getEntityOrThrow(ctx, DataHubRecordError, id);
+        const ent = await this.getById(ctx, id);
+        if (!ent) {
+            throw new Error(`Record error not found: ${String(id)}`);
+        }
         ent.deadLetter = value;
         await repo.save(ent, { reload: false });
-        try {
-            const run = ent.runId
-                ? await this.connection.getRepository(ctx, PipelineRun).findOne({
-                      where: { id: ent.runId },
-                      relations: { pipeline: true },
-                  })
-                : null;
-            const def = run?.pipeline?.definition;
-            if (def && run) {
-                await this.hooks.run(ctx, def, value ? HookStage.ON_DEAD_LETTER : HookStage.ON_RETRY, undefined, ent.payload, run.id);
-            }
-        } catch (error) {
-            this.logger.warn(`Failed to run ${value ? HookStage.ON_DEAD_LETTER : HookStage.ON_RETRY} hook`, {
-                recordErrorId: id,
-                stepKey: ent.stepKey,
-                error: getErrorMessage(error),
-            });
-        }
+        await this.runTransitionHook(
+            ctx,
+            ent,
+            value ? HookStage.ON_DEAD_LETTER : HookStage.ON_RETRY,
+        );
         if (value) {
             try {
-                this.events.publish('RECORD_DEAD_LETTERED', { id: ent.id, stepKey: ent.stepKey });
+                this.events.publish('RECORD_DEAD_LETTERED', {
+                    id: ent.id,
+                    runId: ent.runId,
+                    stepKey: ent.stepKey,
+                });
             } catch (error) {
                 this.logger.warn('Failed to publish RECORD_DEAD_LETTERED event', {
                     recordErrorId: ent.id,
@@ -149,5 +156,47 @@ export class RecordErrorService {
             }
         }
         return true;
+    }
+
+    async notifyRetry(ctx: RequestContext, record: DataHubRecordError): Promise<void> {
+        await this.runTransitionHook(ctx, record, HookStage.ON_RETRY);
+    }
+
+    private async runTransitionHook(
+        ctx: RequestContext,
+        record: DataHubRecordError,
+        stage: HookStage.ON_RETRY | HookStage.ON_DEAD_LETTER,
+    ): Promise<void> {
+        try {
+            const channelId = getActivePipelineRunChannelId(ctx);
+            const run = record.runId
+                ? await this.connection.getRepository(ctx, PipelineRun).findOne({
+                      where: { id: record.runId, channelId },
+                      relations: { pipeline: true },
+                  })
+                : null;
+            const definition = run?.definitionSnapshot;
+            if (definition && run) {
+                await this.hooks.run(
+                    ctx,
+                    definition,
+                    stage,
+                    undefined,
+                    record.payload,
+                    run.id,
+                );
+            } else if (run) {
+                this.logger.warn(`Skipped ${stage} hook because the run has no immutable definition snapshot`, {
+                    recordErrorId: record.id,
+                    runId: run.id,
+                });
+            }
+        } catch (error) {
+            this.logger.warn(`Failed to run ${stage} hook`, {
+                recordErrorId: record.id,
+                stepKey: record.stepKey,
+                error: getErrorMessage(error),
+            });
+        }
     }
 }

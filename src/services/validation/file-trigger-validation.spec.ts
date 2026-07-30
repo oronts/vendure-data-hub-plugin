@@ -55,4 +55,12 @@ describe('file trigger source validation', () => {
             'unsupported-file-trigger-field',
         );
     });
+
+    it.each([
+        ['pollIntervalMs', 30_000.5, 'invalid-poll-interval'],
+        ['minFileAge', -1, 'invalid-min-file-age'],
+        ['recursive', 'yes', 'invalid-recursive'],
+    ])('rejects invalid %s values', (field, value, errorCode) => {
+        expect(validateFileSource('ftp', { [field]: value })).toContain(errorCode);
+    });
 });

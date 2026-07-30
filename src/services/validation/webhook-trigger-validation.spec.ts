@@ -84,4 +84,23 @@ describe('webhook trigger security validation', () => {
             'invalid-webhook-idempotency-ttl',
         ]));
     });
+
+    it('rejects disconnected payload-schema controls and invalid option types', () => {
+        const result = validate({
+            version: 1,
+            steps: [webhookStep('invalid-options', {
+                authentication: 'NONE',
+                validatePayload: true,
+                payloadSchema: { type: 'object' },
+                requireIdempotencyKey: 'yes',
+                apiKeyPrefix: 123,
+            })],
+        });
+
+        expect(result.issues).toEqual(expect.arrayContaining([
+            'unsupported-webhook-trigger-field',
+            'invalid-requireIdempotencyKey',
+            'invalid-apiKeyPrefix',
+        ]));
+    });
 });

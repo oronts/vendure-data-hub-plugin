@@ -4,6 +4,7 @@ import { pipelineSchema } from '../api/schema/pipeline.schema';
 import { QUEUE_NAMES } from './core';
 import { RUN_STATUS_OPTIONS } from './enum-metadata';
 import { RunStatus } from './enums';
+import { HASH_ALGORITHM_OPTIONS, QUERY_TYPE_OPTIONS } from './adapter-schema-options';
 
 const RUN_STATUSES = [
     'PENDING',
@@ -30,5 +31,16 @@ describe('runtime constants contract', () => {
         expect(Object.values(RUN_STATUS)).toEqual(RUN_STATUSES);
         expect(RUN_STATUS_OPTIONS.map(option => option.value)).toEqual(RUN_STATUSES);
         expect(pipelineSchema).not.toContain('QUEUED');
+    });
+
+    it('exposes only supported hash algorithms and export query modes', () => {
+        expect(HASH_ALGORITHM_OPTIONS.map(option => option.value)).toEqual([
+            'sha256',
+            'sha512',
+        ]);
+        expect(QUERY_TYPE_OPTIONS.map(option => option.value)).toEqual([
+            'all',
+            'query',
+        ]);
     });
 });

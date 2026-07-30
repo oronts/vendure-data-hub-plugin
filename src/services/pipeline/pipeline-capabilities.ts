@@ -14,6 +14,7 @@ import {
 } from '../../permissions';
 import { collectResourceReferences } from '../config/resource-references';
 import { clonePipelineDefinition } from './pipeline-policy';
+import { getLoaderCapabilities } from '../../types/loader-capabilities';
 
 export interface AdapterDefinitionRegistry {
     find(type: string, code: string): AdapterDefinition | undefined;
@@ -71,7 +72,14 @@ export function getRequiredPipelinePermissions(
         const adapterType = STEP_ADAPTER_TYPES.get(step.type);
         const adapterCode = getAdapterCode(step);
         if (adapterType && adapterCode) {
-            addAdapterPermissions(required, registry, adapterType, adapterCode);
+            const loaderCapabilities = adapterType === AdapterType.LOADER
+                ? getLoaderCapabilities(adapterCode, step.config)
+                : undefined;
+            if (loaderCapabilities) {
+                loaderCapabilities.requires.forEach(permission => required.add(permission));
+            } else {
+                addAdapterPermissions(required, registry, adapterType, adapterCode);
+            }
         }
         for (const operatorCode of getOperatorCodes(step)) {
             addAdapterPermissions(required, registry, AdapterType.OPERATOR, operatorCode);
@@ -95,9 +103,18 @@ export function getEffectivePipelineCapabilities(
     registry: AdapterDefinitionRegistry,
     definition: PipelineDefinition,
 ): Required<PipelineCapabilities> {
+    const writes = new Set(definition.capabilities?.writes ?? []);
+    for (const step of definition.steps) {
+        if (step.type !== StepType.LOAD) continue;
+        const adapterCode = getAdapterCode(step);
+        if (!adapterCode) continue;
+        getLoaderCapabilities(adapterCode, step.config)?.writes
+            .forEach(domain => writes.add(domain));
+    }
+
     return {
         requires: getRequiredPipelinePermissions(registry, definition),
-        writes: [...new Set(definition.capabilities?.writes ?? [])].sort(),
+        writes: [...writes].sort(),
     };
 }
 

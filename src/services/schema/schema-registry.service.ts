@@ -1,4 +1,5 @@
 import { Injectable, Optional } from '@nestjs/common';
+import { In } from 'typeorm';
 import {
     ID,
     RequestContext,
@@ -312,9 +313,15 @@ export class SchemaRegistryService {
                 runId: null,
                 runStatus: null,
             })));
-        const revisions = await this.connection
-            .getRepository(ctx, PipelineRevision)
-            .find({ take: SCHEMA_REGISTRY.MAX_PIPELINE_DISCOVERY + 1 });
+        const pipelineIds = pipelines.map(pipeline => pipeline.id);
+        const revisions = pipelineIds.length === 0
+            ? []
+            : await this.connection
+                .getRepository(ctx, PipelineRevision)
+                .find({
+                    where: { pipelineId: In(pipelineIds) },
+                    take: SCHEMA_REGISTRY.MAX_PIPELINE_DISCOVERY + 1,
+                });
         if (revisions.length > SCHEMA_REGISTRY.MAX_PIPELINE_DISCOVERY) {
             throw new Error(
                 `Schema revision usage discovery exceeded the safe limit of ${SCHEMA_REGISTRY.MAX_PIPELINE_DISCOVERY}`,
@@ -339,6 +346,9 @@ export class SchemaRegistryService {
                 }));
         });
         const runs = await this.connection.getRepository(ctx, PipelineRun).find({
+            where: acrossChannels
+                ? {}
+                : { channelId: String(ctx.channelId) },
             take: SCHEMA_REGISTRY.MAX_PIPELINE_DISCOVERY + 1,
         });
         if (runs.length > SCHEMA_REGISTRY.MAX_PIPELINE_DISCOVERY) {

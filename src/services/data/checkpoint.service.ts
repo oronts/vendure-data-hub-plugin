@@ -20,7 +20,10 @@ export class CheckpointService {
     async getByPipeline(ctx: RequestContext, pipelineId: ID): Promise<DataHubCheckpoint | null> {
         const repo = this.connection.getRepository(ctx, DataHubCheckpoint);
         return repo.findOne({
-            where: { pipelineId },
+            where: {
+                pipelineId,
+                pipeline: { channels: { id: ctx.channelId } },
+            },
             relations: { pipeline: true },
         });
     }
@@ -50,7 +53,12 @@ export class CheckpointService {
         data: JsonObject,
     ): Promise<DataHubCheckpoint> {
         const repo = this.connection.getRepository(ctx, DataHubCheckpoint);
-        const pipeline = await this.connection.getEntityOrThrow(ctx, Pipeline, pipelineId);
+        const pipeline = await this.connection.getEntityOrThrow(
+            ctx,
+            Pipeline,
+            pipelineId,
+            { channelId: ctx.channelId },
+        );
 
         const existing = await repo.findOne({ where: { pipelineId } });
         if (existing) {
@@ -79,7 +87,12 @@ export class CheckpointService {
     async clearForPipeline(ctx: RequestContext, pipelineId: ID): Promise<void> {
         await this.withPipelineLock(pipelineId, async () => {
             const repo = this.connection.getRepository(ctx, DataHubCheckpoint);
-            const checkpoint = await repo.findOne({ where: { pipelineId } });
+            const checkpoint = await repo.findOne({
+                where: {
+                    pipelineId,
+                    pipeline: { channels: { id: ctx.channelId } },
+                },
+            });
             if (checkpoint) {
                 await repo.remove(checkpoint);
             }

@@ -50,5 +50,6 @@ export const HTTP_LOOKUP = {
     DEFAULT_MAX_RETRIES: 2,
     /** Default batch size for bulk lookups */
     DEFAULT_BATCH_SIZE: 50,
+    /** Default maximum requests per second per origin */
+    DEFAULT_RATE_LIMIT_PER_SECOND: 100,
 } as const;
-

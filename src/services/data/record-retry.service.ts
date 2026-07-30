@@ -10,6 +10,7 @@ import { DataHubLogger, DataHubLoggerFactory } from '../logger';
 import { ErrorReplayService } from './error-replay.service';
 import { RecordErrorService } from './record-error.service';
 import { RecordRetryAuditService } from './record-retry-audit.service';
+import { getActivePipelineRunChannelId } from '../pipeline/pipeline-run-channel';
 
 export const RECORD_RETRY_OUTCOME = {
     APPLIED: 'APPLIED',
@@ -82,8 +83,9 @@ export class RecordRetryService {
             );
         }
 
+        const channelId = getActivePipelineRunChannelId(ctx);
         const run = await this.connection.getRepository(ctx, PipelineRun).findOne({
-            where: { id: record.runId },
+            where: { id: record.runId, channelId },
             relations: { pipeline: true },
         });
         if (!run) {
@@ -104,7 +106,16 @@ export class RecordRetryService {
             );
         }
 
-        const definition = run.definitionSnapshot ?? run.pipeline.definition;
+        const definition = run.definitionSnapshot;
+        if (!definition) {
+            return this.failure(
+                errorId,
+                RECORD_RETRY_OUTCOME.STEP_NOT_FOUND,
+                'Pipeline run has no immutable definition snapshot',
+                record,
+                run.id,
+            );
+        }
         const step = definition.steps.find(candidate => candidate.key === record.stepKey);
         if (!step) {
             return this.failure(
@@ -146,6 +157,7 @@ export class RecordRetryService {
             failed: number;
         };
         try {
+            await this.recordErrors.notifyRetry(ctx, record);
             replayResult = await this.errorReplay.replayRecord(
                 ctx,
                 definition,

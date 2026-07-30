@@ -1,7 +1,17 @@
 import { Injectable } from '@nestjs/common';
-import { RequestContextService, TransactionalConnection, ID } from '@vendure/core';
-import { DataHubSettings, StoredAutoMapperConfig } from '../../entities/config';
-import { LogPersistenceLevel, SortOrder } from '../../constants/enums';
+import type { Repository } from 'typeorm';
+import {
+    RequestContext,
+    RequestContextService,
+    TransactionalConnection,
+    ID,
+} from '@vendure/core';
+import {
+    ConsumerControlOverrides,
+    DataHubSettings,
+    StoredAutoMapperConfig,
+} from '../../entities/config';
+import { LogPersistenceLevel } from '../../constants/enums';
 import {
     AutoMapperConfig,
     AutoMapperConfigInput,
@@ -9,6 +19,64 @@ import {
     validateAutoMapperConfig,
     AutoMapperConfigValidation,
 } from '../../mappers';
+
+const SETTINGS_SCOPE = 'global';
+
+const PROCESS_LOCAL_SETTINGS_DATABASE_TYPES = new Set([
+    'better-sqlite3',
+    'sqlite',
+    'sqljs',
+]);
+
+const PESSIMISTIC_LOCK_DATABASE_TYPES = new Set([
+    'aurora-mysql',
+    'aurora-postgres',
+    'cockroachdb',
+    'mariadb',
+    'mssql',
+    'mysql',
+    'oracle',
+    'postgres',
+    'sap',
+]);
+
+function requiresPessimisticSettingsLock(databaseType: string): boolean {
+    const normalized = databaseType.trim().toLowerCase();
+    if (PROCESS_LOCAL_SETTINGS_DATABASE_TYPES.has(normalized)) {
+        return false;
+    }
+    if (PESSIMISTIC_LOCK_DATABASE_TYPES.has(normalized)) {
+        return true;
+    }
+    throw new Error(
+        `Data Hub settings mutations do not support database type "${databaseType}"`,
+    );
+}
+
+function normalizeConsumerControlOverrides(value: unknown): ConsumerControlOverrides {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        return {};
+    }
+
+    const overrides: ConsumerControlOverrides = {};
+    for (const [key, enabled] of Object.entries(value)) {
+        if (key.length > 0 && typeof enabled === 'boolean') {
+            overrides[key] = enabled;
+        }
+    }
+    return overrides;
+}
+
+function validateConsumerControlOverrides(
+    value: Readonly<Record<string, boolean>>,
+): ConsumerControlOverrides {
+    for (const [key, enabled] of Object.entries(value)) {
+        if (key.length === 0 || typeof enabled !== 'boolean') {
+            throw new Error('Consumer control overrides require non-empty keys and boolean values');
+        }
+    }
+    return { ...value };
+}
 
 /** Full settings response including logging configuration */
 export interface DataHubSettingsResult {
@@ -28,30 +96,82 @@ export interface DataHubSettingsInput {
 
 @Injectable()
 export class DataHubSettingsService {
+    private settingsMutationTail: Promise<void> = Promise.resolve();
+
     constructor(private connection: TransactionalConnection, private ctxService: RequestContextService) {}
 
-    private async getCtx() {
-        return this.ctxService.create({ apiType: 'admin' });
+    private async getCtx(ctx?: RequestContext): Promise<RequestContext> {
+        return ctx ?? this.ctxService.create({ apiType: 'admin' });
     }
 
-    private async getSettingsRow(): Promise<DataHubSettings> {
-        const ctx = await this.getCtx();
+    private async getSettingsRow(
+        requestCtx?: RequestContext,
+        lockForUpdate = false,
+    ): Promise<DataHubSettings> {
+        const ctx = await this.getCtx(requestCtx);
         const repo = this.connection.getRepository(ctx, DataHubSettings);
-        let row = await repo.createQueryBuilder('s').orderBy('s.id', SortOrder.ASC).getOne();
-        if (!row) {
-            row = new DataHubSettings();
-            row.retentionDaysRuns = null;
-            row.retentionDaysErrors = null;
-            row.retentionDaysLogs = null;
-            row.logPersistenceLevel = LogPersistenceLevel.PIPELINE;
-            row.autoMapperConfig = null;
-            row.pipelineAutoMapperConfigs = null;
+        const findRow = () => lockForUpdate
+            ? repo.findOne({ where: { scope: SETTINGS_SCOPE }, lock: { mode: 'pessimistic_write' } })
+            : repo.findOne({ where: { scope: SETTINGS_SCOPE } });
+        const row = await findRow();
+        if (row) {
+            return row;
         }
-        return row;
+
+        await repo.createQueryBuilder()
+            .insert()
+            .into(DataHubSettings)
+            .values({
+                scope: SETTINGS_SCOPE,
+                retentionDaysRuns: null,
+                retentionDaysErrors: null,
+                retentionDaysLogs: null,
+                logPersistenceLevel: LogPersistenceLevel.PIPELINE,
+                autoMapperConfig: null,
+                pipelineAutoMapperConfigs: null,
+                consumerControlOverrides: null,
+            })
+            .orIgnore()
+            .execute();
+        const created = await findRow();
+        if (!created) {
+            throw new Error('Failed to initialize Data Hub settings');
+        }
+        return created;
+    }
+    private async serializeSettingsMutation<T>(operation: () => Promise<T>): Promise<T> {
+        const result = this.settingsMutationTail
+            .catch(() => undefined)
+            .then(operation);
+        this.settingsMutationTail = result.then(
+            () => undefined,
+            () => undefined,
+        );
+        return result;
     }
 
-    async get(): Promise<DataHubSettingsResult> {
-        const row = await this.getSettingsRow();
+    private async withLockedSettingsRow<T>(
+        requestCtx: RequestContext | undefined,
+        work: (
+            row: DataHubSettings,
+            repository: Repository<DataHubSettings>,
+            ctx: RequestContext,
+        ) => Promise<T>,
+    ): Promise<T> {
+        return this.serializeSettingsMutation(async () => {
+            const ctx = await this.getCtx(requestCtx);
+            const databaseType = String(this.connection.rawConnection.options.type);
+            const lockForUpdate = requiresPessimisticSettingsLock(databaseType);
+            return this.connection.withTransaction(ctx, async transactionCtx => {
+                const repository = this.connection.getRepository(transactionCtx, DataHubSettings);
+                const row = await this.getSettingsRow(transactionCtx, lockForUpdate);
+                return work(row, repository, transactionCtx);
+            });
+        });
+    }
+
+    async get(ctx?: RequestContext): Promise<DataHubSettingsResult> {
+        const row = await this.getSettingsRow(ctx);
         return {
             retentionDaysRuns: row?.retentionDaysRuns ?? null,
             retentionDaysErrors: row?.retentionDaysErrors ?? null,
@@ -60,29 +180,31 @@ export class DataHubSettingsService {
         };
     }
 
-    async set(input: DataHubSettingsInput): Promise<DataHubSettingsResult> {
-        const ctx = await this.getCtx();
-        const repo = this.connection.getRepository(ctx, DataHubSettings);
-        const row = await this.getSettingsRow();
-        if (input.retentionDaysRuns !== undefined) {
-            row.retentionDaysRuns = input.retentionDaysRuns;
-        }
-        if (input.retentionDaysErrors !== undefined) {
-            row.retentionDaysErrors = input.retentionDaysErrors;
-        }
-        if (input.retentionDaysLogs !== undefined) {
-            row.retentionDaysLogs = input.retentionDaysLogs;
-        }
-        if (input.logPersistenceLevel !== undefined) {
-            row.logPersistenceLevel = input.logPersistenceLevel;
-        }
-        const saved = await repo.save(row);
-        return {
-            retentionDaysRuns: saved.retentionDaysRuns ?? null,
-            retentionDaysErrors: saved.retentionDaysErrors ?? null,
-            retentionDaysLogs: saved.retentionDaysLogs ?? null,
-            logPersistenceLevel: saved.logPersistenceLevel ?? LogPersistenceLevel.PIPELINE,
-        };
+    async set(
+        input: DataHubSettingsInput,
+        requestCtx?: RequestContext,
+    ): Promise<DataHubSettingsResult> {
+        return this.withLockedSettingsRow(requestCtx, async (row, repository) => {
+            if (input.retentionDaysRuns !== undefined) {
+                row.retentionDaysRuns = input.retentionDaysRuns;
+            }
+            if (input.retentionDaysErrors !== undefined) {
+                row.retentionDaysErrors = input.retentionDaysErrors;
+            }
+            if (input.retentionDaysLogs !== undefined) {
+                row.retentionDaysLogs = input.retentionDaysLogs;
+            }
+            if (input.logPersistenceLevel !== undefined) {
+                row.logPersistenceLevel = input.logPersistenceLevel;
+            }
+            const saved = await repository.save(row);
+            return {
+                retentionDaysRuns: saved.retentionDaysRuns ?? null,
+                retentionDaysErrors: saved.retentionDaysErrors ?? null,
+                retentionDaysLogs: saved.retentionDaysLogs ?? null,
+                logPersistenceLevel: saved.logPersistenceLevel ?? LogPersistenceLevel.PIPELINE,
+            };
+        });
     }
 
     async getLogPersistenceLevel(): Promise<LogPersistenceLevel> {
@@ -90,8 +212,34 @@ export class DataHubSettingsService {
         return row?.logPersistenceLevel ?? LogPersistenceLevel.PIPELINE;
     }
 
-    async getAutoMapperConfig(pipelineId?: ID | null): Promise<AutoMapperConfig> {
-        const row = await this.getSettingsRow();
+    async getConsumerControlOverrides(
+        requestCtx?: RequestContext,
+    ): Promise<ConsumerControlOverrides> {
+        const row = await this.getSettingsRow(requestCtx);
+        return normalizeConsumerControlOverrides(row.consumerControlOverrides);
+    }
+
+    async updateConsumerControlOverrides(
+        updates: Readonly<Record<string, boolean>>,
+        requestCtx?: RequestContext,
+    ): Promise<ConsumerControlOverrides> {
+        const validatedUpdates = validateConsumerControlOverrides(updates);
+        return this.withLockedSettingsRow(requestCtx, async (row, repository) => {
+            row.consumerControlOverrides = {
+                ...normalizeConsumerControlOverrides(row.consumerControlOverrides),
+                ...validatedUpdates,
+            };
+
+            const saved = await repository.save(row);
+            return normalizeConsumerControlOverrides(saved.consumerControlOverrides);
+        });
+    }
+
+    async getAutoMapperConfig(
+        pipelineId?: ID | null,
+        ctx?: RequestContext,
+    ): Promise<AutoMapperConfig> {
+        const row = await this.getSettingsRow(ctx);
 
         // Start with defaults
         let config: AutoMapperConfig = { ...DEFAULT_AUTO_MAPPER_CONFIG };
@@ -116,54 +264,49 @@ export class DataHubSettingsService {
         return { ...DEFAULT_AUTO_MAPPER_CONFIG };
     }
 
-    async updateAutoMapperConfig(input: AutoMapperConfigInput & { pipelineId?: ID | null }): Promise<AutoMapperConfig> {
-        const ctx = await this.getCtx();
-        const repo = this.connection.getRepository(ctx, DataHubSettings);
-        const row = await this.getSettingsRow();
-
+    async updateAutoMapperConfig(
+        input: AutoMapperConfigInput & { pipelineId?: ID | null },
+        requestCtx?: RequestContext,
+    ): Promise<AutoMapperConfig> {
         const storedConfig = this.inputToStoredConfig(input);
-
-        if (input.pipelineId) {
-            // Update pipeline-specific config
-            if (!row.pipelineAutoMapperConfigs) {
-                row.pipelineAutoMapperConfigs = {};
+        return this.withLockedSettingsRow(requestCtx, async (row, repository, ctx) => {
+            if (input.pipelineId) {
+                if (!row.pipelineAutoMapperConfigs) {
+                    row.pipelineAutoMapperConfigs = {};
+                }
+                const pipelineId = String(input.pipelineId);
+                row.pipelineAutoMapperConfigs[pipelineId] = {
+                    ...row.pipelineAutoMapperConfigs[pipelineId],
+                    ...storedConfig,
+                };
+            } else {
+                row.autoMapperConfig = {
+                    ...row.autoMapperConfig,
+                    ...storedConfig,
+                };
             }
-            const pipelineId = String(input.pipelineId);
-            row.pipelineAutoMapperConfigs[pipelineId] = {
-                ...row.pipelineAutoMapperConfigs[pipelineId],
-                ...storedConfig,
-            };
-        } else {
-            // Update global config
-            row.autoMapperConfig = {
-                ...row.autoMapperConfig,
-                ...storedConfig,
-            };
-        }
 
-        await repo.save(row);
-
-        return this.getAutoMapperConfig(input.pipelineId);
+            await repository.save(row);
+            return this.getAutoMapperConfig(input.pipelineId, ctx);
+        });
     }
 
-    async resetAutoMapperConfig(pipelineId?: ID | null): Promise<AutoMapperConfig> {
-        const ctx = await this.getCtx();
-        const repo = this.connection.getRepository(ctx, DataHubSettings);
-        const row = await this.getSettingsRow();
-
-        if (pipelineId) {
-            // Remove pipeline-specific config
-            if (row.pipelineAutoMapperConfigs) {
-                delete row.pipelineAutoMapperConfigs[String(pipelineId)];
+    async resetAutoMapperConfig(
+        pipelineId?: ID | null,
+        requestCtx?: RequestContext,
+    ): Promise<AutoMapperConfig> {
+        return this.withLockedSettingsRow(requestCtx, async (row, repository, ctx) => {
+            if (pipelineId) {
+                if (row.pipelineAutoMapperConfigs) {
+                    delete row.pipelineAutoMapperConfigs[String(pipelineId)];
+                }
+            } else {
+                row.autoMapperConfig = null;
             }
-        } else {
-            // Reset global config
-            row.autoMapperConfig = null;
-        }
 
-        await repo.save(row);
-
-        return this.getAutoMapperConfig(pipelineId);
+            await repository.save(row);
+            return this.getAutoMapperConfig(pipelineId, ctx);
+        });
     }
 
     validateAutoMapperConfig(input: AutoMapperConfigInput): AutoMapperConfigValidation {
@@ -232,4 +375,3 @@ export class DataHubSettingsService {
         return stored;
     }
 }
-

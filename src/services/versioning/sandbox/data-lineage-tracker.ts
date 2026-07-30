@@ -1,5 +1,8 @@
 import { RecordLineage, RecordState, SandboxOptions } from '../sandbox.service';
-import { LineageOutcome } from '../../../constants/enums';
+import {
+    LineageOutcome,
+    RecordProcessingState,
+} from '../../../constants/enums';
 
 /** Maximum serialized JSON length before replacing with a summary */
 const MAX_SERIALIZATION_LENGTH = 10_000;
@@ -24,10 +27,11 @@ export class DataLineageTracker {
         if (!this.enabled) return;
 
         records.slice(0, this.maxRecords).forEach((rec, idx) => {
+            const recordId = this.extractRecordId(rec);
             this.lineageMap.set(idx, {
                 recordIndex: idx,
-                originalRecordId: this.extractRecordId(rec),
-                finalRecordId: null,
+                originalRecordId: recordId,
+                finalRecordId: recordId,
                 finalOutcome: LineageOutcome.LOADED,
                 states: [],
             });
@@ -57,6 +61,23 @@ export class DataLineageTracker {
                 timestamp: Date.now(),
                 notes,
             });
+            this.updateFinalState(lineage, state, data);
+        }
+    }
+
+    setFinalOutcome(
+        recordIndex: number,
+        outcome: LineageOutcome,
+        data?: Record<string, unknown>,
+    ): void {
+        if (!this.enabled) return;
+
+        const lineage = this.lineageMap.get(recordIndex);
+        if (!lineage) return;
+
+        lineage.finalOutcome = outcome;
+        if (data) {
+            lineage.finalRecordId = this.extractRecordId(data);
         }
     }
 
@@ -65,6 +86,26 @@ export class DataLineageTracker {
      */
     getLineageRecords(): RecordLineage[] {
         return Array.from(this.lineageMap.values());
+    }
+
+    resolveRecordIndex(
+        record: Record<string, unknown>,
+        fallbackIndex: number,
+    ): number {
+        if (!this.enabled) return fallbackIndex;
+
+        const recordId = this.extractRecordId(record);
+        if (recordId === null) return fallbackIndex;
+
+        for (const [index, lineage] of this.lineageMap) {
+            if (
+                lineage.finalRecordId === recordId
+                || lineage.originalRecordId === recordId
+            ) {
+                return index;
+            }
+        }
+        return fallbackIndex;
     }
 
     /**
@@ -85,6 +126,25 @@ export class DataLineageTracker {
             }
         }
         return null;
+    }
+
+    private updateFinalState(
+        lineage: RecordLineage,
+        state: RecordState['state'],
+        data: Record<string, unknown>,
+    ): void {
+        const recordId = this.extractRecordId(data);
+        if (recordId !== null) {
+            lineage.finalRecordId = recordId;
+        }
+
+        if (state === RecordProcessingState.ERROR) {
+            lineage.finalOutcome = LineageOutcome.ERROR;
+        } else if (state === RecordProcessingState.FILTERED) {
+            lineage.finalOutcome = LineageOutcome.FILTERED;
+        } else if (state === RecordProcessingState.TRANSFORMED) {
+            lineage.finalOutcome = LineageOutcome.LOADED;
+        }
     }
 
     /**

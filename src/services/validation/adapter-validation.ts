@@ -5,7 +5,6 @@
 
 import {
     AdapterType as AdapterTypeEnum,
-    StepType as StepTypeEnum,
 } from '../../constants/enums';
 import { GRAPHQL_EXTRACTOR_CODE } from '../../extractors/graphql/schema';
 import type { JsonValue, StepType } from '../../types/index';
@@ -468,18 +467,6 @@ export function validateGraphQLExtractor(
             });
         }
     }
-}
-
-/**
- * Checks if a step type requires an adapter and returns true if built-in config is used.
- */
-export function isUsingBuiltInEnrichment(stepType: StepType, cfg: AdapterStepConfig): boolean {
-    if (stepType !== StepTypeEnum.ENRICH) {
-        return false;
-    }
-    const enrichConfig = cfg as { adapterCode?: string; defaults?: unknown; set?: unknown; computed?: unknown; sourceType?: string };
-    const hasBuiltInConfig = enrichConfig.defaults || enrichConfig.set || enrichConfig.computed || enrichConfig.sourceType;
-    return !enrichConfig.adapterCode && !!hasBuiltInConfig;
 }
 
 /**

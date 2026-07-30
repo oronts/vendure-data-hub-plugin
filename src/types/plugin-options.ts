@@ -1,4 +1,5 @@
 import type { CustomFeedGenerator } from '../feeds/generators/feed-types';
+import type { Injector } from '@vendure/core';
 import type {
     RuntimeLimitsConfig,
     CodeFirstPipeline,
@@ -7,9 +8,19 @@ import type {
     JsonObject,
     ScriptFunction,
 } from '../../shared/types';
+import type { AdapterDefinition, DataHubAdapter } from '../sdk/types/adapter-types';
 import type { UrlSecurityConfig } from '../utils/url-security.utils';
 import type { CodeSecurityConfig } from '../utils/code-security.utils';
 import type { ConnectorDefinition, BaseConnectorConfig } from '../../connectors/types';
+
+export interface DataHubAdapterFactory {
+    /** Stable identifier used for bootstrap diagnostics. */
+    readonly code: string;
+    /** Pure metadata used by tooling that validates definitions without booting Nest. */
+    readonly definition: AdapterDefinition;
+    /** Resolve Vendure/Nest services and construct the executable adapter. */
+    create(injector: Injector): DataHubAdapter | Promise<DataHubAdapter>;
+}
 
 /**
  * Custom import template registered via plugin options.
@@ -149,7 +160,7 @@ export interface SecurityConfig {
  * base URL; /v1/metrics and /v1/traces are appended automatically.
  */
 export interface OtlpTelemetryConfig {
-    /** Collector base URL, for example http://otel-collector:4318. */
+    /** Collector base URL, for example https://otel-collector:4318. */
     endpoint: string;
     /** Set to false to keep a shared configuration object while disabling export. */
     enabled?: boolean;
@@ -159,6 +170,8 @@ export interface OtlpTelemetryConfig {
     traces?: boolean;
     /** OTLP request headers, such as collector authentication. Values are never logged. */
     headers?: Record<string, string>;
+    /** Optional private-CA or mutual-TLS material loaded from local PEM files. */
+    tls?: OtlpTelemetryTlsConfig;
     /** OpenTelemetry service.name resource attribute. */
     serviceName?: string;
     /** Optional OpenTelemetry service.version resource attribute. */
@@ -177,6 +190,17 @@ export interface OtlpTelemetryConfig {
     maxRequestBodyBytes?: number;
 }
 
+export interface OtlpTelemetryTlsConfig {
+    /** PEM certificate authorities used only for this collector connection. */
+    caFile?: string;
+    /** PEM client certificate chain. Must be paired with clientKeyFile. */
+    clientCertificateFile?: string;
+    /** PEM client private key. Must be paired with clientCertificateFile. */
+    clientKeyFile?: string;
+    /** Optional passphrase for an encrypted client private key. */
+    clientKeyPassphrase?: string;
+}
+
 export interface DataHubPluginOptions {
     enabled?: boolean;
     registerBuiltinAdapters?: boolean;
@@ -185,7 +209,8 @@ export interface DataHubPluginOptions {
     pipelines?: CodeFirstPipeline[];
     secrets?: CodeFirstSecret[];
     connections?: CodeFirstConnection[];
-    adapters?: unknown[];
+    adapters?: DataHubAdapter[];
+    adapterFactories?: DataHubAdapterFactory[];
     feedGenerators?: CustomFeedGenerator[];
     configPath?: string;
     debug?: boolean;

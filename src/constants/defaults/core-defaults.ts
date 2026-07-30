@@ -46,12 +46,27 @@ export const INTERNAL_TIMINGS = {
     CONNECTION_MAX_IDLE_MS: 5 * 60 * 1000, // 5 minutes
     /** Maximum retries when waiting for a connection (prevents infinite recursion) */
     CONNECTION_RETRY_MAX: 10,
-    /** Cleanup interval for pending messages map (ms) */
-    PENDING_MESSAGES_CLEANUP_INTERVAL_MS: 60_000,
     /** Maximum age for pending messages before cleanup (ms) */
     PENDING_MESSAGES_MAX_AGE_MS: 10 * 60 * 1000, // 10 minutes
-    /** Maximum number of pending (unacknowledged) messages before rejecting new ones */
-    MAX_PENDING_MESSAGES: 10_000,
-    /** Interval for checking expired GATE timeouts (ms) */
-    GATE_TIMEOUT_CHECK_INTERVAL_MS: 30_000,
+} as const;
+
+export const GATE_TIMEOUT_MAINTENANCE = {
+    CHECK_INTERVAL_MS: 30_000,
+    BATCH_SIZE: 100,
+    LEASE_TTL_MS: 60_000,
+} as const;
+
+export const GATE_LIMITS = {
+    MIN_TIMEOUT_SECONDS: 1,
+    MAX_TIMEOUT_SECONDS: 365 * 24 * 60 * 60,
+    DEFAULT_PREVIEW_COUNT: 10,
+    MAX_PREVIEW_COUNT: 100,
+    MAX_WEBHOOK_URL_LENGTH: 2_048,
+    MAX_EMAIL_LENGTH: 320,
+} as const;
+
+export const RUN_QUEUE_RECOVERY = {
+    RECONCILE_INTERVAL_MS: 30_000,
+    DISPATCH_STALE_MS: 5 * 60 * 1000,
+    BATCH_SIZE: 100,
 } as const;

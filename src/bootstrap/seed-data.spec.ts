@@ -251,7 +251,7 @@ describe('ConfigSyncService persistence', () => {
                 definition: {
                     version: 1,
                     steps: [],
-                    capabilities: { requires: [] },
+                    capabilities: { requires: [], writes: [] },
                 },
             },
             {
@@ -296,7 +296,7 @@ describe('ConfigSyncService persistence', () => {
                 definition: {
                     version: 2,
                     steps: [],
-                    capabilities: { requires: [] },
+                    capabilities: { requires: [], writes: [] },
                 },
                 enabled: true,
                 version: 2,
@@ -513,7 +513,10 @@ describe('ConfigSyncService persistence', () => {
                 },
             ],
             edges: [{ from: 'extract', to: 'load' }],
-            capabilities: { requires: [] },
+            capabilities: {
+                requires: ['UpdateCatalog'],
+                writes: ['CATALOG'],
+            },
         };
         const existing = {
             id: 7,

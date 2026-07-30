@@ -5,6 +5,7 @@ export interface FileFormatMetadata {
     mimeTypes: string[];
     supportsPreview: boolean;
     requiresClientParser: boolean;
+    parseable: boolean;
     description?: string;
 }
 export const FILE_FORMAT_METADATA: Record<string, FileFormatMetadata> = {
@@ -15,6 +16,7 @@ export const FILE_FORMAT_METADATA: Record<string, FileFormatMetadata> = {
         mimeTypes: ['text/csv', 'text/comma-separated-values'],
         supportsPreview: true,
         requiresClientParser: true,
+        parseable: true,
         description: 'Comma-separated values',
     },
     JSON: {
@@ -24,6 +26,7 @@ export const FILE_FORMAT_METADATA: Record<string, FileFormatMetadata> = {
         mimeTypes: ['application/json', 'text/json'],
         supportsPreview: true,
         requiresClientParser: true,
+        parseable: true,
         description: 'JavaScript Object Notation (JSON)',
     },
     XML: {
@@ -33,6 +36,7 @@ export const FILE_FORMAT_METADATA: Record<string, FileFormatMetadata> = {
         mimeTypes: ['text/xml', 'application/xml'],
         supportsPreview: false, // Backend-only parsing (complex XML schemas)
         requiresClientParser: false,
+        parseable: true,
         description: 'Extensible Markup Language (XML)',
     },
     XLSX: {
@@ -45,6 +49,7 @@ export const FILE_FORMAT_METADATA: Record<string, FileFormatMetadata> = {
         ],
         supportsPreview: true,
         requiresClientParser: true,
+        parseable: true,
         description: 'Microsoft Excel spreadsheet (XLSX, XLS)',
     },
     NDJSON: {
@@ -54,6 +59,7 @@ export const FILE_FORMAT_METADATA: Record<string, FileFormatMetadata> = {
         mimeTypes: ['application/x-ndjson', 'application/jsonlines'],
         supportsPreview: true,
         requiresClientParser: true,
+        parseable: false,
         description: 'Newline-delimited JSON (NDJSON)',
     },
     TSV: {
@@ -63,6 +69,7 @@ export const FILE_FORMAT_METADATA: Record<string, FileFormatMetadata> = {
         mimeTypes: ['text/tab-separated-values'],
         supportsPreview: true,
         requiresClientParser: true, // Uses CSV parser with tab delimiter
+        parseable: false,
         description: 'Tab-separated values (TSV)',
     },
     PARQUET: {
@@ -72,6 +79,7 @@ export const FILE_FORMAT_METADATA: Record<string, FileFormatMetadata> = {
         mimeTypes: ['application/octet-stream', 'application/parquet'],
         supportsPreview: false, // Backend-only (binary columnar format)
         requiresClientParser: false,
+        parseable: false,
         description: 'Apache Parquet columnar storage format',
     },
 };

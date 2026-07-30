@@ -29,7 +29,13 @@ import { FileStorageService } from '../../services';
 import { FileParserService } from '../../parsers/file-parser.service';
 import { ManageDataHubFilesPermission, ReadDataHubFilesPermission } from '../../permissions';
 import { PAGINATION, LOGGER_CONTEXTS, FILE_STORAGE, CONTENT_TYPES, HTTP_HEADERS } from '../../constants/index';
-import { detectFormat, isValidFileId, formatFileResponse, detectMimeType } from './file-upload.utils';
+import {
+    detectFormat,
+    isValidFileId,
+    formatFileResponse,
+    detectMimeType,
+    getBase64DecodedSize,
+} from './file-upload.utils';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { toErrorOrUndefined } from '../../utils/error.utils';
 
@@ -420,8 +426,8 @@ export class DataHubFileUploadController {
                 return;
             }
 
-            const estimatedSize = Math.ceil(body.content.length * 0.75);
-            if (estimatedSize > FILE_STORAGE.MAX_FILE_SIZE_BYTES) {
+            const decodedSize = getBase64DecodedSize(body.content);
+            if (decodedSize > FILE_STORAGE.MAX_FILE_SIZE_BYTES) {
                 res.status(HttpStatus.PAYLOAD_TOO_LARGE).json({
                     success: false,
                     error: `File too large. Maximum size is ${FILE_STORAGE.MAX_FILE_SIZE_BYTES / (1024 * 1024)}MB`,

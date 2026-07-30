@@ -20,10 +20,18 @@ export const CODE_SECURITY = {
  * Safe evaluator defaults
  */
 export const SAFE_EVALUATOR = {
-    /** Maximum number of cached compiled functions */
-    MAX_CACHE_SIZE: 1000,
+    /** Default number of cached compiled expressions */
+    DEFAULT_CACHE_SIZE: 1_000,
+    /** Smallest accepted compiled-expression cache */
+    MIN_CACHE_SIZE: 1,
+    /** Hard cap for compiled expressions retained by one evaluator */
+    MAX_CACHE_SIZE: 10_000,
     /** Default timeout in milliseconds */
-    DEFAULT_TIMEOUT_MS: 5000,
+    DEFAULT_TIMEOUT_MS: 5_000,
+    /** Smallest accepted execution timeout */
+    MIN_TIMEOUT_MS: 1,
+    /** Hard cap for evaluator and script execution */
+    MAX_TIMEOUT_MS: 300_000,
     /** Cache eviction percentage (10% of cache evicted when full) */
     CACHE_EVICTION_PERCENT: 0.1,
 } as const;
@@ -33,4 +41,10 @@ export const SECRET_SECURITY = {
     NODE_ENV: 'NODE_ENV',
     PRODUCTION_ENV: 'production',
     MIN_MASTER_KEY_LENGTH: 32,
+} as const;
+
+export const SECRET_REFERENCE_PAGING = {
+    DEFAULT_TAKE: 25,
+    MAX_TAKE: 100,
+    MAX_SEARCH_LENGTH: 200,
 } as const;

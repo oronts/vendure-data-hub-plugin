@@ -70,10 +70,55 @@ describe('connection configuration validation', () => {
         })).not.toThrow();
     });
 
+    it('rejects credential-bearing HTTP and SQS URLs', () => {
+        for (const baseUrl of [
+            'https://user:password@erp.example.com',
+            'https://user:p%40ssword@erp.example.com',
+        ]) {
+            expect(() => assertConnectionConfig(ConnectionType.HTTP, {
+                baseUrl,
+            })).toThrow('must not include credentials');
+        }
+        expect(() => assertConnectionConfig(ConnectionType.SQS, {
+            region: 'eu-central-1',
+            queueUrl: 'https://user:password@sqs.example.com/account/orders',
+        })).toThrow('must not include credentials');
+    });
+
+    it('requires authenticated HTTP connections to define a safe base URL', () => {
+        expect(() => assertConnectionConfig(ConnectionType.HTTP, {
+            auth: { type: 'BEARER', secretCode: 'erp-token' },
+        })).toThrow('requires HTTP connection baseUrl');
+        expect(() => assertConnectionConfig(ConnectionType.HTTP, {
+            baseUrl: 'https://erp.example.com',
+            auth: { type: 'BEARER', secretCode: 'invalid code' },
+        })).toThrow('contains an invalid Secret Code');
+    });
+
     it('rejects credential-bearing default headers', () => {
         expect(() => assertConnectionConfig(ConnectionType.HTTP, {
             headers: { Authorization: 'Bearer plaintext' },
         })).toThrow(/plaintext credentials|secret-backed authentication/);
+    });
+
+    it.each(['Host', 'Content-Length', 'Connection', 'Upgrade'])(
+        'rejects the runtime-restricted static header %s before persistence',
+        headerName => {
+            expect(() => assertConnectionConfig(ConnectionType.HTTP, {
+                headers: { [headerName]: 'value' },
+            })).toThrow('control request routing');
+        },
+    );
+
+    it('rejects request-control headers used for API key authentication', () => {
+        expect(() => assertConnectionConfig(ConnectionType.HTTP, {
+            baseUrl: 'https://erp.example.com',
+            auth: {
+                type: 'API_KEY',
+                headerName: 'Host',
+                secretCode: 'erp-api-key',
+            },
+        })).toThrow('headerName is invalid');
     });
 
     it('allows environment references but not plaintext secrets in custom connections', () => {
@@ -83,6 +128,51 @@ describe('connection configuration validation', () => {
         expect(() => assertConnectionConfig(ConnectionType.CUSTOM, {
             config: { password: 'plaintext' },
         })).toThrow('cannot store plaintext credentials');
+        expect(() => assertConnectionConfig(ConnectionType.CUSTOM, {
+            config: '{"endpoint":"https://example.com"}',
+        })).toThrow('must be an object');
+        expect(() => assertConnectionConfig(ConnectionType.CUSTOM, {
+            config: { endpoint: 'https://user:password@example.com' },
+        })).toThrow('must not include credentials');
+    });
+
+    it('enforces numeric schema ranges', () => {
+        const baseConfig = {
+            host: 'database.internal',
+            database: 'catalog',
+            username: 'importer',
+        };
+        expect(() => assertConnectionConfig(ConnectionType.POSTGRES, {
+            ...baseConfig,
+            port: 0,
+        })).toThrow('must be at least 1');
+        expect(() => assertConnectionConfig(ConnectionType.POSTGRES, {
+            ...baseConfig,
+            port: 65_536,
+        })).toThrow('must be at most 65535');
+        expect(() => assertConnectionConfig(ConnectionType.POSTGRES, {
+            ...baseConfig,
+            port: 5432.5,
+        })).toThrow('must be an integer');
+    });
+
+    it('validates BASIC username Secret Code references without ambiguity', () => {
+        const baseConfig = {
+            baseUrl: 'https://erp.example.com',
+            auth: {
+                type: 'BASIC',
+                secretCode: 'erp-password',
+                usernameSecretCode: 'erp-username',
+            },
+        };
+        expect(() => assertConnectionConfig(ConnectionType.HTTP, baseConfig)).not.toThrow();
+        expect(() => assertConnectionConfig(ConnectionType.HTTP, {
+            baseUrl: baseConfig.baseUrl,
+            auth: {
+                ...baseConfig.auth,
+                username: 'service-user',
+            },
+        })).toThrow('cannot use username and usernameSecretCode together');
     });
 
     it('rejects non-canonical HTTP authentication types before persistence', () => {

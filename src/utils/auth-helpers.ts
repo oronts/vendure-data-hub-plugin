@@ -1,5 +1,6 @@
 import { ConnectionAuthType, HTTP_HEADERS, AUTH_SCHEMES } from '../constants/index';
 import { SecretResolver as SharedSecretResolver, AuthConfig as SharedAuthConfig } from '../../shared/types';
+import { getHttpHeaderNameError } from '../../shared';
 
 /**
  * AuthConfig used by auth-helpers.
@@ -44,8 +45,11 @@ export async function applyAuthentication(
             return;
         }
         case ConnectionAuthType.API_KEY: {
-            const apiKey = await resolveRequiredCredential(auth.type, auth.secretCode, secretResolver, 'API key');
             const headerName = auth.headerName || HTTP_HEADERS.X_API_KEY;
+            if (getHttpHeaderNameError(headerName, 'AUTHENTICATION') !== null) {
+                throw new Error(`API_KEY authentication headerName is invalid: ${headerName}`);
+            }
+            const apiKey = await resolveRequiredCredential(auth.type, auth.secretCode, secretResolver, 'API key');
             headers[headerName] = apiKey;
             return;
         }

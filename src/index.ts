@@ -444,6 +444,7 @@ export type { CodeSecurityConfig } from './utils/code-security.utils';
 
 // Security configuration type exports
 export type {
+    DataHubAdapterFactory,
     ScriptSecurityConfig,
     SecurityConfig,
     NotificationSmtpConfig,

@@ -34,6 +34,14 @@ describe('applyAuthentication', () => {
         })).rejects.toThrow('cannot resolve');
     });
 
+    it('rejects API key headers that can control request routing', async () => {
+        await expect(applyAuthentication({}, {
+            type: ConnectionAuthType.API_KEY,
+            secretCode: 'api-key',
+            headerName: 'Host',
+        }, async () => 'resolved-key')).rejects.toThrow('headerName is invalid');
+    });
+
     it('requires complete basic credentials', async () => {
         await expect(applyAuthentication({}, {
             type: ConnectionAuthType.BASIC,

@@ -27,7 +27,7 @@ function createService(repository: object) {
 }
 
 describe('CheckpointService', () => {
-    const ctx = {} as RequestContext;
+    const ctx = { channelId: 'channel-a' } as unknown as RequestContext;
 
     it('updates the single checkpoint row for a pipeline', async () => {
         const checkpoint = new DataHubCheckpoint();
@@ -38,13 +38,19 @@ describe('CheckpointService', () => {
             save: vi.fn(async (entity: DataHubCheckpoint) => entity),
             remove: vi.fn(),
         };
-        const { service } = createService(repository);
+        const { service, connection } = createService(repository);
 
         const result = await service.setForPipeline(ctx, 7, { cursor: 2 });
 
         expect(result).toBe(checkpoint);
         expect(checkpoint.data).toEqual({ cursor: 2 });
         expect(repository.save).toHaveBeenCalledOnce();
+        expect(connection.getEntityOrThrow).toHaveBeenCalledWith(
+            ctx,
+            Pipeline,
+            7,
+            { channelId: 'channel-a' },
+        );
     });
 
     it('serializes and merges a checkpoint update with current persisted data', async () => {
@@ -115,7 +121,10 @@ describe('CheckpointService', () => {
         await service.clearForPipeline(ctx, 7);
 
         expect(repository.findOne).toHaveBeenCalledWith({
-            where: { pipelineId: 7 },
+            where: {
+                pipelineId: 7,
+                pipeline: { channels: { id: 'channel-a' } },
+            },
         });
         expect(repository.remove).toHaveBeenCalledWith(checkpoint);
     });

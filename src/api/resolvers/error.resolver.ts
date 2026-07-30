@@ -22,6 +22,7 @@ import { deepClone } from '../../utils';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { getErrorMessage } from '../../utils/error.utils';
 import type { RecordErrorPage } from '../../services/data/record-error-page';
+import { getActivePipelineRunChannelId } from '../../services/pipeline/pipeline-run-channel';
 
 /** Extended pipeline definition that may include security settings */
 interface PipelineDefinitionWithSecurity extends PipelineDefinition {
@@ -69,13 +70,17 @@ export class DataHubErrorAdminResolver {
 
     private async getMaskFieldsForRun(ctx: RequestContext, runId: ID): Promise<string[] | null> {
         try {
+            const channelId = getActivePipelineRunChannelId(ctx);
             const runRepo = this.connection.getRepository(ctx, PipelineRun);
-            const run = await runRepo.findOne({ where: { id: runId }, relations: { pipeline: true } });
+            const run = await runRepo.findOne({
+                where: { id: runId, channelId },
+                relations: { pipeline: true },
+            });
             if (!run?.pipeline) {
                 this.logger.error(`Cannot resolve masking policy for run ${runId}`);
                 return null;
             }
-            const definition = (run.definitionSnapshot ?? run.pipeline.definition) as
+            const definition = run.definitionSnapshot as
                 PipelineDefinitionWithSecurity | undefined;
             return this.extractMaskFields(definition);
         } catch (error) {
@@ -175,14 +180,15 @@ export class DataHubErrorAdminResolver {
         if (runIds.length === 0) return map;
 
         try {
+            const channelId = getActivePipelineRunChannelId(ctx);
             const runRepo = this.connection.getRepository(ctx, PipelineRun);
             const runs = await runRepo.find({
-                where: runIds.map(id => ({ id })),
+                where: runIds.map(id => ({ id, channelId })),
                 relations: { pipeline: true },
             });
 
             for (const run of runs) {
-                const definition = (run.definitionSnapshot ?? run.pipeline?.definition) as
+                const definition = run.definitionSnapshot as
                     PipelineDefinitionWithSecurity | undefined;
                 const maskFields = this.extractMaskFields(definition);
                 map.set(run.id, maskFields);

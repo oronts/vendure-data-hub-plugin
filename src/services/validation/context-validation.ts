@@ -3,9 +3,18 @@
  * Handles validation of pipeline context settings and capabilities.
  */
 
-import { PARALLEL_EXECUTION } from '../../constants/defaults/runtime-defaults';
+import {
+    ChannelStrategy,
+    ValidationStrictness,
+} from '../../constants/enums';
 import { PipelineDefinition } from '../../types/index';
 import { PipelineDefinitionIssue } from '../../validation/pipeline-definition-error';
+import {
+    isRecord,
+    validateErrorHandling,
+    validateParallelExecution,
+    validateThroughput,
+} from './execution-policy-validation';
 
 // ============================================================================
 // Type Definitions
@@ -19,7 +28,12 @@ interface PipelineCapabilitiesConfig {
     requires?: string[];
 }
 
-const SUPPORTED_RUN_MODES = new Set(['SYNC', 'ASYNC', 'BATCH']);
+const SUPPORTED_CHANNEL_STRATEGIES: ReadonlySet<string> = new Set(
+    Object.values(ChannelStrategy),
+);
+const SUPPORTED_VALIDATION_MODES: ReadonlySet<string> = new Set(
+    Object.values(ValidationStrictness),
+);
 
 // ============================================================================
 // Validation Functions
@@ -79,77 +93,201 @@ function validateCapabilitiesWrites(writes: unknown, issues: PipelineDefinitionI
  * Validates pipeline context configuration.
  */
 export function validateContext(definition: PipelineDefinition, issues: PipelineDefinitionIssue[]): void {
-    if (!definition.context) {
-        return;
+    const rawPipelineContext = definition.context as unknown;
+    let pipelineContext: Record<string, unknown> | undefined;
+    if (rawPipelineContext !== undefined) {
+        if (!isRecord(rawPipelineContext)) {
+            issues.push({
+                message: 'context must be an object',
+                errorCode: 'context-invalid',
+                field: 'context',
+            });
+        } else {
+            pipelineContext = rawPipelineContext;
+        }
     }
 
-    const context = definition.context as Record<string, unknown>;
-    if (
-        context.runMode !== undefined &&
-        !SUPPORTED_RUN_MODES.has(String(context.runMode))
-    ) {
-        issues.push({
-            message: 'context.runMode must be SYNC, ASYNC, or BATCH',
-            errorCode: 'context-invalid',
-        });
-    }
-    if ('lateEvents' in context) {
-        issues.push({
-            message: 'context.lateEvents is not supported',
-            errorCode: 'context-invalid',
-        });
-    }
-    if ('watermarkMs' in context) {
-        issues.push({
-            message: 'context.watermarkMs is not supported',
-            errorCode: 'context-invalid',
-        });
+    if (pipelineContext) {
+        validateContextFields(pipelineContext, 'context', issues);
+        if ('lateEvents' in pipelineContext) {
+            issues.push({
+                message: 'context.lateEvents is not supported',
+                errorCode: 'context-invalid',
+                field: 'context.lateEvents',
+            });
+        }
+        if ('watermarkMs' in pipelineContext) {
+            issues.push({
+                message: 'context.watermarkMs is not supported',
+                errorCode: 'context-invalid',
+                field: 'context.watermarkMs',
+            });
+        }
+
+        validateParallelExecution(
+            pipelineContext.parallelExecution,
+            issues,
+            'context.parallelExecution',
+        );
+        validateErrorHandling(
+            pipelineContext.errorHandling,
+            issues,
+            'context.errorHandling',
+        );
     }
 
-    validateParallelExecution(definition.context.parallelExecution, issues);
+    for (const step of definition.steps) {
+        validateThroughput(
+            step.throughput,
+            `steps.${step.key}.throughput`,
+            issues,
+            step.key,
+        );
+        if (step.context === undefined) continue;
+        const path = `steps.${step.key}.context`;
+        if (!isRecord(step.context)) {
+            issues.push({
+                message: `${path} must be an object`,
+                errorCode: 'context-invalid',
+                stepKey: step.key,
+                field: path,
+            });
+            continue;
+        }
+        const stepContext = step.context as Record<string, unknown>;
+        validateContextFields(stepContext, path, issues, step.key);
+        validateChannelSelection(
+            {
+                ...pipelineContext,
+                ...stepContext,
+            },
+            path,
+            issues,
+            step.key,
+        );
+    }
+
+    if (pipelineContext) {
+        validateChannelSelection(pipelineContext, 'context', issues);
+    }
 }
 
-function validateParallelExecution(
-    value: unknown,
+function validateContextFields(
+    context: Record<string, unknown>,
+    path: string,
     issues: PipelineDefinitionIssue[],
+    stepKey?: string,
 ): void {
-    if (value === undefined) return;
-    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    if (Object.prototype.hasOwnProperty.call(context, 'runMode')) {
         issues.push({
-            message: 'context.parallelExecution must be an object',
+            message: `${path}.runMode is not supported`,
             errorCode: 'context-invalid',
+            stepKey,
+            field: `${path}.runMode`,
         });
+    }
+    if (
+        context.channelStrategy !== undefined
+        && !SUPPORTED_CHANNEL_STRATEGIES.has(String(context.channelStrategy))
+    ) {
+        issues.push({
+            message: `${path}.channelStrategy must be EXPLICIT, INHERIT, or MULTI`,
+            errorCode: 'context-invalid',
+            stepKey,
+            field: `${path}.channelStrategy`,
+        });
+    }
+    if (
+        context.validationMode !== undefined
+        && !SUPPORTED_VALIDATION_MODES.has(String(context.validationMode))
+    ) {
+        issues.push({
+            message: `${path}.validationMode must be STRICT or LENIENT`,
+            errorCode: 'context-invalid',
+            stepKey,
+            field: `${path}.validationMode`,
+        });
+    }
+    validateNonEmptyString(context.channel, `${path}.channel`, issues, stepKey);
+    validateNonEmptyString(
+        context.idempotencyKeyField,
+        `${path}.idempotencyKeyField`,
+        issues,
+        stepKey,
+    );
+    if (
+        context.contentLanguage !== undefined
+        && (
+            typeof context.contentLanguage !== 'string'
+            || context.contentLanguage.trim().length === 0
+        )
+    ) {
+        issues.push({
+            message: `${path}.contentLanguage must be a non-empty language code`,
+            errorCode: 'context-invalid',
+            stepKey,
+            field: `${path}.contentLanguage`,
+        });
+    }
+    if (context.channelIds !== undefined) {
+        const channelIds = context.channelIds;
+        if (
+            !Array.isArray(channelIds)
+            || channelIds.some(channelId => (
+                typeof channelId !== 'string' || channelId.trim().length === 0
+            ))
+        ) {
+            issues.push({
+                message: `${path}.channelIds must contain non-empty channel IDs`,
+                errorCode: 'context-invalid',
+                stepKey,
+                field: `${path}.channelIds`,
+            });
+        }
+    }
+    validateThroughput(context.throughput, `${path}.throughput`, issues, stepKey);
+}
+
+function validateChannelSelection(
+    context: Record<string, unknown>,
+    path: string,
+    issues: PipelineDefinitionIssue[],
+    stepKey?: string,
+): void {
+    if (
+        context.channelStrategy !== 'EXPLICIT'
+        && context.channelStrategy !== 'MULTI'
+    ) {
         return;
     }
-    const config = value as Record<string, unknown>;
-    if (config.enabled !== undefined && typeof config.enabled !== 'boolean') {
-        issues.push({
-            message: 'context.parallelExecution.enabled must be a boolean',
-            errorCode: 'context-invalid',
-        });
-    }
     if (
-        config.maxConcurrentSteps !== undefined
-        && (
-            !Number.isSafeInteger(config.maxConcurrentSteps)
-            || (config.maxConcurrentSteps as number) < 1
-            || (config.maxConcurrentSteps as number) > PARALLEL_EXECUTION.MAX_CONCURRENT_STEPS
-        )
+        !Array.isArray(context.channelIds)
+        || context.channelIds.length === 0
     ) {
         issues.push({
-            message: `context.parallelExecution.maxConcurrentSteps must be an integer from 1 to ${PARALLEL_EXECUTION.MAX_CONCURRENT_STEPS}`,
+            message: `${path}.channelIds is required for ${context.channelStrategy} channel strategy`,
             errorCode: 'context-invalid',
+            stepKey,
+            field: `${path}.channelIds`,
         });
     }
+}
+
+function validateNonEmptyString(
+    value: unknown,
+    field: string,
+    issues: PipelineDefinitionIssue[],
+    stepKey?: string,
+): void {
     if (
-        config.errorPolicy !== undefined
-        && !PARALLEL_EXECUTION.ERROR_POLICIES.some(
-            policy => policy === config.errorPolicy,
-        )
+        value !== undefined
+        && (typeof value !== 'string' || value.trim().length === 0)
     ) {
         issues.push({
-            message: 'context.parallelExecution.errorPolicy must be FAIL_FAST, CONTINUE, or BEST_EFFORT',
+            message: `${field} must be a non-empty string`,
             errorCode: 'context-invalid',
+            stepKey,
+            field,
         });
     }
 }

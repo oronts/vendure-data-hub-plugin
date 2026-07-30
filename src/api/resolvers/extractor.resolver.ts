@@ -62,6 +62,8 @@ export class DataHubExtractorAdminResolver {
             description: meta.description,
             category: this.normalizeCategoryForGql(meta.category),
             version: meta.version,
+            deprecated: meta.deprecated ?? false,
+            deprecatedMessage: meta.deprecatedMessage,
             icon: meta.icon,
             supportsPagination: meta.supportsPagination ?? false,
             supportsIncremental: meta.supportsIncremental ?? false,

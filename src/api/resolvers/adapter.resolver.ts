@@ -1,7 +1,7 @@
 import { Query, Resolver } from '@nestjs/graphql';
 import { Allow } from '@vendure/core';
-import { ManageDataHubAdaptersPermission } from '../../permissions';
 import { DataHubRegistryService } from '../../sdk/registry.service';
+import { ManageDataHubAdaptersPermission } from '../../permissions';
 
 @Resolver()
 export class DataHubAdapterAdminResolver {

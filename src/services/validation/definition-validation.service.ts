@@ -10,12 +10,10 @@ import { PipelineDefinition, StepType } from '../../types/index';
 import {
     AdapterType as AdapterTypeEnum,
     PIPELINE_VALIDATION_ERROR,
-    PipelineStatus,
-    RevisionType,
     StepType as StepTypeEnum,
 } from '../../constants/enums';
 import { LOGGER_CONTEXTS, STEP_TYPE_TO_ADAPTER_TYPE } from '../../constants/index';
-import { Pipeline, PipelineRevision } from '../../entities/pipeline';
+import { Pipeline } from '../../entities/pipeline';
 import { DataHubRegistryService } from '../../sdk/registry.service';
 import { validatePipelineDefinition } from '../../validation/pipeline-definition.validator';
 import { PipelineDefinitionError, PipelineDefinitionIssue } from '../../validation/pipeline-definition-error';
@@ -46,6 +44,7 @@ import { HookScriptRegistryService } from '../events/hook-script-registry.servic
 import { validateAdapterBindings } from '../../sdk/adapter-bindings';
 import { SchemaRegistryService } from '../schema/schema-registry.service';
 import { schemaReferenceKey } from '../schema/schema-reference';
+import { validateHookReferences } from './hook-reference-validation';
 
 // ============================================================================
 // Type Definitions
@@ -248,7 +247,10 @@ export class DefinitionValidationService {
                 ? this.connection.getRepository(ctx, Pipeline)
                 : this.connection.rawConnection.getRepository(Pipeline);
             const foundPipelines = await repo.find({
-                where: { code: In(dependsOnCodes) },
+                where: {
+                    code: In(dependsOnCodes),
+                    ...(ctx ? { channels: { id: ctx.channelId } } : {}),
+                },
                 select: { code: true },
             });
             const foundCodes = new Set(foundPipelines.map(p => p.code));
@@ -306,133 +308,15 @@ export class DefinitionValidationService {
         result: DefinitionValidationResult,
         ctx?: RequestContext,
     ): Promise<void> {
-        const triggerTargets = new Map<string, Set<string>>();
-        const scriptNames = new Set<string>();
-        for (const actions of Object.values(definition.hooks ?? {})) {
-            if (!Array.isArray(actions)) continue;
-            for (const action of actions) {
-                if (action.type === 'TRIGGER_PIPELINE') {
-                    if (
-                        typeof action.pipelineCode === 'string'
-                        && typeof action.triggerKey === 'string'
-                    ) {
-                        const triggerKeys = triggerTargets.get(action.pipelineCode) ?? new Set<string>();
-                        triggerKeys.add(action.triggerKey);
-                        triggerTargets.set(action.pipelineCode, triggerKeys);
-                    }
-                } else if (action.type === 'SCRIPT') {
-                    if (typeof action.scriptName === 'string') {
-                        scriptNames.add(action.scriptName);
-                    }
-                }
-            }
-        }
-
-        for (const scriptName of scriptNames) {
-            if (!this.hookScripts.has(scriptName)) {
-                result.issues.push({
-                    message: `Hook references unregistered script "${scriptName}"`,
-                    errorCode: 'hook-script-unknown',
-                });
-            }
-        }
-        if (triggerTargets.size === 0) {
-            return;
-        }
-
-        try {
-            const repository = ctx
-                ? this.connection.getRepository(ctx, Pipeline)
-                : this.connection.rawConnection.getRepository(Pipeline);
-            const targets = await repository.find({
-                where: { code: In([...triggerTargets.keys()]) },
-                select: {
-                    id: true,
-                    code: true,
-                    currentRevisionId: true,
-                    enabled: true,
-                    status: true,
-                },
-            });
-            const targetsByCode = new Map(targets.map(target => [target.code, target]));
-            const activeRevisionIds = targets
-                .map(target => target.currentRevisionId)
-                .filter((id): id is NonNullable<typeof id> => id != null);
-            const revisions = activeRevisionIds.length === 0
-                ? []
-                : await (ctx
-                    ? this.connection.getRepository(ctx, PipelineRevision)
-                    : this.connection.rawConnection.getRepository(PipelineRevision)
-                ).find({
-                    where: {
-                        id: In(activeRevisionIds),
-                        type: RevisionType.PUBLISHED,
-                    },
-                    select: { id: true, definition: true },
-                });
-            const revisionsById = new Map(
-                revisions.map(revision => [String(revision.id), revision.definition]),
-            );
-
-            for (const [code, triggerKeys] of triggerTargets) {
-                const target = targetsByCode.get(code);
-                if (!target) {
-                    result.issues.push({
-                        message: `TRIGGER_PIPELINE hook references unknown pipeline code "${code}"`,
-                        errorCode: 'hook-pipeline-unknown',
-                    });
-                    continue;
-                } else if (
-                    target.status === PipelineStatus.ARCHIVED
-                    || !target.enabled
-                    || target.currentRevisionId == null
-                ) {
-                    result.issues.push({
-                        message: `TRIGGER_PIPELINE hook target "${code}" has no runnable published revision`,
-                        errorCode: 'hook-pipeline-not-runnable',
-                    });
-                    continue;
-                }
-
-                const targetDefinition = revisionsById.get(String(target.currentRevisionId));
-                if (!targetDefinition) {
-                    result.issues.push({
-                        message: `TRIGGER_PIPELINE hook target "${code}" has no active published revision`,
-                        errorCode: 'hook-pipeline-revision-missing',
-                    });
-                    continue;
-                }
-
-                for (const triggerKey of triggerKeys) {
-                    const triggerStep = targetDefinition.steps.find(step => step.key === triggerKey);
-                    if (
-                        !triggerStep
-                        || triggerStep.type !== StepTypeEnum.TRIGGER
-                        || triggerStep.disabled === true
-                    ) {
-                        result.issues.push({
-                            message: `TRIGGER_PIPELINE hook target "${code}" has no enabled trigger step "${triggerKey}"`,
-                            errorCode: 'hook-trigger-not-runnable',
-                        });
-                        continue;
-                    }
-                    if (!(targetDefinition.edges ?? []).some(edge => edge.from === triggerKey)) {
-                        result.issues.push({
-                            message: `TRIGGER_PIPELINE hook target "${code}" trigger "${triggerKey}" has no outgoing route`,
-                            errorCode: 'hook-trigger-no-route',
-                        });
-                    }
-                }
-            }
-        } catch (error: unknown) {
-            this.logger.warn('Failed to validate hook pipeline targets', {
-                error: getErrorMessage(error),
-            });
-            result.warnings.push({
-                message: 'Could not verify hook pipeline targets',
-                errorCode: 'hook-reference-check-failed',
-            });
-        }
+        await validateHookReferences({
+            connection: this.connection,
+            ctx,
+            definition,
+            hookScripts: this.hookScripts,
+            issues: result.issues,
+            logger: this.logger,
+            warnings: result.warnings,
+        });
     }
 
     private validateAdapters(

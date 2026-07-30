@@ -184,6 +184,10 @@ export const configOptionsSchema = `
         cleanupStrategies: [DataHubOptionValue!]!
         newRecordStrategies: [DataHubOptionValue!]!
         validationModes: [DataHubOptionValue!]!
+        "Validation strictness values used by pipeline and load contexts"
+        validationStrictnesses: [DataHubOptionValue!]!
+        "Channel selection strategies used by pipeline and step contexts"
+        channelStrategies: [DataHubOptionValue!]!
         queueTypes: [DataHubOptionValue!]!
         vendureEvents: [DataHubOptionValue!]!
         comparisonOperators: [DataHubComparisonOperator!]!
@@ -198,8 +202,6 @@ export const configOptionsSchema = `
         hookStages: [DataHubHookStage!]!
         hookStageCategories: [DataHubHookStageCategory!]!
         logLevels: [DataHubOptionValue!]!
-        runModes: [DataHubOptionValue!]!
-        checkpointStrategies: [DataHubOptionValue!]!
         parallelErrorPolicies: [DataHubOptionValue!]!
         logPersistenceLevels: [DataHubOptionValue!]!
         "Adapter type metadata for the adapters page tabs"

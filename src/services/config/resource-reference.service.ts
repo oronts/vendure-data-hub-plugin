@@ -215,6 +215,9 @@ export class ResourceReferenceService {
                 select: { code: true, config: true },
             }),
             this.connection.getRepository(ctx, DataHubExportDestination).find({
+                where: acrossChannels
+                    ? {}
+                    : { channelId: String(ctx.channelId) },
                 select: { destinationId: true, config: true },
             }),
         ]);

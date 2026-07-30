@@ -7,6 +7,8 @@ import { TABLE_NAMES } from '../../constants/table-names';
 @Index(['channelId', 'deliveryKey'], { unique: true })
 @Index(['status', 'availableAt'])
 @Index(['status', 'leaseExpiresAt'])
+@Index(['status', 'deliveredAt'])
+@Index(['status', 'lastAttemptAt'])
 @Index(['channelId', 'createdAt'])
 @Index(['channelId', 'webhookId', 'createdAt'])
 export class DataHubWebhookDelivery extends VendureEntity {

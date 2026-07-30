@@ -23,13 +23,13 @@ export type {
     PipelineContext,
     TargetOperation,
     ErrorHandlingConfig,
-    CheckpointingConfig,
     ExecutorContext,
     PipelineEdge,
     ParallelExecutionConfig,
     PipelineCapabilities,
     Throughput,
     TriggerConfig,
+    VendureEventType,
     MessageTriggerConfig,
     FileWatchTriggerConfig,
     QueueTypeValue,
@@ -41,7 +41,6 @@ export * from './step-configs';
 
 export * from './extractor-interfaces';
 
-export type { CustomTransformFn, CustomTransformInfo } from '../transforms/types';
 
 export type {
     StringValidation,
@@ -101,12 +100,22 @@ export type {
 } from '../../shared/types';
 export { DEFAULT_AUTO_SAVE_CONFIG } from '../../shared/types';
 
-export type { PipelineMetrics } from '../../shared/types';
+export type {
+    DryRunMessage,
+    DryRunMessageCode,
+    DryRunMessageLevel,
+    DryRunRecordError,
+    PipelineMetrics,
+} from '../../shared/types';
 
 export type {
     HookAction,
     HookStageValue,
+    HookExecutionFailure,
+    HookExecutionResult,
+    HookExecutionStatus,
     WebhookHookAction,
+    TriggerPipelineHookAction,
     InterceptorHookAction,
     ScriptHookAction,
     LogHookAction,
@@ -127,4 +136,3 @@ export type {
     TransformStep,
     FieldTransform,
 } from '../../shared/types';
-

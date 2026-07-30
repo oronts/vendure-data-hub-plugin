@@ -32,6 +32,7 @@ export interface PipelineCapabilityOperators {
     readonly notContains?: string | null;
     readonly in?: readonly string[] | null;
     readonly notIn?: readonly string[] | null;
+    readonly regex?: string | null;
     readonly isNull?: boolean | null;
 }
 

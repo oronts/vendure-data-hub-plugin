@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createProductSyncPipeline } from '../../connectors/pimcore/pipelines/product-sync.pipeline';
 import { createCategorySyncPipeline } from '../../connectors/pimcore/pipelines/category-sync.pipeline';
+import { createAssetSyncPipeline } from '../../connectors/pimcore/pipelines/asset-sync.pipeline';
 import { pimcoreGraphQLExtractor } from '../../connectors/pimcore/extractors/pimcore-graphql.extractor';
 import { PimcoreConnector, pimcoreConnectorDefinition } from '../../connectors/pimcore';
 import type { PimcoreConnectorConfig } from '../../connectors/pimcore/types';
+import { buildSafePathFilter } from '../../connectors/pimcore/utils/security.utils';
 import { assertUrlSafe } from '../utils/url-security.utils';
 import { getOperatorRuntime } from '../operators/operator-runtime-registry';
 import type { AdapterOperatorHelpers, ExtractContext, RecordEnvelope } from '../sdk/types';
@@ -93,6 +95,8 @@ describe('Pimcore connector pipelines', () => {
                 maxPages: 12,
                 timeoutMs: 45_000,
                 connectionCode: 'pimcore-graphql',
+                sortBy: config.entityType === 'category' ? 'fullpath' : 'id',
+                sortOrder: 'ASC',
             });
             if (config.entityType === 'asset') {
                 expect(config).not.toHaveProperty('includeUnpublished');
@@ -204,6 +208,40 @@ describe('Pimcore connector pipelines', () => {
         expect(query).not.toContain('fullPath');
     });
 
+    it('supports custom Pimcore class, fragment, listing, and response names', () => {
+        const definition = createProductSyncPipeline({
+            ...connectorConfig,
+            queries: {
+                product: {
+                    className: 'CommerceProduct',
+                    listingField: 'getCommerceProducts',
+                    responseField: 'products',
+                    fragmentType: 'object_CommerceProduct',
+                },
+            },
+        });
+        const extractConfig = getStepConfig(definition, 'fetch-products');
+        const query = String(extractConfig.query);
+
+        expect(extractConfig.responseField).toBe('products');
+        expect(query).toContain('products: getCommerceProducts(');
+        expect(query).toContain('... on object_CommerceProduct');
+        expect(query).not.toContain('getProductListing');
+    });
+
+    it('passes a complete custom query through without rebuilding it', () => {
+        const query = 'query Custom { products: customListing { totalCount edges { node { id } } } }';
+        const definition = createProductSyncPipeline({
+            ...connectorConfig,
+            queries: { product: { query, responseField: 'products' } },
+        });
+
+        expect(getStepConfig(definition, 'fetch-products')).toMatchObject({
+            query,
+            responseField: 'products',
+        });
+    });
+
     it('maps category parents to the slug field consumed by the collection loader', async () => {
         const definition = createCategorySyncPipeline(connectorConfig);
         const transformed = await executeTransform(definition, 'transform-categories', [{
@@ -227,6 +265,28 @@ describe('Pimcore connector pipelines', () => {
         expect(getStepConfig(definition, 'fetch-categories')).toMatchObject({
             sortBy: 'fullpath',
             sortOrder: 'ASC',
+        });
+    });
+
+    it('applies the configured Vendure channel to every channel-aware loader', () => {
+        const configured = {
+            ...connectorConfig,
+            vendureChannel: 'b2b',
+            mapping: { product: { enabledField: 'active' } },
+        } satisfies PimcoreConnectorConfig;
+
+        expect(getStepConfig(createProductSyncPipeline(configured), 'upsert-products')).toMatchObject({
+            channel: 'b2b',
+        });
+        expect(getStepConfig(createProductSyncPipeline(configured), 'upsert-variants')).toMatchObject({
+            channel: 'b2b',
+            enabledField: 'active',
+        });
+        expect(getStepConfig(createCategorySyncPipeline(configured), 'upsert-collections')).toMatchObject({
+            channel: 'b2b',
+        });
+        expect(getStepConfig(createAssetSyncPipeline(configured), 'import-assets')).toMatchObject({
+            channel: 'b2b',
         });
     });
 
@@ -302,27 +362,69 @@ describe('Pimcore GraphQL extractor', () => {
         expect(new Headers(firstRequest.headers).get('apikey')).toBe('valid-pimcore-api-key');
         expect(new Headers(firstRequest.headers).get('X-Pimcore-Workspace')).toBe('shop');
         expect(secondBody.variables.after).toBe(1);
-        expect(checkpoints).toEqual([{ cursor: '1', page: 1 }]);
+        expect(checkpoints).toEqual([{ cursor: '1', page: 1 }, {}]);
     });
 
-    it('stops at maxPages even when Pimcore reports more records', async () => {
+    it('fails explicitly when maxPages truncates a listing', async () => {
         const fetchMock = vi.fn()
             .mockResolvedValueOnce(createProductResponse(10, 'Product 1'))
             .mockResolvedValueOnce(createProductResponse(10, 'Product 2'));
         vi.stubGlobal('fetch', fetchMock);
 
         const records: RecordEnvelope[] = [];
-        for await (const record of pimcoreGraphQLExtractor.extract(createExtractContext(), {
-            connectionCode: connectorConfig.connectionCode,
-            entityType: 'product',
-            first: 1,
-            maxPages: 2,
-        })) {
-            records.push(record);
-        }
+        const consume = async () => {
+            for await (const record of pimcoreGraphQLExtractor.extract(createExtractContext(), {
+                connectionCode: connectorConfig.connectionCode,
+                entityType: 'product',
+                first: 1,
+                maxPages: 2,
+            })) {
+                records.push(record);
+            }
+        };
 
+        await expect(consume()).rejects.toThrow(
+            'Pimcore extraction truncated at maxPages=2 after 2 of 10 records',
+        );
         expect(records.map(record => record.data.key)).toEqual(['Product 1', 'Product 2']);
         expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('clears the offset checkpoint after the terminal page', async () => {
+        const fetchMock = vi.fn()
+            .mockResolvedValueOnce(createJsonResponse({
+                data: { getProductListing: { totalCount: 1, edges: [] } },
+            }))
+            .mockResolvedValueOnce(createProductResponse(1, 'Product 1'));
+        vi.stubGlobal('fetch', fetchMock);
+        const checkpoints: Array<Record<string, unknown>> = [];
+
+        for await (const _record of pimcoreGraphQLExtractor.extract(
+            createExtractContext(checkpoints, { checkpoint: { cursor: '8', page: 4 } }),
+            {
+                connectionCode: connectorConfig.connectionCode,
+                entityType: 'product',
+            },
+        )) {
+            // A stale offset beyond totalCount produces no records and resets the next run.
+        }
+
+        expect(checkpoints).toEqual([{}]);
+        for await (const _record of pimcoreGraphQLExtractor.extract(
+            createExtractContext([], { checkpoint: checkpoints[0] }),
+            {
+                connectionCode: connectorConfig.connectionCode,
+                entityType: 'product',
+            },
+        )) {
+            // The next scheduled traversal starts from zero.
+        }
+        const offsets = fetchMock.mock.calls.map(call => {
+            const request = call[1] as RequestInit;
+            const body = JSON.parse(String(request.body)) as { variables: { after: number } };
+            return body.variables.after;
+        });
+        expect(offsets).toEqual([8, 0]);
     });
 
     it('includes unpublished records only when explicitly configured', async () => {
@@ -461,11 +563,62 @@ describe('Pimcore GraphQL extractor', () => {
 
         expect(records[0]?.data).toMatchObject({
             _pimcoreSourceOrigin: 'https://pimcore.example',
+            _pimcoreSourceUrl: 'https://pimcore.example/images/product.jpg',
             fullpath: '/images/product.jpg',
         });
     });
 
-    it('rejects custom queries that do not alias the expected listing field', async () => {
+    it('preserves absolute HTTP asset URLs and resolves relative paths once', async () => {
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue(createJsonResponse({
+            data: {
+                getAssetListing: {
+                    totalCount: 2,
+                    edges: [
+                        { node: { id: 'absolute', filename: 'a.jpg', downloadUrl: 'https://cdn.example/a.jpg' } },
+                        { node: { id: 'relative', filename: 'b.jpg', downloadUrl: 'images/b.jpg' } },
+                    ],
+                },
+            },
+        })));
+
+        const records: RecordEnvelope[] = [];
+        for await (const record of pimcoreGraphQLExtractor.extract(createExtractContext(), {
+            connectionCode: connectorConfig.connectionCode,
+            entityType: 'asset',
+            assetUrlField: 'downloadUrl',
+        })) {
+            records.push(record);
+        }
+
+        expect(records.map(record => record.data._pimcoreSourceUrl)).toEqual([
+            'https://cdn.example/a.jpg',
+            'https://pimcore.example/images/b.jpg',
+        ]);
+    });
+
+    it.each([
+        { edges: [null], error: 'edges[0] must be an object' },
+        { edges: [{ node: null }], error: 'edges[0].node must be an object' },
+        { edges: [{ node: {} }], error: 'edges[0].node.id must be a string or number' },
+        { edges: [], error: 'empty page at offset 0 before totalCount 1' },
+    ])('rejects malformed listing nodes: $error', async ({ edges, error }) => {
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue(createJsonResponse({
+            data: { getProductListing: { totalCount: 1, edges } },
+        })));
+
+        const consume = async () => {
+            for await (const _record of pimcoreGraphQLExtractor.extract(createExtractContext(), {
+                connectionCode: connectorConfig.connectionCode,
+                entityType: 'product',
+            })) {
+                // The full page is validated before any record is yielded.
+            }
+        };
+
+        await expect(consume()).rejects.toThrow(error);
+    });
+
+    it('rejects custom queries that omit the configured response field', async () => {
         vi.stubGlobal('fetch', vi.fn().mockResolvedValue(createJsonResponse({
             data: { getCustomProductListing: { totalCount: 0, edges: [] } },
         })));
@@ -481,7 +634,7 @@ describe('Pimcore GraphQL extractor', () => {
             }
         };
 
-        await expect(consume()).rejects.toThrow(/custom queries must alias/);
+        await expect(consume()).rejects.toThrow(/configured responseField/);
     });
 
     it('blocks a cross-origin redirect before connection credentials are sent again', async () => {
@@ -513,10 +666,58 @@ describe('Pimcore GraphQL extractor', () => {
 });
 
 describe('Pimcore connector config validation', () => {
+    it('preserves valid folder paths instead of rewriting their identity', () => {
+        expect(buildSafePathFilter('/Product Images/Über/')).toEqual({
+            fullpath: { $like: '/Product Images/Über/%' },
+        });
+    });
+
+    it('rejects relative and wildcard path filters during connector validation', () => {
+        expect(() => buildSafePathFilter('Products/')).toThrow('absolute paths');
+        const result = pimcoreConnectorDefinition.validateConfig?.({
+            ...connectorConfig,
+            sync: { pathFilter: '/Products/%' },
+        });
+
+        expect(result).toMatchObject({
+            valid: false,
+            errors: [expect.stringContaining('sync.pathFilter')],
+        });
+    });
+
     it('accepts the canonical saved connection and bounded sync settings', () => {
         expect(pimcoreConnectorDefinition.validateConfig?.(connectorConfig)).toEqual({
             valid: true,
             errors: [],
+        });
+    });
+
+    it('accepts valid query contracts and rejects unsafe GraphQL names', () => {
+        expect(pimcoreConnectorDefinition.validateConfig?.({
+            ...connectorConfig,
+            queries: {
+                product: {
+                    className: 'CommerceProduct',
+                    listingField: 'getCommerceProducts',
+                    responseField: 'products',
+                    fragmentType: 'object_CommerceProduct',
+                },
+            },
+        })).toEqual({ valid: true, errors: [] });
+
+        const invalid = pimcoreConnectorDefinition.validateConfig?.({
+            ...connectorConfig,
+            queries: {
+                product: { listingField: 'listing { injected }' },
+                asset: { query: '   ' },
+            },
+        });
+        expect(invalid).toMatchObject({
+            valid: false,
+            errors: expect.arrayContaining([
+                expect.stringContaining('queries.product.listingField'),
+                expect.stringContaining('queries.asset.query'),
+            ]),
         });
     });
 
@@ -567,6 +768,7 @@ function createExtractContext(
     checkpoints: Array<Record<string, unknown>> = [],
     options: {
         secret?: string | null;
+        checkpoint?: Record<string, unknown>;
         connection?: {
             code: string;
             type: 'HTTP' | 'REST' | 'GRAPHQL' | 'POSTGRES';
@@ -592,6 +794,7 @@ function createExtractContext(
         : options.secret;
 
     return {
+        checkpoint: options.checkpoint ?? {},
         logger: {
             info: vi.fn(),
             warn: vi.fn(),

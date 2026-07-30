@@ -7,10 +7,12 @@ import type {
     PipelineFilterParameter,
     PipelineListOptions,
 } from './pipeline-management-types';
+import { createSafeRegex } from '../../utils/safe-regex.utils';
 
 export interface PipelineCapabilityPredicate {
     readonly field: 'requiredCapabilities' | 'writeCapabilities';
     readonly operators: PipelineCapabilityOperators;
+    readonly regex?: RegExp;
 }
 
 export interface ExtractedPipelineCapabilityFilters {
@@ -57,16 +59,16 @@ function extractFromAndFilter(
     } = filter;
 
     if (requiredCapabilities) {
-        predicates.push({
-            field: 'requiredCapabilities',
-            operators: requiredCapabilities,
-        });
+        predicates.push(createCapabilityPredicate(
+            'requiredCapabilities',
+            requiredCapabilities,
+        ));
     }
     if (writeCapabilities) {
-        predicates.push({
-            field: 'writeCapabilities',
-            operators: writeCapabilities,
-        });
+        predicates.push(createCapabilityPredicate(
+            'writeCapabilities',
+            writeCapabilities,
+        ));
     }
 
     const standardAnd = _and
@@ -77,6 +79,19 @@ function extractFromAndFilter(
         ...standardFields,
         ...(standardAnd?.length ? { _and: standardAnd } : {}),
     });
+}
+
+function createCapabilityPredicate(
+    field: PipelineCapabilityPredicate['field'],
+    operators: PipelineCapabilityOperators,
+): PipelineCapabilityPredicate {
+    return {
+        field,
+        operators,
+        ...(operators.regex != null
+            ? { regex: createSafeRegex(operators.regex) }
+            : {}),
+    };
 }
 
 export function extractPipelineCapabilityFilters(
@@ -105,6 +120,7 @@ export function extractPipelineCapabilityFilters(
 function matchesOperators(
     values: readonly string[],
     operators: PipelineCapabilityOperators,
+    compiledRegex?: RegExp,
 ): boolean {
     if (operators.eq != null && !values.includes(operators.eq)) return false;
     if (operators.notEq != null && values.includes(operators.notEq)) return false;
@@ -118,6 +134,12 @@ function matchesOperators(
     ) return false;
     if (operators.in?.length && !operators.in.some(value => values.includes(value))) return false;
     if (operators.notIn?.length && operators.notIn.some(value => values.includes(value))) return false;
+    if (
+        operators.regex != null
+        && !values.some(value => (
+            compiledRegex ?? createSafeRegex(operators.regex as string)
+        ).test(value))
+    ) return false;
     if (operators.isNull === true && values.length > 0) return false;
     if (operators.isNull === false && values.length === 0) return false;
     return true;
@@ -134,5 +156,6 @@ export function pipelineMatchesCapabilityFilters(
             ? capabilities.requires
             : capabilities.writes,
         predicate.operators,
+        predicate.regex,
     ));
 }

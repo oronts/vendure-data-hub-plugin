@@ -1,16 +1,14 @@
 import { Query, Resolver } from '@nestjs/graphql';
-import { Allow } from '@vendure/core';
-import { DataHubPipelinePermission } from '../../permissions';
+import { Allow, Permission } from '@vendure/core';
 import {
     LoadStrategy,
     ConflictStrategy,
     FileEncoding,
     HttpMethod,
     ValidationMode,
-    QueueType,
+    ValidationStrictness,
     LogLevel,
-    RunMode,
-    CheckpointStrategy,
+    ChannelStrategy,
     ParallelErrorPolicy,
     LogPersistenceLevel,
     ConnectionAuthType,
@@ -43,6 +41,7 @@ import {
     QUERY_TYPE_OPTIONS,
     CRON_PRESETS,
     ACK_MODE_OPTIONS,
+    MESSAGE_QUEUE_TYPE_OPTIONS,
 } from '../../constants/adapter-schema-options';
 import { FILE_FORMAT_METADATA } from '../../constants/file-format-metadata';
 import { EXPORT_ADAPTER_CODES, FEED_ADAPTER_CODES } from '../../constants/adapters';
@@ -51,7 +50,7 @@ import { FIELD_TRANSFORM_TYPES } from '../../operators';
 @Resolver()
 export class DataHubConfigOptionsAdminResolver {
     @Query()
-    @Allow(DataHubPipelinePermission.Read)
+    @Allow(Permission.Authenticated)
     dataHubConfigOptions() {
         return {
             stepTypes: STEP_TYPE_CONFIGS,
@@ -68,7 +67,9 @@ export class DataHubConfigOptionsAdminResolver {
             cleanupStrategies: CLEANUP_STRATEGIES,
             newRecordStrategies: NEW_RECORD_STRATEGIES,
             validationModes: enumToOptions(ValidationMode),
-            queueTypes: enumToOptions(QueueType),
+            validationStrictnesses: enumToOptions(ValidationStrictness),
+            channelStrategies: enumToOptions(ChannelStrategy),
+            queueTypes: MESSAGE_QUEUE_TYPE_OPTIONS,
             vendureEvents: VENDURE_EVENTS.map(e => ({
                 value: e.event,
                 label: e.label,
@@ -87,8 +88,6 @@ export class DataHubConfigOptionsAdminResolver {
             hookStages: HOOK_STAGE_METADATA,
             hookStageCategories: HOOK_STAGE_CATEGORIES,
             logLevels: enumToOptions(LogLevel),
-            runModes: enumToOptions(RunMode),
-            checkpointStrategies: enumToOptions(CheckpointStrategy),
             parallelErrorPolicies: enumToOptions(ParallelErrorPolicy),
             logPersistenceLevels: enumToOptions(LogPersistenceLevel),
             adapterTypes: ADAPTER_TYPE_METADATA,

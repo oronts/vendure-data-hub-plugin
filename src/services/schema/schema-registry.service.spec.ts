@@ -15,6 +15,9 @@ function createFixture(options: {
     revisions?: PipelineRevision[];
     runs?: PipelineRun[];
 } = {}) {
+    interface RevisionFindOptions {
+        where?: { pipelineId?: { value: unknown } };
+    }
     const schema = options.schema === null
         ? null
         : {
@@ -42,7 +45,7 @@ function createFixture(options: {
         find: vi.fn(async () => options.pipelines ?? []),
     };
     const revisionRepository = {
-        find: vi.fn(async () => options.revisions ?? []),
+        find: vi.fn(async (_query?: RevisionFindOptions) => options.revisions ?? []),
     };
     const runRepository = {
         find: vi.fn(async () => options.runs ?? []),
@@ -76,7 +79,7 @@ function createFixture(options: {
             removeFromActiveChannel: vi.fn(),
         } as never,
     );
-    return { service, schemaRepository };
+    return { service, schemaRepository, revisionRepository, runRepository };
 }
 
 function pipelineWithReference(): Pipeline {
@@ -191,16 +194,26 @@ describe('SchemaRegistryService', () => {
             type: RevisionType.PUBLISHED,
             definition: pipeline.definition,
         } as PipelineRevision;
-        const { service } = createFixture({ pipelines: [pipeline], revisions: [revision] });
+        const { service, revisionRepository, runRepository } = createFixture({
+            pipelines: [pipeline],
+            revisions: [revision],
+        });
+        const ctx = { channelId: 'channel-a' };
 
         await expect(service.findUsage(
-            {} as never,
+            ctx as never,
             'catalog.product',
             '1.0.0',
         )).resolves.toEqual([
             expect.objectContaining({ revisionId: null, revisionType: 'WORKING' }),
             expect.objectContaining({ revisionId: 20, revisionType: RevisionType.PUBLISHED }),
         ]);
+        expect(runRepository.find).toHaveBeenCalledWith({
+            where: { channelId: 'channel-a' },
+            take: expect.any(Number),
+        });
+        const revisionQuery = revisionRepository.find.mock.calls[0]?.[0];
+        expect(revisionQuery?.where?.pipelineId?.value).toEqual([pipeline.id]);
     });
 
     it('returns record-level validation results for the bound version', async () => {

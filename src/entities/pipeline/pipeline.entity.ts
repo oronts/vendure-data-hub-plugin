@@ -5,7 +5,6 @@ import { ConfigurationSource, PipelineStatus } from '../../constants/enums';
 import { TABLE_NAMES } from '../../constants/table-names';
 
 @Entity(TABLE_NAMES.PIPELINE)
-@Index(['code'])
 @Index(['status', 'enabled'])
 export class Pipeline extends VendureEntity implements ChannelAware {
     constructor(input?: DeepPartial<Pipeline>) {

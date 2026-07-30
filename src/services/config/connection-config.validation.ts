@@ -1,4 +1,8 @@
-import { CODE_PATTERN } from '../../../shared';
+import {
+    CODE_PATTERN,
+    getHttpHeaderNameError,
+    getHttpUrlValidationError,
+} from '../../../shared';
 import { ConnectionAuthType, ConnectionType } from '../../constants/enums';
 import {
     CONNECTION_SCHEMAS,
@@ -36,14 +40,6 @@ const SENSITIVE_KEY_PARTS = [
     'authorization',
     'cookie',
 ] as const;
-const RESTRICTED_HTTP_HEADERS = new Set([
-    'authorization',
-    'proxy-authorization',
-    'cookie',
-    'set-cookie',
-    'x-api-key',
-]);
-const HEADER_NAME_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 const ENV_REFERENCE_PATTERN = /^\$\{[A-Z_][A-Z0-9_]*\}$/;
 
 function assertJsonObject(value: JsonValue | undefined, label: string): asserts value is JsonObject {
@@ -55,6 +51,12 @@ function assertJsonObject(value: JsonValue | undefined, label: string): asserts 
 function assertNoPlaintextSecrets(value: JsonValue, path: string): void {
     if (Array.isArray(value)) {
         value.forEach((item, index) => assertNoPlaintextSecrets(item, `${path}[${index}]`));
+        return;
+    }
+    if (typeof value === 'string') {
+        if (getHttpUrlValidationError(value) === 'CREDENTIALS') {
+            throw new Error(`Connection URL "${path}" must not include credentials`);
+        }
         return;
     }
     if (!value || typeof value !== 'object') {
@@ -82,8 +84,19 @@ function assertNoPlaintextSecrets(value: JsonValue, path: string): void {
 }
 
 function assertFieldType(field: ConnectionSchemaField, value: JsonValue): void {
-    if (field.type === 'number' && (typeof value !== 'number' || !Number.isFinite(value))) {
-        throw new Error(`Connection field "${field.key}" must be a finite number`);
+    if (field.type === 'number') {
+        if (typeof value !== 'number' || !Number.isFinite(value)) {
+            throw new Error(`Connection field "${field.key}" must be a finite number`);
+        }
+        if (!Number.isInteger(value)) {
+            throw new Error(`Connection field "${field.key}" must be an integer`);
+        }
+        if (field.min !== undefined && value < field.min) {
+            throw new Error(`Connection field "${field.key}" must be at least ${field.min}`);
+        }
+        if (field.max !== undefined && value > field.max) {
+            throw new Error(`Connection field "${field.key}" must be at most ${field.max}`);
+        }
     }
     if (field.type === 'boolean' && typeof value !== 'boolean') {
         throw new Error(`Connection field "${field.key}" must be a boolean`);
@@ -97,21 +110,40 @@ function assertFieldType(field: ConnectionSchemaField, value: JsonValue): void {
     if (field.type === 'secret' && typeof value === 'string' && !CODE_PATTERN.test(value)) {
         throw new Error(`Connection field "${field.key}" contains an invalid Secret Code`);
     }
+    if (
+        field.type === 'select'
+        && typeof value === 'string'
+        && field.options?.length
+        && !field.options.some(option => option.value === value)
+    ) {
+        throw new Error(`Connection field "${field.key}" contains an unsupported option`);
+    }
+    if (field.type === 'json') {
+        assertJsonObject(value, `Connection field "${field.key}"`);
+    }
 }
 
 function assertHttpUrl(value: JsonValue | undefined, label: string): void {
     if (value === undefined) return;
-    if (typeof value !== 'string') {
-        throw new Error(`${label} must be a string`);
+    const error = getHttpUrlValidationError(value);
+    switch (error) {
+        case 'TYPE':
+            throw new Error(`${label} must be a string`);
+        case 'INVALID':
+            throw new Error(`${label} must be a valid URL`);
+        case 'PROTOCOL':
+            throw new Error(`${label} must use http or https`);
+        case 'CREDENTIALS':
+            throw new Error(`${label} must not include credentials`);
     }
-    let url: URL;
-    try {
-        url = new URL(value);
-    } catch {
-        throw new Error(`${label} must be a valid URL`);
+}
+
+function assertSecretCode(value: JsonValue | undefined, label: string): void {
+    if (typeof value !== 'string' || value.trim() === '') {
+        throw new Error(`${label} requires a Secret Code`);
     }
-    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-        throw new Error(`${label} must use http or https`);
+    if (!CODE_PATTERN.test(value)) {
+        throw new Error(`${label} contains an invalid Secret Code`);
     }
 }
 
@@ -132,10 +164,6 @@ function assertSchemaConfig(type: ConnectionType, config: JsonObject): void {
             if (field.required) {
                 throw new Error(`Connection field "${field.key}" is required for type "${type}"`);
             }
-            continue;
-        }
-        if (type === ConnectionType.CUSTOM && field.key === 'config') {
-            assertJsonObject(value, 'Custom connection config');
             continue;
         }
         assertFieldType(field, value);
@@ -164,15 +192,7 @@ function assertHttpConfig(config: JsonObject): void {
             throw new Error(`HTTP connections do not support field "${key}"`);
         }
     }
-    if (config.baseUrl !== undefined) {
-        if (typeof config.baseUrl !== 'string') {
-            throw new Error('HTTP connection baseUrl must be a string');
-        }
-        const url = new URL(config.baseUrl);
-        if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-            throw new Error('HTTP connection baseUrl must use http or https');
-        }
-    }
+    assertHttpUrl(config.baseUrl, 'HTTP connection baseUrl');
     if (
         config.timeout !== undefined &&
         (typeof config.timeout !== 'number' || !Number.isFinite(config.timeout) || config.timeout < 0)
@@ -182,15 +202,16 @@ function assertHttpConfig(config: JsonObject): void {
     if (config.headers !== undefined) {
         assertJsonObject(config.headers, 'HTTP connection headers');
         for (const [name, value] of Object.entries(config.headers)) {
-            if (!HEADER_NAME_PATTERN.test(name)) {
+            const nameError = getHttpHeaderNameError(name, 'STATIC');
+            if (nameError === 'INVALID') {
                 throw new Error(`Invalid HTTP header name "${name}"`);
             }
             if (typeof value !== 'string') {
                 throw new Error(`HTTP header "${name}" must have a string value`);
             }
-            if (RESTRICTED_HTTP_HEADERS.has(name.toLowerCase())) {
+            if (nameError === 'RESTRICTED') {
                 throw new Error(
-                    `HTTP header "${name}" must be configured through secret-backed authentication`,
+                    `HTTP header "${name}" cannot contain credentials or control request routing; use secret-backed authentication`,
                 );
             }
         }
@@ -219,9 +240,10 @@ function assertHttpConfig(config: JsonObject): void {
         }
         return;
     }
-    if (typeof config.auth.secretCode !== 'string' || config.auth.secretCode.trim() === '') {
-        throw new Error(`${authType} authentication requires secretCode`);
+    if (typeof config.baseUrl !== 'string' || config.baseUrl.trim() === '') {
+        throw new Error(`${authType} authentication requires HTTP connection baseUrl`);
     }
+    assertSecretCode(config.auth.secretCode, `${authType} authentication secretCode`);
     if (
         authType === ConnectionAuthType.BASIC &&
         typeof config.auth.username !== 'string' &&
@@ -229,10 +251,31 @@ function assertHttpConfig(config: JsonObject): void {
     ) {
         throw new Error('BASIC authentication requires username or usernameSecretCode');
     }
+    if (authType === ConnectionAuthType.BASIC) {
+        const username = typeof config.auth.username === 'string'
+            ? config.auth.username.trim()
+            : '';
+        const usernameSecretCode = config.auth.usernameSecretCode;
+        if (!username && usernameSecretCode === undefined) {
+            throw new Error('BASIC authentication requires username or usernameSecretCode');
+        }
+        if (username && usernameSecretCode !== undefined) {
+            throw new Error('BASIC authentication cannot use username and usernameSecretCode together');
+        }
+        if (usernameSecretCode !== undefined) {
+            assertSecretCode(
+                usernameSecretCode,
+                'BASIC authentication usernameSecretCode',
+            );
+        }
+    }
     if (
         authType === ConnectionAuthType.API_KEY &&
         config.auth.headerName !== undefined &&
-        (typeof config.auth.headerName !== 'string' || !HEADER_NAME_PATTERN.test(config.auth.headerName))
+        (
+            typeof config.auth.headerName !== 'string'
+            || getHttpHeaderNameError(config.auth.headerName, 'AUTHENTICATION') !== null
+        )
     ) {
         throw new Error('API_KEY authentication headerName is invalid');
     }

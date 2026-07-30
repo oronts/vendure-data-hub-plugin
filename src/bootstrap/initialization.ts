@@ -5,10 +5,15 @@
  */
 
 import { Inject, Injectable, OnModuleInit } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
+import { Injector } from '@vendure/core';
 import { DATAHUB_PLUGIN_OPTIONS, LOGGER_CONTEXTS } from '../constants/index';
 import { BUILTIN_ADAPTERS } from '../constants/builtin-adapters';
 import { DataHubPluginOptions } from '../types/index';
-import { DataHubRegistryService } from '../sdk/registry.service';
+import {
+    assertAdapterDefinitionMatchesRuntime,
+    DataHubRegistryService,
+} from '../sdk/registry.service';
 import { DataHubAdapter, AdapterDefinition } from '../sdk/types/adapter-types';
 import { FeedGeneratorService } from '../feeds/feed-generator.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../services/logger';
@@ -75,6 +80,7 @@ export class AdapterBootstrapService implements OnModuleInit {
         private feedGeneratorService: FeedGeneratorService,
         private hookService: HookService,
         private adapterUpgradeGuard: AdapterUpgradeGuardService,
+        private moduleRef: ModuleRef,
         loggerFactory: DataHubLoggerFactory,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.BOOTSTRAP);
@@ -144,6 +150,41 @@ export class AdapterBootstrapService implements OnModuleInit {
                     } catch (err) {
                         this.logger.debug('Skipped enricher runtime registration (likely duplicate)', {
                             enricherCode: enricher.code,
+                        });
+                    }
+                }
+            }
+
+            if (this.options.adapterFactories?.length) {
+                this.logger.debug('Creating custom adapters from dependency-injection factories', {
+                    adapterFactoryCount: this.options.adapterFactories.length,
+                });
+                const injector = new Injector(this.moduleRef);
+                for (const factory of this.options.adapterFactories) {
+                    try {
+                        const adapter = await factory.create(injector);
+                        if (!isDataHubAdapter(adapter)) {
+                            this.logger.warn('Adapter factory returned an invalid adapter', {
+                                adapterFactoryCode: factory.code,
+                            });
+                            continue;
+                        }
+                        if (factory.code !== factory.definition.code) {
+                            throw new Error(
+                                `Adapter factory code does not match its definition: ${factory.code} !== ${factory.definition.code}`,
+                            );
+                        }
+                        assertAdapterDefinitionMatchesRuntime(
+                            factory.definition,
+                            adapter,
+                            false,
+                        );
+                        this.registry.registerRuntime(adapter, { builtIn: false });
+                        customAdaptersRegistered++;
+                    } catch (err) {
+                        this.logger.warn('Failed to create custom adapter', {
+                            adapterFactoryCode: factory.code,
+                            error: getErrorMessage(err),
                         });
                     }
                 }

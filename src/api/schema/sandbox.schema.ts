@@ -1,3 +1,5 @@
+import { sandboxComparisonSchema } from './sandbox-comparison.schema';
+
 export const sandboxSchema = `
     # ============================================
     # SANDBOX EXECUTION TYPES
@@ -355,9 +357,9 @@ export const sandboxSchema = `
     Options for sandbox execution
     """
     input DataHubSandboxOptions {
-        "Maximum records to process (default: 100)"
+        "Maximum records to process (integer from 1 to 100; default: 100)"
         maxRecords: Int
-        "Maximum samples per step (default: 10)"
+        "Maximum samples per step (integer from 1 to 10; default: 10)"
         maxSamplesPerStep: Int
         "Include full data lineage (default: true)"
         includeLineage: Boolean
@@ -365,7 +367,7 @@ export const sandboxSchema = `
         seedData: [JSON!]
         "Stop on first error (default: false)"
         stopOnError: Boolean
-        "Timeout in milliseconds (default: 60000)"
+        "Overall budget checked between steps (1 to 300000 ms; default: 60000). Active adapters enforce their own timeout or cancellation."
         timeoutMs: Int
         "Steps to skip"
         skipSteps: [String!]
@@ -383,59 +385,7 @@ export const sandboxSchema = `
         options: DataHubSandboxOptions
     }
 
-    # ============================================
-    # COMPARISON TYPES
-    # ============================================
-
-    """
-    Comparison of two sandbox runs
-    """
-    type DataHubSandboxComparison {
-        "First run result"
-        before: DataHubSandboxResult!
-        "Second run result"
-        after: DataHubSandboxResult!
-        "Summary of differences"
-        summary: DataHubSandboxComparisonSummary!
-        "Steps that changed"
-        changedSteps: [DataHubSandboxStepComparison!]!
-    }
-
-    """
-    Summary of differences between two sandbox runs
-    """
-    type DataHubSandboxComparisonSummary {
-        "Total steps that changed behavior"
-        stepsChanged: Int!
-        "Records that would be processed differently"
-        recordsAffected: Int!
-        "Net change in success count"
-        successCountDelta: Int!
-        "Net change in failure count"
-        failureCountDelta: Int!
-        "Net change in filtered count"
-        filteredCountDelta: Int!
-        "Duration change"
-        durationDeltaMs: Int!
-    }
-
-    """
-    Comparison of a single step between two runs
-    """
-    type DataHubSandboxStepComparison {
-        stepKey: String!
-        stepName: String!
-        "Records out in before run"
-        recordsOutBefore: Int!
-        "Records out in after run"
-        recordsOutAfter: Int!
-        "Duration in before run"
-        durationBefore: Int!
-        "Duration in after run"
-        durationAfter: Int!
-        "Fields that changed behavior"
-        fieldChanges: [String!]!
-    }
+    ${sandboxComparisonSchema}
 `;
 
 export const sandboxQueries = `
@@ -455,6 +405,7 @@ export const sandboxQueries = `
         Compare sandbox results between two pipeline revisions
         """
         dataHubCompareSandboxResults(
+            "Pipeline that owns both revisions"
             pipelineId: ID!
             fromRevisionId: ID!
             toRevisionId: ID!
@@ -466,6 +417,7 @@ export const sandboxQueries = `
         """
         dataHubRecordLineageDetail(
             pipelineId: ID!
+            "Zero-based record index (integer from 0 to 99)"
             recordIndex: Int!
             options: DataHubSandboxOptions
         ): DataHubSandboxRecordLineage

@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { ForbiddenError } from '@vendure/core';
 import { DataHubErrorAdminResolver } from './error.resolver';
 
+const channelCtx = { channelId: 17 } as never;
+
 function createRetryFixture(result: {
     success: boolean;
     outcome: string;
@@ -116,7 +118,7 @@ describe('DataHubErrorAdminResolver masking policy failures', () => {
         const fixture = createMaskingFixture();
 
         const rows = await fixture.resolver.dataHubRunErrors(
-            {} as never,
+            channelCtx,
             { runId: 'run-1' },
         );
 
@@ -128,7 +130,7 @@ describe('DataHubErrorAdminResolver masking policy failures', () => {
         const fixture = createMaskingFixture();
 
         const rows = await fixture.resolver.dataHubRecordRetryAudits(
-            {} as never,
+            channelCtx,
             { errorId: 'error-1' },
         );
 
@@ -182,7 +184,7 @@ describe('DataHubErrorAdminResolver historical masking', () => {
         );
 
         const page = await resolver.dataHubRunErrors(
-            {} as never,
+            channelCtx,
             { runId: 'run-1' },
         );
 
@@ -191,6 +193,10 @@ describe('DataHubErrorAdminResolver historical masking', () => {
                 email: '***',
                 name: 'Visible Name',
             },
+        });
+        expect(repository.findOne).toHaveBeenCalledWith({
+            where: { id: 'run-1', channelId: '17' },
+            relations: { pipeline: true },
         });
     });
 });

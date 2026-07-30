@@ -949,7 +949,7 @@ export const TAX_RATE_SCHEMA: EnhancedSchemaDefinition = {
         taxCategoryCode: {
             type: 'string',
             label: 'Tax Category Code',
-            description: 'Code of the tax category this rate belongs to',
+            description: 'Code stored in the TaxCategory customFields.code field',
         },
         taxCategoryId: {
             type: 'string',
@@ -959,7 +959,7 @@ export const TAX_RATE_SCHEMA: EnhancedSchemaDefinition = {
         zoneCode: {
             type: 'string',
             label: 'Zone Code',
-            description: 'Code of the zone where this tax rate applies',
+            description: 'Code stored in the Zone customFields.code field',
         },
         zoneId: {
             type: 'string',

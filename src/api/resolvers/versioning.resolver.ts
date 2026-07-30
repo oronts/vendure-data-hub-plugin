@@ -21,6 +21,7 @@ import {
 } from '../../permissions';
 import { ImpactAnalysisOptions, TimelineEntry, RevisionDiff, PipelineDefinition } from '../../types';
 import { PipelineDefinitionInput } from '../types';
+import { PAGINATION } from '../../constants';
 
 interface SaveDraftInput {
     pipelineId: ID;
@@ -37,8 +38,6 @@ interface RevertInput {
     revisionId: ID;
     commitMessage?: string;
 }
-
-const DEFAULT_TIMELINE_LIMIT = 50;
 
 @Resolver()
 export class DataHubVersioningResolver {
@@ -71,7 +70,11 @@ export class DataHubVersioningResolver {
         @Ctx() ctx: RequestContext,
         @Args() args: { pipelineId: ID; limit?: number },
     ): Promise<TimelineEntry[]> {
-        return this.revisionService.getTimeline(ctx, args.pipelineId, args.limit || DEFAULT_TIMELINE_LIMIT);
+        return this.revisionService.getTimeline(
+            ctx,
+            args.pipelineId,
+            args.limit ?? PAGINATION.EVENTS_LIMIT,
+        );
     }
 
     @Query()

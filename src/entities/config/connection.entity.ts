@@ -6,7 +6,6 @@ import { TABLE_NAMES } from '../../constants/table-names';
 
 @Entity(TABLE_NAMES.CONNECTION)
 @Index(['type'])
-@Index(['code']) // Index for code lookups (unique constraint doesn't auto-create index on all DBs)
 export class DataHubConnection extends VendureEntity implements ChannelAware {
     constructor(input?: DeepPartial<DataHubConnection>) {
         super(input);

@@ -79,4 +79,24 @@ describe('pipeline capability filters', () => {
             operators: { eq: 'Update' },
         }])).toBe(false);
     });
+
+    it('supports Vendure regex filters with the shared safety policy', () => {
+        const value = pipeline({
+            version: 1,
+            capabilities: { writes: ['CATALOG'] },
+            steps: [],
+        });
+        const extracted = extractPipelineCapabilityFilters({
+            filter: { writeCapabilities: { regex: '^CAT(A|E)' } },
+        });
+
+        expect(pipelineMatchesCapabilityFilters(
+            registry as never,
+            value,
+            extracted.predicates,
+        )).toBe(true);
+        expect(() => extractPipelineCapabilityFilters({
+            filter: { writeCapabilities: { regex: '(a+)+' } },
+        })).toThrow('Unsafe regex pattern');
+    });
 });

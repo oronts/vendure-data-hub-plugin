@@ -1,11 +1,12 @@
 import { Injectable } from '@nestjs/common';
-import { RequestContext } from '@vendure/core';
-import { StepType, JsonObject, PipelineStepDefinition, ExecutorContext } from '../../types/index';
-import { PAGINATION } from '../../constants/index';
+import { RequestContext, UserInputError } from '@vendure/core';
+import { StepType, JsonObject, PipelineStepDefinition } from '../../types/index';
+import { PAGINATION, TRANSFORM_LIMITS } from '../../constants/index';
 import { ExtractExecutor } from '../../runtime/executors/extract.executor';
 import { TransformExecutor } from '../../runtime/executors/transform.executor';
 import { LoadExecutor } from '../../runtime/executors/load.executor';
-import { RecordObject } from '../../runtime/executor-types';
+import { ExecutorContext, RecordObject } from '../../runtime/executor-types';
+import { PipelineExecutionPermissionService } from '../pipeline/pipeline-execution-permission.service';
 
 export interface ExtractPreviewResult {
     records: RecordObject[];
@@ -43,102 +44,114 @@ export class StepTestService {
         private readonly extractExecutor: ExtractExecutor,
         private readonly transformExecutor: TransformExecutor,
         private readonly loadExecutor: LoadExecutor,
+        private readonly executionPermissions: PipelineExecutionPermissionService,
     ) {}
 
-    private createTestExecutorContext(): ExecutorContext {
+    private createTestExecutorContext(recordLimit?: number): ExecutorContext {
         return {
             cpData: null,
             cpDirty: false,
             markCheckpointDirty: () => {},
+            recordLimit,
         };
+    }
+
+    private async assertStepAllowed(
+        ctx: RequestContext,
+        step: PipelineStepDefinition,
+    ): Promise<void> {
+        await this.executionPermissions.assertAllowed(ctx, {
+            version: 1,
+            steps: [step],
+        });
+    }
+
+    private assertRecords(sampleData: unknown): JsonObject[] {
+        if (!Array.isArray(sampleData)) {
+            throw new Error('records must be an array of JSON objects');
+        }
+        if (sampleData.length > PAGINATION.MAX_QUERY_LIMIT) {
+            throw new Error(`records cannot exceed ${PAGINATION.MAX_QUERY_LIMIT} items`);
+        }
+        const invalidIndex = sampleData.findIndex(
+            record => record === null || typeof record !== 'object' || Array.isArray(record),
+        );
+        if (invalidIndex !== -1) {
+            throw new Error(`records[${invalidIndex}] must be a JSON object`);
+        }
+        return sampleData as JsonObject[];
+    }
+
+    private assertPreviewLimit(limit: number): number {
+        if (
+            !Number.isInteger(limit) ||
+            limit < 1 ||
+            limit > TRANSFORM_LIMITS.MAX_PREVIEW_LIMIT
+        ) {
+            throw new UserInputError(
+                `limit must be an integer between 1 and ${TRANSFORM_LIMITS.MAX_PREVIEW_LIMIT}`,
+            );
+        }
+        return limit;
     }
 
     async previewExtract(
         ctx: RequestContext,
-        stepConfig: JsonObject,
+        stepInput: JsonObject,
         options: ExtractPreviewOptions = {},
     ): Promise<ExtractPreviewResult> {
-        // Normalize config: handle double-nested config.config structure (e.g., from dashboard)
-        const rawConfig = (stepConfig ?? {}) as Record<string, unknown>;
-        const nestedConfig = rawConfig.config as Record<string, unknown> | undefined;
+        const step = this.createTestStep(StepType.EXTRACT, stepInput);
+        const limit = this.assertPreviewLimit(
+            options.limit ?? PAGINATION.LIST_PAGE_SIZE,
+        );
 
-        // For CSV inline rows: check both config.rows and config.config.rows
-        if (!rawConfig.rows && nestedConfig?.rows) {
-            rawConfig.rows = nestedConfig.rows;
-        }
-
-        // For generator: ensure template and count are at top level
-        if (nestedConfig) {
-            if (!rawConfig.template && nestedConfig.template) {
-                rawConfig.template = nestedConfig.template;
-            }
-            if (!rawConfig.count && nestedConfig.count) {
-                rawConfig.count = nestedConfig.count;
-            }
-        }
-
-        const step: PipelineStepDefinition = {
-            key: 'test-extract',
-            type: StepType.EXTRACT,
-            name: 'Test Extract',
-            config: rawConfig as JsonObject,
-        };
-
-        const executorCtx = this.createTestExecutorContext();
-        const records = await this.extractExecutor.execute(ctx, step, executorCtx);
-
-        const limit = typeof options.limit === 'number' ? options.limit : PAGINATION.LIST_PAGE_SIZE;
+        await this.assertStepAllowed(ctx, step);
+        const preview = await this.extractExecutor.preview(
+            ctx,
+            step,
+            limit,
+        );
+        const records = preview.records.map(record => record.data as RecordObject);
 
         return {
-            records: records.slice(0, Math.max(0, limit)),
-            totalCount: records.length,
+            records,
+            totalCount: preview.totalAvailable ?? records.length,
             notes: [],
         };
     }
 
     async simulateTransform(
         ctx: RequestContext,
-        stepConfig: JsonObject,
-        sampleData: JsonObject[],
+        stepInput: JsonObject,
+        sampleData: unknown,
     ): Promise<TransformSimulationResult> {
-        const step: PipelineStepDefinition = {
-            key: 'test-transform',
-            type: StepType.TRANSFORM,
-            name: 'Test Transform',
-            config: stepConfig ?? {},
-        };
+        const step = this.createTestStep(StepType.TRANSFORM, stepInput);
 
-        const input = Array.isArray(sampleData) ? sampleData : [];
-        const executorCtx = this.createTestExecutorContext();
+        await this.assertStepAllowed(ctx, step);
+        const input = this.assertRecords(sampleData);
 
-        return await this.transformExecutor.executeOperator(
+        return this.transformExecutor.executeOperator(
             ctx,
             step,
             input as RecordObject[],
-            executorCtx,
+            this.createTestExecutorContext(),
         );
     }
 
     async simulateValidate(
         ctx: RequestContext,
-        stepConfig: JsonObject,
-        sampleData: JsonObject[],
+        stepInput: JsonObject,
+        sampleData: unknown,
     ): Promise<ValidateSimulationResult> {
-        const step: PipelineStepDefinition = {
-            key: 'test-validate',
-            type: StepType.VALIDATE,
-            name: 'Test Validate',
-            config: stepConfig ?? {},
-        };
+        const step = this.createTestStep(StepType.VALIDATE, stepInput);
 
-        const input = Array.isArray(sampleData) ? sampleData : [];
-
+        await this.assertStepAllowed(ctx, step);
+        const input = this.assertRecords(sampleData);
         const out = await this.transformExecutor.executeValidate(
             ctx,
             step,
             input as RecordObject[],
         );
-
         const passed = out.length;
         const failed = input.length - passed;
 
@@ -153,20 +166,15 @@ export class StepTestService {
         };
     }
 
-    /** Dry-run simulation of load step without persisting data */
     async validateLoadConfig(
         ctx: RequestContext,
-        stepConfig: JsonObject,
-        sampleData: JsonObject[],
+        stepInput: JsonObject,
+        sampleData: unknown,
     ): Promise<LoadSimulationResult> {
-        const step: PipelineStepDefinition = {
-            key: 'test-load',
-            type: StepType.LOAD,
-            name: 'Test Load',
-            config: stepConfig ?? {},
-        };
+        const step = this.createTestStep(StepType.LOAD, stepInput);
 
-        const input = Array.isArray(sampleData) ? sampleData : [];
+        await this.assertStepAllowed(ctx, step);
+        const input = this.assertRecords(sampleData);
         const simulation = await this.loadExecutor.simulate(
             ctx,
             step,
@@ -177,8 +185,52 @@ export class StepTestService {
             ...simulation,
             summary: {
                 recordCount: input.length,
-                adapterCode: (stepConfig as JsonObject)?.adapterCode as string || 'unknown',
+                adapterCode: typeof step.config.adapterCode === 'string'
+                    ? step.config.adapterCode
+                    : 'unknown',
             },
         };
     }
+
+    private createTestStep(
+        type: StepType,
+        input: JsonObject,
+    ): PipelineStepDefinition {
+        if (!isPlainObject(input.config)) {
+            throw new UserInputError('step.config must be a JSON object');
+        }
+        const schemaRef = input.schemaRef === undefined
+            ? undefined
+            : parseSchemaReference(input.schemaRef);
+        if (schemaRef && type !== StepType.EXTRACT && type !== StepType.VALIDATE) {
+            throw new UserInputError('step.schemaRef is only valid for EXTRACT or VALIDATE tests');
+        }
+        return {
+            key: `test-${type.toLowerCase()}`,
+            type,
+            name: `Test ${type}`,
+            config: input.config,
+            ...(schemaRef ? { schemaRef } : {}),
+        };
+    }
+}
+
+function parseSchemaReference(value: unknown): NonNullable<PipelineStepDefinition['schemaRef']> {
+    if (!isPlainObject(value)) {
+        throw new UserInputError('step.schemaRef must be a JSON object');
+    }
+    const { schemaId, version } = value;
+    if (
+        typeof schemaId !== 'string'
+        || schemaId.trim() === ''
+        || typeof version !== 'string'
+        || version.trim() === ''
+    ) {
+        throw new UserInputError('step.schemaRef requires schemaId and version');
+    }
+    return { schemaId, version };
+}
+
+function isPlainObject(value: unknown): value is JsonObject {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
 }

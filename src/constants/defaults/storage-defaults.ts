@@ -14,13 +14,17 @@ const getExportRoot = (): string => {
 };
 
 const EXPORT_ROOT = getExportRoot();
+const MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024;
 
 /**
  * File storage defaults
  */
 export const FILE_STORAGE = {
     /** Maximum file size in bytes */
-    MAX_FILE_SIZE_BYTES: 100 * 1024 * 1024, // 100MB
+    MAX_FILE_SIZE_BYTES,
+    /** Maximum JSON envelope size for a base64-encoded file upload */
+    MAX_BASE64_JSON_BODY_SIZE_BYTES:
+        4 * Math.ceil(MAX_FILE_SIZE_BYTES / 3) + 64 * 1024,
     /** Maximum number of files per upload request */
     FILE_MAX_FILES: 10,
     /** File expiry time in minutes */
@@ -59,6 +63,8 @@ export const FILE_WATCH = {
     MAX_REMOTE_DIRECTORY_DEPTH: 20,
     /** Maximum number of remote entries examined during one discovery poll */
     MAX_REMOTE_ENTRIES_PER_POLL: 10_000,
+    /** Maximum number of paginated remote listing requests during one poll */
+    MAX_REMOTE_PAGES_PER_POLL: 1_000,
     /** Poll interval while a triggered pipeline run is active */
     RUN_STATUS_POLL_INTERVAL_MS: 5_000,
     /** Crash-recovery idempotency window for a file-triggered run */

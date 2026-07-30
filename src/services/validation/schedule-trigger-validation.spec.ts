@@ -40,4 +40,13 @@ describe('schedule trigger validation', () => {
         expect(validateSchedule({ cron: '0 * * * *', timezone: 'Not/A_Zone' }))
             .toContain('invalid-schedule-timezone');
     });
+
+    it.each(['schedule', 'startTime', 'endTime', 'maxConcurrent'])(
+        'rejects disconnected schedule option %s',
+        field => {
+            expect(validateSchedule({ cron: '0 * * * *', [field]: 'unused' })).toContain(
+                'unsupported-schedule-trigger-field',
+            );
+        },
+    );
 });

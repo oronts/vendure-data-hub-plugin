@@ -43,6 +43,7 @@ function createContext(granted: readonly string[]): RequestContext {
     const permissions = new Set(granted);
     return {
         activeUserId: 42,
+        channelId: 'channel-a',
         userHasPermissions: (requested: Permission[]) => requested.some(permission => permissions.has(permission)),
     } as unknown as RequestContext;
 }
@@ -180,6 +181,7 @@ function createFixture(useUuidIds = false) {
             .mockReturnValueOnce(latestRunQuery),
     };
     const connection = {
+        findOneInChannel: vi.fn(async (): Promise<Pipeline | undefined> => pipeline),
         withTransaction: vi.fn(async (
             ctx: RequestContext,
             work: (transactionCtx: RequestContext) => Promise<unknown>,
@@ -238,6 +240,7 @@ function createFixture(useUuidIds = false) {
 
     return {
         service,
+        connection,
         pipeline,
         previousRevision,
         targetRevision,
@@ -323,10 +326,24 @@ describe('RevisionService lifecycle', () => {
             expect.objectContaining({
                 capabilities: {
                     requires: ['RunDataHubPipeline', 'UpdateCatalog'],
+                    writes: ['CATALOG'],
                 },
             }),
             'PublishDataHubPipeline',
         );
+    });
+
+    it('rejects publication outside the active channel before mutation', async () => {
+        const fixture = createFixture();
+        fixture.connection.findOneInChannel.mockResolvedValueOnce(undefined);
+
+        await expect(fixture.service.publishVersion(
+            createContext(allPermissions),
+            { pipelineId: fixture.pipeline.id },
+        )).rejects.toThrow('Pipeline 1 not found');
+
+        expect(fixture.revisionRepository.save).not.toHaveBeenCalled();
+        expect(fixture.pipelineRepository.update).not.toHaveBeenCalled();
     });
 
     it('preserves UUID pipeline and revision IDs through publication', async () => {
@@ -439,6 +456,10 @@ describe('RevisionService lifecycle', () => {
             lastRunAt: attributed.finishedAt,
             lastRunStatus: 'SUCCESS',
         });
+        expect(fixture.runCountQuery.andWhere).toHaveBeenCalledWith(
+            'run.channelId = :channelId',
+            { channelId: 'channel-a' },
+        );
         expect(fixture.runCountQuery.andWhere).toHaveBeenCalledWith(
             'run.revisionId IN (:...revisionIds)',
             { revisionIds: [fixture.previousRevision.id] },
@@ -810,6 +831,69 @@ describe('RevisionService lifecycle', () => {
             }),
             expect.objectContaining({ draftRevisionId: 9 }),
         );
+    });
+
+    it('does not save drafts when autosave is disabled', async () => {
+        const fixture = createFixture();
+        fixture.service.setAutoSaveConfig({ enabled: false });
+
+        await expect(fixture.service.saveDraft(createContext(allPermissions), {
+            pipelineId: fixture.pipeline.id,
+            definition: changedDefinition,
+        })).resolves.toBeNull();
+
+        expect(fixture.connection.withTransaction).not.toHaveBeenCalled();
+        expect(fixture.revisionRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('persists rapid distinct drafts instead of silently dropping the later edit', async () => {
+        const fixture = createFixture();
+        const laterDefinition: PipelineDefinition = {
+            ...changedDefinition,
+            name: 'Later edit',
+        };
+
+        await fixture.service.saveDraft(createContext(allPermissions), {
+            pipelineId: fixture.pipeline.id,
+            definition: changedDefinition,
+        });
+        await fixture.service.saveDraft(createContext(allPermissions), {
+            pipelineId: fixture.pipeline.id,
+            definition: laterDefinition,
+        });
+
+        expect(fixture.revisionRepository.save).toHaveBeenCalledTimes(2);
+        expect(fixture.pipeline.definition).toEqual(laterDefinition);
+    });
+
+    it('never prunes the draft referenced by the pipeline working copy', async () => {
+        const fixture = createFixture();
+        const activeDraft = new PipelineRevision();
+        activeDraft.id = fixture.pipeline.draftRevisionId as ID;
+        activeDraft.pipelineId = fixture.pipeline.id;
+        activeDraft.type = RevisionType.DRAFT;
+        activeDraft.createdAt = new Date('2020-01-01T00:00:00.000Z');
+        const staleDraft = new PipelineRevision();
+        staleDraft.id = 77;
+        staleDraft.pipelineId = fixture.pipeline.id;
+        staleDraft.type = RevisionType.DRAFT;
+        staleDraft.createdAt = new Date('2020-01-01T00:00:00.000Z');
+        fixture.revisionRepository.find.mockResolvedValueOnce([activeDraft, staleDraft]);
+        fixture.revisionRepository.delete.mockResolvedValueOnce({ affected: 1 });
+        fixture.service.setAutoSaveConfig({ maxDraftsToKeep: 0, maxDraftAgeDays: 0 });
+
+        await expect(fixture.service.pruneDrafts(
+            createContext(allPermissions),
+            fixture.pipeline.id,
+        )).resolves.toBe(1);
+
+        expect(fixture.revisionRepository.delete).toHaveBeenCalledWith({ id: expect.anything() });
+        const deleteCalls = fixture.revisionRepository.delete.mock.calls as unknown as Array<[unknown]>;
+        const criteria = deleteCalls[0][0] as {
+            id: { _value: ID[] };
+        };
+        expect(JSON.stringify(criteria)).not.toContain(String(activeDraft.id));
+        expect(JSON.stringify(criteria)).toContain(String(staleDraft.id));
     });
 
     it('restores a changed draft as the working copy and keeps the published pointer', async () => {

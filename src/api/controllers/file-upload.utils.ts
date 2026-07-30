@@ -2,7 +2,7 @@
  * DataHub File Upload Utilities
  */
 
-import { StoredFile } from '../../services';
+import { isStoredFileId, StoredFile } from '../../services';
 import { ParseFormatType } from '../../constants/enums';
 import { CONTENT_TYPES, EXTENSION_MIME_MAP } from '../../constants/index';
 import { extractFileExtension } from '../../extractors/shared/file-format.utils';
@@ -64,17 +64,20 @@ export function detectFormat(mimeType: string, filename: string): FileFormatAlia
     return 'CSV'; // Default
 }
 
-/**
- * Validate file ID format
- * File IDs are UUIDs (v4) or similar alphanumeric strings with hyphens
- */
+/** Validate the exact ID format generated for stored files. */
 export function isValidFileId(fileId: string): boolean {
-    if (!fileId || typeof fileId !== 'string') {
-        return false;
+    return isStoredFileId(fileId);
+}
+
+/** Calculate decoded bytes without allocating the decoded upload buffer. */
+export function getBase64DecodedSize(value: string): number {
+    const dataUriSeparator = value.startsWith('data:') ? value.indexOf(',') : -1;
+    const payload = (dataUriSeparator >= 0 ? value.slice(dataUriSeparator + 1) : value)
+        .replace(/\s/g, '');
+    if (payload.length === 0) {
+        return 0;
     }
-    // Allow UUIDs and alphanumeric IDs with hyphens/underscores (common ID formats)
-    // UUID v4 format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
-    // Also allow simpler alphanumeric IDs
-    const validIdPattern = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/;
-    return validIdPattern.test(fileId);
+
+    const padding = payload.endsWith('==') ? 2 : payload.endsWith('=') ? 1 : 0;
+    return Math.max(0, Math.floor(payload.length / 4) * 3 - padding);
 }

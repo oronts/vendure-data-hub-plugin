@@ -6,6 +6,8 @@ import {
     resolveStepAdapterCode,
 } from './record-retry.service';
 
+const ctx = { channelId: 17 } as never;
+
 const snapshotDefinition: PipelineDefinition = {
     version: 7,
     steps: [{
@@ -43,6 +45,7 @@ function createFixture(options?: {
     };
     const recordErrors = {
         getById: vi.fn().mockResolvedValue(record),
+        notifyRetry: vi.fn().mockResolvedValue(undefined),
     };
     const errorReplay = {
         replayRecord: vi.fn().mockResolvedValue(
@@ -79,6 +82,7 @@ function createFixture(options?: {
         retryAudits,
         logger,
         run,
+        record,
     };
 }
 
@@ -104,7 +108,7 @@ describe('RecordRetryService', () => {
         const fixture = createFixture();
 
         const result = await fixture.service.retry(
-            {} as never,
+            ctx,
             11,
             { sku: 'SKU-2', name: 'New name' },
         );
@@ -131,7 +135,15 @@ describe('RecordRetryService', () => {
             'load-products',
             { sku: 'SKU-2', name: 'New name' },
         );
+        expect(fixture.recordErrors.notifyRetry).toHaveBeenCalledWith(
+            expect.anything(),
+            fixture.record,
+        );
         expect(fixture.retryAudits.record).toHaveBeenCalledOnce();
+        expect(fixture.runRepository.findOne).toHaveBeenCalledWith({
+            where: { id: 22, channelId: '17' },
+            relations: { pipeline: true },
+        });
     });
 
     it('resolves a root adapter code when the canonical config has none', async () => {
@@ -148,7 +160,7 @@ describe('RecordRetryService', () => {
         });
 
         const result = await fixture.service.retry(
-            {} as never,
+            ctx,
             11,
             { sku: 'SKU-2' },
         );
@@ -161,7 +173,7 @@ describe('RecordRetryService', () => {
         const fixture = createFixture();
 
         const result = await fixture.service.retry(
-            {} as never,
+            ctx,
             11,
             { sku: 'SKU-2', internalToken: 'secret' },
         );
@@ -173,6 +185,7 @@ describe('RecordRetryService', () => {
             rejectedPatchKeys: ['internalToken'],
         }));
         expect(fixture.errorReplay.replayRecord).not.toHaveBeenCalled();
+        expect(fixture.recordErrors.notifyRetry).not.toHaveBeenCalled();
         expect(fixture.retryAudits.record).not.toHaveBeenCalled();
     });
 
@@ -182,7 +195,7 @@ describe('RecordRetryService', () => {
     ])('does not audit a replay without a successful side effect: %j', async replayResult => {
         const fixture = createFixture({ replayResult });
 
-        const result = await fixture.service.retry({} as never, 11);
+        const result = await fixture.service.retry(ctx, 11);
 
         expect(result).toEqual(expect.objectContaining({
             success: false,
@@ -195,7 +208,7 @@ describe('RecordRetryService', () => {
     it('returns a typed not-found outcome without querying the run', async () => {
         const fixture = createFixture({ record: null });
 
-        const result = await fixture.service.retry({} as never, 11);
+        const result = await fixture.service.retry(ctx, 11);
 
         expect(result).toEqual(expect.objectContaining({
             success: false,
@@ -207,7 +220,7 @@ describe('RecordRetryService', () => {
     it('reports successful replay separately from audit persistence failure', async () => {
         const fixture = createFixture({ auditError: new Error('audit unavailable') });
 
-        const result = await fixture.service.retry({} as never, 11);
+        const result = await fixture.service.retry(ctx, 11);
 
         expect(result).toEqual(expect.objectContaining({
             success: true,
@@ -216,5 +229,24 @@ describe('RecordRetryService', () => {
             auditRecorded: false,
         }));
         expect(fixture.logger.warn).toHaveBeenCalledOnce();
+    });
+
+    it('does not replay a record whose run is unavailable in the active channel', async () => {
+        const fixture = createFixture();
+        fixture.runRepository.findOne.mockResolvedValueOnce(null);
+
+        const result = await fixture.service.retry(
+            { channelId: 23 } as never,
+            11,
+        );
+
+        expect(result.outcome).toBe(RECORD_RETRY_OUTCOME.RUN_NOT_FOUND);
+        expect(fixture.runRepository.findOne).toHaveBeenCalledWith({
+            where: { id: 22, channelId: '23' },
+            relations: { pipeline: true },
+        });
+        expect(fixture.recordErrors.notifyRetry).not.toHaveBeenCalled();
+        expect(fixture.errorReplay.replayRecord).not.toHaveBeenCalled();
+        expect(fixture.retryAudits.record).not.toHaveBeenCalled();
     });
 });

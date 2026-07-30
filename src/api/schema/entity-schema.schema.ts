@@ -85,6 +85,28 @@ export const entitySchemaSchema = `
         "Loader adapter code for this entity"
         adapterCode: String!
     }
+
+    """
+    Field emitted by the built-in Vendure query extractor.
+    """
+    type DataHubExportEntityField {
+        key: String!
+        label: String!
+        type: String!
+        description: String
+        "Can this field be used in database filters and ordering?"
+        queryable: Boolean!
+    }
+
+    """
+    Entity and field contract supported by the built-in Vendure query extractor.
+    """
+    type DataHubExportEntitySchema {
+        entityType: String!
+        name: String!
+        description: String!
+        fields: [DataHubExportEntityField!]!
+    }
 `;
 
 export const entitySchemaQueries = `
@@ -106,5 +128,10 @@ export const entitySchemaQueries = `
         Use this to show available entity types in the UI.
         """
         dataHubSupportedEntities: [DataHubSupportedEntity!]!
+
+        """
+        List the entities and output fields supported by the built-in Vendure query extractor.
+        """
+        dataHubExportEntitySchemas: [DataHubExportEntitySchema!]!
     }
 `;

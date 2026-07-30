@@ -33,7 +33,17 @@ describe('EVENT trigger validation', () => {
         expect(validateEvent({ event: { event: 'ProductEvent' } })).toContain('missing-event-type');
     });
 
-    it.each(['entityType', 'conditions', 'filter', 'debounceMs', 'batchSize', 'batchTimeoutMs'])(
+    it.each([
+        'entityType',
+        'conditions',
+        'filter',
+        'debounceMs',
+        'batchSize',
+        'batchTimeoutMs',
+        'maxRetries',
+        'retryDelayMs',
+        'timeoutMs',
+    ])(
         'rejects ignored option %s',
         field => {
             expect(validateEvent({ event: 'ProductEvent', [field]: 1 })).toContain(

@@ -88,8 +88,8 @@ export const DISTRIBUTED_LOCK = {
     REDIS_COMMAND_TIMEOUT_MS: 2_000,
     /** Base delay between bounded Redis reconnect attempts */
     REDIS_RETRY_DELAY_MS: 100,
-    /** Maximum retries per Redis request */
-    MAX_RETRIES_PER_REQUEST: 3,
+    /** Fail ambiguous Redis writes instead of resending them after reconnect. */
+    MAX_RETRIES_PER_REQUEST: 0,
     /** Maximum retry delay for Redis connection */
     MAX_RETRY_DELAY_MS: 3000,
     /** Maximum iterations for scan operations */

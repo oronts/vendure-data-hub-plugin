@@ -5,6 +5,7 @@ import { PAGINATION } from '../../constants';
 import { SortOrder } from '../../constants/enums';
 import type { JsonObject } from '../../types/index';
 import type { FindOptionsOrder, FindOptionsWhere } from 'typeorm';
+import { getActivePipelineRunChannelId } from '../pipeline/pipeline-run-channel';
 
 @Injectable()
 export class RecordRetryAuditService {
@@ -36,7 +37,13 @@ export class RecordRetryAuditService {
             throw new Error(`limit must be between 1 and ${PAGINATION.MAX_QUERY_LIMIT}`);
         }
         const repo = this.connection.getRepository(ctx, DataHubRecordRetryAudit);
-        const where: FindOptionsWhere<DataHubRecordRetryAudit> = { error: { id: errorId } };
+        const channelId = getActivePipelineRunChannelId(ctx);
+        const where: FindOptionsWhere<DataHubRecordRetryAudit> = {
+            error: {
+                id: errorId,
+                run: { channelId },
+            },
+        };
         const order: FindOptionsOrder<DataHubRecordRetryAudit> = { createdAt: SortOrder.DESC };
         return repo.find({
             where,

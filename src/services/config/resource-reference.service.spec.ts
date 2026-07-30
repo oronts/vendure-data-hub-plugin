@@ -28,7 +28,14 @@ function createService(data: FixtureData = {}): ResourceReferenceService {
         [PipelineRevision, { find: vi.fn(async () => data.revisions ?? []) }],
         [PipelineRun, { find: vi.fn(async () => data.runs ?? []) }],
         [DataHubConnection, { find: vi.fn(async () => data.connections ?? []) }],
-        [DataHubExportDestination, { find: vi.fn(async () => data.destinations ?? []) }],
+        [DataHubExportDestination, {
+            find: vi.fn(async (options?: { where?: { channelId?: string } }) => (
+                data.destinations ?? []
+            ).filter(destination => (
+                options?.where?.channelId === undefined
+                || Reflect.get(destination, 'channelId') === options.where.channelId
+            ))),
+        }],
         [DataHubSecret, { find: vi.fn(async () => data.secrets ?? []) }],
     ]);
     const connection = {
@@ -87,7 +94,7 @@ describe('resource reference collection', () => {
 });
 
 describe('ResourceReferenceService', () => {
-    const ctx = {} as RequestContext;
+    const ctx = { channelId: 'active-channel' } as RequestContext;
     const publishedDefinition = {
         version: 1,
         steps: [{
@@ -161,6 +168,7 @@ describe('ResourceReferenceService', () => {
     it('blocks active-channel secret removal while a destination consumes it', async () => {
         const service = createService({
             destinations: [{
+                channelId: 'active-channel',
                 destinationId: 'warehouse-export',
                 config: { secretCode: 'pipeline-token' },
             }],
@@ -168,6 +176,21 @@ describe('ResourceReferenceService', () => {
 
         await expect(service.assertSecretUnassignable(ctx, 'pipeline-token'))
             .rejects.toThrow('still used in the active channel');
+    });
+
+    it('ignores destinations from other channels during secret unassignment', async () => {
+        const service = createService({
+            destinations: [{
+                channelId: 'other-channel',
+                destinationId: 'warehouse-export',
+                config: { secretCode: 'pipeline-token' },
+            }],
+        });
+
+        await expect(service.assertSecretUnassignable(ctx, 'pipeline-token'))
+            .resolves.toBeUndefined();
+        await expect(service.assertSecretMutable(ctx, 'pipeline-token'))
+            .rejects.toThrow(/destinations: warehouse-export/);
     });
 
     it('fails closed when a nonterminal run has no definition snapshot', async () => {

@@ -19,6 +19,12 @@ const definitions = new Map<string, AdapterDefinition>([
         schema: { fields: [] },
         requires: ['UpdateCatalog'],
     }],
+    [`${AdapterType.LOADER}:entityDeletion`, {
+        type: AdapterType.LOADER,
+        code: 'entityDeletion',
+        schema: { fields: [] },
+        requires: ['UpdateCatalog'],
+    }],
     [`${AdapterType.OPERATOR}:translate`, {
         type: AdapterType.OPERATOR,
         code: 'translate',
@@ -128,6 +134,25 @@ describe('pipeline capabilities', () => {
         expect(getEffectivePipelineCapabilities(registry, definition)).toEqual({
             requires: ['RunDataHubPipeline', 'UpdateCatalog'],
             writes: ['CATALOG', 'ORDERS'],
+        });
+    });
+
+    it('uses configured deletion permissions and write domains', () => {
+        const definition: PipelineDefinition = {
+            version: 1,
+            steps: [{
+                key: 'delete-customers',
+                type: StepType.LOAD,
+                config: {
+                    adapterCode: 'entityDeletion',
+                    entityType: 'customer',
+                },
+            }],
+        };
+
+        expect(getEffectivePipelineCapabilities(registry, definition)).toEqual({
+            requires: ['UpdateCustomer'],
+            writes: ['CUSTOMERS'],
         });
     });
 

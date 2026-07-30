@@ -6,6 +6,8 @@ export const TABLE_NAMES = {
     SECRET: `${TABLE_PREFIX}secret`,
     SETTINGS: `${TABLE_PREFIX}settings`,
     LOCK: `${TABLE_PREFIX}lock`,
+    EXPORT_DESTINATION: `${TABLE_PREFIX}export_destination`,
+    FEED: `${TABLE_PREFIX}feed`,
     SCHEMA: `${TABLE_PREFIX}schema`,
 
     // Pipeline entities

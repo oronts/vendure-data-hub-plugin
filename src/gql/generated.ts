@@ -1853,6 +1853,11 @@ export type DataHubConnectionSortParameter = {
 /** Message consumer status for queue-triggered pipelines */
 export type DataHubConsumerStatus = {
   __typename?: 'DataHubConsumerStatus';
+  /** Trigger definition default used when no durable manual override exists */
+  autoStart: Scalars['Boolean']['output'];
+  /** Durable global start/stop intent; this can be true while isActive is false on this replica */
+  desiredEnabled: Scalars['Boolean']['output'];
+  /** True only when the API replica answering this query currently owns and runs the consumer */
   isActive: Scalars['Boolean']['output'];
   lastMessageAt?: Maybe<Scalars['DateTime']['output']>;
   messagesFailed: Scalars['Int']['output'];
@@ -2739,6 +2744,8 @@ export type DataHubPipelineCapabilityOperators = {
   notEq?: InputMaybe<Scalars['String']['input']>;
   /** Excludes pipelines containing any capability code in this set */
   notIn?: InputMaybe<Array<Scalars['String']['input']>>;
+  /** Matches when any capability code satisfies this safe regular expression */
+  regex?: InputMaybe<Scalars['String']['input']>;
 };
 
 export type DataHubPipelineErrorCount = {

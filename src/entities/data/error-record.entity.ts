@@ -1,5 +1,5 @@
 import { Column, Entity, Index, ManyToOne } from 'typeorm';
-import { DeepPartial, VendureEntity } from '@vendure/core';
+import { DeepPartial, EntityId, ID, VendureEntity } from '@vendure/core';
 import type { JsonObject } from '../../types/index';
 import { PipelineRun } from '../pipeline/pipeline-run.entity';
 import { TABLE_NAMES } from '../../constants/table-names';
@@ -8,6 +8,7 @@ import { TABLE_NAMES } from '../../constants/table-names';
 @Index(['stepKey', 'createdAt'])
 @Index(['deadLetter', 'createdAt'])
 @Index(['runId', 'deadLetter']) // Composite index for finding dead letters per run
+@Index(['createdAt'])
 export class DataHubRecordError extends VendureEntity {
     constructor(input?: DeepPartial<DataHubRecordError>) {
         super(input);
@@ -17,8 +18,8 @@ export class DataHubRecordError extends VendureEntity {
     run!: PipelineRun;
 
     @Index()
-    @Column({ type: 'int' })
-    runId!: number;
+    @EntityId()
+    runId!: ID;
 
     @Column({ type: 'varchar', length: 255 })
     stepKey!: string;

@@ -1,6 +1,7 @@
 /**
  * Runtime execution, analysis, and processing defaults
  */
+export { PARALLEL_EXECUTION } from '../../../shared/constants';
 
 /**
  * Sandbox execution defaults
@@ -12,12 +13,13 @@ export const SANDBOX = {
     MAX_SAMPLES_PER_STEP: 10,
     /** Default timeout in milliseconds */
     DEFAULT_TIMEOUT_MS: 60000,
+    /** Maximum sandbox execution budget in milliseconds */
+    MAX_TIMEOUT_MS: 300000,
 } as const;
 
-export const PARALLEL_EXECUTION = {
-    DEFAULT_MAX_CONCURRENT_STEPS: 4,
-    MAX_CONCURRENT_STEPS: 16,
-    ERROR_POLICIES: ['FAIL_FAST', 'CONTINUE', 'BEST_EFFORT'],
+export const MEMORY_EXTRACTOR = {
+    DEFAULT_GENERATOR_COUNT: 10,
+    MAX_GENERATOR_COUNT: 100_000,
 } as const;
 
 export const OPERATOR_LIMITS = {
@@ -52,6 +54,8 @@ export const SPAN_TRACKER = {
     MAX_COMPLETED_SPANS: 100,
     /** Maximum active spans to track before eviction */
     MAX_ACTIVE_SPANS: 500,
+    /** Maximum retained events per span; later events are counted as dropped */
+    MAX_EVENTS_PER_SPAN: 128,
     /** Maximum span duration before timeout (10 minutes) */
     SPAN_TIMEOUT_MS: 10 * 60 * 1000,
 } as const;

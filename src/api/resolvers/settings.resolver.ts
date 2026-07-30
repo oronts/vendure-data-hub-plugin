@@ -7,7 +7,6 @@ import {
     Ctx,
     ID,
     RequestContext,
-    Transaction,
     TransactionalConnection,
 } from '@vendure/core';
 import { DataHubPipelinePermission, UpdateDataHubSettingsPermission } from '../../permissions';
@@ -63,7 +62,6 @@ export class DataHubSettingsAdminResolver {
     }
 
     @Mutation()
-    @Transaction()
     @Allow(UpdateDataHubSettingsPermission.Permission)
     async updateDataHubSettings(
         @Ctx() ctx: RequestContext,
@@ -118,7 +116,6 @@ export class DataHubSettingsAdminResolver {
     }
 
     @Mutation()
-    @Transaction()
     @Allow(UpdateDataHubSettingsPermission.Permission)
     async updateDataHubAutoMapperConfig(
         @Ctx() ctx: RequestContext,
@@ -139,7 +136,6 @@ export class DataHubSettingsAdminResolver {
     }
 
     @Mutation()
-    @Transaction()
     @Allow(UpdateDataHubSettingsPermission.Permission)
     async resetDataHubAutoMapperConfig(
         @Ctx() ctx: RequestContext,

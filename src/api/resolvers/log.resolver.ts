@@ -1,5 +1,5 @@
 import { Args, Query, Resolver } from '@nestjs/graphql';
-import { Allow, Ctx, ListQueryOptions, RequestContext } from '@vendure/core';
+import { Allow, Ctx, ID, ListQueryOptions, RequestContext } from '@vendure/core';
 import { PipelineLogService } from '../../services';
 import { PipelineLog } from '../../entities/pipeline';
 import { ViewDataHubRunsPermission } from '../../permissions';
@@ -20,13 +20,13 @@ export class DataHubLogAdminResolver {
 
     @Query()
     @Allow(ViewDataHubRunsPermission.Permission)
-    async dataHubRunLogs(@Ctx() ctx: RequestContext, @Args() args: { runId: string }) {
+    async dataHubRunLogs(@Ctx() ctx: RequestContext, @Args() args: { runId: ID }) {
         return this.logService.getRunLogs(ctx, args.runId);
     }
 
     @Query()
     @Allow(ViewDataHubRunsPermission.Permission)
-    async dataHubLogStats(@Ctx() ctx: RequestContext, @Args() args: { pipelineId?: string }) {
+    async dataHubLogStats(@Ctx() ctx: RequestContext, @Args() args: { pipelineId?: ID }) {
         return this.logService.getStats(ctx, args.pipelineId);
     }
 

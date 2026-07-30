@@ -8,6 +8,8 @@ interface ConsumerFixtureStatus {
     triggerKey: string;
     queueName: string;
     running: boolean;
+    autoStart: boolean;
+    desiredEnabled: boolean;
     messagesProcessed: number;
     messagesFailed: number;
     lastMessageAt: Date | null;
@@ -57,24 +59,27 @@ function createFixture() {
 }
 
 describe('DataHubQueueAdminResolver consumer lifecycle', () => {
-    it('forwards the selected trigger identity to start and stop operations', async () => {
+    it('forwards the selected trigger identity and request context', async () => {
         const fixture = createFixture();
         const args = { pipelineCode: 'orders', triggerKey: 'order-events' };
+        const ctx = {} as never;
 
-        await expect(fixture.resolver.startDataHubConsumer({} as never, args)).resolves.toBe(true);
-        await expect(fixture.resolver.stopDataHubConsumer({} as never, args)).resolves.toBe(true);
+        await expect(fixture.resolver.startDataHubConsumer(ctx, args)).resolves.toBe(true);
+        await expect(fixture.resolver.stopDataHubConsumer(ctx, args)).resolves.toBe(true);
 
         expect(fixture.messageConsumer.startConsumerByCode).toHaveBeenCalledWith(
             'orders',
             'order-events',
+            ctx,
         );
         expect(fixture.executionPermissions.assertAllowed).toHaveBeenCalledWith(
-            expect.anything(),
+            ctx,
             expect.objectContaining({ version: 1 }),
         );
         expect(fixture.messageConsumer.stopConsumerByCode).toHaveBeenCalledWith(
             'orders',
             'order-events',
+            ctx,
         );
     });
 
@@ -110,6 +115,8 @@ describe('DataHubQueueAdminResolver consumer lifecycle', () => {
         fixture.messageConsumer.getConsumerStatus.mockReturnValue([
             {
                 pipelineCode: 'orders',
+                autoStart: true,
+                desiredEnabled: true,
                 triggerKey: 'order-events',
                 queueName: 'orders',
                 running: true,
@@ -120,6 +127,8 @@ describe('DataHubQueueAdminResolver consumer lifecycle', () => {
             {
                 pipelineCode: 'private-orders',
                 triggerKey: 'private-events',
+                autoStart: false,
+                desiredEnabled: false,
                 queueName: 'private-orders',
                 running: true,
                 messagesProcessed: 5,

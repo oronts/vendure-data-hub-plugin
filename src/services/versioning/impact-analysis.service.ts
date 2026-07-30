@@ -33,6 +33,13 @@ import {
     estimateDuration,
     estimateResources,
 } from './impact-estimators';
+import {
+    extractRecordDetails,
+    fillUnknownRecordDetails,
+} from './impact-record-details';
+import { SANDBOX } from '../../constants';
+import { DataHubRegistryService } from '../../sdk/registry.service';
+import { assertPipelinePermissionsAllowed } from '../pipeline/pipeline-capabilities';
 
 /**
  * Service for analyzing the impact of pipeline execution before running
@@ -44,6 +51,7 @@ export class ImpactAnalysisService {
     constructor(
         private connection: TransactionalConnection,
         private adapterRuntime: AdapterRuntimeService,
+        private registry: DataHubRegistryService,
         loggerFactory: DataHubLoggerFactory,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.PIPELINE_SERVICE);
@@ -71,18 +79,35 @@ export class ImpactAnalysisService {
         ctx: RequestContext,
         pipelineId: ID,
         options: ImpactAnalysisOptions,
-    ): Promise<{ opts: ImpactAnalysisOptions; startTime: number; pipeline: Pipeline }> {
-        const opts = { ...DEFAULT_IMPACT_ANALYSIS_OPTIONS, ...options };
+    ): Promise<{
+        opts: Required<ImpactAnalysisOptions>;
+        startTime: number;
+        pipeline: Pipeline;
+    }> {
+        const opts = this.normalizeOptions(options);
         const startTime = Date.now();
 
-        const pipeline = await this.connection.getRepository(ctx, Pipeline).findOne({
-            where: { id: pipelineId },
-        });
+        const pipeline = await this.getPipelineInActiveChannel(ctx, pipelineId);
         if (!pipeline) {
             throw new Error(`Pipeline ${pipelineId} not found`);
         }
 
         return { opts, startTime, pipeline };
+    }
+
+    private normalizeOptions(options: ImpactAnalysisOptions): Required<ImpactAnalysisOptions> {
+        const opts = { ...DEFAULT_IMPACT_ANALYSIS_OPTIONS, ...options };
+        if (
+            !Number.isSafeInteger(opts.sampleSize)
+            || opts.sampleSize < 1
+            || opts.sampleSize > SANDBOX.MAX_RECORDS
+        ) {
+            throw new Error(`sampleSize must be an integer from 1 to ${SANDBOX.MAX_RECORDS}`);
+        }
+        if (!Number.isFinite(opts.maxDurationMs) || opts.maxDurationMs <= 0) {
+            throw new Error('maxDurationMs must be a positive number');
+        }
+        return opts;
     }
 
     /**
@@ -92,22 +117,30 @@ export class ImpactAnalysisService {
         ctx: RequestContext,
         pipelineId: ID,
         pipeline: Pipeline,
-        opts: ImpactAnalysisOptions,
+        opts: Required<ImpactAnalysisOptions>,
     ): Promise<{
         entityBreakdown: EntityImpact[];
         sampleRecords: SampleRecordFlow[];
         summary: ImpactSummary;
         estimatedDuration: DurationEstimate;
-        resourceUsage: ResourceEstimate;
+        resourceUsage: ResourceEstimate | null;
         metrics: PipelineMetrics;
     }> {
-        const dryRunResult = await this.adapterRuntime.executeDryRun(ctx, pipeline.definition);
+        const dryRunResult = await this.executeDryRunWithTimeout(
+            ctx,
+            pipeline.definition,
+            opts,
+        );
+        const recordDetails = extractRecordDetails(dryRunResult.metrics);
 
         const entityBreakdown = collectEntityBreakdown(
-            dryRunResult.sampleRecords,
+            recordDetails,
             pipeline.definition,
-            opts.sampleSize ?? DEFAULT_IMPACT_ANALYSIS_OPTIONS.sampleSize,
+            opts.sampleSize,
         );
+        if (!opts.includeFieldChanges) {
+            for (const entity of entityBreakdown) entity.fieldChanges = [];
+        }
 
         const sampleRecords = generateSampleFlows(
             dryRunResult.sampleRecords,
@@ -121,10 +154,12 @@ export class ImpactAnalysisService {
             dryRunResult.metrics,
             this.connection,
         );
-        const resourceUsage = estimateResources(
-            pipeline.definition,
-            dryRunResult.metrics.totalRecords ?? 0,
-        );
+        const resourceUsage = opts.includeResourceEstimate
+            ? estimateResources(
+                pipeline.definition,
+                dryRunResult.metrics.totalRecords ?? 0,
+            )
+            : null;
 
         return {
             entityBreakdown,
@@ -136,19 +171,43 @@ export class ImpactAnalysisService {
         };
     }
 
+    private async executeDryRunWithTimeout(
+        ctx: RequestContext,
+        definition: Pipeline['definition'],
+        opts: Required<ImpactAnalysisOptions>,
+    ) {
+        assertPipelinePermissionsAllowed(this.registry, ctx, definition);
+        let timeout: ReturnType<typeof setTimeout> | undefined;
+        try {
+            return await Promise.race([
+                this.adapterRuntime.executeDryRun(ctx, definition, opts.sampleSize),
+                new Promise<never>((_resolve, reject) => {
+                    timeout = setTimeout(
+                        () => reject(new Error(
+                            `Impact analysis exceeded ${opts.maxDurationMs}ms`,
+                        )),
+                        opts.maxDurationMs,
+                    );
+                }),
+            ]);
+        } finally {
+            if (timeout) clearTimeout(timeout);
+        }
+    }
+
     /**
      * Build the final analysis result object
      */
     private buildAnalysisResult(
         pipelineId: ID,
-        opts: ImpactAnalysisOptions,
+        opts: Required<ImpactAnalysisOptions>,
         startTime: number,
         impactData: {
             entityBreakdown: EntityImpact[];
             sampleRecords: SampleRecordFlow[];
             summary: ImpactSummary;
             estimatedDuration: DurationEstimate;
-            resourceUsage: ResourceEstimate;
+            resourceUsage: ResourceEstimate | null;
             metrics: PipelineMetrics;
         },
     ): ImpactAnalysis {
@@ -186,7 +245,30 @@ export class ImpactAnalysisService {
         pipelineId: ID,
         recordIds: string[],
     ): Promise<RecordDetail[]> {
-        const details: RecordDetail[] = [];
+        const pipeline = await this.getPipelineInActiveChannel(ctx, pipelineId);
+        if (!pipeline) throw new Error(`Pipeline ${pipelineId} not found`);
+        const uniqueIds = [...new Set(recordIds)];
+        if (uniqueIds.length === 0) return [];
+        if (uniqueIds.length > SANDBOX.MAX_RECORDS) {
+            throw new Error(`At most ${SANDBOX.MAX_RECORDS} record IDs can be requested`);
+        }
+        const opts = this.normalizeOptions({
+            sampleSize: Math.max(
+                DEFAULT_IMPACT_ANALYSIS_OPTIONS.sampleSize,
+                uniqueIds.length,
+            ),
+        });
+        const dryRunResult = await this.executeDryRunWithTimeout(
+            ctx,
+            pipeline.definition,
+            opts,
+        );
+        const details = fillUnknownRecordDetails(
+            uniqueIds,
+            extractRecordDetails(dryRunResult.metrics),
+            dryRunResult.sampleRecords,
+            pipeline.definition,
+        );
 
         this.logger.debug('Record details requested', {
             pipelineId,
@@ -203,7 +285,7 @@ export class ImpactAnalysisService {
         ctx: RequestContext,
         pipelineId: ID,
         stepKey: string,
-        _options: ImpactAnalysisOptions = {},
+        options: ImpactAnalysisOptions = {},
     ): Promise<{
         stepKey: string;
         recordsIn: number;
@@ -211,9 +293,7 @@ export class ImpactAnalysisService {
         transformations: StepTransformation[];
         fieldChanges: FieldChangePreview[];
     }> {
-        const pipeline = await this.connection.getRepository(ctx, Pipeline).findOne({
-            where: { id: pipelineId },
-        });
+        const pipeline = await this.getPipelineInActiveChannel(ctx, pipelineId);
         if (!pipeline) {
             throw new Error(`Pipeline ${pipelineId} not found`);
         }
@@ -223,19 +303,67 @@ export class ImpactAnalysisService {
             throw new Error(`Step ${stepKey} not found in pipeline ${pipelineId}`);
         }
 
-        // Run dry run and filter for this step
-        const dryRunResult = await this.adapterRuntime.executeDryRun(ctx, pipeline.definition);
+        const opts = this.normalizeOptions(options);
+        const dryRunResult = await this.executeDryRunWithTimeout(
+            ctx,
+            pipeline.definition,
+            opts,
+        );
         const stepSamples: SampleRecord[] = dryRunResult.sampleRecords.filter(s => s.step === stepKey);
 
-        const fieldChanges = detectFieldChanges(stepSamples);
+        const fieldChanges = opts.includeFieldChanges
+            ? detectFieldChanges(stepSamples)
+            : [];
         const transformations = generateStepTransformations(stepSamples, stepKey, step);
+        const stepCounts = this.getStepCounts(
+            dryRunResult.metrics,
+            stepKey,
+            stepSamples.length,
+        );
 
         return {
             stepKey,
-            recordsIn: stepSamples.length,
-            recordsOut: stepSamples.length,
+            recordsIn: stepCounts.recordsIn,
+            recordsOut: stepCounts.recordsOut,
             transformations,
             fieldChanges,
         };
+    }
+
+    private getStepCounts(
+        metrics: PipelineMetrics,
+        stepKey: string,
+        fallback: number,
+    ): { recordsIn: number; recordsOut: number } {
+        const details = Array.isArray(metrics.details) ? metrics.details : [];
+        const detail = details.find(value => (
+            value !== null
+            && typeof value === 'object'
+            && !Array.isArray(value)
+            && value['stepKey'] === stepKey
+        ));
+        if (!detail || Array.isArray(detail) || typeof detail !== 'object') {
+            return { recordsIn: fallback, recordsOut: fallback };
+        }
+        return {
+            recordsIn: typeof detail['recordsIn'] === 'number'
+                ? detail['recordsIn']
+                : fallback,
+            recordsOut: typeof detail['recordsOut'] === 'number'
+                ? detail['recordsOut']
+                : fallback,
+        };
+    }
+
+    private getPipelineInActiveChannel(
+        ctx: RequestContext,
+        pipelineId: ID,
+    ): Promise<Pipeline | undefined> {
+        return this.connection.findOneInChannel(
+            ctx,
+            Pipeline,
+            pipelineId,
+            ctx.channelId,
+        );
     }
 }

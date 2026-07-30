@@ -12,7 +12,6 @@ import { webhookSchema, webhookQueries, webhookMutations } from './webhook.schem
 import { destinationSchema, destinationQueries, destinationMutations } from './destination.schema';
 import { automapperSchema, automapperQueries, automapperMutations } from './automapper.schema';
 import { storageSchema, storageQueries } from './storage.schema';
-import { subscriptionSchema } from './subscription.schema';
 import { queueSchema, queueQueries, queueMutations } from './queue.schema';
 import { entitySchemaSchema, entitySchemaQueries } from './entity-schema.schema';
 import { versioningSchema, versioningQueries, versioningMutations } from './versioning.schema';
@@ -35,7 +34,6 @@ export const adminApiExtensions = gql`
     ${destinationSchema}
     ${automapperSchema}
     ${storageSchema}
-    ${subscriptionSchema}
     ${queueSchema}
     ${entitySchemaSchema}
     ${versioningSchema}
@@ -92,7 +90,6 @@ export * from './webhook.schema';
 export * from './destination.schema';
 export * from './automapper.schema';
 export * from './storage.schema';
-export * from './subscription.schema';
 export * from './queue.schema';
 export * from './entity-schema.schema';
 export * from './versioning.schema';

@@ -75,7 +75,7 @@ function hookDefinition(
 }
 
 describe('DefinitionValidationService hook references', () => {
-    const ctx = {} as RequestContext;
+    const ctx = { channelId: 'channel-a' } as RequestContext;
 
     it('accepts registered scripts and enabled published pipeline targets', async () => {
         const fixture = createService([{
@@ -95,6 +95,32 @@ describe('DefinitionValidationService hook references', () => {
 
         expect(result.issues).toEqual([]);
         expect(result.warnings).toEqual([]);
+        expect(fixture.pipelineRepository.find).toHaveBeenCalledWith(
+            expect.objectContaining({
+                where: expect.objectContaining({
+                    channels: { id: 'channel-a' },
+                }),
+            }),
+        );
+    });
+
+    it('scopes dependency target validation to the active channel', async () => {
+        const fixture = createService([{ code: 'inventory-sync' }]);
+
+        const result = await fixture.service.validateAsync(
+            { version: 1, steps: [], dependsOn: ['inventory-sync'] },
+            { level: ValidationLevel.FULL },
+            ctx,
+        );
+
+        expect(result.issues).toEqual([]);
+        expect(fixture.pipelineRepository.find).toHaveBeenCalledWith({
+            where: {
+                code: expect.any(Object),
+                channels: { id: 'channel-a' },
+            },
+            select: { code: true },
+        });
     });
 
     it('rejects missing scripts and unknown pipeline targets', async () => {
