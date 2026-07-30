@@ -23,3 +23,5 @@ Before deploying to production:
 - [ ] Set up monitoring and alerts
 - [ ] Review pipeline execution configuration
 - [ ] Configure log persistence level
+- [ ] Test database and persistent-artifact backup/restore as one recovery unit
+- [ ] Complete the target-environment dependency sign-off matrix

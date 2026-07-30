@@ -13,6 +13,7 @@ npm run lint
 npm run verify:docs
 npm test
 npm run test:e2e
+npm run test:infrastructure
 npm run build
 npm run verify:package
 ```
@@ -23,9 +24,10 @@ The checks cover different boundaries:
 | --- | --- |
 | `npm run typecheck` | Strict first-party TypeScript contract |
 | `npm run lint` | Source, dashboard, connector, test, script, and dev-server rules |
-| `npm run verify:docs` | Public imports in every TypeScript Markdown block |
+| `npm run verify:docs` | Balanced code fences, Markdown/HTML local targets, heading fragments, public imports, npm scripts, and Data Hub GraphQL examples |
 | `npm test` | Unit and focused integration specifications through Vitest |
 | `npm run test:e2e` | Vendure-backed loader and pipeline behavior |
+| `npm run test:infrastructure` | Sequential Docker acceptance for Redis replicas, OTLP, and external protocols |
 | `npm run build` | Server declarations, distributable dashboard source, and dashboard bundle |
 | `npm run verify:package` | Clean tarball install, CJS/ESM loading, and public-subpath TypeScript compile |
 
@@ -71,6 +73,47 @@ For remote assets, tests use deterministic valid image bytes rather than live
 internet URLs. For HTTP and connector paths, assert request construction,
 security validation, bounded response handling, and partial-failure mapping.
 Real-service verification remains a separate deployment gate.
+
+### Docker infrastructure acceptance
+
+Install dependencies with `npm ci`, ensure Docker Compose is available, then
+run an individual boundary or the sequential aggregate:
+
+```bash
+npm run test:infrastructure:redis
+npm run test:infrastructure:otlp
+npm run test:infrastructure:external
+npm run test:infrastructure
+```
+
+The runners use digest-pinned images, unique Compose project names, local
+installed test binaries, bounded waits, and cleanup traps. External service
+ports bind only to `127.0.0.1` and use per-run ports where the protocol permits.
+
+The aggregate Redis suite starts independent Node.js processes and checks atomic
+shared counters, webhook quotas, locks, Streams consumers, consumer-process
+crash recovery, fail-closed outage behavior, and reconnect to one Redis server.
+It then starts a primary, replica, and three-Sentinel quorum; performs supported
+controlled promotion; removes the old node; and proves that existing and fresh
+clients retain replicated lock ownership and quota state. It does not prove an
+unplanned primary-loss election, Redis Cluster behavior, persistence recovery,
+or an infrastructure provider's managed failover.
+
+The OTLP suite uses a real TLS-enabled OpenTelemetry Collector and verifies
+metrics, traces, trust of its generated certificate authority, rejection by an
+untrusted client, collector-scoped CA loading, structured outage reporting, and
+queued retry after restart.
+The certificate, collector, and output directories are removed afterward. The
+external suite uses MinIO, FTP, SFTP, PostgreSQL, MySQL, a transport-level
+Pimcore HTTP server, and the repository mock contracts. PostgreSQL and MySQL
+require an ephemeral client certificate and verify the generated server CA and
+`localhost` certificate identity. The suite proves active TLS sessions and
+rejects an untrusted CA, a hostname mismatch, and a missing client certificate.
+It does not replace target AWS IAM/TLS, FTPS, database HA/failover or historical
+upgrade rehearsal, private-key SFTP rotation, or an active real Pimcore Data Hub
+validation. See the
+[production sign-off matrix](../deployment/production.md#target-environment-sign-off)
+before making deployment claims.
 
 ## Vendure E2E Harness
 

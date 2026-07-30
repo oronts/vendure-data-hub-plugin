@@ -478,6 +478,8 @@ import { createPipeline } from '@oronts/vendure-data-hub-plugin';
 createPipeline().name('Migrate legacy orders')
     .extract('legacy-orders', {
         adapterCode: 'database',
+        connectionCode: 'legacy-db',
+        databaseType: 'POSTGRESQL',
         query: 'SELECT * FROM legacy_orders'
     })
     .transform('map-fields', {

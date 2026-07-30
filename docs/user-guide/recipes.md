@@ -270,21 +270,27 @@ const inventorySync = createPipeline()
     .extract('query-warehouse', {
         adapterCode: 'database',
         connectionCode: 'warehouse-db',
+        databaseType: 'POSTGRESQL',
         query: `
             SELECT
+                id,
                 sku,
                 location_code,
                 quantity_on_hand,
                 reserved_quantity,
                 updated_at
             FROM inventory
-            WHERE updated_at > :checkpoint
-            ORDER BY updated_at ASC
         `,
         incremental: {
             enabled: true,
-            field: 'updated_at',
-            operator: '>',
+            column: 'updated_at',
+        },
+        pagination: {
+            enabled: true,
+            type: 'CURSOR',
+            pageSize: 1000,
+            cursorColumn: 'updated_at',
+            cursorTieBreakerColumn: 'id',
         },
         throughput: { batchSize: 1000 },
     })
@@ -377,7 +383,7 @@ const inventorySync = createPipeline()
 ### Key Techniques
 
 - **Incremental Extraction**: Only queries records updated since last run
-- **Incremental cursor**: The database extractor persists the incremental field value it explicitly records
+- **Incremental cursor**: The database extractor persists the exact tracked-value and primary-key boundary
 - **Math Operations**: Calculate available stock
 - **Conditional Routing**: Different flows for different stock levels
 - **Alerting**: Webhook notifications for critical events
@@ -500,50 +506,62 @@ const customerEnrichment = createPipeline()
     .transform('add-vip-tag', {
         operators: [
             { op: 'set', args: { path: 'segment', value: 'VIP' } },
+            { op: 'set', args: { path: 'groupNames', value: ['VIP Customers'] } },
         ],
     })
 
     .transform('add-loyal-tag', {
         operators: [
             { op: 'set', args: { path: 'segment', value: 'Loyal' } },
+            { op: 'set', args: { path: 'groupNames', value: ['Loyal Customers'] } },
         ],
     })
 
     .transform('add-new-tag', {
         operators: [
             { op: 'set', args: { path: 'segment', value: 'New' } },
+            { op: 'set', args: { path: 'groupNames', value: ['New Customers'] } },
         ],
     })
 
     .transform('add-standard-tag', {
         operators: [
             { op: 'set', args: { path: 'segment', value: 'Standard' } },
+            { op: 'set', args: { path: 'groupNames', value: ['Standard Customers'] } },
         ],
     })
 
-    // Update customer group
+    // The named customer groups must already exist in Vendure.
     .load('assign-vip-group', {
-        adapterCode: 'customerGroupAssignment',
-        groupCode: 'vip-customers',
+        adapterCode: 'customerUpsert',
+        strategy: 'UPDATE',
         emailField: 'emailAddress',
+        groupsField: 'groupNames',
+        groupsMode: 'ADD',
     })
 
     .load('assign-loyal-group', {
-        adapterCode: 'customerGroupAssignment',
-        groupCode: 'loyal-customers',
+        adapterCode: 'customerUpsert',
+        strategy: 'UPDATE',
         emailField: 'emailAddress',
+        groupsField: 'groupNames',
+        groupsMode: 'ADD',
     })
 
     .load('assign-new-group', {
-        adapterCode: 'customerGroupAssignment',
-        groupCode: 'new-customers',
+        adapterCode: 'customerUpsert',
+        strategy: 'UPDATE',
         emailField: 'emailAddress',
+        groupsField: 'groupNames',
+        groupsMode: 'ADD',
     })
 
     .load('assign-standard-group', {
-        adapterCode: 'customerGroupAssignment',
-        groupCode: 'standard-customers',
+        adapterCode: 'customerUpsert',
+        strategy: 'UPDATE',
         emailField: 'emailAddress',
+        groupsField: 'groupNames',
+        groupsMode: 'ADD',
     })
 
     // Export to marketing platform
@@ -599,6 +617,9 @@ Process orders in real-time via webhook, validate, and send to fulfillment syste
 
 ### Pipeline
 
+This example assumes an application-defined `email` exporter registered by the
+host project. Data Hub does not ship an email exporter.
+
 ```typescript
 const orderProcessing = createPipeline()
     .name('Real-Time Order Processing')
@@ -614,10 +635,9 @@ const orderProcessing = createPipeline()
         idempotencyKeyHeader: 'X-Order-ID',
     })
 
-    // Extract order from webhook payload
+    // The authenticated request body is injected as the seeded order record.
     .extract('parse-order', {
-        adapterCode: 'webhookBody',
-        dataPath: 'order',
+        adapterCode: 'inMemory',
     })
 
     // Validate order
@@ -625,7 +645,15 @@ const orderProcessing = createPipeline()
         errorHandlingMode: 'FAIL_FAST',
         rules: [
             { type: 'business', spec: { field: 'code', required: true } },
-            { type: 'business', spec: { field: 'customer.emailAddress', required: true, type: 'email' } },
+            {
+                type: 'business',
+                spec: {
+                    field: 'customer.emailAddress',
+                    required: true,
+                    type: 'string',
+                    pattern: '^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$',
+                },
+            },
             { type: 'business', spec: { field: 'lines', required: true } },
             { type: 'business', spec: { field: 'totalWithTax', required: true, min: 0 } },
         ],
@@ -660,7 +688,7 @@ const orderProcessing = createPipeline()
             {
                 name: 'international',
                 when: [
-                    { field: 'shippingAddress.countryCode', cmp: 'nin', value: ['US', 'CA'] },
+                    { field: 'shippingAddress.countryCode', cmp: 'notIn', value: ['US', 'CA'] },
                 ],
             },
         ],
@@ -929,6 +957,11 @@ Generate and upload product feeds for Google Shopping and Meta Catalog.
 
 ### Pipeline
 
+This example assumes application-defined `ftp-export` and `email` exporters
+registered by the host project. Built-in feed generators create managed local
+artifacts; remote transfer and notifications require a destination or custom
+adapter.
+
 ```typescript
 const productFeedGeneration = createPipeline()
     .name('Automated Product Feed Generation')
@@ -1084,6 +1117,9 @@ Stream database changes to data warehouse for analytics.
 
 ### Pipeline
 
+This example assumes an application-defined `snowflake-export` adapter
+registered by the host project. It is not part of the built-in exporter catalog.
+
 ```typescript
 const dataWarehouseSync = createPipeline()
     .name('CDC Data Warehouse Sync')
@@ -1099,10 +1135,9 @@ const dataWarehouseSync = createPipeline()
         ackMode: 'MANUAL',
     })
 
-    // Extract CDC message
+    // The queue message is injected as the seeded CDC record.
     .extract('parse-cdc', {
-        adapterCode: 'cdcExtractor',
-        operation: 'ALL',  // INSERT, UPDATE, DELETE
+        adapterCode: 'inMemory',
     })
 
     // Transform to warehouse schema
@@ -1215,6 +1250,10 @@ Handle and retry failed records from dead letter queue.
 - Alert on persistent failures
 
 ### Pipeline
+
+This example assumes an application-defined `deadLetterQueue` extractor
+registered by the host project. Built-in queue consumers expose failure and
+retry operations through the Data Hub run and quarantine APIs instead.
 
 ```typescript
 const dlqRecovery = createPipeline()
@@ -1365,6 +1404,9 @@ Complex approval workflow with multiple gates and value-based routing.
 - Track approval history
 
 ### Pipeline
+
+This example assumes an application-defined `database-export` adapter
+registered by the host project. It is not part of the built-in exporter catalog.
 
 ```typescript
 const approvalWorkflow = createPipeline()

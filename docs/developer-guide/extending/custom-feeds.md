@@ -29,6 +29,9 @@ interface CustomFeedResult {
     content: string;
     contentType: string;
     fileExtension: string;
+    itemCount?: number;
+    warnings?: string[];
+    errors?: string[];
 }
 
 interface FeedConfig {
@@ -51,6 +54,11 @@ interface FeedOptions {
     utmParams?: Record<string, string>;
 }
 ```
+
+Set `itemCount` whenever the generator skips or aggregates input variants; if it is omitted,
+Data Hub assumes every input variant produced one output item. Returned `warnings` and
+`errors` are preserved in the generated result, while the validated item count is stored with
+the artifact metadata.
 
 ## Basic Example
 
@@ -82,6 +90,7 @@ export const myMarketplaceFeed: CustomFeedGenerator = {
             content: JSON.stringify(items, null, 2),
             contentType: 'application/json',
             fileExtension: 'json',
+            itemCount: items.length,
         };
     },
 };
@@ -479,20 +488,30 @@ const amazonFeedPipeline = createPipeline()
         relations: ['product', 'product.customFields', 'featuredAsset', 'assets', 'options', 'options.group'],
     })
     .transform('filter-amazon', {
-        adapterCode: 'when',
-        conditions: [{ field: 'customFields.sellOnAmazon', cmp: 'eq', value: true }],
-        action: 'keep',
+        operators: [{
+            op: 'when',
+            args: {
+                conditions: [{
+                    field: 'customFields.sellOnAmazon',
+                    cmp: 'eq',
+                    value: true,
+                }],
+                action: 'keep',
+            },
+        }],
     })
     .feed('generate-feed', {
         adapterCode: 'customFeed',
         generatorCode: 'amazon-marketplace',
         outputPath: 'feeds/amazon-${date}.txt',
-        connectionCode: 's3-feeds', // Upload to S3
     })
     .trigger('schedule', {
         type: 'SCHEDULE',
-        schedule: { cron: '0 6 * * *' }, // Daily at 6 AM
+        cron: '0 6 * * *', // Daily at 6 AM
     })
+    .edge('schedule', 'products')
+    .edge('products', 'filter-amazon')
+    .edge('filter-amazon', 'generate-feed')
     .build();
 ```
 
@@ -590,7 +609,8 @@ async generate(context: FeedGeneratorContext): Promise<CustomFeedResult> {
             }
             return mapVariant(variant);
         } catch (err) {
-            errors.push(`Failed to process variant ${variant.id}: ${err.message}`);
+            const message = err instanceof Error ? err.message : String(err);
+            errors.push(`Failed to process variant ${variant.id}: ${message}`);
             return null;
         }
     }).filter(Boolean);
@@ -605,7 +625,14 @@ async generate(context: FeedGeneratorContext): Promise<CustomFeedResult> {
         },
     });
 
-    return { content, contentType: 'application/json', fileExtension: 'json' };
+    return {
+        content,
+        contentType: 'application/json',
+        fileExtension: 'json',
+        itemCount: items.length,
+        warnings,
+        errors,
+    };
 }
 ```
 

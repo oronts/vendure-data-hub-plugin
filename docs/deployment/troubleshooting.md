@@ -685,18 +685,26 @@ Uploaded files are currently parsed into memory before downstream batches execut
    brew upgrade openssl
    ```
 
-2. **Disable SSL verification (development only):**
+2. **Use a scoped trust store or Secret Code:**
    ```typescript
-   // NOT recommended for production
-   process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-   ```
-
-3. **Use custom CA:**
-   ```typescript
-   connectionConfig: {
-       ca: fs.readFileSync('/path/to/ca.pem'),
+   ssl: {
+       enabled: true,
+       rejectUnauthorized: true,
+       caSecretCode: 'database-ca',
    }
    ```
+
+   Store the PEM CA certificate under the referenced Secret Code. For mutual
+   TLS, configure both `ssl.certSecretCode` and `ssl.keySecretCode`. For generic
+   Node.js HTTPS clients that use the system trust store, provide a scoped
+   process trust bundle through `NODE_EXTRA_CA_CERTS` at process startup.
+
+3. **Verify name and validity:** confirm the requested hostname is present in
+   the certificate SAN, the full chain is served, clocks are synchronized, and
+   no certificate has expired.
+
+Never set `NODE_TLS_REJECT_UNAUTHORIZED=0`. It disables certificate verification
+for every TLS client in the process, including unrelated integrations.
 
 ## Search Index Issues
 

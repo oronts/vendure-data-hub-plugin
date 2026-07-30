@@ -14,12 +14,31 @@ The following environment variables configure external services and server-local
 | `DATAHUB_ELASTICSEARCH_URL` | Elasticsearch server URL | `http://localhost:9200` |
 | `DATAHUB_TYPESENSE_URL` | Typesense server URL | `http://localhost:8108` |
 
+### Secret Encryption
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DATAHUB_MASTER_KEY` | Durable key for AES-256-GCM encryption of database-backed INLINE secrets; use at least 32 characters and configure the same value on every API and worker | Unset; INLINE database storage and resolution are disabled |
+
+ENV-backed secrets do not require the master key. Code-first INLINE values are
+still plaintext in source and are rejected in production; use ENV references
+for deployed code-first configuration.
+
 ### Horizontal Scaling / Distributed Locks
 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `DATAHUB_REDIS_URL` | Redis URL for distributed locks and shared incoming-webhook rate limits; `REDIS_URL` is also recognized | Unset |
-| `DATAHUB_LOCK_BACKEND` | Force lock backend (`redis`, `postgres`, `memory`) | Unset; select Redis by URL, otherwise PostgreSQL for a PostgreSQL Vendure database |
+| `DATAHUB_REDIS_SENTINELS` | Comma-separated Sentinel `host[:port]` nodes; requires `DATAHUB_REDIS_SENTINEL_NAME` | Unset |
+| `DATAHUB_REDIS_SENTINEL_NAME` | Sentinel monitored-master name | Unset |
+| `DATAHUB_REDIS_DB` | Non-negative Redis database number used in Sentinel mode | `0` |
+| `DATAHUB_REDIS_USERNAME` | Optional Redis data-node ACL username in Sentinel mode | Unset |
+| `DATAHUB_REDIS_PASSWORD` | Optional Redis data-node password in Sentinel mode | Unset |
+| `DATAHUB_REDIS_SENTINEL_USERNAME` | Optional Sentinel ACL username | Unset |
+| `DATAHUB_REDIS_SENTINEL_PASSWORD` | Optional Sentinel password | Unset |
+| `DATAHUB_REDIS_TLS` | Require TLS from Sentinel-discovered clients to Redis data nodes | `false` |
+| `DATAHUB_REDIS_SENTINEL_TLS` | Require TLS for Sentinel discovery connections | `false` |
+| `DATAHUB_LOCK_BACKEND` | Force lock backend (`redis`, `postgres`, `memory`) | Unset; select configured Redis, otherwise PostgreSQL for a PostgreSQL Vendure database |
 
 > **Horizontal Scaling Notes:**
 >
@@ -30,23 +49,34 @@ The following environment variables configure external services and server-local
 >
 > **Selection Order:**
 > 1. `DATAHUB_LOCK_BACKEND` forces a backend and fails startup when its requirements are not met.
-> 2. A configured `DATAHUB_REDIS_URL` or `REDIS_URL` selects Redis.
+> 2. A configured standalone Redis URL or complete Sentinel configuration selects Redis.
 > 3. A PostgreSQL Vendure database selects PostgreSQL advisory locking.
 > 4. Other databases fail startup unless `DATAHUB_LOCK_BACKEND=memory` is selected explicitly for a single-process deployment.
 >
 > Redis is not probed automatically on localhost, and memory locking is never an automatic production fallback.
 
-Incoming webhook admission independently uses Redis whenever either Redis URL is
-configured. Its fixed-window counters are atomic and shared by all API
-instances. Without a Redis URL, the limiter stays process-local and is safe only
-for one API instance unless an ingress supplies the cluster-wide limit. When a
-Redis URL is configured but Redis cannot be reached or a bounded command times
-out, webhook admission returns `503 Service Unavailable`; it does not silently
-fall back to per-process counters.
+Configure either `DATAHUB_REDIS_URL` or the Sentinel node/name pair, never both.
+`REDIS_URL` is only a standalone fallback when no Data Hub-specific standalone
+or Sentinel configuration is present. Sentinel nodes default to port `26379`.
+Use the same topology, database, and credentials on every API server and worker.
+TLS uses the Node.js trust store; add a private CA with `NODE_EXTRA_CA_CERTS`
+before process startup when required. Certificate verification remains enabled.
 
-The same URL auto-selects Redis for distributed locks unless another valid lock
+Incoming webhook admission independently uses the selected standalone or
+Sentinel Redis configuration. Its fixed-window counters are atomic and shared
+by all API instances. Without Redis, the limiter stays process-local and is safe
+only for one API instance unless an ingress supplies the cluster-wide limit.
+When configured Redis cannot be reached or a bounded command times out, webhook
+admission returns `503 Service Unavailable`; it does not silently fall back to
+per-process counters.
+
+The same Redis configuration auto-selects Redis for distributed locks unless another valid lock
 backend is forced. Lock initialization remains fail-closed; on PostgreSQL, use
 `DATAHUB_LOCK_BACKEND=POSTGRES` when locks must remain independent of Redis.
+
+These global settings serve Data Hub locks and incoming-webhook rate limits.
+Redis Streams sources and sinks remain connection-scoped and use their saved
+connection settings; they do not inherit the global Sentinel environment.
 
 ### Server-local exports
 
@@ -120,6 +150,10 @@ DataHubPlugin.init({
 
     // Code-first connections
     connections: [],
+
+    // Custom executable adapters and dependency-injection factories
+    adapters: [],
+    adapterFactories: [],
 });
 ```
 
@@ -139,6 +173,8 @@ and completed spans to an OpenTelemetry Collector over OTLP/HTTP JSON. Its
 `endpoint` is a base URL; `/v1/metrics` and `/v1/traces` are appended.
 Export is disabled when the option is omitted. See the
 [complete configuration reference](docs/deployment/configuration.md#telemetry).
+Private collector CAs and mutual TLS use the scoped `telemetry.tls` file
+settings; no process-wide certificate-verification bypass is supported.
 
 Retention maintenance runs in the Vendure server process under the configured
 distributed lock. Each statement handles at most 1,000 rows and each entity is

@@ -1,6 +1,6 @@
 # Permissions
 
-The plugin registers 27 Vendure custom permissions: two four-operation CRUD
+The plugin registers 31 Vendure custom permissions: three four-operation CRUD
 groups and 19 task-specific permissions. Assign permissions through Vendure
 roles and use the smallest set required for each operator.
 
@@ -25,9 +25,19 @@ roles and use the smallest set required for each operator.
 | ---------- | ------- |
 | `CreateDataHubSecret` | Create a write-only secret value |
 | `ReadDataHubSecret` | Read secret metadata and value status, never the value |
-| `UseDataHubSecret` | Resolve a referenced secret during an authorized pipeline execution, preview, or sandbox |
 | `UpdateDataHubSecret` | Replace, retain, clear, or change a secret |
 | `DeleteDataHubSecret` | Delete a database-backed secret |
+
+### Schema CRUD
+
+`DataHubSchemaPermission` registers:
+
+| Permission | Purpose |
+| ---------- | ------- |
+| `CreateDataHubSchema` | Create registry schemas |
+| `ReadDataHubSchema` | Read registry schema metadata and definitions |
+| `UpdateDataHubSchema` | Edit registry schemas |
+| `DeleteDataHubSchema` | Delete registry schemas |
 
 ### Operations and Administration
 
@@ -38,6 +48,7 @@ roles and use the smallest set required for each operator.
 | `ManageDataHubAdapters` | Open the adapter catalog and read adapter capability metadata used by pipeline editors |
 | `ManageDataHubConnections` | Create, read, update, and delete connections |
 | `UseDataHubConnection` | Use a referenced connection during an authorized pipeline execution, preview, or sandbox |
+| `UseDataHubSecret` | Resolve a referenced secret during an authorized pipeline execution, preview, or sandbox |
 | `ViewDataHubQuarantine` | Read quarantined or failed records |
 | `EditDataHubQuarantine` | Modify quarantined records, including retry payload patches |
 | `ReplayDataHubRecord` | Retry a record unchanged from its recorded failure point |
@@ -94,11 +105,13 @@ reference requires `UseDataHubSecret`. These use permissions do not grant
 connection management or secret-metadata access. Superadmins satisfy the derived
 checks.
 
-Scheduled, event, file-watch, message, and authenticated incoming-webhook
-triggers execute an already-approved published revision under the plugin's
-system context. They do not inherit a transient administrator role. The
-publication gate is therefore the capability boundary for those automated
-executions.
+Manual runs persist their initiating administrator. Scheduled, event,
+file-watch, message, and authenticated incoming-webhook runs persist the
+publisher of the immutable revision. The worker reloads that user and their
+current roles before execution, so deleted users or revoked permissions fail
+closed. Only an actorless code-first revision can use the configured Vendure
+superadmin as a fallback; a database-managed run without a persisted execution
+identity is rejected.
 
 HTTP and GraphQL authentication must be attached to a saved connection with an
 HTTP(S) `baseUrl`. A connection-backed request can use relative paths or an
@@ -114,6 +127,10 @@ DeleteDataHubPipeline
 ViewDataHubEntitySchemas
 ManageDataHubAdapters
 ```
+
+Authors who manage registry schemas also need the four `DataHubSchema` CRUD
+permissions. `ViewDataHubEntitySchemas` is separate: it grants read access to
+Vendure entity metadata used by the pipeline editor, not to registry schemas.
 
 Keep review and publish permissions in a separate role when change approval must
 be independent from authoring. Secret, connection, webhook, destination, feed,
@@ -208,7 +225,10 @@ Unknown targets fail before a run or revision is persisted.
 
 A loader `channelsField` selects channels from runtime records, so its complete
 target set cannot be authorized in advance. Pipelines using that option require
-`SuperAdmin` for user execution and publication. Automated schedules, event
-triggers, webhooks, file watchers, messages, and pipeline hooks execute immutable
-published revisions as trusted system work. These target checks complement, rather
-than replace, managed-resource channel assignment checks.
+`SuperAdmin` for user execution and publication. A queued worker reloads the
+current Vendure user and roles: it uses the run initiator when present, otherwise
+the user who published the immutable revision. Deleted users and revoked channel
+permissions therefore fail closed at execution time. Only a code-first pipeline
+with neither persisted identity uses Vendure's configured superadmin user; a
+database-managed run without an identity is rejected. These target checks
+complement, rather than replace, managed-resource channel assignment checks.

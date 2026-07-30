@@ -26,7 +26,9 @@ DataHubPlugin.init({
     secrets: [],
     connections: [],
     adapters: [],
+    adapterFactories: [],
     feedGenerators: [],
+    connectors: [],
     importTemplates: [],
     exportTemplates: [],
     scripts: {},
@@ -78,9 +80,10 @@ Setting `enabled: false` does not unregister the plugin's API, dashboard,
 controllers, jobs, or built-in adapters. Omit `DataHubPlugin` from the Vendure
 configuration when the entire plugin must be absent.
 
-The standalone dashboard development server binds to `127.0.0.1` and requires
-its configured port by default. Set `VITE_DEV_HOST=0.0.0.0` only when remote or
-container access is intentional and protected by the surrounding network.
+The standalone dashboard development server binds to the `localhost` loopback
+name and requires its configured port by default. Set `VITE_DEV_HOST=0.0.0.0`
+only when remote or container access is intentional and protected by the
+surrounding network.
 
 ### registerBuiltinAdapters
 
@@ -194,33 +197,22 @@ interface CodeFirstConnection {
 
 | | |
 |---|---|
-| Type | `AdapterDefinition[]` |
+| Type | `DataHubAdapter[]` |
 | Default | `[]` |
-| Description | Custom adapter registrations |
+| Description | Executable custom adapter registrations |
 
 ```typescript
-interface AdapterDefinition {
-    readonly type: 'EXTRACTOR' | 'OPERATOR' | 'LOADER' | 'VALIDATOR' | 'ENRICHER' | 'EXPORTER' | 'FEED' | 'SINK' | 'TRIGGER';
-    readonly code: string;
-    readonly name?: string;
-    readonly description?: string;
-    readonly category?: string;
-    readonly schema: StepConfigSchema;
-    readonly pure?: boolean;           // For operators: whether side-effect free
-    readonly async?: boolean;
-    readonly batchable?: boolean;
-    readonly requires?: readonly string[];
-    readonly icon?: string;
-    readonly version?: string;
-    readonly deprecated?: boolean;
-    readonly deprecatedMessage?: string; // Required when deprecated is true
-    readonly experimental?: boolean;
-    readonly entityType?: string;      // For loaders: Vendure entity type
-    readonly formatType?: string;      // For exporters/feeds: output format
-    readonly patchableFields?: readonly string[];
-    readonly editorType?: string;      // For operators: 'map' | 'template' | 'filter'
-    readonly summaryTemplate?: string; // For operators: e.g. "${from} → ${to}"
-}
+type DataHubAdapter<TConfig = unknown> =
+    | ExtractorAdapter<TConfig>
+    | BatchExtractorAdapter<TConfig>
+    | OperatorAdapter<TConfig>
+    | SingleRecordOperator<TConfig>
+    | LoaderAdapter<TConfig>
+    | ValidatorAdapter<TConfig>
+    | EnricherAdapter<TConfig>
+    | ExporterAdapter<TConfig>
+    | FeedAdapter<TConfig>
+    | SinkAdapter<TConfig>;
 ```
 
 Example:
@@ -231,7 +223,44 @@ DataHubPlugin.init({
 })
 ```
 
-See [Extending the Plugin](../developer-guide/extending/README.md) for detailed documentation on creating custom adapters.
+The adapter object must include both its metadata and its runtime method, such
+as `extract`, `load`, or `apply`. A metadata-only `AdapterDefinition` is not
+executable and is rejected by runtime registration. Each adapter can retain a
+strongly typed configuration object; registration does not require an index
+signature, `any`, or a cast. See
+[Extending the Plugin](../developer-guide/extending/README.md) for detailed
+documentation on creating custom adapters.
+
+### adapterFactories
+
+| | |
+|---|---|
+| Type | `DataHubAdapterFactory[]` |
+| Default | `[]` |
+| Description | Construct executable adapters that depend on Vendure or Nest services |
+
+```typescript
+import { ProductService } from '@vendure/core';
+import {
+    DataHubAdapterFactory,
+    DataHubPlugin,
+} from '@oronts/vendure-data-hub-plugin';
+import { createProductLoader, productLoaderDefinition } from './product-loader';
+
+const productLoaderFactory: DataHubAdapterFactory = {
+    code: productLoaderDefinition.code,
+    definition: productLoaderDefinition,
+    create: injector => createProductLoader({
+        productService: injector.get(ProductService),
+    }),
+};
+
+DataHubPlugin.init({ adapterFactories: [productLoaderFactory] });
+```
+
+The factory `code`, declared definition, and constructed runtime metadata must
+match. Use this path instead of a module-global service locator when an adapter
+needs injected application services.
 
 ### feedGenerators
 
@@ -314,6 +343,10 @@ DataHubPlugin.init({
 | `metrics` | `true` | Boolean |
 | `traces` | `true` | Boolean |
 | `headers` | `{}` | Up to 32 valid HTTP header pairs |
+| `tls.caFile` | Unset | PEM certificate authorities trusted for this collector only |
+| `tls.clientCertificateFile` | Unset | PEM client certificate chain; requires `clientKeyFile` |
+| `tls.clientKeyFile` | Unset | PEM client private key; requires `clientCertificateFile` |
+| `tls.clientKeyPassphrase` | Unset | Optional encrypted client-key passphrase |
 | `serviceName` | `@oronts/vendure-data-hub-plugin` | OpenTelemetry `service.name` |
 | `serviceVersion` | Unset | OpenTelemetry `service.version` |
 | `environment` | Unset | OpenTelemetry `deployment.environment.name` |
@@ -326,7 +359,14 @@ DataHubPlugin.init({
 The endpoint is a base URL; the exporter appends `/v1/metrics` and
 `/v1/traces`. Omit the option or set `enabled: false` for no background
 timer and no telemetry network requests. Header values should come from
-deployment secrets. See
+deployment secrets. Production collectors should use HTTPS with a certificate
+trusted by the Node.js process or configure `tls.caFile` for a collector-scoped
+private CA. Mutual TLS requires both `tls.clientCertificateFile` and
+`tls.clientKeyFile`; an encrypted key can use `tls.clientKeyPassphrase`.
+Certificate verification remains enabled and no process-wide TLS bypass is
+provided. Restrict certificate and key files to the Vendure process account,
+mount the same material in every exporting API and worker, and rotate it using
+the deployment secret manager. See
 [Performance and Scaling](performance.md#otlpopentelemetry-export) for
 cardinality, queue, failure, and data-minimization behavior.
 
@@ -424,6 +464,7 @@ interface CustomImportTemplate {
     icon?: string;            // Supported lucide-react name; unknown names use the UI fallback
     requiredFields: string[];
     optionalFields?: string[];
+    sampleData?: JsonObject[];
     featured?: boolean;
     tags?: string[];
     formats?: string[];       // 'CSV' | 'JSON' | 'XML' | 'API'
@@ -438,43 +479,22 @@ interface CustomImportTemplate {
 }
 ```
 
-#### Including Connector Features
+### connectors
 
-Connectors can ship templates, adapters, and pipeline factories. Pimcore imports use its configuration-aware generated pipelines rather than generic import-wizard cards. Register the configured connector and pass its generated pipelines explicitly. The `connectionCode` must match a saved `GRAPHQL` connection declared in the plugin's `connections` option:
+| | |
+|---|---|
+| Type | `DataHubPluginOptions['connectors']` |
+| Default | `[]` |
+| Description | Register configured connector templates and runtime adapters |
 
-```typescript
-import { DataHubPlugin } from '@oronts/vendure-data-hub-plugin';
-import { PimcoreConnector } from '@oronts/vendure-data-hub-plugin/connectors/pimcore';
-
-const pimcore = PimcoreConnector({
-    connectionCode: 'pimcore-graphql',
-});
-
-DataHubPlugin.init({
-    connectors: [pimcore],
-    pipelines: pimcore.pipelines,
-});
-```
-
-If using `ConnectorRegistry` with multiple connectors:
-
-```typescript
-import { DataHubPlugin } from '@oronts/vendure-data-hub-plugin';
-import { ConnectorRegistry, PimcoreConnector } from '@oronts/vendure-data-hub-plugin/connectors';
-
-const registry = new ConnectorRegistry();
-registry.register(PimcoreConnector, {
-    connectionCode: 'pimcore-graphql',
-});
-
-DataHubPlugin.init({
-    connectors: registry.getConnectors().map(({ connector, config }) => ({
-        definition: connector,
-        config,
-    })),
-    pipelines: registry.getAllPipelines(),
-});
-```
+Connectors can ship templates, adapters, and pipeline factories. Pimcore uses
+configuration-aware generated pipelines; register the configured connector and
+pass its generated pipelines explicitly. The saved connection may be `HTTP`,
+`REST`, or `GRAPHQL` when it defines `baseUrl` and Secret-backed
+authentication. Use the canonical
+[Pimcore connector guide](../../connectors/pimcore/README.md#configuration) for
+the complete registration, schema, query override, credential, and smoke-test
+contract instead of duplicating it here.
 
 ### exportTemplates
 
@@ -575,21 +595,48 @@ Use environment variables in configurations:
 
 ### Redis coordination
 
-`DATAHUB_REDIS_URL` selects Redis for distributed locks and shared incoming
-webhook rate limits. `REDIS_URL` is accepted when the Data Hub-specific variable
-is unset. The webhook limiter uses atomic fixed-window counters with bounded
-connection and command timeouts across API instances.
+Choose one Data Hub Redis discovery mode:
 
-When neither URL is configured, webhook rate limiting remains process-local for
-local development and single-instance deployments. When a URL is configured
+| Variable | Default | Purpose |
+|---|---|---|
+| `DATAHUB_REDIS_URL` | Unset | Standalone `redis://` or `rediss://` URL; `REDIS_URL` is the fallback |
+| `DATAHUB_REDIS_SENTINELS` | Unset | Comma-separated Sentinel `host[:port]` nodes; port defaults to `26379` |
+| `DATAHUB_REDIS_SENTINEL_NAME` | Unset | Required monitored-master name for Sentinel mode |
+| `DATAHUB_REDIS_DB` | `0` | Non-negative database number for Sentinel-discovered data nodes |
+| `DATAHUB_REDIS_USERNAME` | Unset | Optional data-node ACL username |
+| `DATAHUB_REDIS_PASSWORD` | Unset | Optional data-node password |
+| `DATAHUB_REDIS_SENTINEL_USERNAME` | Unset | Optional Sentinel ACL username |
+| `DATAHUB_REDIS_SENTINEL_PASSWORD` | Unset | Optional Sentinel password |
+| `DATAHUB_REDIS_TLS` | `false` | Enable TLS to Sentinel-discovered data nodes |
+| `DATAHUB_REDIS_SENTINEL_TLS` | `false` | Enable TLS to Sentinel nodes |
+
+`DATAHUB_REDIS_URL` and the Sentinel node/name pair are mutually exclusive.
+Sentinel mode takes precedence over the shared `REDIS_URL` fallback. Invalid,
+partial, or duplicate Sentinel settings fail startup. Put credentials in the
+deployment secret manager, configure the same values on every API server and
+worker, and never include credentials in `DATAHUB_REDIS_SENTINELS`.
+
+Redis TLS verifies certificates through the Node.js trust store. Set
+`NODE_EXTRA_CA_CERTS` before the process starts when a private CA must be added;
+do not disable certificate validation. The webhook limiter uses atomic
+fixed-window counters with bounded connection and command timeouts across API
+instances.
+
+When neither discovery mode is configured, webhook rate limiting remains process-local for
+local development and single-instance deployments. When Redis is configured
 but Redis becomes unavailable after startup, incoming webhook admission fails
 closed with `503` instead of silently switching to independent local counters.
 
-The same URL also auto-selects Redis for distributed locks unless
+The same Redis configuration also auto-selects Redis for distributed locks unless
 `DATAHUB_LOCK_BACKEND` selects another valid backend. Redis lock initialization
 is intentionally fail-closed and can prevent application bootstrap. To isolate
 webhook-limiter outages from lock initialization on PostgreSQL, set
 `DATAHUB_LOCK_BACKEND=POSTGRES` explicitly.
+
+This global configuration is used only by distributed locks and incoming
+webhook rate limits. Redis Streams triggers and sinks use their saved connection
+records, including their own host, port, database, authentication, and TLS
+settings; they do not inherit global Sentinel discovery.
 
 ### Server-local output
 

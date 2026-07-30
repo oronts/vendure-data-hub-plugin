@@ -678,7 +678,7 @@ export const validatedProductImport = createPipeline()
             // Allowed values
             { type: 'business', spec: {
                 field: 'status',
-                oneOf: ['active', 'inactive', 'draft'],
+                enum: ['active', 'inactive', 'draft'],
             }},
         ],
     })
@@ -811,7 +811,7 @@ export const fullDataQualityPipeline = createPipeline()
         errorHandlingMode: 'ACCUMULATE',
         rules: [
             { type: 'business', spec: { field: 'fullName', minLength: 3 } },
-            { type: 'business', spec: { field: 'country', oneOf: ['US', 'CA', 'UK', 'DE', 'FR'] } },
+            { type: 'business', spec: { field: 'country', enum: ['US', 'CA', 'UK', 'DE', 'FR'] } },
         ],
     })
 

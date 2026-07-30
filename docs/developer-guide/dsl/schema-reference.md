@@ -226,10 +226,9 @@ The pipeline-level `channel` value is a Vendure channel token, while
 Defines how the pipeline starts.
 
 The public SDK export `TriggerConfig` is an alias of the canonical
-`PipelineTrigger` type. Trigger-specific configuration is nested under
-`schedule`, `webhook`, `message`, and `fileWatch`; `event` contains the exact
-Vendure event class name. `PipelineTrigger` also retains the documented
-top-level schedule and webhook convenience fields.
+`PipelineTrigger` type. Message and file-watch configuration is nested under
+`message` and `fileWatch`; `event` contains the exact Vendure event class name.
+Schedule and webhook fields use the documented top-level form.
 
 ```typescript
 type TriggerConfig = PipelineTrigger;
@@ -237,15 +236,9 @@ type TriggerConfig = PipelineTrigger;
 interface PipelineTrigger {
     type: TriggerType;
     enabled?: boolean;
-    schedule?: ScheduleTriggerConfig;
-    webhook?: WebhookTriggerConfig;
     event?: VendureEventType;
     message?: MessageTriggerConfig;
     fileWatch?: FileWatchTriggerConfig;
-    conditions?: TriggerCondition[];
-    maxRetries?: number;
-    retryDelayMs?: number;
-    timeoutMs?: number;
 
     // Flattened schedule convenience fields
     cron?: string;
@@ -284,9 +277,6 @@ interface ScheduleTriggerConfig {
     cron?: string;
     intervalSec?: number;
     timezone?: string;
-    startTime?: string;
-    endTime?: string;
-    maxConcurrent?: number;
 }
 
 interface WebhookTriggerConfig {
@@ -307,8 +297,6 @@ interface WebhookTriggerConfig {
     requireIdempotencyKey?: boolean;
     idempotencyKeyHeader?: string;
     idempotencyTtlSec?: number;
-    validatePayload?: boolean;
-    payloadSchema?: JsonObject;
 }
 
 interface FileWatchTriggerConfig {
@@ -335,26 +323,10 @@ interface MessageTriggerConfig {
     prefetch?: number;
 }
 
-interface TriggerCondition {
-    field: string;
-    operator: TriggerConditionOperator;
-    value: JsonValue;
-}
-
 type WebhookAuthType = 'NONE' | 'BASIC' | 'API_KEY' | 'HMAC' | 'JWT';
 type HmacAlgorithm = 'SHA256' | 'SHA512';
 type QueueTypeValue = 'RABBITMQ_AMQP' | 'SQS' | 'REDIS_STREAMS' | 'INTERNAL';
 type AckMode = 'MANUAL';
-type TriggerConditionOperator =
-    | 'eq'
-    | 'ne'
-    | 'gt'
-    | 'gte'
-    | 'lt'
-    | 'lte'
-    | 'contains'
-    | 'in'
-    | 'exists';
 
 type VendureEventType =
     | 'ProductEvent'
@@ -392,7 +364,7 @@ interface ExtractStepConfig {
     /** Request headers */
     headers?: Record<string, string>;
     /** Request body */
-    body?: string | JsonObject;
+    body?: JsonObject;
     /** JSON path to extract data */
     dataPath?: string;
     /** Authentication override; secret-backed modes require connectionCode */
@@ -407,8 +379,12 @@ interface ExtractStepConfig {
         /** Basic-auth username Secret Code */
         usernameSecretCode?: string;
     };
-    /** Pagination configuration */
-    pagination?: PaginationConfig;
+    /** Request rate limit, retry policy, and timeout */
+    rateLimit?: RateLimitConfig;
+    retry?: RetryConfig;
+    timeoutMs?: number;
+    /** Extractor-specific pagination configuration */
+    pagination?: PaginationConfig | GraphQLPaginationConfig | DatabasePaginationConfig;
 
     // Uploaded or inline CSV, JSON, XML, and XLSX extractors
     /** Data Hub upload ID */
@@ -430,16 +406,16 @@ interface ExtractStepConfig {
     // Database extractors
     /** SQL query */
     query?: string;
-    /** Database table name */
-    table?: string;
+    /** Parameter values for the database query */
+    parameters?: JsonValue[];
     /** Incremental sync configuration */
-    incremental?: IncrementalConfig;
+    incremental?: DatabaseIncrementalConfig;
 
     // Vendure extractors
     /** Entity type to query */
     entity?: VendureEntityType;
     /** Relations to load */
-    relations?: string;
+    relations?: string[];
     /** Language code for translations */
     languageCode?: string;
     /** Query batch size */
@@ -461,24 +437,24 @@ For `httpApi` and `graphql`, a secret-backed `auth` object requires
 base URL. Relative URLs resolve against that base; absolute URLs and redirects
 must retain its exact origin.
 
-#### PaginationConfig
+#### HTTP PaginationConfig
 
 ```typescript
 interface PaginationConfig {
     /** Pagination type */
-    type: 'PAGE' | 'OFFSET' | 'CURSOR' | 'LINK';
+    type: 'NONE' | 'PAGE' | 'OFFSET' | 'CURSOR' | 'LINK_HEADER';
 
     /** Records per page */
     limit?: number;
-
-    /** Starting page number */
-    startPage?: number;
 
     /** Maximum pages to fetch */
     maxPages?: number;
 
     /** Page parameter name (default: 'page') */
     pageParam?: string;
+
+    /** Page-size parameter name for PAGE pagination (default: 'limit') */
+    pageSizeParam?: string;
 
     /** Limit parameter name (default: 'limit') */
     limitParam?: string;
@@ -492,34 +468,52 @@ interface PaginationConfig {
     /** JSON path to next cursor value */
     cursorPath?: string;
 
-    /** JSON path to next link URL */
-    nextLinkPath?: string;
-
     /** JSON path to has-more indicator */
     hasMorePath?: string;
 }
 ```
 
-#### IncrementalConfig
+`LINK_HEADER` follows the HTTP `Link` response header entry with `rel="next"`.
+
+#### GraphQLPaginationConfig
 
 ```typescript
-interface IncrementalConfig {
-    /** Enable incremental extraction */
-    enabled: boolean;
-
-    /** Field to track (e.g., 'updated_at') */
-    field: string;
-
-    /** Comparison operator */
-    operator?: '>' | '>=' | '<' | '<=';
-
-    /** Initial value for first run */
-    initialValue?: string | number | Date;
-
-    /** Whether to include the checkpoint value in next run */
-    inclusive?: boolean;
+interface GraphQLPaginationConfig {
+    type: 'NONE' | 'OFFSET' | 'CURSOR' | 'RELAY';
+    limit?: number;
+    maxPages?: number;
+    offsetVariable?: string;
+    limitVariable?: string;
+    cursorVariable?: string;
+    pageInfoPath?: string;
+    hasNextPagePath?: string;
+    endCursorPath?: string;
+    totalCountPath?: string;
 }
 ```
+
+#### Database Pagination and Incremental Config
+
+```typescript
+interface DatabasePaginationConfig {
+    enabled: boolean;
+    type: 'OFFSET' | 'CURSOR';
+    pageSize: number;
+    cursorColumn?: string;
+    cursorTieBreakerColumn?: string;
+    maxPages?: number;
+}
+
+interface DatabaseIncrementalConfig {
+    enabled: boolean;
+    column: string;
+}
+```
+
+Incremental extraction requires enabled `CURSOR` pagination. Its `column` must
+match `cursorColumn`, and `cursorTieBreakerColumn` must be a different, unique,
+stable column. The runtime checkpoints both values so a bounded run cannot skip
+rows that share the same incremental value.
 
 ### Transform Step
 
@@ -588,6 +582,9 @@ interface ValidateStepConfig {
 
     /** Throughput configuration */
     throughput?: Throughput;
+
+    /** Immutable registry schema validated before inline business rules */
+    schemaRef?: { schemaId: string; version: string };
 }
 ```
 
@@ -595,8 +592,8 @@ interface ValidateStepConfig {
 
 ```typescript
 interface ValidationRuleConfig {
-    /** Rule type */
-    type: 'business' | 'schema' | 'ref';
+    /** Inline field rule */
+    type: 'business';
 
     /** Rule specification */
     spec: {
@@ -626,6 +623,9 @@ interface ValidationRuleConfig {
     };
 }
 ```
+
+Registry schema validation is configured with `ValidateStepConfig.schemaRef`.
+Inline `rules` only describe field-level business rules.
 
 ### Enrich Step
 
@@ -685,7 +685,7 @@ interface RouteStepConfig {
     /** Route branches */
     branches: RouteBranchConfig[];
 
-    /** Default branch for unmatched records */
+    /** Target step key for unmatched records; requires a matching edge */
     defaultTo?: string;
 }
 ```
@@ -741,8 +741,11 @@ interface LoadStepConfig {
     /** Channel for operation */
     channel?: string;
 
-    /** Channel handling strategy */
+    /** Channel handling strategy; emitted as per-step execution context */
     channelStrategy?: 'EXPLICIT' | 'INHERIT' | 'MULTI';
+
+    /** Vendure channel IDs for EXPLICIT or MULTI execution */
+    channelIds?: string[];
 
     /** Validation mode */
     validationMode?: 'STRICT' | 'LENIENT';
@@ -1328,11 +1331,6 @@ const pipeline = createPipeline()
             type: 'PAGE',
             limit: 100,
             maxPages: 50,
-        },
-        incremental: {
-            enabled: true,
-            field: 'updated_at',
-            operator: '>',
         },
     })
 

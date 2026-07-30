@@ -20,7 +20,7 @@ enabled and published. Saving a draft definition does not activate it.
 ## Manual Triggers
 
 Run a published pipeline with the Dashboard **Run** action or the Admin API
-`runDataHubPipeline` mutation:
+`startDataHubPipelineRun` mutation:
 
 ```ts
 .trigger('start', { type: 'MANUAL' })
@@ -209,6 +209,12 @@ worker leases each row, reconstructs its channel, creates an idempotent run from
 that immutable revision, and waits for the run queue to accept it. Production
 workers need a persistent Vendure job queue and must consume both
 `data-hub.event-trigger-outbox` and `data-hub.run`.
+
+The run queue also reconstructs a permission-bearing Vendure context. Manual
+runs retain their initiating user; automated runs use the revision publisher.
+Current roles and channel assignments are reloaded when the worker starts the
+run, so deleting the user or revoking access prevents execution. Code-first
+pipelines without a stored actor use the configured Vendure superadmin account.
 
 See Vendure's [EventBus reference](https://docs.vendure.io/current/core/reference/typescript-api/events/event-bus)
 for the underlying event model.

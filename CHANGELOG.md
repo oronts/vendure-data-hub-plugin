@@ -23,6 +23,9 @@ All notable changes to the Data Hub Plugin are documented here.
 - Durable per-run gate deadlines with bounded leased timeout processing and
   exact-gate concurrency protection. Host applications must add the documented
   nullable run columns and indexes before enabling timeout gates.
+- Docker acceptance commands for multi-process Redis coordination, real OTLP
+  Collector outage recovery, and S3/FTP/SFTP/PostgreSQL/MySQL transport
+  contracts. These local services do not replace target-environment sign-off.
 
 ### Fixed
 - Incoming webhook authentication, raw-body HMAC verification, durable idempotency, pre-authentication rate limiting, and JWT expiration/issuer/audience checks
@@ -48,6 +51,10 @@ All notable changes to the Data Hub Plugin are documented here.
 - Removed obsolete subscription APIs, duplicate file extractors, unsafe transform registries, legacy trigger aliases, and inert trigger options
 - Code-first connections now expose only persisted fields
 - Documentation and examples were aligned with implemented triggers, destinations, Secret Codes, migrations, middleware, and SDK contracts
+- Host applications must generate, review, rehearse, and apply the complete
+  driver-specific 0.1.7 migration described in
+  [the migration guide](docs/deployment/migrations.md); the change is broader
+  than the newly introduced feed and destination tables.
 - Replaced the inert `multiJoin.rightDataPath` contract with explicit inline
   `rightData` and documented the required configuration upgrade
 

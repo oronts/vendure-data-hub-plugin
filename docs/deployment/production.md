@@ -26,6 +26,8 @@ Best practices for deploying Data Hub in production.
 - [ ] Database indexes verified
 - [ ] Log aggregation set up
 - [ ] Monitoring and alerting configured
+- [ ] Shared Redis, OTLP, storage, and remote-system topology rehearsed where configured
+- [ ] Database and artifact-storage restore drill completed with recorded RPO/RTO
 
 ## Environment Variables
 
@@ -138,6 +140,12 @@ connection or pipeline configuration.
 
 ### Worker Script
 
+Data Hub follows Vendure's scheduler process ownership. With Vendure's default
+`schedulerOptions.runTasksInWorkerOnly: true`, scheduled pipeline discovery and
+triggering run in the worker process. A single-process deployment must set
+`runTasksInWorkerOnly: false` explicitly; do not start schedule polling in both
+API and worker roles.
+
 ```typescript
 // worker.ts
 import { bootstrapWorker, Logger } from '@vendure/core';
@@ -183,7 +191,6 @@ connections:
     databaseType: 'POSTGRESQL',
     query: 'SELECT * FROM products ORDER BY id',
     pool: {
-        min: 1,
         max: 5,
     },
 })
@@ -272,11 +279,12 @@ and infrastructure monitoring. Example signals are:
 
 ### Health Checks
 
-Vendure servers expose `/health` and can be extended through
-`HealthCheckRegistryService`. Vendure workers expose `/health` after
-`startHealthCheckServer()` is called, as in the worker example above. Data Hub
-does not register a separate `DataHubHealthService` or plugin-specific health
-endpoint.
+Vendure servers expose `/health`. Add deployment-critical dependencies through
+`systemOptions.healthChecks` with Vendure `HealthCheckStrategy` implementations;
+when replacing that array, retain `TypeORMHealthCheckStrategy`. Vendure workers
+expose `/health` after `startHealthCheckServer()` is called, as in the worker
+example above. Data Hub does not register a separate `DataHubHealthService` or
+plugin-specific health endpoint.
 
 Use authenticated Admin API checks for `dataHubQueueStats`, representative run
 queries, and message-consumer status when deeper readiness evidence is needed.
@@ -295,19 +303,69 @@ Set up alerts for:
 
 ## Backup and Recovery
 
-### Data to Backup
+Treat the host database, persistent artifact storage, application build, and
+secret material as one recovery unit.
 
-- Pipeline definitions (if not code-first)
-- Connection configurations
-- Secret metadata (not values)
-- Run history (optional)
+### Required recovery material
 
-### Recovery Procedures
+- a consistent backup or snapshot of the complete Vendure database, including
+  Data Hub definitions, revisions, runs, logs, checkpoints, record errors,
+  settings, connections, encrypted INLINE secret values, outboxes, deliveries,
+  destinations, feeds, and schema registry rows;
+- the exact application artifact, plugin and Vendure versions, configuration,
+  lockfile, and reviewed host migrations used by that database;
+- `DATAHUB_MASTER_KEY`, environment-backed secret values, and external secret
+  provider configuration stored separately from the database backup;
+- the persistent local or object-storage state used for uploads, exports, feed
+  artifacts, and other Data Hub files; and
+- the queue-backend recovery material required by the selected Vendure job
+  queue strategy.
 
-1. **Code-first pipelines**: Automatically restored from code
-2. **UI-created pipelines**: Restore from database backup
-3. **Secrets**: Recreate from secure storage
-4. **Connections**: Recreate from documentation
+A definition export is a useful secondary aid, but it is not a backup. Code-first
+configuration also does not reconstruct revision history, active run state,
+checkpoints, encrypted database values, or delivery outboxes.
+
+### Recovery procedure
+
+1. Quiesce API servers, workers, schedules, webhooks, event producers, file
+   watchers, and message consumers before taking or restoring a coordinated
+   recovery point.
+2. Restore database and persistent artifact storage to the same logical point.
+   A rewound checkpoint can replay a remote read or pending move/delete intent;
+   compare restored checkpoint state with the remote system before re-enabling
+   sources.
+3. Deploy the matching application artifact, configuration, lockfile, reviewed
+   migrations, master key, and secret-provider values.
+4. Start one controlled API/worker pair first. Verify decryption, migration
+   state, channel ownership, queue state, artifact reads, and representative
+   authenticated queries.
+5. Reconcile nonterminal runs, outbox rows, remote pending intents, and job
+   queues before scaling out or re-enabling producers.
+6. Run one controlled end-to-end pipeline per critical integration, then record
+   actual recovery time and recovered data point against the deployment RTO/RPO.
+
+Do not routinely recreate database connections or INLINE secrets from
+documentation after a restore; restoring the database and the matching master
+key preserves them. ENV-backed secret values still come from the external
+secret store and are never contained in the database.
+
+## Target-Environment Sign-Off
+
+Repository acceptance tests prove code paths against disposable local services;
+they do not certify a customer's network, credentials, HA topology, or remote
+product configuration. Record an owner, endpoint/topology, CA and key source,
+credential rotation plan, allowlist/firewall rule, expected volume, timeout and
+retry policy, failover scenario, evidence timestamp, rollback trigger, and
+pass/fail result for every configured dependency.
+
+| Dependency | Repository evidence | Required production evidence |
+| --- | --- | --- |
+| PostgreSQL/MySQL extractor | Disposable mTLS query, active-session proof, untrusted CA/hostname/client-cert rejection, and PostgreSQL new-install migration apply/revert | Target TLS/CA or mTLS, least privilege, query plan, stable failover DNS/proxy, timeout, upgrade from the actual prior schema, and recovery |
+| Redis | Atomic counters, locks, Streams, process crash, outage/reconnect against one server, and controlled Sentinel promotion with old-node loss | Automatic primary-loss election or managed failover in the target topology, persistence policy, split-brain controls, promotion time, and accepted data-loss behavior |
+| OTLP | Real Collector metrics/traces export and outage recovery | Target collector authentication, TLS, capacity, retention, alert routing, and collector/egress failure |
+| S3 | MinIO object round trip and signed URL | Target AWS/S3-compatible IAM, region, HTTPS/CA, bucket policy, encryption, large-object, and interruption behavior |
+| FTP/FTPS/SFTP | FTP and password-SFTP round trip with SFTP host-key pinning | FTPS certificate validation where used, private-key/passphrase rotation, firewall/passive ports, transfer interruption, and reconnect |
+| Pimcore | Synthetic local HTTP server covering authentication headers, pagination, retry, and checkpoint contracts | Active target Data Hub GraphQL configuration, supported Pimcore/schema version, real auth, deterministic pagination, rate limiting, and representative data |
 
 ## Scaling
 
@@ -319,23 +377,41 @@ jobs across multiple processes when a shared lock backend is configured:
 **Distributed Locking:**
 
 ```bash
-# Option 1: Redis
+# Option 1a: standalone or managed Redis endpoint
 DATAHUB_REDIS_URL=redis://redis.production.internal:6379
 
-# Option 2: Force PostgreSQL (no additional infrastructure)
+# Option 1b: Redis Sentinel discovery
+DATAHUB_REDIS_SENTINELS=redis-sentinel-1.internal:26379,redis-sentinel-2.internal:26379,redis-sentinel-3.internal:26379
+DATAHUB_REDIS_SENTINEL_NAME=vendure-primary
+DATAHUB_REDIS_TLS=true
+DATAHUB_REDIS_SENTINEL_TLS=true
+
+# Option 2: force PostgreSQL (no additional infrastructure)
 DATAHUB_LOCK_BACKEND=postgres
 ```
 
-The Redis URL also enables atomic shared rate-limit counters for incoming
-webhooks. Without a Redis URL, those counters are process-local. If Redis
+Provide Sentinel and data-node ACL credentials through the deployment secret
+manager when the target requires them. TLS uses the Node.js trust store; add a
+private CA with `NODE_EXTRA_CA_CERTS` before startup. Use the same discovery,
+database, TLS, and authentication settings on every API server and worker.
+
+Either Redis discovery mode also enables atomic shared rate-limit counters for
+incoming webhooks. Without Redis, those counters are process-local. If Redis
 becomes unavailable after startup, webhook admission fails closed with `503`;
 the limiter never weakens itself to per-process counters in a multi-instance
 deployment.
 
-A configured Redis URL also auto-selects Redis for distributed locks unless a
+A configured Redis topology also auto-selects Redis for distributed locks unless a
 different valid backend is forced. Redis lock initialization is fail-closed, so
 an unavailable lock backend can prevent application bootstrap. On PostgreSQL,
 set `DATAHUB_LOCK_BACKEND=POSTGRES` to keep locking independent of Redis.
+
+The repository proves a supported controlled Sentinel promotion followed by
+loss of the original node. Before production sign-off, force an unplanned
+primary failure in the actual target topology and record election time,
+application reconnect time, surviving lock/quota state, and the target's
+persistence/data-loss result. Global Sentinel settings do not configure Redis
+Streams; each Streams trigger or sink uses its saved connection.
 
 **What's Protected:**
 - **Scheduled Triggers** - Only one instance executes each schedule
@@ -395,7 +471,7 @@ Limit aggregate loader batch starts across the pipeline run:
 
 ```typescript
 .load('write-products', {
-    adapterCode: 'product',
+    adapterCode: 'productUpsert',
     throughput: {
         rateLimitRps: 10,
     },

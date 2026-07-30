@@ -57,6 +57,7 @@ createPipeline()
     channel: '__default_channel__', // Vendure channel token
     contentLanguage: 'en',
     channelStrategy: 'EXPLICIT',  // 'EXPLICIT' | 'INHERIT' | 'MULTI'
+    channelIds: ['2'],            // Vendure channel IDs
     validationMode: 'STRICT',     // 'STRICT' | 'LENIENT'
 })
 .capabilities({
@@ -447,6 +448,7 @@ Split data flow based on conditions:
 ```typescript
 .route('step-key', {
     branches: RouteBranchConfig[],
+    /** Target step key for unmatched records; a matching edge is required. */
     defaultTo?: string,
 })
 ```
@@ -478,6 +480,7 @@ Create or update Vendure entities:
     strategy?: 'CREATE' | 'UPDATE' | 'UPSERT' | 'MERGE' | 'SOFT_DELETE' | 'HARD_DELETE',
     channel?: string,
     channelStrategy?: 'EXPLICIT' | 'INHERIT' | 'MULTI',
+    channelIds?: string[],
     validationMode?: ValidationMode,
     nameField?: string,
     slugField?: string,
@@ -695,7 +698,7 @@ Connect steps:
 ```typescript
 .edge('route', 'process-electronics', 'electronics')
 .edge('route', 'process-clothing', 'clothing')
-.edge('route', 'process-other')  // Default branch
+.edge('route', 'process-other', 'default')
 ```
 
 ### build

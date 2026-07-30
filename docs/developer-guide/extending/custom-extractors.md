@@ -31,12 +31,16 @@ interface BatchExtractorAdapter<TConfig = JsonObject> extends BaseAdapter<TConfi
 interface ExtractContext {
     ctx: RequestContext;
     pipelineId: ID;
+    runId: ID;
     stepKey: string;
     checkpoint: PipelineCheckpoint;
+    sourceRecords?: readonly JsonObject[];
     secrets: SecretResolver;
     connections: ConnectionResolver;
     logger: AdapterLogger;
+    dryRun: boolean;
     setCheckpoint(data: JsonObject): void;
+    isCancelled(): Promise<boolean>;
 }
 
 interface RecordEnvelope {
@@ -48,6 +52,9 @@ interface RecordEnvelope {
 Batch extractors must implement `preview()` and apply `limit` at the source.
 Registration fails when a batch extractor exposes only `extractAll()`, because
 running the full batch and slicing afterward would not be a bounded preview.
+Use a streaming extractor for large or unbounded sources. `extractAll()` is for
+intrinsically bounded sources because its result is materialized before the next
+pipeline step can run.
 
 ## Basic Example
 
@@ -90,6 +97,7 @@ export class MyApiExtractor implements ExtractorAdapter<MyApiConfig> {
         let hasMore = true;
 
         while (hasMore) {
+            if (await context.isCancelled()) return;
             const response = await fetch(`${apiUrl}?page=${page}&limit=${pageSize}`, {
                 headers: { 'X-API-Key': apiKey },
             });
@@ -177,14 +185,24 @@ The context provides pipeline runtime information and services:
 interface ExtractContext {
     ctx: RequestContext;            // Vendure request context
     pipelineId: ID;                 // Current pipeline ID
+    runId: ID;                      // Current run ID
     stepKey: string;                // Current step key
     checkpoint: PipelineCheckpoint; // Resume data
+    sourceRecords?: readonly JsonObject[]; // Trigger-provided source references
     secrets: SecretResolver;        // Resolve secret values
     connections: ConnectionResolver; // Resolve connections
     logger: AdapterLogger;          // Logging
+    dryRun: boolean;                // Bounded preview/test execution
     setCheckpoint(data: JsonObject): void;  // Save progress
+    isCancelled(): Promise<boolean>;        // Cooperative run cancellation
 }
 ```
+
+Long-running adapters should call `isCancelled()` between remote pages or
+batches and return without staging a later checkpoint when it becomes true.
+Cancellation is cooperative: the runtime cannot interrupt an arbitrary pending
+network call owned by an adapter, so adapters should also apply their own
+request timeout or abort policy.
 
 ### Using Checkpoints
 

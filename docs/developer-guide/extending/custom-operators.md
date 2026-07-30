@@ -281,10 +281,12 @@ export const httpLookupOperator: SingleRecordOperator<HttpLookupConfig> = {
         const lookupUrl = url.replace('{{value}}', String(value));
 
         const response = await fetch(lookupUrl);
-        const data = await response.json();
+        const data: unknown = await response.json();
 
         const result = resultPath.split('.').reduce(
-            (obj, key) => (obj as any)?.[key],
+            (value: unknown, key) => value !== null && typeof value === 'object'
+                ? Reflect.get(value, key)
+                : undefined,
             data,
         );
 
@@ -442,9 +444,9 @@ export const arrayFilterOperator: SingleRecordOperator<ArrayFilterConfig> = {
 
         if (!Array.isArray(array)) return record;
 
-        const filtered = array.filter(item =>
-            (item as any)[filterField] === filterValue
-        );
+        const filtered = array.filter(item => item !== null
+            && typeof item === 'object'
+            && Reflect.get(item, filterField) === filterValue);
 
         const result = { ...record };
         helpers.set(result, source, filtered);
@@ -457,15 +459,31 @@ export const arrayFilterOperator: SingleRecordOperator<ArrayFilterConfig> = {
 
 ```typescript
 import { describe, it, expect } from 'vitest';
+import type { AdapterOperatorHelpers, JsonObject } from '@oronts/vendure-data-hub-plugin';
 import { slugGeneratorOperator } from './slug-generator.operator';
 
-const mockHelpers = {
-    get: (record: any, path: string) => path.split('.').reduce((obj, key) => obj?.[key], record),
-    set: (record: any, path: string, value: any) => {
+const mockHelpers: AdapterOperatorHelpers = {
+    get: (record: JsonObject, path: string) => path.split('.').reduce<unknown>(
+        (value, key) => value !== null && typeof value === 'object'
+            ? Reflect.get(value, key)
+            : undefined,
+        record,
+    ),
+    set: (record: JsonObject, path: string, value: unknown) => {
         const keys = path.split('.');
         const last = keys.pop()!;
-        const target = keys.reduce((obj, key) => obj[key] ??= {}, record);
-        target[last] = value;
+        let target: object = record;
+        for (const key of keys) {
+            const current = Reflect.get(target, key);
+            if (current !== null && typeof current === 'object') {
+                target = current;
+                continue;
+            }
+            const nested: Record<string, unknown> = {};
+            Reflect.set(target, key, nested);
+            target = nested;
+        }
+        Reflect.set(target, last, value);
     },
 };
 

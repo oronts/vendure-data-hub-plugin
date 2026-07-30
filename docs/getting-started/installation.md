@@ -41,7 +41,9 @@ Production installations must keep TypeORM synchronization disabled. See the
 2. Open the Admin UI
 3. Look for "Data Hub" in the left navigation menu
 
-If you see the Data Hub menu item, the plugin is installed correctly.
+Seeing the Data Hub menu confirms that the dashboard extension loaded. Also
+verify the host migration, authenticated Admin API, worker queues, and one
+representative pipeline before treating the installation as operational.
 
 ## Configuration Options
 
@@ -236,25 +238,12 @@ The plugin ships with built-in templates for common scenarios (CSV imports, API 
 
 ### Connector Pipelines
 
-Pimcore imports use configuration-aware generated pipelines rather than generic import-wizard cards. Register the configured connector and add its explicit pipeline list. The `connectionCode` must match a saved `GRAPHQL` connection declared in the plugin's `connections` option:
-
-```typescript
-import { DataHubPlugin } from '@oronts/vendure-data-hub-plugin';
-import { PimcoreConnector } from '@oronts/vendure-data-hub-plugin/connectors/pimcore';
-
-const pimcore = PimcoreConnector({
-    connectionCode: 'pimcore-graphql',
-});
-
-DataHubPlugin.init({
-    connectors: [pimcore],
-    pipelines: pimcore.pipelines,
-});
-```
-
-This registers the Pimcore runtime extractor, its enabled generated import
-pipelines (Product, Category, and Asset Sync), and one export template.
-Connector registration never persists pipelines implicitly.
+Pimcore uses configuration-aware generated pipelines rather than generic
+import-wizard cards. Its `connectionCode` may reference a saved `HTTP`, `REST`,
+or `GRAPHQL` connection with `baseUrl`; authentication remains Secret-backed.
+Follow the canonical [Pimcore connector setup](../../connectors/pimcore/README.md#configuration)
+for registration, schema mapping, endpoint verification, and generated
+pipelines. Connector registration never persists pipelines implicitly.
 
 ## Pipeline Scripts
 

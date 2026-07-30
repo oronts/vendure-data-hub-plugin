@@ -208,12 +208,18 @@ export const config: VendureConfig = {
 | `pipelines` | `CodeFirstPipeline[]` | `[]` | Define pipelines in code |
 | `secrets` | `CodeFirstSecret[]` | `[]` | Define secrets in code |
 | `connections` | `CodeFirstConnection[]` | `[]` | Define connections in code |
-| `adapters` | `AdapterDefinition[]` | `[]` | Register custom adapters |
+| `adapters` | `DataHubAdapter[]` | `[]` | Register executable custom adapters |
+| `adapterFactories` | `DataHubAdapterFactory[]` | `[]` | Construct adapters that need Vendure or Nest services |
 | `feedGenerators` | `CustomFeedGenerator[]` | `[]` | Register custom feed generators |
+| `connectors` | `DataHubPluginOptions['connectors']` | `[]` | Register connector templates and runtime adapters |
+| `importTemplates` | `CustomImportTemplate[]` | `[]` | Extend the import wizard |
+| `exportTemplates` | `CustomExportTemplate[]` | `[]` | Extend the export wizard |
+| `scripts` | `Record<string, ScriptFunction>` | - | Register named hook functions |
 | `configPath` | `string` | - | Path to external configuration file |
 | `runtime` | `RuntimeLimitsConfig` | - | Circuit-breaker, scheduler, and event-trigger timing overrides |
 | `security` | `SecurityConfig` | - | SSRF and script execution controls |
 | `telemetry` | `OtlpTelemetryConfig` | - | Optional OTLP/HTTP JSON export for process-local metrics and completed spans |
+| `notifications` | `{ smtp?: NotificationSmtpConfig }` | - | Configure gate-notification email delivery |
 | `debug` | `boolean` | `false` | Enable debug logging |
 
 ### OpenTelemetry export
@@ -236,6 +242,9 @@ DataHubPlugin.init({
             headers: process.env.OTEL_EXPORTER_OTLP_API_KEY
                 ? { 'x-api-key': process.env.OTEL_EXPORTER_OTLP_API_KEY }
                 : undefined,
+            tls: process.env.OTEL_EXPORTER_OTLP_CERTIFICATE ? {
+                caFile: process.env.OTEL_EXPORTER_OTLP_CERTIFICATE,
+            } : undefined,
         },
     } : {}),
 })
@@ -248,6 +257,9 @@ Pipeline execution never waits for collector I/O. Trace attributes use a fixed o
 payloads, configuration objects, user identifiers, secrets, error messages,
 and stacks are not exported. Metrics are cumulative and process-local, so
 configure every API and worker process that should be observed.
+For a private collector CA, set `telemetry.tls.caFile`. Mutual TLS additionally
+uses `clientCertificateFile` and `clientKeyFile`; certificate verification
+cannot be disabled through plugin options.
 
 ### Local output storage
 
@@ -900,7 +912,7 @@ Common patterns:
 **Security Features:**
 - Timing-safe comparison for all credential checks
 - Durable, conflict-detecting idempotency per pipeline and trigger
-- Atomic Redis fixed-window rate limiting by IP and pipeline when `DATAHUB_REDIS_URL` or `REDIS_URL` is configured; otherwise a clearly single-instance process-local fallback
+- Atomic Redis fixed-window rate limiting by IP and pipeline with standalone URL or Sentinel discovery; otherwise a clearly single-instance process-local fallback
 - JWT HS256 signature verification with a required valid `exp`; optional `nbf` and `iat` are validated, and configured `jwtIssuer`/`jwtAudience` claims are enforced
 
 ### Event Trigger

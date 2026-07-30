@@ -407,8 +407,8 @@ Fetch and parse files from S3-compatible storage (AWS S3, MinIO, DigitalOcean Sp
 | `maxObjects` | number | No | Maximum objects per run; default: 100 |
 | `includeObjectMetadata` | boolean | No | Add bucket/key/size/etag/last-modified data under `_s3` |
 | `continueOnError` | boolean | No | Continue after an object parse/processing failure; default: `true` |
-| `deleteAfterProcess` | boolean | No | Delete each successfully processed source object |
-| `moveAfterProcess.enabled` | boolean | No | Copy successfully processed objects to another prefix, then delete the source |
+| `deleteAfterProcess` | boolean | No | Delete processed source objects after the pipeline run completes successfully |
+| `moveAfterProcess.enabled` | boolean | No | Move processed source objects after the pipeline run completes successfully |
 | `moveAfterProcess.destinationPrefix` | string | Conditional | Required when move-after-process is enabled |
 
 ### Example
@@ -434,6 +434,13 @@ the AWS SDK credential chain is used. The extractor lists objects under
 `prefix`; it does not accept a single-object `key` field. Use a narrow
 `prefix` plus `suffix`, or a file-watch trigger, to select source objects.
 
+Delete and move operations are staged in the durable pipeline checkpoint and
+run only after the associated pipeline run is persisted as `COMPLETED`.
+Failed, cancelled, and paused runs never make their staged operations eligible.
+If the remote operation or checkpoint cleanup fails, it stays pending and is
+retried before the next execution of the same pipeline. There is no independent
+background retry, so a later manual or scheduled execution is required.
+
 ---
 
 ## FTP/SFTP Extractor
@@ -458,8 +465,8 @@ Fetch and parse files from FTP or SFTP servers.
 | `remotePath` | string | Yes | Remote directory path |
 | `filePattern` | string | No | File name pattern (e.g., `*.csv`, `products-*.json`) |
 | `format` | select | No | File format: CSV, JSON, XML, XLSX (auto-detected if not specified) |
-| `deleteAfterProcess` | boolean | No | Delete files after processing |
-| `moveAfterProcess.enabled` | boolean | No | Move successfully processed files to another directory |
+| `deleteAfterProcess` | boolean | No | Delete files after the pipeline run completes successfully |
+| `moveAfterProcess.enabled` | boolean | No | Move files after the pipeline run completes successfully |
 | `moveAfterProcess.destinationPath` | string | Conditional | Required when move-after-process is enabled |
 | `modifiedAfter` | string | No | Only process files modified after this date |
 | `maxFiles` | number | No | Maximum files per run; default: 50 |
@@ -496,6 +503,13 @@ Fetch and parse files from FTP or SFTP servers.
 })
 ```
 
+Delete and move operations are staged in the durable pipeline checkpoint and
+run only after the associated pipeline run is persisted as `COMPLETED`.
+Failed, cancelled, and paused runs never make their staged operations eligible.
+If the remote operation or checkpoint cleanup fails, it stays pending and is
+retried before the next execution of the same pipeline. There is no independent
+background retry, so a later manual or scheduled execution is required.
+
 ---
 
 SFTP connections in production require `hostKeyFingerprintSecretCode`. The referenced secret must contain the trusted server host-key fingerprint in OpenSSH `SHA256:<base64>` format; a missing value or mismatch rejects the SSH handshake.
@@ -519,9 +533,12 @@ the complete supported database-type values.
 | `database` | string | Conditional | Database name, or a SQLite file path/`:memory:` |
 | `username` | string | No | Database username |
 | `passwordSecretCode` | string | No | Secret Code for the password |
-| `connectionStringSecretCode` | string | No | Secret Code for a connection string instead of host fields |
+| `connectionStringSecretCode` | string | No | Secret Code for a complete `postgres://`, `postgresql://`, or `mysql://` TCP URI instead of host fields |
 | `ssl.enabled` | boolean | No | Enable TLS for PostgreSQL/MySQL |
 | `ssl.rejectUnauthorized` | boolean | No | Verify the server certificate; default: `true` |
+| `ssl.caSecretCode` | string | No | Secret Code containing a trusted CA certificate |
+| `ssl.certSecretCode` | string | No | Secret Code containing the client certificate for mutual TLS; requires `ssl.keySecretCode` |
+| `ssl.keySecretCode` | string | No | Secret Code containing the client private key for mutual TLS; requires `ssl.certSecretCode` |
 | `query` | string | Yes | Query must begin with `SELECT`; dangerous patterns and SQL comments are rejected |
 | `parameters` | array | No | Positional query parameters (`$1` for PostgreSQL, `?` for MySQL/SQLite) |
 | `pagination.enabled` | boolean | No | Enable runtime query wrapping and pagination |
@@ -530,11 +547,23 @@ the complete supported database-type values.
 | `pagination.cursorColumn` | string | Conditional | Required for `CURSOR`; primary sort column and may contain repeated values |
 | `pagination.cursorTieBreakerColumn` | string | Conditional | Required for `CURSOR`; different, unique, stable column used to order equal cursor values |
 | `pagination.maxPages` | number | No | Safety limit for pages per run |
-| `incremental.enabled` | boolean | No | Append a greater-than filter using the saved checkpoint |
-| `incremental.column` | string | Conditional | Required when incremental extraction is enabled |
+| `incremental.enabled` | boolean | No | Resume from the exact composite cursor saved by the previous run; requires cursor pagination |
+| `incremental.column` | string | Conditional | Required when incremental extraction is enabled and must equal `pagination.cursorColumn` |
 | `queryTimeoutMs` | number | No | PostgreSQL/MySQL query timeout from 1 to 300000 milliseconds; unsupported for SQLite |
 | `pool.max` | number | No | Maximum PostgreSQL/MySQL connections in the extractor pool (1-10; default: 10) |
 | `pool.idleTimeoutMs` | number | No | Close idle PostgreSQL/MySQL connections after 1-300000 milliseconds (default: 30000) |
+
+Database connection strings must contain one TCP hostname and database name.
+Query parameters, fragments, Unix sockets, libpq keyword/value strings, and
+multi-host DSNs are rejected. Configure TLS through the `ssl` fields. Every
+PostgreSQL/MySQL pool connection resolves through the global outbound-host
+policy and uses a fresh socket pinned to the approved address; exact private
+database hosts must be listed in `security.allowedHostnames`. MySQL TLS also
+verifies that the certificate identity matches the configured hostname.
+Configured TLS secrets must resolve before a pool is created. Client certificate
+and key Secret Codes must be configured together.
+Verified PostgreSQL/MySQL TLS therefore requires a DNS hostname; a literal IP
+is accepted only when `ssl.rejectUnauthorized` is explicitly disabled.
 
 ### Example
 
@@ -547,8 +576,10 @@ the complete supported database-type values.
     parameters: [true],
     pagination: {
         enabled: true,
-        type: 'OFFSET',
+        type: 'CURSOR',
         pageSize: 1000,
+        cursorColumn: 'updated_at',
+        cursorTieBreakerColumn: 'id',
         maxPages: 100,
     },
     incremental: {
@@ -558,7 +589,9 @@ the complete supported database-type values.
 })
 ```
 
-Cursor pagination uses a composite keyset and requires both columns. For
+Cursor pagination uses a composite keyset and requires both columns. Incremental
+mode also requires cursor pagination, requires `incremental.column` to match the
+cursor column, and checkpoints both boundary values. For
 example, use `updated_at` as `cursorColumn` and the primary key `id` as
 `cursorTieBreakerColumn`. Both boundary values must be non-null. The extractor
 orders by both fields and resumes after the exact pair, so records sharing the

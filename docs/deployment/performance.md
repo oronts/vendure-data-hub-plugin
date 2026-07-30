@@ -19,19 +19,25 @@ Optimize Data Hub for high-throughput data processing and large-scale operations
 
 Data Hub processes data through a multi-stage pipeline with configurable performance characteristics:
 
-### Typical Performance Metrics
+### Establish a deployment baseline
 
-| Operation | Records/Second | Notes |
-|-----------|----------------|-------|
-| File Extraction (CSV) | 10,000-50,000 | Depends on file size, parsing complexity |
-| HTTP API Extraction | 100-1,000 | Limited by rate limits, pagination |
-| Database Extraction | 5,000-20,000 | Depends on query complexity, indexes |
-| Transform Operations | 50,000-200,000 | Pure operations are fastest |
-| Validation | 20,000-100,000 | Schema validation is slowest |
-| Product Upsert | 50-200 | Vendure entity complexity, relations |
-| Variant Upsert | 100-500 | Simpler than products |
-| Customer Upsert | 200-800 | Moderate complexity |
-| Search Indexing | 1,000-10,000 | Bulk operations are efficient |
+There is no portable records-per-second baseline. Results change with record
+shape, adapter configuration, Vendure relations, database indexes, external
+latency, worker count, CPU, memory, and concurrent storefront load. Treat any
+number measured on a developer machine as local diagnostic evidence only.
+
+Benchmark the exact published pipeline and release artifact against
+production-like data and infrastructure. Record at least:
+
+- commit/package and Vendure versions;
+- CPU, memory, Node.js version, worker count, and database topology;
+- record count and representative payload-size distribution;
+- warm-up policy, sample count, median, p95, variance, failures, and retries;
+- queue wait time separately from execution time; and
+- database, remote-service, network, and memory saturation during the run.
+
+Repeat the same workload before and after a release. Set capacity and alert
+thresholds from that measured baseline, not from an undocumented generic range.
 
 ### Performance Factors
 
@@ -314,22 +320,26 @@ export const config: VendureConfig = {
 .extract('fetch-updates', {
     adapterCode: 'database',
     connectionCode: 'erp-db',
-    query: 'SELECT * FROM products WHERE updated_at > :checkpoint',
+    databaseType: 'POSTGRESQL',
+    query: 'SELECT id, sku, updated_at FROM products',
     incremental: {
         enabled: true,
         column: 'updated_at',
-        type: 'timestamp',
     },
     pagination: {
         enabled: true,
-        type: 'OFFSET',
+        type: 'CURSOR',
         pageSize: 1000,
+        cursorColumn: 'updated_at',
+        cursorTieBreakerColumn: 'id',
     },
 })
 
 // Use indexed columns in WHERE clauses
 .extract('fetch-products', {
     adapterCode: 'database',
+    connectionCode: 'erp-db',
+    databaseType: 'POSTGRESQL',
     query: `
         SELECT * FROM products
         WHERE status = 'active'  -- indexed
@@ -563,6 +573,9 @@ const otlpEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
 if (!otlpEndpoint) {
     throw new Error('OTEL_EXPORTER_OTLP_ENDPOINT is required');
 }
+const otlpCaFile = process.env.OTEL_EXPORTER_OTLP_CERTIFICATE;
+const otlpClientCertificateFile = process.env.OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE;
+const otlpClientKeyFile = process.env.OTEL_EXPORTER_OTLP_CLIENT_KEY;
 
 DataHubPlugin.init({
     telemetry: {
@@ -574,6 +587,12 @@ DataHubPlugin.init({
         requestTimeoutMs: 5_000,
         maxQueueSize: 2_048,
         maxBatchSize: 256,
+        maxRequestBodyBytes: 64 * 1_024 * 1_024,
+        tls: otlpCaFile || otlpClientCertificateFile || otlpClientKeyFile ? {
+            caFile: otlpCaFile,
+            clientCertificateFile: otlpClientCertificateFile,
+            clientKeyFile: otlpClientKeyFile,
+        } : undefined,
     },
 })
 ```
@@ -590,15 +609,23 @@ Completed spans enter a bounded in-memory queue without network I/O. Background
 flushes send at most `maxBatchSize` spans per request. A full queue drops new
 spans. Each span retains its first 128 events and reports later events through
 OTLP `droppedEventsCount`. Retryable transport failures are requeued within the
-configured bound, while permanent HTTP failures are dropped. An OTLP
+configured bound and retried with exponential backoff and jitter; collector
+`Retry-After` guidance takes precedence. Permanent HTTP failures are dropped.
+Requests larger than `maxRequestBodyBytes` are rejected before collector I/O;
+oversized trace batches are dropped. An OTLP
 partial-success response is reported without retrying data the collector already
-accepted. Collector timeouts, invalid responses, and non-success HTTP responses
-do not fail pipeline execution.
+accepted. Graceful shutdown drains every remaining batch while exports make
+queue progress and stops when an export leaves the queue unchanged. Collector
+timeouts, invalid responses, and non-success HTTP responses do not fail pipeline
+execution.
 
 Only allowlisted scalar operational attributes are exported. Record bodies,
 configuration objects, credentials, user identifiers, error messages, and
 stacks are excluded. Authentication headers are never written to Data Hub
 logs; load them from the deployment environment rather than committing them.
+Private CA and client-certificate files are scoped to the collector transport;
+the paired client certificate and key enable mTLS without changing global Node
+TLS verification. Protect and rotate those files as deployment secrets.
 The Dashboard's persisted run analytics remain independent of this
 process-local telemetry stream.
 
@@ -622,11 +649,18 @@ Identify and resolve performance issues.
 .extract('fetch-updates', {
     adapterCode: 'database',
     connectionCode: 'db',
-    query: 'SELECT * FROM products WHERE updated_at > :checkpoint',
+    databaseType: 'POSTGRESQL',
+    query: 'SELECT id, sku, updated_at FROM products',
     incremental: {
         enabled: true,
         column: 'updated_at',
-        type: 'timestamp',
+    },
+    pagination: {
+        enabled: true,
+        type: 'CURSOR',
+        pageSize: 1000,
+        cursorColumn: 'updated_at',
+        cursorTieBreakerColumn: 'id',
     },
 })
 
@@ -645,6 +679,8 @@ Identify and resolve performance issues.
 .extract('query-db', {
     adapterCode: 'database',
     connectionCode: 'db',  // Uses pool
+    databaseType: 'POSTGRESQL',
+    query: 'SELECT id, sku FROM products ORDER BY id',
 })
 ```
 

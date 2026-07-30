@@ -125,6 +125,10 @@ Codes together, or omit both to use the AWS SDK credential chain.
 
 ### Redis Streams
 
+Redis Streams connections are configured per saved connection or pipeline
+step. The global Redis URL/Sentinel environment used for Data Hub locks and
+incoming-webhook rate limits is intentionally not inherited by Streams.
+
 Redis 6.2 or newer is required for bounded stale-delivery recovery with
 `XAUTOCLAIM`.
 
@@ -212,6 +216,7 @@ const orderProcessor = createPipeline()
 | `concurrency` | number | Parallel deliveries; default 1, range 1-32 |
 | `prefetch` | number | Optional broker prefetch window; range 1-1000 |
 | `pollIntervalMs` | number | Delay between polls; default 1000 ms, range 1000-300000 ms |
+| `autoStart` | boolean | Default desired state when no durable manual override exists; default `true` |
 | `ackMode` | 'MANUAL' | Acknowledge only after the correlated pipeline run completes successfully |
 | `consumerGroup` | string | Redis Streams consumer group; rejected for other queue types |
 | `maxRetries` | number | Enqueue retries after the initial failure; default 3, range 0-10 |
@@ -395,7 +400,11 @@ After retries are exhausted or the correlated run ends unsuccessfully, a configu
 
 `consumerGroup` is passed to Redis Streams and rejected for every other built-in queue type.
 
-Consumer discovery refreshes every 60 seconds and suppresses overlapping refreshes. A changed trigger configuration is stopped before its replacement starts. Stop and reconfiguration fence successful acknowledgment, dead-letter publication, and metrics, wait up to one shared 30-second drain window, and release unsettled manual deliveries with negative acknowledgment and requeue. Graceful shutdown then closes every queue adapter and its pooled clients. Ownership is per published pipeline code and trigger key, so replicas provide failover and can distribute different triggers, while one trigger remains single-owned.
+Consumer discovery refreshes every 60 seconds and suppresses overlapping refreshes. The effective desired state is the durable manual override for the published pipeline code and trigger key when one exists, otherwise the trigger's `autoStart` value. Admin API and Dashboard start/stop actions persist that override in Data Hub settings, so the decision survives refreshes and process restarts. Every configured trigger remains visible even when its desired state is disabled.
+
+A changed trigger configuration is stopped before its replacement starts. Stop and reconfiguration fence successful acknowledgment, dead-letter publication, and metrics, wait up to one shared 30-second drain window, and release unsettled manual deliveries with negative acknowledgment and requeue. Graceful shutdown then closes every queue adapter and its pooled clients.
+
+`desiredEnabled` is read from current durable global intent on every status query. `isActive` reports only whether the API replica answering the query currently owns and runs that consumer. `desiredEnabled: true` with `isActive: false` is a standby state: another replica may own the distributed lock, or this replica may be awaiting the next retry. `desiredEnabled: false` with `isActive: true` is a bounded stopping state. The local owner stops immediately; when a non-owning replica handles the mutation, the remote owner observes it on its next refresh, within 60 seconds by default. Do not treat one replica's `isActive` value as cluster-wide status. Ownership is per published pipeline code and trigger key, so replicas provide failover and can distribute different triggers while the distributed lock keeps one trigger single-owned.
 
 ### Dead Letter Queue
 
@@ -488,12 +497,16 @@ query {
         triggerKey
         queueName
         isActive
+        autoStart
+        desiredEnabled
         messagesProcessed
         messagesFailed
         lastMessageAt
     }
 }
 ```
+
+Use `desiredEnabled` for start/stop controls. Use `isActive` only as local-replica ownership telemetry.
 
 ## Best Practices
 

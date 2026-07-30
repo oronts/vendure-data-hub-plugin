@@ -10,7 +10,7 @@ This section covers everything you need to get the Data Hub plugin running in yo
 
 ## Prerequisites
 
-- Vendure >=3.5.7 <4
+- Vendure >=3.5.7 <3.6.0
 - Node.js >=20.0.0
 - A running Vendure server with Admin UI
 

@@ -75,6 +75,30 @@ export const config: VendureConfig = {
 };
 ```
 
+### Via Dependency Injection
+
+Use a factory when an adapter needs Vendure or Nest services:
+
+```typescript
+import { ProductService } from '@vendure/core';
+import { DataHubAdapterFactory, DataHubPlugin } from '@oronts/vendure-data-hub-plugin';
+import { createProductLoader, productLoaderDefinition } from './product-loader';
+
+const productLoaderFactory: DataHubAdapterFactory = {
+    code: productLoaderDefinition.code,
+    definition: productLoaderDefinition,
+    create: injector => createProductLoader({
+        productService: injector.get(ProductService),
+    }),
+};
+
+DataHubPlugin.init({ adapterFactories: [productLoaderFactory] });
+```
+
+The factory definition must exactly match the runtime adapter metadata. A
+factory that throws or returns a mismatched runtime is rejected and is not
+published as an available adapter.
+
 ### Programmatic Registration
 
 ```typescript
@@ -133,7 +157,7 @@ DataHubPlugin.init({
 ```typescript
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { VendurePlugin, PluginCommonModule, TransactionalConnection, ProductService } from '@vendure/core';
-import { DataHubPlugin, HookService } from '@oronts/vendure-data-hub-plugin';
+import { DataHubPlugin, HookService, JsonObject } from '@oronts/vendure-data-hub-plugin';
 
 @VendurePlugin({
     imports: [PluginCommonModule, DataHubPlugin],
@@ -165,7 +189,7 @@ class MyHooksService implements OnModuleInit {
         });
     }
 
-    private async callExternalValidationApi(entityId: string, record: any): Promise<void> {
+    private async callExternalValidationApi(entityId: string, record: JsonObject): Promise<void> {
         // Your external API call here
     }
 }
@@ -634,7 +658,7 @@ async *extract(context, config) {
 Cache repeated lookups:
 
 ```typescript
-private cache = new Map<string, any>();
+private cache = new Map<string, unknown>();
 
 async lookup(key: string) {
     if (this.cache.has(key)) {

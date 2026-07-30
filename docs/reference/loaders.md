@@ -131,6 +131,18 @@ Create or update products with slug-based lookup, facets, and assets.
 | `facetValuesField` | string | No | Record field containing facet value codes or objects with a `code` property (default: `"facetValueCodes"`) |
 | `facetValuesMode` | string | No | How to handle facet value assignments: `REPLACE_ALL` (default - replace all facets), `MERGE` (add new, keep existing), `REMOVE` (remove specified facets), `SKIP` (don't touch facets) |
 
+Variant identity is owned by Vendure's default source channel. `channelsField`
+adds that one variant to target channels; it does not create channel-local
+variants. A matching SKU that exists only in a target channel, or resolves to
+different variant IDs across selected channels, is rejected to prevent duplicate
+identities.
+
+With `priceByCurrencyField`, the record must contain the default currency of the
+source channel when creating and the default currency of every selected target
+channel. Each channel receives only currencies it supports. `priceField` is a
+single major-unit amount applied without exchange-rate conversion, so use an
+explicit currency map when selected channels need different amounts.
+
 ### Nested Entity Modes
 
 **facetValuesMode** - Controls how facet values are assigned to products:
@@ -297,7 +309,7 @@ Create or update customers with addresses and group memberships.
 | `lastName` | string | No | Last name |
 | `phoneNumber` | string | No | Phone number |
 | `addresses` | array | No | Array of address objects |
-| `groupCodes` | string[] | No | Array of customer group codes |
+| `groupNames` | string[] | No | Array of existing customer group names |
 
 ### Config Fields
 
@@ -307,7 +319,7 @@ Create or update customers with addresses and group memberships.
 | `emailField` | string | Yes | Record field containing the customer email identity |
 | `addressesMode` | string | No | How to handle addresses: `UPSERT_BY_MATCH` (default), `REPLACE_ALL`, `APPEND_ONLY`, `SKIP` |
 | `addressMatchFields` | string | No | Comma-separated fields for address matching (default: `streetLine1,city,countryCode`) |
-| `groupsMode` | string | No | How to handle customer groups: `REPLACE_ALL` (default), `MERGE`, `REMOVE`, `SKIP` |
+| `groupsMode` | string | No | How to handle customer groups: `ADD` (default) or `SET` |
 
 ### Nested Entity Modes
 
@@ -330,10 +342,8 @@ Create or update customers with addresses and group memberships.
 
 | Mode | Behavior |
 |------|----------|
-| `REPLACE_ALL` | Remove all groups, assign new list (default) |
-| `MERGE` | Add new groups, keep existing |
-| `REMOVE` | Remove specified groups |
-| `SKIP` | Don't modify groups |
+| `ADD` | Add named groups while preserving current assignments (default) |
+| `SET` | Replace current assignments with the named groups |
 
 ### Example - Prevent Duplicate Addresses
 

@@ -438,46 +438,45 @@ Update prices for specific channels only:
 Combine with SCHEDULE trigger for automatic updates:
 
 ```typescript
-const pipeline = {
-    name: 'Daily Price Sync',
-    trigger: {
+const pipeline = createPipeline()
+    .name('Daily Price Sync')
+    .trigger('daily', {
         type: 'SCHEDULE',
-        cron: '0 2 * * *'  // 2 AM daily
-    },
-    steps: [
-        {
-            type: 'EXTRACT',
-            adapterCode: 'databaseExtract',
-            config: {
-                query: `
-                    SELECT sku, usd_price, eur_price, gbp_price
-                    FROM pricing_updates
-                    WHERE updated_at > NOW() - INTERVAL '1 DAY'
-                `
-            }
-        },
-        {
-            type: 'TRANSFORM',
-            adapterCode: 'mapFields',
-            config: {
-                mappings: {
+        cron: '0 2 * * *',
+    })
+    .extract('prices', {
+        adapterCode: 'database',
+        connectionCode: 'pricing-postgres',
+        databaseType: 'POSTGRESQL',
+        query: `
+            SELECT sku, usd_price, eur_price, gbp_price
+            FROM pricing_updates
+            WHERE updated_at > NOW() - INTERVAL '1 DAY'
+        `,
+    })
+    .transform('map-prices', {
+        operators: [{
+            op: 'map',
+            args: {
+                mapping: {
                     'prices.USD': 'usd_price',
                     'prices.EUR': 'eur_price',
-                    'prices.GBP': 'gbp_price'
-                }
-            }
-        },
-        {
-            type: 'LOAD',
-            adapterCode: 'variantUpsert',
-            config: {
-                strategy: 'UPDATE',
-                skuField: 'sku',
-                priceByCurrencyField: 'prices'
-            }
-        }
-    ]
-};
+                    'prices.GBP': 'gbp_price',
+                },
+                passthrough: true,
+            },
+        }],
+    })
+    .load('update-variants', {
+        adapterCode: 'variantUpsert',
+        strategy: 'UPDATE',
+        skuField: 'sku',
+        priceByCurrencyField: 'prices',
+    })
+    .edge('daily', 'prices')
+    .edge('prices', 'map-prices')
+    .edge('map-prices', 'update-variants')
+    .build();
 ```
 
 ---
@@ -500,15 +499,21 @@ const pipeline = {
     dataPath: 'products',
 })
 .transform('map-fields', {
-    mappings: {
-        name: 'product_name',
-        slug: 'product_slug',
-        sku: 'sku_code',
-        'prices.USD': 'price_us',
-        'prices.EUR': 'price_eu',
-        'prices.GBP': 'price_uk',
-        'prices.JPY': 'price_jp'
-    }
+    operators: [{
+        op: 'map',
+        args: {
+            mapping: {
+                name: 'product_name',
+                slug: 'product_slug',
+                sku: 'sku_code',
+                'prices.USD': 'price_us',
+                'prices.EUR': 'price_eu',
+                'prices.GBP': 'price_uk',
+                'prices.JPY': 'price_jp',
+            },
+            passthrough: true,
+        },
+    }],
 })
 .load('import-products', {
     adapterCode: 'productUpsert',
@@ -541,6 +546,7 @@ const pipeline = {
 .extract('database', {
     adapterCode: 'database',
     connectionCode: 'erp-postgres',
+    databaseType: 'POSTGRESQL',
     query: `
         SELECT
             product_sku AS "ProductSKU",
@@ -603,6 +609,12 @@ const inputRecord = {
 // - Correct price per channel's currency
 // - Translated name per channel's language
 ```
+
+For `variantUpsert`, the default Vendure channel owns SKU identity. The loader
+creates or updates one variant there and assigns the same entity to the listed
+target channels. It rejects a SKU found only in a target channel and rejects
+ambiguous duplicate IDs. The currency map must include every selected channel's
+default currency; no exchange-rate conversion is inferred.
 
 ---
 
