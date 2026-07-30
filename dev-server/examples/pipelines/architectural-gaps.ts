@@ -24,7 +24,7 @@ import { ConnectionAuthType } from '../../../src';
 export const joinDemoPipeline = createPipeline()
     .name('Reference Data Join Demo')
     .description('Join reference price metadata to products using multiJoin')
-    .capabilities({ requires: ['UpdateCatalog'] })
+    .capabilities({ requires: ['UpdateCatalog'], writes: ['CATALOG'] })
     .trigger('start', { type: 'MANUAL' })
     .extract('extract-products', {
         adapterCode: 'vendureQuery',
@@ -76,7 +76,10 @@ export const joinDemoPipeline = createPipeline()
 export const parallelDemoPipeline = createPipeline()
     .name('Parallel Execution Demo')
     .description('Parallel transform branches with concurrent step limit')
-    .capabilities({ requires: ['UpdateCatalog'] })
+    .capabilities({
+        requires: ['UpdateDataHubSettings'],
+        writes: ['CUSTOM'],
+    })
     .parallel({ maxConcurrentSteps: 3, errorPolicy: 'CONTINUE' })
     .trigger('start', { type: 'MANUAL' })
     .extract('fetch-catalog', {
@@ -134,7 +137,7 @@ export const parallelDemoPipeline = createPipeline()
 export const retryDemoPipeline = createPipeline()
     .name('Per-Record Retry Demo')
     .description('Transform with per-record retry and exponential backoff')
-    .capabilities({ requires: ['UpdateCatalog'] })
+    .capabilities({ requires: ['UpdateCatalog'], writes: ['CATALOG'] })
     .trigger('start', { type: 'MANUAL' })
     .extract('fetch-skus', {
         adapterCode: 'csv',
@@ -198,7 +201,7 @@ export const retryDemoPipeline = createPipeline()
 export const gateDemoPipeline = createPipeline()
     .name('Gate Approval Workflow Demo')
     .description('Manual approval gate between validation and loading')
-    .capabilities({ requires: ['UpdateCatalog'] })
+    .capabilities({ requires: ['UpdateCatalog'], writes: ['CATALOG'] })
     .trigger('start', { type: 'MANUAL' })
     .extract('fetch-import-data', {
         adapterCode: 'inMemory',
@@ -247,7 +250,7 @@ export const gateDemoPipeline = createPipeline()
 export const cdcDemoPipeline = createPipeline()
     .name('CDC Extraction Demo')
     .description('Change Data Capture from PostgreSQL products table')
-    .capabilities({ requires: ['UpdateCatalog'] })
+    .capabilities({ requires: ['UpdateCatalog'], writes: ['CATALOG'] })
     .trigger('start', {
         type: 'SCHEDULE',
         cron: '*/5 * * * *',
@@ -312,7 +315,10 @@ export const cdcDemoPipeline = createPipeline()
 export const graphqlMutationDemoPipeline = createPipeline()
     .name('GraphQL Mutation Loading Demo')
     .description('Load product data into external system via GraphQL mutations')
-    .capabilities({ requires: ['ReadCatalog'] })
+    .capabilities({
+        requires: ['ReadCatalog', 'UpdateDataHubSettings'],
+        writes: ['CUSTOM'],
+    })
     .trigger('start', { type: 'MANUAL' })
     .extract('query-products', {
         adapterCode: 'vendureQuery',
@@ -374,7 +380,10 @@ export const graphqlMutationDemoPipeline = createPipeline()
 export const fileTransformDemoPipeline = createPipeline()
     .name('File Transformation Demo')
     .description('Image resize, format conversion, and PDF generation')
-    .capabilities({ requires: ['UpdateCatalog'] })
+    .capabilities({
+        requires: ['UpdateDataHubSettings'],
+        writes: ['CUSTOM'],
+    })
     .trigger('start', { type: 'MANUAL' })
     .extract('fetch-products', {
         adapterCode: 'vendureQuery',

@@ -422,7 +422,7 @@ export const facebookCatalogFeed = createPipeline()
 export const restApiImport = createPipeline()
     .name('REST API Import')
     .description('Import products from external REST API with pagination, auth, and field mapping')
-    .capabilities({ requires: ['UpdateCatalog'] })
+    .capabilities({ requires: ['UpdateCatalog'], writes: ['CATALOG', 'INVENTORY'] })
     .trigger('start', { type: 'MANUAL' })
 
     .extract('fetch-api', {

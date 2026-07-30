@@ -29,9 +29,9 @@ export {
 } from './extractors/generator.extractor';
 
 export {
-    shopifyProductsExtractor,
-    shopifyProductsSchema,
-} from './extractors/shopify-products.extractor';
+    shopifyProductGeneratorExtractor,
+    shopifyProductGeneratorSchema,
+} from './extractors/shopify-product-generator.extractor';
 
 // Custom Loaders
 export {
@@ -40,8 +40,10 @@ export {
 } from './loaders/webhook-notify.loader';
 
 export {
-    vendureProductSyncLoader,
+    createVendureProductSyncLoader,
+    vendureProductSyncDefinition,
     vendureProductSyncSchema,
+    vendureProductSyncLoaderFactory,
 } from './loaders/vendure-product-sync.loader';
 
 // Custom Feed Generators
@@ -55,9 +57,9 @@ import { currencyConvertOperator } from './operators/currency-convert.operator';
 import { maskPiiOperator } from './operators/mask-pii.operator';
 import { inMemoryExtractor } from './extractors/in-memory.extractor';
 import { generatorExtractor } from './extractors/generator.extractor';
-import { shopifyProductsExtractor } from './extractors/shopify-products.extractor';
+import { shopifyProductGeneratorExtractor } from './extractors/shopify-product-generator.extractor';
 import { webhookNotifyLoader } from './loaders/webhook-notify.loader';
-import { vendureProductSyncLoader } from './loaders/vendure-product-sync.loader';
+import { vendureProductSyncLoaderFactory } from './loaders/vendure-product-sync.loader';
 import { ssrFeedGenerator, shopifyExportGenerator } from './feeds';
 
 /**
@@ -65,15 +67,22 @@ import { ssrFeedGenerator, shopifyExportGenerator } from './feeds';
  */
 export const customAdaptersConfig = {
     operators: [currencyConvertOperator, maskPiiOperator] as const,
-    extractors: [inMemoryExtractor, generatorExtractor, shopifyProductsExtractor] as const,
-    loaders: [webhookNotifyLoader, vendureProductSyncLoader] as const,
+    extractors: [inMemoryExtractor, generatorExtractor, shopifyProductGeneratorExtractor] as const,
+    loaders: [webhookNotifyLoader] as const,
     feedGenerators: [ssrFeedGenerator, shopifyExportGenerator] as const,
 };
+
+export const customAdapterFactories = [vendureProductSyncLoaderFactory] as const;
 
 export const allCustomAdapters = [
     ...customAdaptersConfig.operators,
     ...customAdaptersConfig.extractors,
     ...customAdaptersConfig.loaders,
+];
+
+export const allCustomAdapterDefinitions = [
+    ...allCustomAdapters,
+    ...customAdapterFactories.map(factory => factory.definition),
 ];
 
 export const allCustomFeedGenerators = customAdaptersConfig.feedGenerators;
@@ -88,7 +97,7 @@ export const allCustomFeedGenerators = customAdaptersConfig.feedGenerators;
 export const customOperatorsPipelineExample = createPipeline()
     .name('Custom Operators Demo')
     .description('Currency conversion and PII masking')
-    .capabilities({ requires: ['UpdateCustomer'] })
+    .capabilities({ requires: ['UpdateCustomer'], writes: ['CUSTOMERS'] })
     .trigger('start', { type: 'MANUAL' })
     .extract('sample-data', {
         adapterCode: 'csv',
@@ -119,7 +128,7 @@ export const customOperatorsPipelineExample = createPipeline()
 export const customExtractorsPipelineExample = createPipeline()
     .name('Custom Extractors Demo')
     .description('Read inline demo data with a custom batch extractor')
-    .capabilities({ requires: ['UpdateCatalog'] })
+    .capabilities({ requires: ['UpdateCatalog'], writes: ['CATALOG'] })
     .trigger('start', { type: 'MANUAL' })
     .extract('sample-data', {
         adapterCode: 'demoInMemory',
@@ -154,6 +163,10 @@ export const customExtractorsPipelineExample = createPipeline()
 export const customLoadersPipelineExample = createPipeline()
     .name('Custom Loaders Demo')
     .description('Send data to webhook with custom loader')
+    .capabilities({
+        requires: ['UpdateDataHubSettings'],
+        writes: ['CUSTOM'],
+    })
     .trigger('start', { type: 'MANUAL' })
     .extract('query', {
         adapterCode: 'vendureQuery',
@@ -187,7 +200,7 @@ export const customLoadersPipelineExample = createPipeline()
 export const customAdapterPipelineExample = createPipeline()
     .name('Full Custom Adapters Demo')
     .description('Generator + currency convert + PII mask + webhook')
-    .capabilities({ requires: ['UpdateCatalog'] })
+    .capabilities({ requires: ['UpdateCatalog'], writes: ['CATALOG'] })
     .trigger('start', { type: 'MANUAL' })
     .extract('generate', {
         adapterCode: 'demoGenerator',

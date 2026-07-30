@@ -25,15 +25,17 @@
 import express from 'express';
 import crypto from 'crypto';
 import { MOCK_PORTS, MOCK_ROUTES } from '../ports';
+import { DEFAULT_DEV_SHOPIFY_ACCESS_TOKEN } from '../dev-credentials';
+import { SHOPIFY_ADMIN_API_VERSION } from '../shopify-api';
 
 export const app = express();
 app.use(express.json());
 
 // ── Configuration ────────────────────────────────────────────────────────────
 const PORT = MOCK_PORTS.SHOPIFY;
-const API_VERSION = '2024-01';
+const API_VERSION = SHOPIFY_ADMIN_API_VERSION;
 const BASE_PATH = `/admin/api/${API_VERSION}`;
-const ACCESS_TOKEN = 'shpat_test_mock_access_token_123456';
+const ACCESS_TOKEN = DEFAULT_DEV_SHOPIFY_ACCESS_TOKEN;
 const RATE_LIMIT_PER_SECOND = 2;
 const PAGE_SIZE = 50;
 

@@ -29,7 +29,7 @@ import { createPipeline } from '../../../src';
 export const dailyStockSync = createPipeline()
     .name('Daily Stock Sync')
     .description('Scheduled stock level sync from ERP with delta detection')
-    .capabilities({ requires: ['UpdateCatalog'] })
+    .capabilities({ requires: ['UpdateCatalog'], writes: ['INVENTORY'] })
 
     // Schedule: Run daily at 6 AM UTC
     .trigger('start', {
@@ -225,7 +225,7 @@ export const dailyStockSync = createPipeline()
 export const hourlyPriceSync = createPipeline()
     .name('Hourly Price Sync')
     .description('Sync prices from pricing engine every hour')
-    .capabilities({ requires: ['UpdateCatalog'] })
+    .capabilities({ requires: ['UpdateCatalog'], writes: ['CATALOG'] })
     .trigger('start', {
         type: 'SCHEDULE',
         cron: '0 * * * *',  // Every hour at minute 0
@@ -278,7 +278,10 @@ export const hourlyPriceSync = createPipeline()
 export const weeklyCustomerCleanup = createPipeline()
     .name('Weekly Customer Cleanup')
     .description('Archive customers with no orders in 2 years')
-    .capabilities({ requires: ['ReadCustomer', 'UpdateCustomer'] })
+    .capabilities({
+        requires: ['ReadCustomer', 'UpdateCustomer'],
+        writes: ['CUSTOMERS'],
+    })
     .trigger('start', {
         type: 'SCHEDULE',
         cron: '0 2 * * 0',  // Every Sunday at 2 AM
@@ -358,7 +361,10 @@ export const weeklyCustomerCleanup = createPipeline()
 export const webhookOrderSync = createPipeline()
     .name('Webhook Order Sync')
     .description('Process incoming orders from external system via webhook')
-    .capabilities({ requires: ['UpdateOrder', 'UpdateCustomer'] })
+    .capabilities({
+        requires: ['UpdateOrder', 'UpdateCustomer', 'UpdateDataHubSettings'],
+        writes: ['CUSTOM'],
+    })
     .trigger('start', {
         type: 'WEBHOOK',
         // Authentication: HMAC-SHA256 signature verification
@@ -463,7 +469,10 @@ export const webhookOrderSync = createPipeline()
 export const lowStockAlert = createPipeline()
     .name('Low Stock Alert')
     .description('Send alerts when stock falls below threshold')
-    .capabilities({ requires: ['ReadCatalog'] })
+    .capabilities({
+        requires: ['ReadCatalog', 'UpdateDataHubSettings'],
+        writes: ['CUSTOM'],
+    })
     .trigger('start', {
         type: 'EVENT',
         event: 'ProductVariantEvent',
@@ -528,7 +537,10 @@ export const lowStockAlert = createPipeline()
 export const webhookApiKeyAuth = createPipeline()
     .name('Webhook API Key Example')
     .description('Webhook triggered pipeline with API Key authentication')
-    .capabilities({ requires: ['ReadCatalog'] })
+    .capabilities({
+        requires: ['ReadCatalog', 'UpdateDataHubSettings'],
+        writes: ['CUSTOM'],
+    })
     .trigger('start', {
         type: 'WEBHOOK',
         // Authentication: API Key in header
@@ -568,7 +580,10 @@ export const webhookApiKeyAuth = createPipeline()
 export const webhookJwtAuth = createPipeline()
     .name('Webhook JWT Example')
     .description('Webhook triggered pipeline with JWT Bearer token authentication')
-    .capabilities({ requires: ['ReadCatalog'] })
+    .capabilities({
+        requires: ['ReadCatalog', 'UpdateDataHubSettings'],
+        writes: ['CUSTOM'],
+    })
     .trigger('start', {
         type: 'WEBHOOK',
         // Authentication: JWT Bearer token
@@ -608,7 +623,10 @@ export const webhookJwtAuth = createPipeline()
 export const webhookBasicAuth = createPipeline()
     .name('Webhook Basic Auth Example')
     .description('Webhook triggered pipeline with HTTP Basic authentication')
-    .capabilities({ requires: ['ReadCatalog'] })
+    .capabilities({
+        requires: ['ReadCatalog', 'UpdateDataHubSettings'],
+        writes: ['CUSTOM'],
+    })
     .trigger('start', {
         type: 'WEBHOOK',
         // Authentication: HTTP Basic Auth
@@ -659,7 +677,10 @@ export const webhookBasicAuth = createPipeline()
 export const multiTriggerPipeline = createPipeline()
     .name('Multi-Trigger Inventory Sync')
     .description('Pipeline with manual, scheduled, and webhook triggers for maximum flexibility')
-    .capabilities({ requires: ['UpdateCatalog'] })
+    .capabilities({
+        requires: ['UpdateCatalog', 'UpdateDataHubSettings'],
+        writes: ['INVENTORY', 'CUSTOM'],
+    })
 
     // Context configuration for parallel step execution
     .context({
@@ -780,7 +801,7 @@ export const multiTriggerPipeline = createPipeline()
 export const customerImportWithValidationAndEnrichment = createPipeline()
     .name('Customer Import with Validation & Enrichment')
     .description('Import customers with validation and data enrichment')
-    .capabilities({ requires: ['UpdateCustomer'] })
+    .capabilities({ requires: ['UpdateCustomer'], writes: ['CUSTOMERS'] })
 
     .trigger('manual-trigger', {
         type: 'MANUAL',
@@ -857,7 +878,7 @@ export const customerImportWithValidationAndEnrichment = createPipeline()
 export const productCatalogEnrichment = createPipeline()
     .name('Product Catalog Enrichment')
     .description('Enrich product data with SEO defaults and computed fields')
-    .capabilities({ requires: ['UpdateCatalog'] })
+    .capabilities({ requires: ['UpdateCatalog'], writes: ['CATALOG'] })
 
     .trigger('webhook', {
         type: 'WEBHOOK',

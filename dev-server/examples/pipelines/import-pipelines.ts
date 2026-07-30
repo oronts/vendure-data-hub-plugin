@@ -31,7 +31,7 @@ import { createPipeline } from '../../../src';
 export const productImportCsv = createPipeline()
     .name('Product Import - CSV')
     .description('Import products from CSV with VALIDATE, ENRICH, and parallel error handling')
-    .capabilities({ requires: ['UpdateCatalog'] })
+    .capabilities({ requires: ['UpdateCatalog'], writes: ['CATALOG'] })
     .trigger('start', { type: 'MANUAL' })
 
     .extract('read-csv', {
@@ -240,7 +240,7 @@ export const productImportCsv = createPipeline()
 export const customerImportCsv = createPipeline()
     .name('Customer Import - CSV')
     .description('Import customers from CSV with address parsing and email validation')
-    .capabilities({ requires: ['UpdateCustomer'] })
+    .capabilities({ requires: ['UpdateCustomer'], writes: ['CUSTOMERS'] })
     .trigger('start', { type: 'MANUAL' })
 
     .extract('read-csv', {
@@ -455,7 +455,7 @@ export const customerImportCsv = createPipeline()
 export const stockUpdateCsv = createPipeline()
     .name('Stock Update - CSV')
     .description('Import stock with VALIDATE, ENRICH computed status, and parallel low-stock alerts')
-    .capabilities({ requires: ['UpdateCatalog'] })
+    .capabilities({ requires: ['UpdateCatalog'], writes: ['INVENTORY'] })
     .trigger('start', { type: 'MANUAL' })
 
     .extract('read-csv', {
@@ -672,7 +672,7 @@ export const stockUpdateCsv = createPipeline()
 export const priceUpdateCsv = createPipeline()
     .name('Price Update - CSV')
     .description('Bulk price update from CSV with currency conversion')
-    .capabilities({ requires: ['UpdateCatalog'] })
+    .capabilities({ requires: ['UpdateCatalog'], writes: ['CATALOG'] })
     .trigger('start', { type: 'MANUAL' })
 
     .extract('read-csv', {

@@ -65,7 +65,10 @@ export const enterpriseComplexPipeline = createPipeline()
         'complex variants (3 option groups), assets, facets, custom fields, UPSERT, ' +
         'error accumulation, deletion workflow, stock sync, audit trail',
     )
-    .capabilities({ requires: ['UpdateCatalog', 'UpdatePromotion', 'ReadCatalog'] })
+    .capabilities({
+        requires: ['UpdateCatalog', 'UpdatePromotion', 'ReadCatalog'],
+        writes: ['CATALOG', 'PROMOTIONS', 'INVENTORY'],
+    })
 
     // =========================================================================
     // TRIGGERS: Manual, Scheduled (every 4h), Webhook (API key)

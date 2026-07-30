@@ -13,16 +13,24 @@ import { PimcoreConnector, PimcoreConnectorConfig, pimcoreGraphQLExtractor } fro
 import {
     DEFAULT_DEV_MASTER_KEY,
     DEFAULT_DEV_PIMCORE_API_KEY,
+    DEFAULT_DEV_SHOPIFY_ACCESS_TOKEN,
     DEFAULT_DEV_WEBHOOK_BASIC_CREDENTIALS,
 } from './dev-server/dev-credentials';
 import {
+    assertPimcoreGraphqlApiKey,
     PIMCORE_API_CONNECTION_CODE,
     PIMCORE_API_URL,
     PIMCORE_GRAPHQL_CONNECTION_CODE,
     PIMCORE_GRAPHQL_URL,
 } from './dev-server/pimcore-api';
 import {
+    SHOPIFY_ACCESS_TOKEN_SECRET_CODE,
+    SHOPIFY_API_CONNECTION_CODE,
+    SHOPIFY_API_URL,
+} from './dev-server/shopify-api';
+import {
     allCustomAdapters,
+    customAdapterFactories,
     allCustomFeedGenerators,
     customOperatorsPipelineExample,
     customExtractorsPipelineExample,
@@ -77,6 +85,7 @@ import {
 
 process.env.DATAHUB_LOCK_BACKEND ??= 'MEMORY';
 process.env.DATAHUB_MASTER_KEY ??= DEFAULT_DEV_MASTER_KEY;
+assertPimcoreGraphqlApiKey(PIMCORE_GRAPHQL_URL, process.env.PIMCORE_API_KEY);
 process.env.PIMCORE_API_KEY ??= DEFAULT_DEV_PIMCORE_API_KEY;
 process.env.PIMCORE_WEBHOOK_KEY ??= 'demo-webhook-key';
 process.env.DEMO_PG_PASSWORD ??= 'postgres';
@@ -164,6 +173,7 @@ export const config: VendureConfig = {
             connectors: [pimcoreConnector],
 
             adapters: [...allCustomAdapters, pimcoreGraphQLExtractor],
+            adapterFactories: [...customAdapterFactories],
 
             feedGenerators: [...allCustomFeedGenerators],
 
@@ -267,6 +277,7 @@ export const config: VendureConfig = {
                 { code: 'magento-bearer-token', provider: 'INLINE', value: 'magento-dev-token-static-12345' },
                 { code: 'pimcore-api-key', provider: 'ENV', value: 'PIMCORE_API_KEY' },
                 { code: 'pimcore-webhook-key', provider: 'ENV', value: 'PIMCORE_WEBHOOK_KEY' },
+                { code: SHOPIFY_ACCESS_TOKEN_SECRET_CODE, provider: 'INLINE', value: DEFAULT_DEV_SHOPIFY_ACCESS_TOKEN },
                 { code: 'demo-pg-password', provider: 'ENV', value: 'DEMO_PG_PASSWORD' },
                 { code: 'meilisearch-api-key', provider: 'INLINE', value: 'testMasterKey123' },
                 { code: 'elasticsearch-api-key', provider: 'INLINE', value: 'elastic-demo-key' },
@@ -299,6 +310,18 @@ export const config: VendureConfig = {
                             type: 'API_KEY',
                             secretCode: 'pimcore-api-key',
                             headerName: 'X-API-Key',
+                        },
+                    },
+                },
+                {
+                    code: SHOPIFY_API_CONNECTION_CODE,
+                    type: 'HTTP',
+                    settings: {
+                        baseUrl: SHOPIFY_API_URL,
+                        auth: {
+                            type: 'API_KEY',
+                            secretCode: SHOPIFY_ACCESS_TOKEN_SECRET_CODE,
+                            headerName: 'X-Shopify-Access-Token',
                         },
                     },
                 },

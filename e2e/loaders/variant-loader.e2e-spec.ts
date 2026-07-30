@@ -10,18 +10,33 @@
  * that need isolated products use separate parent products.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { ChannelService, CurrencyCode, ProductVariantService } from '@vendure/core';
+import {
+    ChannelService,
+    CurrencyCode,
+    ProductVariantService,
+    ProductService,
+    RequestContext,
+    RequestContextService,
+    SessionService,
+} from '@vendure/core';
+import gql from 'graphql-tag';
 import { createDataHubTestEnvironment } from '../test-config';
 import { ProductHandler } from '../../src/runtime/executors/loaders/product-handler';
 import { VariantHandler } from '../../src/runtime/executors/loaders/variant-handler';
 import { getSuperadminContext, makeStep, createErrorCollector, LOADER_TEST_INITIAL_DATA } from './loader-test-helpers';
+import { createChannelCodeRequestContext } from '../../src/runtime/helpers/channel-request-context';
+import { StepType, RunStatus } from '../../src/constants/enums';
+import { waitForSuccessfulQueueRun } from '../../src/services/events/message-run-waiter';
+import { publishPipeline } from '../pipeline-lifecycle';
 
 describe('VariantHandler e2e', () => {
     const { server, adminClient } = createDataHubTestEnvironment();
     let productHandler: ProductHandler;
     let variantHandler: VariantHandler;
     let variantService: ProductVariantService;
+    let productService: ProductService;
     let ctx: import('@vendure/core').RequestContext;
+    let ukCtx: import('@vendure/core').RequestContext;
 
     beforeAll(async () => {
         await server.init({
@@ -29,9 +44,46 @@ describe('VariantHandler e2e', () => {
             productsCsvPath: undefined,
         });
         await adminClient.asSuperAdmin();
+        const { activeChannel, zones } = await adminClient.query(gql`
+            query VariantChannelSetup {
+                activeChannel {
+                    defaultLanguageCode
+                    defaultTaxZone { id }
+                    defaultShippingZone { id }
+                }
+                zones(options: { take: 1 }) { items { id } }
+            }
+        `);
+        const zoneId = activeChannel.defaultTaxZone?.id
+            ?? activeChannel.defaultShippingZone?.id
+            ?? zones.items[0]?.id;
+        if (!zoneId) throw new Error('Variant channel test requires a zone');
+        const { createChannel } = await adminClient.query(gql`
+            mutation CreateVariantUkChannel($input: CreateChannelInput!) {
+                createChannel(input: $input) {
+                    ... on Channel { id code token }
+                    ... on ErrorResult { errorCode message }
+                }
+            }
+        `, {
+            input: {
+                code: 'variant-uk-store',
+                token: 'variant-uk-store',
+                defaultLanguageCode: activeChannel.defaultLanguageCode,
+                defaultCurrencyCode: CurrencyCode.GBP,
+                availableCurrencyCodes: [CurrencyCode.GBP],
+                defaultTaxZoneId: zoneId,
+                defaultShippingZoneId: zoneId,
+                pricesIncludeTax: false,
+            },
+        });
+        if (!createChannel.id) {
+            throw new Error(`Failed to create variant UK channel: ${createChannel.message}`);
+        }
         productHandler = server.app.get(ProductHandler);
         variantHandler = server.app.get(VariantHandler);
         variantService = server.app.get(ProductVariantService);
+        productService = server.app.get(ProductService);
         const channelService = server.app.get(ChannelService);
         ctx = await getSuperadminContext(server.app);
         await channelService.update(ctx, {
@@ -39,6 +91,25 @@ describe('VariantHandler e2e', () => {
             availableCurrencyCodes: [CurrencyCode.USD, CurrencyCode.EUR],
         });
         ctx = await getSuperadminContext(server.app);
+        const session = await server.app
+            .get(SessionService)
+            .getSessionFromToken(adminClient.getAuthToken());
+        if (!session) throw new Error('Superadmin session not found');
+        ctx = new RequestContext({
+            apiType: 'admin',
+            channel: ctx.channel,
+            session,
+            languageCode: ctx.languageCode,
+            currencyCode: ctx.currencyCode,
+            isAuthorized: true,
+            authorizedAsOwnerOnly: false,
+        });
+        ukCtx = await createChannelCodeRequestContext(
+            server.app.get(RequestContextService),
+            channelService,
+            ctx,
+            'variant-uk-store',
+        );
 
         // Create separate parent products so each test group has a clean product
         // (Vendure only allows one variant without option groups per product)
@@ -52,6 +123,8 @@ describe('VariantHandler e2e', () => {
             { name: 'Enabled Test Product', slug: 'enabled-test-product' },
             { name: 'Translation Test Product', slug: 'translation-test-product' },
             { name: 'Currency Test Product', slug: 'currency-test-product' },
+            { name: 'Channel Price Product', slug: 'channel-price-product' },
+            { name: 'Queued Channel Product', slug: 'queued-channel-product' },
         ]);
     });
 
@@ -148,6 +221,171 @@ describe('VariantHandler e2e', () => {
             expect.objectContaining({ currencyCode: CurrencyCode.EUR, price: 7800 }),
             expect.objectContaining({ currencyCode: CurrencyCode.USD, price: 8600 }),
         ]));
+    });
+
+    it('creates one source variant with exact USD and GBP channel prices', async () => {
+        const step = makeStep('test-cross-channel-currency', {
+            strategy: 'UPSERT',
+            skuField: 'sku',
+            priceByCurrencyField: 'prices',
+            channelsField: 'channels',
+        });
+        const input = [{
+            sku: 'CHANNEL-PRICE-001',
+            name: 'Channel Price Variant',
+            prices: { USD: 175, GBP: 149.99 },
+            productSlug: 'channel-price-product',
+            channels: ['variant-uk-store'],
+        }];
+
+        expect(await variantHandler.execute(ctx, step, input)).toEqual({
+            ok: 1,
+            fail: 0,
+            skipped: 0,
+        });
+        expect(await variantHandler.execute(ctx, step, input)).toEqual({
+            ok: 1,
+            fail: 0,
+            skipped: 0,
+        });
+
+        const sourceVariants = await variantService.findAll(ctx, {
+            filter: { sku: { eq: 'CHANNEL-PRICE-001' } },
+        } as never);
+        const targetVariants = await variantService.findAll(ukCtx, {
+            filter: { sku: { eq: 'CHANNEL-PRICE-001' } },
+        } as never);
+        expect(sourceVariants.items).toHaveLength(1);
+        expect(targetVariants.items).toHaveLength(1);
+        expect(targetVariants.items[0].id).toBe(sourceVariants.items[0].id);
+
+        const sourcePrices = await variantService.getProductVariantPrices(
+            ctx,
+            sourceVariants.items[0].id,
+        );
+        const targetPrices = await variantService.getProductVariantPrices(
+            ukCtx,
+            sourceVariants.items[0].id,
+        );
+        expect(sourcePrices).toEqual([
+            expect.objectContaining({ currencyCode: CurrencyCode.USD, price: 17500 }),
+        ]);
+        expect(targetPrices).toEqual([
+            expect.objectContaining({ currencyCode: CurrencyCode.GBP, price: 14999 }),
+        ]);
+    });
+
+    it('restores the initiating user for queued cross-channel assignment', async () => {
+        const product = await productService.findOneBySlug(ctx, 'queued-channel-product');
+        if (!product) throw new Error('Queued channel product was not created');
+        const { createDataHubPipeline } = await adminClient.query(gql`
+            mutation CreateQueuedVariantPipeline($input: CreateDataHubPipelineInput!) {
+                createDataHubPipeline(input: $input) { id }
+            }
+        `, {
+            input: {
+                code: 'queued-cross-channel-variant',
+                name: 'Queued Cross-channel Variant',
+                definition: {
+                    version: 1,
+                    steps: [
+                        {
+                            key: 'extract-product',
+                            type: StepType.EXTRACT,
+                            config: {
+                                adapterCode: 'vendureQuery',
+                                entity: 'PRODUCT',
+                                relations: ['translations'],
+                                filters: [{ field: 'id', operator: 'eq', value: product.id }],
+                            },
+                        },
+                        {
+                            key: 'prepare-variant',
+                            type: StepType.TRANSFORM,
+                            config: {
+                                operators: [
+                                    { op: 'set', args: { path: 'sku', value: 'QUEUE-CHANNEL-001' } },
+                                    { op: 'set', args: { path: 'name', value: 'Queued Channel Variant' } },
+                                    { op: 'set', args: { path: 'productId', value: product.id } },
+                                    { op: 'set', args: { path: 'prices', value: { USD: 175, GBP: 149.99 } } },
+                                    { op: 'set', args: { path: 'channels', value: ['variant-uk-store'] } },
+                                ],
+                            },
+                        },
+                        {
+                            key: 'load-variant',
+                            type: StepType.LOAD,
+                            config: {
+                                adapterCode: 'variantUpsert',
+                                strategy: 'UPSERT',
+                                skuField: 'sku',
+                                priceByCurrencyField: 'prices',
+                                channelsField: 'channels',
+                            },
+                        },
+                    ],
+                    edges: [
+                        { from: 'extract-product', to: 'prepare-variant' },
+                        { from: 'prepare-variant', to: 'load-variant' },
+                    ],
+                },
+            },
+        });
+
+        try {
+            await publishPipeline(adminClient, createDataHubPipeline.id);
+            const { startDataHubPipelineRun } = await adminClient.query(gql`
+                mutation StartQueuedVariantPipeline($id: ID!) {
+                    startDataHubPipelineRun(pipelineId: $id) { id }
+                }
+            `, { id: createDataHubPipeline.id });
+
+            await waitForSuccessfulQueueRun(
+                startDataHubPipelineRun.id,
+                async runId => {
+                    const { dataHubPipelineRun } = await adminClient.query(gql`
+                        query QueuedVariantRun($id: ID!) {
+                            dataHubPipelineRun(id: $id) { status error }
+                        }
+                    `, { id: runId });
+                    return dataHubPipelineRun
+                        ? {
+                            status: dataHubPipelineRun.status as RunStatus,
+                            error: dataHubPipelineRun.error ?? null,
+                        }
+                        : null;
+                },
+            );
+
+            const sourceVariants = await variantService.findAll(ctx, {
+                filter: { sku: { eq: 'QUEUE-CHANNEL-001' } },
+            } as never);
+            const targetVariants = await variantService.findAll(ukCtx, {
+                filter: { sku: { eq: 'QUEUE-CHANNEL-001' } },
+            } as never);
+            expect(sourceVariants.items).toHaveLength(1);
+            expect(targetVariants.items).toHaveLength(1);
+            expect(targetVariants.items[0].id).toBe(sourceVariants.items[0].id);
+
+            expect(await variantService.getProductVariantPrices(
+                ctx,
+                sourceVariants.items[0].id,
+            )).toEqual([
+                expect.objectContaining({ currencyCode: CurrencyCode.USD, price: 17500 }),
+            ]);
+            expect(await variantService.getProductVariantPrices(
+                ukCtx,
+                sourceVariants.items[0].id,
+            )).toEqual([
+                expect.objectContaining({ currencyCode: CurrencyCode.GBP, price: 14999 }),
+            ]);
+        } finally {
+            await adminClient.query(gql`
+                mutation DeleteQueuedVariantPipeline($id: ID!) {
+                    deleteDataHubPipeline(id: $id) { result }
+                }
+            `, { id: createDataHubPipeline.id });
+        }
     });
 
     it('creates variant with option groups (auto-create)', async () => {

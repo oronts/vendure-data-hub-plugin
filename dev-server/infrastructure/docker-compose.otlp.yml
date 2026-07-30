@@ -1,0 +1,13 @@
+services:
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.157.0@sha256:f2f01157055a9b2aab9df7118e1f1c9abf345e99b23bc7a2bc791db374a7d0f6
+    command:
+      - --config=/etc/otelcol-contrib/config.yaml
+    user: "${DATAHUB_OTLP_UID:?DATAHUB_OTLP_UID is required}:${DATAHUB_OTLP_GID:?DATAHUB_OTLP_GID is required}"
+    volumes:
+      - ./otel-collector-config.yml:/etc/otelcol-contrib/config.yaml:ro
+      - ${DATAHUB_OTLP_TLS_DIR:?DATAHUB_OTLP_TLS_DIR is required}:/etc/otel/tls:ro
+      - ${DATAHUB_OTLP_OUTPUT_DIR:?DATAHUB_OTLP_OUTPUT_DIR is required}:/var/lib/otel:rw
+    ports:
+      - "127.0.0.1:${DATAHUB_OTLP_HTTP_PORT:?DATAHUB_OTLP_HTTP_PORT is required}:4318"
+      - "127.0.0.1:${DATAHUB_OTLP_HEALTH_PORT:?DATAHUB_OTLP_HEALTH_PORT is required}:13133"

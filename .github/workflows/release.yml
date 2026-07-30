@@ -31,9 +31,11 @@ jobs:
       - run: npm run typecheck
       - run: npm run typecheck:dashboard
       - run: npm run lint
+      - run: npm run verify:i18n
       - run: npm run verify:docs
       - run: npm test
       - run: npm run test:e2e
+      - run: npm run i18n:extract
       - run: npm run codegen
       - run: git diff --exit-code
       - run: npm audit --omit=dev --audit-level=high

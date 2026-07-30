@@ -13,7 +13,6 @@
     "dashboard/index.tsx!",
     "dashboard/i18n/common-strings.ts!",
     "dashboard/routes/index.ts!",
-    "dev-server/index.ts",
     "dev-server/examples/**/*.ts"
   ],
   "project": [
@@ -33,12 +32,9 @@
   "ignoreDependencies": [
     "@nestjs/*",
     "@vendure/*",
-    "graphql",
-    "sonner",
-    "react-hook-form",
-    "rxjs",
-    "rxjs/operators",
-    "sharp"
-  ],
-  "ignoreBinaries": ["ts-node", "vendure"]
+    "@lingui/core",
+    "@tanstack/router-devtools",
+    "@tanstack/router-plugin",
+    "rxjs"
+  ]
 }

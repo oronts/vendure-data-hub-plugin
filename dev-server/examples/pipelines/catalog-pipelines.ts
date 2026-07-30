@@ -17,10 +17,13 @@ import {
     PIMCORE_API_CONNECTION_CODE,
     PIMCORE_API_URL,
 } from '../../pimcore-api';
+import {
+    SHOPIFY_ADMIN_API_VERSION,
+    SHOPIFY_API_CONNECTION_CODE,
+} from '../../shopify-api';
 
 // ── External API URLs ───────────────────────────────────────────────────────
 const MAGENTO_API_URL = getMockApiUrl('MAGENTO');
-const SHOPIFY_API_URL = getMockApiUrl('SHOPIFY');
 
 // =============================================================================
 // P1: PIM CATALOG SYNC — Full enterprise catalog sync from Pimcore mock API
@@ -44,7 +47,10 @@ const SHOPIFY_API_URL = getMockApiUrl('SHOPIFY');
 export const pimCatalogSync = createPipeline()
     .name('PIM Catalog Sync')
     .description('Full enterprise catalog sync: products, variants (option groups), facets, facet values, collections, promotions, stock locations, inventory')
-    .capabilities({ requires: ['UpdateCatalog', 'UpdatePromotion'] })
+    .capabilities({
+        requires: ['UpdateCatalog', 'UpdatePromotion'],
+        writes: ['CATALOG', 'PROMOTIONS', 'INVENTORY'],
+    })
     // Triggers
     .trigger('manual-trigger', { type: 'MANUAL' })
     .trigger('scheduled-sync', { type: 'SCHEDULE', cron: '0 */4 * * *', timezone: 'Europe/Berlin' })
@@ -456,7 +462,7 @@ export const pimCatalogSync = createPipeline()
 export const magentoProductMigration = createPipeline()
     .name('Magento Product Migration')
     .description('One-time migration from Magento 2 to Vendure with human review gate')
-    .capabilities({ requires: ['UpdateCatalog'] })
+    .capabilities({ requires: ['UpdateCatalog'], writes: ['CATALOG'] })
 
     // Manual trigger — one-time migration
     .trigger('manual', { type: 'MANUAL' })
@@ -595,7 +601,10 @@ export const magentoProductMigration = createPipeline()
 export const shopifyInventorySync = createPipeline()
     .name('Shopify Inventory Sync')
     .description('Hourly inventory sync from Shopify with routing by stock level')
-    .capabilities({ requires: ['UpdateCatalog'] })
+    .capabilities({
+        requires: ['UpdateCatalog', 'UpdateDataHubSettings'],
+        writes: ['INVENTORY', 'CUSTOM'],
+    })
 
     // Hourly schedule
     .trigger('schedule', {
@@ -607,11 +616,9 @@ export const shopifyInventorySync = createPipeline()
     // Extract products from Shopify Admin API
     .extract('fetch-products', {
         adapterCode: 'httpApi',
-        url: `${SHOPIFY_API_URL}/admin/api/2024-01/products.json`,
+        url: `/admin/api/${SHOPIFY_ADMIN_API_VERSION}/products.json`,
         method: 'GET',
-        headers: {
-            'X-Shopify-Access-Token': 'shpat_test_mock_access_token_123456',
-        },
+        connectionCode: SHOPIFY_API_CONNECTION_CODE,
         dataPath: 'products',
         pagination: {
             type: 'LINK_HEADER',

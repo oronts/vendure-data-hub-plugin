@@ -3,9 +3,16 @@ import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { shopifyInventorySync } from '../examples/pipelines/catalog-pipelines';
+import {
+    DEFAULT_DEV_PIMCORE_API_KEY,
+    DEFAULT_DEV_SHOPIFY_ACCESS_TOKEN,
+} from '../dev-credentials';
+import {
+    SHOPIFY_ADMIN_API_VERSION,
+    SHOPIFY_API_CONNECTION_CODE,
+} from '../shopify-api';
 import { eventStockAlert } from '../examples/pipelines/integration-pipelines';
 import { webhookOrderImport } from '../examples/pipelines/operations-pipelines';
-import { DEFAULT_DEV_PIMCORE_API_KEY } from '../dev-credentials';
 import {
     getMockApiUrl,
     getMockEndpoint,
@@ -138,13 +145,13 @@ describe('mock HTTP contracts', () => {
         });
 
         const unauthorized = await fetch(
-            `${shopify.baseUrl}/admin/api/2024-01/shop.json`,
+            `${shopify.baseUrl}/admin/api/${SHOPIFY_ADMIN_API_VERSION}/shop.json`,
         );
         expect(unauthorized.status).toBe(401);
 
         const authorized = await fetch(
-            `${shopify.baseUrl}/admin/api/2024-01/shop.json`,
-            { headers: { 'X-Shopify-Access-Token': 'shpat_test_mock_access_token_123456' } },
+            `${shopify.baseUrl}/admin/api/${SHOPIFY_ADMIN_API_VERSION}/shop.json`,
+            { headers: { 'X-Shopify-Access-Token': DEFAULT_DEV_SHOPIFY_ACCESS_TOKEN } },
         );
         expect(authorized.status).toBe(200);
     });
@@ -209,6 +216,17 @@ describe('mock HTTP contracts', () => {
 });
 
 describe('integration pipeline mock contracts', () => {
+    it('binds Shopify authentication through the saved connection', () => {
+        const extract = shopifyInventorySync.steps
+            .find(step => step.key === 'fetch-products');
+
+        expect(extract?.config).toMatchObject({
+            connectionCode: SHOPIFY_API_CONNECTION_CODE,
+            url: `/admin/api/${SHOPIFY_ADMIN_API_VERSION}/products.json`,
+        });
+        expect(extract?.config).not.toHaveProperty('headers.X-Shopify-Access-Token');
+    });
+
     it('normalizes Shopify variants before validating variant fields', () => {
         const keys = shopifyInventorySync.steps.map(step => step.key);
         expect(keys.indexOf('check-products')).toBeLessThan(keys.indexOf('prepare-stock'));

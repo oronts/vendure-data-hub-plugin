@@ -1,0 +1,39 @@
+services:
+  redis:
+    image: redis:7.2-alpine@sha256:dfa18828cbc07b3ae6a95ec7343f6c214fdee2d836197b4be8e9904420762cd8
+    command:
+      - redis-server
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      timeout: 2s
+      retries: 20
+    tmpfs:
+      - /data
+
+  redis-integration:
+    image: node:22.22.0-bookworm-slim@sha256:dd9d21971ec4395903fa6143c2b9267d048ae01ca6d3ea96f16cb30df6187d94
+    working_dir: /workspace
+    user: "${REDIS_TEST_UID:-1000}:${REDIS_TEST_GID:-1000}"
+    environment:
+      DATAHUB_REDIS_INTEGRATION_URL: redis://redis:6379/15
+    volumes:
+      - ../..:/workspace:ro
+    tmpfs:
+      - /tmp
+    depends_on:
+      redis:
+        condition: service_healthy
+    command:
+      - ./node_modules/.bin/vitest
+      - run
+      - src/services/runtime/redis-distributed.integration.spec.ts
+      - --reporter=verbose
+
+networks:
+  default:
+    internal: true

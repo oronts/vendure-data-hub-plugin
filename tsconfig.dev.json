@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": [
+    "src/**/*.ts",
+    "shared/**/*.ts",
+    "connectors/**/*.ts",
+    "dev-server/**/*.ts",
+    "vendure-config.dev.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "dashboard/**/*"
+  ]
+}

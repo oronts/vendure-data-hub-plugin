@@ -27,7 +27,7 @@ import {
 export const cdcProductSync = createPipeline()
     .name('CDC Product Sync')
     .description('Near-real-time CDC sync from PostgreSQL with route-based upsert and deletion')
-    .capabilities({ requires: ['UpdateCatalog'] })
+    .capabilities({ requires: ['UpdateCatalog'], writes: ['CATALOG'] })
 
     .trigger('schedule', {
         type: 'SCHEDULE',
@@ -120,7 +120,10 @@ export const cdcProductSync = createPipeline()
 export const eventStockAlert = createPipeline()
     .name('Event Stock Alert')
     .description('Event-driven stock level check with HTTP enrichment, alerting, and export')
-    .capabilities({ requires: ['ReadCatalog', 'UpdateDataHubSettings'] })
+    .capabilities({
+        requires: ['ReadCatalog', 'UpdateDataHubSettings'],
+        writes: ['CUSTOM'],
+    })
 
     .trigger('on-variant-change', {
         type: 'EVENT',
@@ -217,7 +220,10 @@ export const eventStockAlert = createPipeline()
 export const customerAnalyticsExport = createPipeline()
     .name('Customer Analytics Export')
     .description('RFM analytics with multi-source extraction, customer group updates, and tax rate sync')
-    .capabilities({ requires: ['ReadOrder', 'ReadCustomer', 'UpdateCustomer', 'UpdateSettings'] })
+    .capabilities({
+        requires: ['ReadOrder', 'ReadCustomer', 'UpdateCustomer', 'UpdateSettings'],
+        writes: ['CUSTOMERS', 'CUSTOM'],
+    })
 
     .trigger('manual', { type: 'MANUAL' })
 
@@ -352,7 +358,16 @@ export const customerAnalyticsExport = createPipeline()
 export const entityLifecycleOps = createPipeline()
     .name('Entity Lifecycle Operations')
     .description('Comprehensive entity management: shipping, payments, channels, assets, stock locations, and multi-type deletions')
-    .capabilities({ requires: ['UpdateCatalog', 'UpdateShippingMethod', 'UpdateSettings', 'UpdateCustomer'] })
+    .capabilities({
+        requires: [
+            'UpdateCatalog',
+            'UpdateShippingMethod',
+            'UpdateSettings',
+            'UpdateCustomer',
+            'UpdatePromotion',
+        ],
+        writes: ['CATALOG', 'CUSTOMERS', 'PROMOTIONS', 'INVENTORY', 'CUSTOM'],
+    })
 
     .trigger('manual', { type: 'MANUAL' })
 
@@ -720,7 +735,7 @@ export const entityLifecycleOps = createPipeline()
 export const pimCustomerSync = createPipeline()
     .name('PIM Customer Sync')
     .description('Sync customers and customer groups from Pimcore PIM with address building and group assignment')
-    .capabilities({ requires: ['UpdateCustomer'] })
+    .capabilities({ requires: ['UpdateCustomer'], writes: ['CUSTOMERS'] })
 
     .trigger('manual', { type: 'MANUAL' })
     .trigger('schedule', { type: 'SCHEDULE', cron: '0 6 * * *', timezone: 'Europe/Berlin' })
@@ -837,7 +852,10 @@ export const pimCustomerSync = createPipeline()
 export const pimOrderImport = createPipeline()
     .name('PIM Order Import')
     .description('Import orders from Pimcore PIM with line items, state transitions, notes, and coupon application')
-    .capabilities({ requires: ['UpdateOrder', 'UpdateCustomer'] })
+    .capabilities({
+        requires: ['UpdateOrder', 'UpdateCustomer'],
+        writes: ['ORDERS'],
+    })
 
     .trigger('manual', { type: 'MANUAL' })
 
@@ -931,7 +949,7 @@ const MAGENTO_API_URL = getMockApiUrl('MAGENTO');
 export const magentoCustomerMigration = createPipeline()
     .name('Magento Customer Migration')
     .description('One-time migration of customers from Magento 2 with address conversion and group mapping')
-    .capabilities({ requires: ['UpdateCustomer'] })
+    .capabilities({ requires: ['UpdateCustomer'], writes: ['CUSTOMERS'] })
 
     .trigger('manual', { type: 'MANUAL' })
 
@@ -1030,7 +1048,7 @@ const EDGE_API_URL = getMockApiUrl('EDGE_CASE');
 export const resilienceTest = createPipeline()
     .name('Resilience Test Pipeline')
     .description('Tests error handling, retries, and partial failures using the edge-case mock API')
-    .capabilities({ requires: ['UpdateCatalog'] })
+    .capabilities({ requires: ['UpdateCatalog'], writes: ['CATALOG'] })
 
     .trigger('manual', { type: 'MANUAL' })
 

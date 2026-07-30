@@ -1,0 +1,1 @@
+ALTER USER 'datahub'@'%' REQUIRE X509;

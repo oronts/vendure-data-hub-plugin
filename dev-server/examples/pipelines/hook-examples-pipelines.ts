@@ -367,6 +367,7 @@ export const searchEnrichmentHookDemo = createPipeline()
 export const multiHookChainDemo = createPipeline()
     .name('Hook Demo: Multi-Stage Chain')
     .description('Hooks at every stage: TRANSFORM → LOAD → EXPORT, proving AFTER_LOAD flows to EXPORT')
+    .capabilities({ requires: ['UpdateCatalog'], writes: ['CATALOG'] })
 
     .trigger('manual', { type: 'MANUAL' })
 

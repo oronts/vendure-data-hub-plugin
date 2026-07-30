@@ -233,7 +233,7 @@ export const operatorStressTest = createPipeline()
 export const customerLifecycleTest = createPipeline()
     .name('ET-2: Customer Lifecycle Test')
     .description('Tests customer routing (active vs inactive), group assignment, multi-address, and email dedup')
-    .capabilities({ requires: ['UpdateCustomer'] })
+    .capabilities({ requires: ['UpdateCustomer'], writes: ['CUSTOMERS'] })
 
     .trigger('manual', { type: 'MANUAL' })
 
@@ -386,7 +386,10 @@ export const customerLifecycleTest = createPipeline()
 export const orderImportStateTest = createPipeline()
     .name('ET-3: Order Import State Test')
     .description('Tests order import with state transitions, notes, line items, and re-import idempotency')
-    .capabilities({ requires: ['UpdateOrder', 'UpdateCustomer'] })
+    .capabilities({
+        requires: ['UpdateOrder', 'UpdateCustomer'],
+        writes: ['ORDERS'],
+    })
 
     .trigger('manual', { type: 'MANUAL' })
 

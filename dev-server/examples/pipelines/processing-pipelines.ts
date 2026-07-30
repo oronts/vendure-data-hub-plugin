@@ -22,7 +22,7 @@ import { createPipeline } from '../../../src';
 export const productEnrichment = createPipeline()
     .name('Product Enrichment')
     .description('Enrich products with VALIDATE, parallel SEO/Pricing enrichment, and computed fields')
-    .capabilities({ requires: ['UpdateCatalog'] })
+    .capabilities({ requires: ['UpdateCatalog'], writes: ['CATALOG'] })
     .trigger('start', { type: 'MANUAL' })
 
     .extract('fetch-products', {
@@ -429,7 +429,10 @@ export const orderAnalytics = createPipeline()
 export const customerSegmentation = createPipeline()
     .name('Customer Segmentation')
     .description('Segment customers with VALIDATE, ENRICH computed RFM, and parallel reporting')
-    .capabilities({ requires: ['ReadCustomer', 'ReadOrder', 'UpdateCustomer'] })
+    .capabilities({
+        requires: ['ReadCustomer', 'ReadOrder', 'UpdateCustomer'],
+        writes: ['CUSTOMERS'],
+    })
     .trigger('start', { type: 'MANUAL' })
 
     .extract('fetch-customers', {

@@ -528,7 +528,12 @@ describe('DataHub Plugin', () => {
                     nodes: [{
                         id: 'node-1',
                         type: 'source',
-                        data: { adapterCode: 'httpApi', config: { url: 'https://api.example.com' } },
+                        data: {
+                            type: 'source',
+                            label: 'HTTP source',
+                            adapterCode: 'httpApi',
+                            config: { url: 'https://api.example.com' },
+                        },
                         position: { x: 0, y: 0 },
                     }],
                     edges: [],

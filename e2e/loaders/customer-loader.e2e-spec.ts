@@ -137,7 +137,7 @@ describe('CustomerHandler e2e', () => {
             firstNameField: 'firstName',
             lastNameField: 'lastName',
             groupsField: 'groups',
-            groupsMode: 'add',
+            groupsMode: 'ADD',
         });
         const input = [{
             email: 'max@labtech.de',

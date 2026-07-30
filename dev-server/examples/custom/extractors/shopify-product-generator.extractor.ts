@@ -1,16 +1,12 @@
 /**
- * Shopify Products Extractor (Demo)
+ * Deterministic Shopify-Shaped Product Generator
  *
- * Generates mock Shopify-style product data for demonstrating
- * custom SDK adapters. In a real implementation, this would
- * connect to Shopify's GraphQL API.
+ * Generates reproducible records for custom adapter demonstrations.
  */
 import { CURRENT_ADAPTER_API_VERSION, JsonObject, ExtractorAdapter, ExtractContext, RecordEnvelope, StepConfigSchema } from '../../../../src';
 
-export const shopifyProductsSchema: StepConfigSchema = {
+export const shopifyProductGeneratorSchema: StepConfigSchema = {
     fields: [
-        { key: 'shopDomain', type: 'string', label: 'Shop Domain', required: true, placeholder: 'your-store.myshopify.com' },
-        { key: 'apiVersion', type: 'string', label: 'API Version', required: false, defaultValue: '2024-01' },
         {
             key: 'productStatus',
             type: 'select',
@@ -23,27 +19,32 @@ export const shopifyProductsSchema: StepConfigSchema = {
                 { value: 'archived', label: 'Archived' },
             ],
         },
-        { key: 'limit', type: 'number', label: 'Max Products', required: false, defaultValue: 10 },
+        { key: 'limit', type: 'number', label: 'Max Products', required: false, defaultValue: 10, validation: { min: 1, max: 100 } },
     ],
 };
 
-interface ShopifyProductsConfig {
-    shopDomain: string;
-    apiVersion?: string;
+interface ShopifyProductGeneratorConfig {
     productStatus?: 'active' | 'draft' | 'archived';
     limit?: number;
 }
 
-// Mock product data generator that mimics Shopify's GraphQL response structure
-function generateMockShopifyProducts(config: ShopifyProductsConfig): JsonObject[] {
-    const { productStatus = 'active', limit = 10 } = config;
+const DEFAULT_PRODUCT_LIMIT = 10;
+const MAX_PRODUCT_LIMIT = 100;
+const MILLISECONDS_PER_DAY = 86_400_000;
+const REFERENCE_TIMESTAMP_MS = Date.parse('2024-01-01T00:00:00.000Z');
+
+function generateShopifyShapedProducts(config: ShopifyProductGeneratorConfig): JsonObject[] {
+    const { productStatus = 'active', limit = DEFAULT_PRODUCT_LIMIT } = config;
+    const productCount = Number.isSafeInteger(limit)
+        ? Math.min(Math.max(limit, 1), MAX_PRODUCT_LIMIT)
+        : DEFAULT_PRODUCT_LIMIT;
     const products: JsonObject[] = [];
 
     const categories = ['Electronics', 'Clothing', 'Home & Garden', 'Sports', 'Books'];
     const adjectives = ['Premium', 'Classic', 'Modern', 'Vintage', 'Professional'];
     const nouns = ['Widget', 'Gadget', 'Device', 'Tool', 'Accessory'];
 
-    for (let i = 1; i <= limit; i++) {
+    for (let i = 1; i <= productCount; i++) {
         const adj = adjectives[i % adjectives.length];
         const noun = nouns[i % nouns.length];
         const category = categories[i % categories.length];
@@ -63,8 +64,8 @@ function generateMockShopifyProducts(config: ShopifyProductsConfig): JsonObject[
                     title: variantTitle,
                     price: ((i * 10 + v * 5) + 0.99).toFixed(2),
                     compareAtPrice: ((i * 10 + v * 5) * 1.2 + 0.99).toFixed(2),
-                    inventoryQuantity: Math.floor(Math.random() * 100) + 1,
-                    weight: (0.5 + Math.random() * 2).toFixed(2),
+                    inventoryQuantity: ((i * 37 + v * 17) % 100) + 1,
+                    weight: (0.5 + ((i * 7 + v * 3) % 20) / 10).toFixed(2),
                     weightUnit: 'KILOGRAMS',
                     barcode: `${1000000000 + i * 100 + v}`,
                 },
@@ -80,9 +81,9 @@ function generateMockShopifyProducts(config: ShopifyProductsConfig): JsonObject[
             vendor: 'Demo Vendor',
             productType: category,
             tags: [category.toLowerCase(), adj.toLowerCase(), 'demo'],
-            createdAt: new Date(Date.now() - i * 86400000).toISOString(),
-            updatedAt: new Date().toISOString(),
-            publishedAt: productStatus === 'active' ? new Date().toISOString() : null,
+            createdAt: new Date(REFERENCE_TIMESTAMP_MS - i * MILLISECONDS_PER_DAY).toISOString(),
+            updatedAt: new Date(REFERENCE_TIMESTAMP_MS).toISOString(),
+            publishedAt: productStatus === 'active' ? new Date(REFERENCE_TIMESTAMP_MS).toISOString() : null,
             images: {
                 edges: [
                     {
@@ -107,29 +108,21 @@ function generateMockShopifyProducts(config: ShopifyProductsConfig): JsonObject[
     return products;
 }
 
-export const shopifyProductsExtractor: ExtractorAdapter<ShopifyProductsConfig> = {
+export const shopifyProductGeneratorExtractor: ExtractorAdapter<ShopifyProductGeneratorConfig> = {
     type: 'EXTRACTOR',
-    code: 'shopify-products',
-    name: 'Shopify Products (Demo)',
-    description: 'Extract products from Shopify GraphQL API (demo mode generates mock data)',
+    code: 'shopify-product-generator',
+    name: 'Shopify-Shaped Product Generator',
+    description: 'Generate deterministic Shopify-shaped product records without network access',
     category: 'DATA_SOURCE',
-    schema: shopifyProductsSchema,
+    schema: shopifyProductGeneratorSchema,
     icon: 'shopping-bag',
-    version: '1.0.0',
+    version: '1.1.0',
     apiVersion: CURRENT_ADAPTER_API_VERSION,
     batchable: true,
 
-    async *extract(context: ExtractContext, config: ShopifyProductsConfig): AsyncGenerator<RecordEnvelope, void, undefined> {
-        const { shopDomain, apiVersion = '2024-01', productStatus = 'active', limit = 10 } = config;
-
-        context.logger.info(`Shopify extractor: Fetching ${productStatus} products from ${shopDomain} (API ${apiVersion})`);
-        context.logger.info(`[DEMO MODE] Generating ${limit} mock Shopify products`);
-
-        // In a real implementation, this would call Shopify's GraphQL API:
-        // const accessToken = await context.secrets.get('shopify-access-token');
-        // const response = await fetch(`https://${shopDomain}/admin/api/${apiVersion}/graphql.json`, {...});
-
-        const products = generateMockShopifyProducts(config);
+    async *extract(context: ExtractContext, config: ShopifyProductGeneratorConfig): AsyncGenerator<RecordEnvelope, void, undefined> {
+        const products = generateShopifyShapedProducts(config);
+        context.logger.info(`Generating ${products.length} deterministic Shopify-shaped products`);
 
         for (let i = 0; i < products.length; i++) {
             const product = products[i];
@@ -143,6 +136,6 @@ export const shopifyProductsExtractor: ExtractorAdapter<ShopifyProductsConfig> =
             };
         }
 
-        context.logger.info(`Shopify extractor: Completed extracting ${products.length} products`);
+        context.logger.info(`Generated ${products.length} Shopify-shaped products`);
     },
 };

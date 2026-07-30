@@ -15,7 +15,16 @@
  * under the same product.
  */
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
-import { TransactionalConnection, ProductVariant, ID } from '@vendure/core';
+import {
+    ID,
+    ProductOptionGroupService,
+    ProductOptionService,
+    ProductService,
+    ProductVariant,
+    ProductVariantService,
+    StockLevelService,
+    TransactionalConnection,
+} from '@vendure/core';
 import { createDataHubTestEnvironment } from '../test-config';
 import { FacetHandler, FacetValueHandler } from '../../src/runtime/executors/loaders/facet-handler';
 import { ProductVariantLoader } from '../../src/loaders/product-variant/product-variant.loader';
@@ -48,7 +57,11 @@ describe('Variant Modes', () => {
     const { server, adminClient } = createDataHubTestEnvironment();
     let loader: ProductVariantLoader;
     let connection: TransactionalConnection;
+    let productService: ProductService;
+    let variantService: ProductVariantService;
+    let stockLevelService: StockLevelService;
     let ctx: import('@vendure/core').RequestContext;
+    let optionProductId: ID;
 
     beforeAll(async () => {
         vi.spyOn(assetDownload, 'downloadAsset').mockResolvedValue(TEST_PNG);
@@ -59,6 +72,9 @@ describe('Variant Modes', () => {
         await adminClient.asSuperAdmin();
         loader = server.app.get(ProductVariantLoader);
         connection = server.app.get(TransactionalConnection);
+        productService = server.app.get(ProductService);
+        variantService = server.app.get(ProductVariantService);
+        stockLevelService = server.app.get(StockLevelService);
         const facetHandler = server.app.get(FacetHandler);
         const facetValueHandler = server.app.get(FacetValueHandler);
         ctx = await getSuperadminContext(server.app);
@@ -72,6 +88,26 @@ describe('Variant Modes', () => {
             { facetCode: 'vm-material', code: 'vm-silk', name: 'Silk' },
             { facetCode: 'vm-material', code: 'vm-wool', name: 'Wool' },
         ]);
+
+        const optionProduct = await productService.create(ctx, {
+            enabled: true,
+            translations: [{
+                languageCode: ctx.languageCode,
+                name: 'VM Option Product',
+                slug: 'vm-option-product',
+                description: '',
+            }],
+        });
+        const optionGroup = await server.app.get(ProductOptionGroupService).create(ctx, {
+            code: 'vm-size',
+            translations: [{ languageCode: ctx.languageCode, name: 'Size' }],
+        });
+        await server.app.get(ProductOptionService).create(ctx, optionGroup, {
+            code: 'vm-small',
+            translations: [{ languageCode: ctx.languageCode, name: 'Small' }],
+        });
+        await productService.addOptionGroupToProduct(ctx, optionProduct.id, optionGroup.id);
+        optionProductId = optionProduct.id;
     });
 
     afterAll(async () => {
@@ -199,13 +235,19 @@ describe('Variant Modes', () => {
     });
 
     describe('optionsMode', () => {
-        it('should create variant with REPLACE_ALL options mode', async () => {
+        it('passes resolved options into Vendure create for products with option groups', async () => {
             const result = await loader.load(makeLoaderContext(ctx, { optionsMode: 'REPLACE_ALL' }), [{
                 sku: 'VM-OPT-REPLACE-001',
                 price: 1000,
-                productName: 'VM Opt Replace Product',
+                productId: optionProductId,
+                optionCodes: ['vm-small'],
             }]);
-            expect(result.succeeded).toBeGreaterThanOrEqual(1);
+            expect(result).toMatchObject({ created: 1, failed: 0 });
+            const variants = await connection.getRepository(ctx, ProductVariant).find({
+                where: { sku: 'VM-OPT-REPLACE-001' },
+                relations: ['options'],
+            });
+            expect(variants[0]?.options.map(option => option.code)).toEqual(['vm-small']);
         });
 
         it('should create variant with MERGE options mode', async () => {
@@ -224,6 +266,64 @@ describe('Variant Modes', () => {
                 productName: 'VM Opt Skip Product',
             }]);
             expect(result.succeeded).toBeGreaterThanOrEqual(1);
+        });
+    });
+
+    describe('Vendure mutation contracts', () => {
+        it('sets the requested absolute stock quantity on update', async () => {
+            const context = makeLoaderContext(ctx);
+            expect(await loader.load(context, [{
+                sku: 'VM-STOCK-001',
+                price: 10,
+                productName: 'VM Stock Product',
+                stockOnHand: 10,
+            }])).toMatchObject({ created: 1, failed: 0 });
+            expect(await loader.load(context, [{
+                sku: 'VM-STOCK-001',
+                price: 10,
+                productName: 'VM Stock Product',
+                stockOnHand: 15,
+            }])).toMatchObject({ updated: 1, failed: 0 });
+
+            const [variant] = (await variantService.findAll(ctx, {
+                filter: { sku: { eq: 'VM-STOCK-001' } },
+            })).items;
+            await expect(stockLevelService.getAvailableStock(ctx, variant.id)).resolves.toMatchObject({
+                stockOnHand: 15,
+            });
+        });
+
+        it('persists all translations in Vendure create without a second update', async () => {
+            expect(await loader.load(makeLoaderContext(ctx), [{
+                sku: 'VM-I18N-001',
+                name: 'English name',
+                price: 10,
+                productName: 'VM Translation Product',
+                translations: [{ languageCode: 'de', name: 'Deutscher Name' }],
+            }])).toMatchObject({ created: 1, failed: 0 });
+
+            const variants = await connection.getRepository(ctx, ProductVariant).find({
+                where: { sku: 'VM-I18N-001' },
+                relations: ['translations'],
+            });
+            expect(variants[0]?.translations).toEqual(expect.arrayContaining([
+                expect.objectContaining({ languageCode: ctx.languageCode, name: 'English name' }),
+                expect.objectContaining({ languageCode: 'de', name: 'Deutscher Name' }),
+            ]));
+        });
+
+        it('rolls back an auto-created product when relation resolution fails', async () => {
+            const result = await loader.load(makeLoaderContext(ctx), [{
+                sku: 'VM-ROLLBACK-001',
+                price: 10,
+                productName: 'VM Rolled Back Product',
+                optionCodes: ['missing-option'],
+            }]);
+            expect(result).toMatchObject({ created: 0, failed: 1 });
+            expect(result.errors[0]?.message).toContain('Option codes not found: missing-option');
+            await expect(productService.findAll(ctx, {
+                filter: { name: { eq: 'VM Rolled Back Product' } },
+            })).resolves.toMatchObject({ totalItems: 0 });
         });
     });
 

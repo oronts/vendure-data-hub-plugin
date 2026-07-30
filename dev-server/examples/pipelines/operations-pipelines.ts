@@ -35,7 +35,7 @@ import { getMockEndpoint, MOCK_ROUTES } from '../../ports';
 export const csvCustomerImport = createPipeline()
     .name('CSV Customer Import')
     .description('Import customers from CSV with validation, error routing, address building, and group assignment')
-    .capabilities({ requires: ['UpdateCustomer'] })
+    .capabilities({ requires: ['UpdateCustomer'], writes: ['CUSTOMERS'] })
 
     .trigger('manual', { type: 'MANUAL' })
 
@@ -267,7 +267,10 @@ export const productFeedGenerator = createPipeline()
 export const webhookOrderImport = createPipeline()
     .name('Webhook Order Import')
     .description('Import orders from external OMS via webhook with HMAC authentication and enrichment')
-    .capabilities({ requires: ['UpdateOrder', 'UpdateCustomer'] })
+    .capabilities({
+        requires: ['UpdateOrder', 'UpdateCustomer', 'UpdateDataHubSettings'],
+        writes: ['ORDERS', 'CUSTOM'],
+    })
 
     .trigger('webhook', {
         type: 'WEBHOOK',

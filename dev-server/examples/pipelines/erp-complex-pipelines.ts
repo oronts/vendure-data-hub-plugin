@@ -49,7 +49,7 @@ import {
 export const erpFullProductImport = createPipeline()
     .name('ERP Full Product Import')
     .description('Complete ERP product import: translations, channels, custom fields, option groups, multi-currency pricing, assets, and facets')
-    .capabilities({ requires: ['UpdateCatalog'] })
+    .capabilities({ requires: ['UpdateCatalog'], writes: ['CATALOG'] })
 
     .trigger('manual', { type: 'MANUAL' })
     .trigger('schedule', { type: 'SCHEDULE', cron: '0 2 * * *', timezone: 'Europe/Berlin' })
@@ -241,7 +241,7 @@ export const erpFullProductImport = createPipeline()
 export const erpCustomerSync = createPipeline()
     .name('ERP Customer Sync')
     .description('Full customer sync: group assignment, multi-address, B2B company/VAT fields, UPSERT by email')
-    .capabilities({ requires: ['UpdateCustomer'] })
+    .capabilities({ requires: ['UpdateCustomer'], writes: ['CUSTOMERS'] })
 
     .trigger('manual', { type: 'MANUAL' })
     .trigger('schedule', { type: 'SCHEDULE', cron: '0 5 * * *', timezone: 'Europe/Berlin' })
@@ -403,7 +403,10 @@ export const erpCustomerSync = createPipeline()
 export const erpOrderImport = createPipeline()
     .name('ERP Order Import')
     .description('Complex order import with state transitions, order notes, coupon codes, custom fields, and skip-on-unknown-product error handling')
-    .capabilities({ requires: ['UpdateOrder', 'UpdateCustomer'] })
+    .capabilities({
+        requires: ['UpdateOrder', 'UpdateCustomer'],
+        writes: ['ORDERS'],
+    })
 
     .trigger('manual', { type: 'MANUAL' })
 
@@ -586,7 +589,10 @@ export const erpOrderImport = createPipeline()
 export const erpDeltaSyncPipeline = createPipeline()
     .name('ERP Delta Sync')
     .description('Delta/CDC sync: polls /api/changes?since=lastRun, routes DELETE vs UPSERT, handles product and customer entity types')
-    .capabilities({ requires: ['UpdateCatalog', 'UpdateCustomer'] })
+    .capabilities({
+        requires: ['UpdateCatalog', 'UpdateCustomer'],
+        writes: ['CATALOG', 'CUSTOMERS'],
+    })
 
     .trigger('manual', { type: 'MANUAL' })
     .trigger('schedule', {
@@ -845,7 +851,7 @@ export const erpDeltaSyncPipeline = createPipeline()
 export const erpChannelSpecificCatalog = createPipeline()
     .name('ERP Channel-Specific Catalog')
     .description('Channel-specific product catalog: filter by channel, assign to Vendure channel, apply channel pricing and translations')
-    .capabilities({ requires: ['UpdateCatalog'] })
+    .capabilities({ requires: ['UpdateCatalog'], writes: ['CATALOG'] })
 
     .trigger('manual', { type: 'MANUAL' })
     // UK store channel — daily at 3am UTC

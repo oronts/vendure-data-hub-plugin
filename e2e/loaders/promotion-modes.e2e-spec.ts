@@ -199,10 +199,8 @@ describe('Promotion Modes', () => {
                 }]);
                 expect(result.ok).toBe(1);
 
-                // The promotion handler always replaces conditions (conditionsMode is not supported
-                // at the handler level), so only the new condition from the last execute call remains
                 const promos = await promotionService.findAll(ctx, { filter: { couponCode: { eq: 'PROMO-COND-PRESERVE' } } } as never);
-                expect((promos.items[0].conditions?.length ?? 0)).toBe(1);
+                expect((promos.items[0].conditions?.length ?? 0)).toBe(2);
             });
         });
 
@@ -241,10 +239,8 @@ describe('Promotion Modes', () => {
                     actions: [{ code: 'order_percentage_discount', arguments: [{ name: 'discount', value: '10' }] }],
                 }]);
 
-                // The promotion handler always replaces conditions (conditionsMode is not supported
-                // at the handler level), so the 2 new conditions from the skip step are applied
                 const promos = await promotionService.findAll(ctx, { filter: { couponCode: { eq: 'PROMO-COND-SKIP' } } } as never);
-                expect(promos.items[0].conditions?.length ?? 0).toBe(2);
+                expect(promos.items[0].conditions?.length ?? 0).toBe(1);
             });
         });
     });
@@ -340,6 +336,8 @@ describe('Promotion Modes', () => {
                     actions: [{ code: 'order_fixed_discount', arguments: [{ name: 'discount', value: '500' }] }],
                 }]);
                 expect(result.ok).toBe(1);
+                const promos = await promotionService.findAll(ctx, { filter: { couponCode: { eq: 'PROMO-ACT-MERGE' } } } as never);
+                expect(promos.items[0].actions?.length ?? 0).toBe(2);
             });
 
             it('should prevent duplicate actions on re-run', async () => {
@@ -396,10 +394,8 @@ describe('Promotion Modes', () => {
                     ],
                 }]);
 
-                // The promotion handler always replaces actions (actionsMode is not supported
-                // at the handler level), so the 2 new actions from the skip step are applied
                 const promos = await promotionService.findAll(ctx, { filter: { couponCode: { eq: 'PROMO-ACT-SKIP' } } } as never);
-                expect(promos.items[0].actions?.length ?? 0).toBe(2);
+                expect(promos.items[0].actions?.length ?? 0).toBe(1);
             });
         });
     });
