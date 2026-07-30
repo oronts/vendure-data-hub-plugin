@@ -45,6 +45,7 @@ import { getErrorMessage } from '../../utils/error.utils';
 import { LOGGER_CONTEXTS } from '../../constants/core';
 import { DataHubLoggerFactory } from '../../services/logger';
 import { resolveEffectiveStepContext } from './effective-context';
+import { reconcileCompletionOutcomes } from './outcome-metrics';
 
 const logger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.LINEAR_EXECUTOR);
 
@@ -443,6 +444,8 @@ export async function executeLinear(params: LinearExecutorParams): Promise<Linea
     if (state.cancelled) {
         publishPipelineCancelled(params, state);
     }
+
+    reconcileCompletionOutcomes(state);
 
     return {
         processed: state.processed,

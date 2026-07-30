@@ -250,6 +250,7 @@ describe('HookService webhook credentials', () => {
             {
                 seedRecords: payload,
                 triggerKey: 'hook',
+                skipPermissionCheck: true,
                 triggeredBy: 'hook:hook',
             },
         );

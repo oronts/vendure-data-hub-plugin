@@ -22,7 +22,6 @@ import {
 import { getErrorMessage, isDuplicateEntryError } from '../../utils/error.utils';
 import { DEFAULT_RETRY_CONFIG, createRetryConfig } from '../../utils/retry.utils';
 import { secureFetch } from '../../utils/secure-fetch.utils';
-import { sanitizeUrlForLogging } from '../../utils/url-sanitize.utils';
 import { assertUrlSafe, UrlSecurityConfig } from '../../utils/url-security.utils';
 import { SecretService } from '../config/secret.service';
 import { DomainEventsService } from '../events/domain-events.service';
@@ -33,15 +32,15 @@ import {
     createRequestFingerprint,
     generateDeliveryId,
     serializeWebhookPayload,
-    sha256,
     toWebhookDelivery,
 } from './webhook.helpers';
-import {
-    decryptWebhookReplayEnvelope,
-    encryptWebhookReplayEnvelope,
-} from './webhook-replay-envelope';
+import { decryptWebhookReplayEnvelope } from './webhook-replay-envelope';
 import { createWebhookAttemptHeaders } from './webhook-attempt-headers';
 import { WebhookDeliveryStore } from './webhook-delivery.store';
+import {
+    normalizeWebhookDeliveryConfig,
+    preparePendingWebhookDelivery,
+} from './webhook-delivery.factory';
 import { validateDeliveryKey, validateWebhookConfig } from './webhook-validation';
 import {
     RetryConfig,
@@ -69,7 +68,9 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
     private readonly store: WebhookDeliveryStore;
     private queue!: JobQueue<WebhookJobData>;
     private dispatchTimer: NodeJS.Timeout | null = null;
+    private maintenanceTimer: NodeJS.Timeout | null = null;
     private dispatching = false;
+    private maintainingHistory = false;
     private destroying = false;
     private ssrfConfig?: UrlSecurityConfig;
 
@@ -95,15 +96,23 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
             process: job => this.processJob(job),
         });
         await this.dispatchPending();
+        await this.maintainHistory();
         this.dispatchTimer = setInterval(() => {
             this.dispatchPending().catch(() => {
                 this.logger.error('Webhook delivery dispatch failed');
             });
         }, WEBHOOK.RETRY_CHECK_INTERVAL_MS);
         this.dispatchTimer.unref();
+        this.maintenanceTimer = setInterval(() => {
+            this.maintainHistory().catch(() => {
+                this.logger.error('Webhook delivery history cleanup failed');
+            });
+        }, WEBHOOK_QUEUE.HISTORY_CLEANUP_INTERVAL_MS);
+        this.maintenanceTimer.unref();
         this.logger.info('Durable webhook delivery initialized', {
             queueName: QUEUE_NAMES.WEBHOOK_RETRY,
             dispatchIntervalMs: WEBHOOK.RETRY_CHECK_INTERVAL_MS,
+            historyCleanupIntervalMs: WEBHOOK_QUEUE.HISTORY_CLEANUP_INTERVAL_MS,
         });
     }
 
@@ -112,6 +121,10 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
         if (this.dispatchTimer) {
             clearInterval(this.dispatchTimer);
             this.dispatchTimer = null;
+        }
+        if (this.maintenanceTimer) {
+            clearInterval(this.maintenanceTimer);
+            this.maintenanceTimer = null;
         }
     }
 
@@ -127,57 +140,25 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
         await this.validateConfig(ctx, config);
         const deliveryKey = validateDeliveryKey(options?.idempotencyKey) ?? generateDeliveryId();
         const serializedPayload = serializeWebhookPayload(payload);
-        const requestFingerprint = createRequestFingerprint(config.id, serializedPayload);
+        const normalizedConfig = normalizeWebhookDeliveryConfig(config);
+        const requestFingerprint = createRequestFingerprint(
+            normalizedConfig,
+            serializedPayload,
+            options?.headers,
+        );
         const existing = await this.store.findByDeliveryKey(ctx, deliveryKey);
         if (existing) {
             return this.resolveIdempotentDelivery(existing, requestFingerprint);
         }
 
-        const retryConfig = {
-            ...createRetryConfig(config.retryConfig, {
-                maxAttempts: WEBHOOK.MAX_ATTEMPTS,
-                initialDelayMs: WEBHOOK.INITIAL_DELAY_MS,
-                maxDelayMs: WEBHOOK.HOOK_MAX_DELAY_MS,
-                backoffMultiplier: WEBHOOK.BACKOFF_MULTIPLIER,
-                jitterFactor: DEFAULT_RETRY_CONFIG.jitterFactor,
-            }),
-            retryableStatusCodes: config.retryConfig?.retryableStatusCodes,
-        };
-        const normalizedConfig: WebhookConfig = {
-            ...config,
-            method: config.method ?? 'POST',
-            retryConfig,
-            enabled: true,
-        };
-        const encryptedReplayEnvelope = await encryptWebhookReplayEnvelope({
+        const entity = await preparePendingWebhookDelivery({
+            ctx,
             config: normalizedConfig,
-            serializedPayload,
-            additionalHeaders: { ...options?.headers },
-            idempotencyKey: options?.idempotencyKey,
-        });
-        const now = new Date();
-        const entity = Object.assign(new DataHubWebhookDelivery(), {
-            channelId: String(ctx.channelId),
-            channelToken: ctx.channel.token,
             deliveryKey,
-            webhookId: config.id,
-            publicUrl: sanitizeUrlForLogging(config.url),
-            method: normalizedConfig.method,
+            serializedPayload,
             requestFingerprint,
-            payloadHash: sha256(serializedPayload),
-            payloadBytes: Buffer.byteLength(serializedPayload),
-            encryptedReplayEnvelope,
-            status: WebhookDeliveryStatus.PENDING,
-            attempts: 0,
-            maxAttempts: retryConfig.maxAttempts,
-            availableAt: now,
-            lastAttemptAt: null,
-            nextRetryAt: null,
-            leaseExpiresAt: null,
-            dispatchToken: null,
-            responseStatus: null,
-            lastError: null,
-            deliveredAt: null,
+            additionalHeaders: options?.headers,
+            idempotencyKey: options?.idempotencyKey,
         });
 
         let saved: DataHubWebhookDelivery;
@@ -270,13 +251,26 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
             const ctx = await this.requestContextService.create({ apiType: 'admin' });
             const now = new Date();
             await this.store.recoverExpiredLeases(ctx, now);
-            await this.store.deleteExpiredHistory(ctx, now);
             const due = await this.store.findDue(ctx, now);
             for (const delivery of due) {
                 await this.dispatchOne(ctx, delivery);
             }
         } finally {
             this.dispatching = false;
+        }
+    }
+
+    private async maintainHistory(): Promise<void> {
+        if (this.destroying || this.maintainingHistory) return;
+        this.maintainingHistory = true;
+        try {
+            const ctx = await this.requestContextService.create({ apiType: 'admin' });
+            const result = await this.store.deleteExpiredHistory(ctx, new Date());
+            if (result.delivered > 0 || result.deadLetters > 0) {
+                this.logger.info('Webhook delivery history cleanup completed', result);
+            }
+        } finally {
+            this.maintainingHistory = false;
         }
     }
 
@@ -314,12 +308,13 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
             job.data.dispatchToken,
         );
         if (!delivery) return;
-        await this.store.renewLease(
+        const renewed = await this.store.renewLease(
             adminCtx,
             delivery.id,
             job.data.dispatchToken,
             new Date(),
         );
+        if (!renewed) return;
         const ctx = await this.requestContextService.create({
             apiType: 'admin',
             channelOrToken: delivery.channelToken,
@@ -414,7 +409,7 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
         responseStatus: number,
     ): Promise<void> {
         const deliveredAt = new Date();
-        await this.store.markDelivered(
+        const transitioned = await this.store.markDelivered(
             ctx,
             delivery,
             dispatchToken,
@@ -423,6 +418,7 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
             responseStatus,
             deliveredAt,
         );
+        if (!transitioned) return;
         this.logger.info('Webhook delivered successfully', {
             deliveryId: delivery.deliveryKey,
             webhookId: delivery.webhookId,
@@ -460,7 +456,7 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
         const nextRetryAt = willRetry
             ? new Date(Date.now() + calculateBackoff(attempts, retryConfig))
             : null;
-        await this.store.markFailed(ctx, delivery, dispatchToken, {
+        const transitioned = await this.store.markFailed(ctx, delivery, dispatchToken, {
             status: willRetry
                 ? WebhookDeliveryStatus.RETRYING
                 : WebhookDeliveryStatus.DEAD_LETTER,
@@ -470,6 +466,7 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
             responseStatus: responseStatus ?? null,
             error: reason,
         });
+        if (!transitioned) return;
         this.domainEvents?.publishWebhookDelivery(
             'WebhookDeliveryFailed',
             delivery.deliveryKey,

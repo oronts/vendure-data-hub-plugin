@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { SPAN_TRACKER } from '../../constants/defaults/runtime-defaults';
 import { OTLP_TELEMETRY } from '../../constants/defaults/telemetry-defaults';
-import type { OtlpTelemetryConfig } from '../../types';
+import type { OtlpTelemetryConfig, OtlpTelemetryTlsConfig } from '../../types';
 import type { SpanData } from './logger.types';
 import type { MetricsRegistry } from './metrics';
 
@@ -38,6 +38,7 @@ export interface ResolvedTelemetryConfig {
     metrics: boolean;
     traces: boolean;
     headers: Readonly<Record<string, string>>;
+    tls?: OtlpTelemetryTlsConfig;
     serviceName: string;
     serviceInstanceId: string;
     serviceVersion?: string;
@@ -47,6 +48,46 @@ export interface ResolvedTelemetryConfig {
     maxQueueSize: number;
     maxBatchSize: number;
     maxRequestBodyBytes: number;
+}
+
+function resolveTls(
+    tls: OtlpTelemetryTlsConfig | undefined,
+    endpoint: string,
+): OtlpTelemetryTlsConfig | undefined {
+    if (!tls) return undefined;
+    if (!endpoint.startsWith('https://')) {
+        throw new Error('telemetry.tls requires an HTTPS endpoint');
+    }
+    const normalizePath = (name: string, value: string | undefined): string | undefined => {
+        const normalized = value?.trim();
+        if (value !== undefined && (!normalized || normalized.includes('\0'))) {
+            throw new Error(`telemetry.tls.${name} must be a non-empty file path`);
+        }
+        return normalized;
+    };
+    const caFile = normalizePath('caFile', tls.caFile);
+    const clientCertificateFile = normalizePath(
+        'clientCertificateFile',
+        tls.clientCertificateFile,
+    );
+    const clientKeyFile = normalizePath('clientKeyFile', tls.clientKeyFile);
+    if (Boolean(clientCertificateFile) !== Boolean(clientKeyFile)) {
+        throw new Error(
+            'telemetry.tls.clientCertificateFile and clientKeyFile must be configured together',
+        );
+    }
+    if (tls.clientKeyPassphrase !== undefined && !clientKeyFile) {
+        throw new Error('telemetry.tls.clientKeyPassphrase requires clientKeyFile');
+    }
+    if (!caFile && !clientCertificateFile) {
+        throw new Error('telemetry.tls must configure caFile or a client certificate and key');
+    }
+    return {
+        caFile,
+        clientCertificateFile,
+        clientKeyFile,
+        clientKeyPassphrase: tls.clientKeyPassphrase,
+    };
 }
 
 const SAFE_ATTRIBUTE_NAMES: ReadonlySet<string> = new Set([
@@ -178,11 +219,13 @@ export function resolveOtlpConfig(
         return undefined;
     }
 
+    const endpoint = resolveEndpoint(config.endpoint);
     return {
-        endpoint: resolveEndpoint(config.endpoint),
+        endpoint,
         metrics,
         traces,
         headers: resolveHeaders(config.headers),
+        tls: resolveTls(config.tls, endpoint),
         serviceName: truncate(
             config.serviceName?.trim() || OTLP_TELEMETRY.DEFAULT_SERVICE_NAME,
             OTLP_TELEMETRY.MAX_RESOURCE_ATTRIBUTE_LENGTH,

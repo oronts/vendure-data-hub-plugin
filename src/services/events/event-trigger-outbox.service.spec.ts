@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+    EntityNotFoundError,
     EventBus,
     Job,
     JobQueueService,
@@ -9,11 +10,12 @@ import {
     TransactionalConnection,
 } from '@vendure/core';
 import { VENDURE_EVENT_TYPES, type PipelineDefinition } from '../../../shared/types';
-import { RunStatus } from '../../constants';
+import { PipelineStatus, RevisionType, RunStatus } from '../../constants';
 import {
     DataHubEventTriggerOutbox,
     EventTriggerOutboxStatus,
     Pipeline,
+    PipelineRevision,
     PipelineRun,
 } from '../../entities/pipeline';
 import { DataHubRunQueueHandler } from '../../jobs';
@@ -22,6 +24,7 @@ import { PipelineService } from '../pipeline/pipeline.service';
 import { DomainEventsService } from './domain-events.service';
 import { EventTriggerOutboxService } from './event-trigger-outbox.service';
 import { DataHubEventTriggerService } from './event-trigger.service';
+import { PipelineNotRunnableError } from '../pipeline/pipeline-policy';
 
 interface OutboxJobData {
     deliveryId: string;
@@ -68,14 +71,28 @@ describe('EventTriggerOutboxService capture', () => {
             id: 3,
             code: 'product-event-sync',
             enabled: true,
+            status: PipelineStatus.PUBLISHED,
+            currentRevisionId: 17,
             definition,
         } as Pipeline;
         const pipelineRepo = { find: vi.fn(async () => [pipeline]) };
+        const revisionRepo = {
+            find: vi.fn(async () => [Object.assign(new PipelineRevision(), {
+                id: 17,
+                pipelineId: 3,
+                type: RevisionType.PUBLISHED,
+                definition,
+            })]),
+        };
         const outboxRepo = { save: vi.fn(async (rows: DataHubEventTriggerOutbox[]) => rows) };
         const connection = {
             getRepository: vi.fn((repositoryCtx: RequestContext, entity: unknown) => {
                 expect(repositoryCtx).toBe(ctx);
-                return entity === Pipeline ? pipelineRepo : outboxRepo;
+                return entity === Pipeline
+                    ? pipelineRepo
+                    : entity === PipelineRevision
+                        ? revisionRepo
+                        : outboxRepo;
             }),
         };
         const { factory } = createLoggerFactory();
@@ -96,6 +113,7 @@ describe('EventTriggerOutboxService capture', () => {
         expect(deliveries?.[0]).toMatchObject({
             eventType: 'ProductEvent',
             pipelineId: 3,
+            revisionId: 17,
             pipelineCode: 'product-event-sync',
             triggerKey: 'on-product',
             channelId: '7',
@@ -141,6 +159,7 @@ function createDelivery(): DataHubEventTriggerOutbox {
         deliveryKey: 'a'.repeat(64),
         eventType: 'ProductEvent',
         pipelineId: 3,
+        revisionId: 17,
         pipelineCode: 'product-event-sync',
         triggerKey: 'on-product',
         channelId: '7',
@@ -156,27 +175,45 @@ function createDelivery(): DataHubEventTriggerOutbox {
         lastError: null,
         runId: null,
         deliveredAt: null,
+        failedAt: null,
     });
     return delivery;
 }
 
-function createWorkerFixture(options?: { enqueueError?: Error; claimAffected?: number }) {
+function createWorkerFixture(options?: {
+    enqueueError?: Error;
+    claimAffected?: number;
+    expiredLeaseCount?: number;
+    deliveryChannelId?: number;
+    deliveredAffected?: number;
+}) {
     const delivery = createDelivery();
     const run = Object.assign(new PipelineRun(), {
         id: 91,
         status: RunStatus.PENDING,
     });
     const outboxRepo = {
-        find: vi.fn(async () => []),
+        find: vi.fn(async (findOptions?: { order?: Record<string, unknown> }) => {
+            if (!findOptions?.order?.leaseExpiresAt) return [];
+            return Array.from(
+                { length: options?.expiredLeaseCount ?? 0 },
+                (_, index) => ({ id: index + 1 }),
+            );
+        }),
         findOne: vi.fn(async () => delivery),
-        update: vi.fn(async () => ({ affected: options?.claimAffected ?? 1 })),
-        count: vi.fn(async () => 0),
+        update: vi.fn(async (_criteria: unknown, values?: { status?: string }) => ({
+            affected: values?.status === EventTriggerOutboxStatus.DELIVERED
+                ? options?.deliveredAffected ?? 1
+                : options?.claimAffected ?? 1,
+        })),
     };
     const connection = {
         getRepository: vi.fn(() => outboxRepo),
     };
     const adminCtx = { channelId: 1 } as RequestContext;
-    const deliveryCtx = { channelId: 7 } as RequestContext;
+    const deliveryCtx = {
+        channelId: options?.deliveryChannelId ?? 7,
+    } as RequestContext;
     const requestContextService = {
         create: vi.fn(async (input: { channelOrToken?: string }) =>
             input.channelOrToken ? deliveryCtx : adminCtx),
@@ -193,7 +230,7 @@ function createWorkerFixture(options?: { enqueueError?: Error; claimAffected?: n
     };
     const pipelineService = {
         runById: vi.fn(async () => null),
-        startIdempotentRunWithSeed: vi.fn(async () => ({ run, duplicate: false })),
+        startPinnedIdempotentRunWithSeed: vi.fn(async () => ({ run, duplicate: false })),
     };
     const enqueueRun = options?.enqueueError
         ? vi.fn(async () => Promise.reject(options.enqueueError))
@@ -238,6 +275,40 @@ function createJob(attempts = 1, retries = 2): Job<OutboxJobData> {
 }
 
 describe('EventTriggerOutboxService delivery', () => {
+    it('does not write when no leases have expired', async () => {
+        const fixture = createWorkerFixture();
+
+        await fixture.service.onModuleInit();
+        fixture.service.onModuleDestroy();
+
+        expect(fixture.outboxRepo.find).toHaveBeenCalledWith(expect.objectContaining({
+            order: { leaseExpiresAt: 'ASC' },
+            take: 100,
+        }));
+        expect(fixture.outboxRepo.update).not.toHaveBeenCalled();
+    });
+
+    it('recovers expired leases with the guarded update', async () => {
+        const fixture = createWorkerFixture({ expiredLeaseCount: 1 });
+
+        await fixture.service.onModuleInit();
+        fixture.service.onModuleDestroy();
+
+        expect(fixture.outboxRepo.update).toHaveBeenCalledOnce();
+        expect(fixture.outboxRepo.update).toHaveBeenCalledWith(
+            expect.objectContaining({
+                id: expect.anything(),
+                status: expect.anything(),
+                leaseExpiresAt: expect.anything(),
+            }),
+            expect.objectContaining({
+                status: EventTriggerOutboxStatus.PENDING,
+                leaseExpiresAt: null,
+                dispatchToken: null,
+            }),
+        );
+    });
+
     it('creates one deferred idempotent run, awaits enqueue, and marks delivery complete', async () => {
         const fixture = createWorkerFixture();
         await fixture.service.onModuleInit();
@@ -251,9 +322,10 @@ describe('EventTriggerOutboxService delivery', () => {
             languageCode: 'en',
             currencyCode: 'EUR',
         });
-        expect(fixture.pipelineService.startIdempotentRunWithSeed).toHaveBeenCalledWith(
+        expect(fixture.pipelineService.startPinnedIdempotentRunWithSeed).toHaveBeenCalledWith(
             expect.objectContaining({ channelId: 7 }),
             3,
+            17,
             fixture.delivery.seedRecords,
             expect.objectContaining({
                 triggerKey: 'on-product',
@@ -268,6 +340,35 @@ describe('EventTriggerOutboxService delivery', () => {
             expect.objectContaining({ status: EventTriggerOutboxStatus.DELIVERED }),
         );
         expect(fixture.domainEvents.publishTriggerFired).toHaveBeenCalledOnce();
+    });
+
+    it('fails permanently when the stored channel token resolves to another channel', async () => {
+        const fixture = createWorkerFixture({ deliveryChannelId: 8 });
+        await fixture.service.onModuleInit();
+
+        await expect(fixture.getProcessJob()(createJob())).resolves.toBeUndefined();
+        fixture.service.onModuleDestroy();
+
+        expect(fixture.pipelineService.startPinnedIdempotentRunWithSeed).not.toHaveBeenCalled();
+        expect(fixture.enqueueRun).not.toHaveBeenCalled();
+        expect(fixture.outboxRepo.update).toHaveBeenCalledWith(
+            expect.objectContaining({ status: EventTriggerOutboxStatus.PROCESSING }),
+            expect.objectContaining({
+                status: EventTriggerOutboxStatus.FAILED,
+                lastError: 'Event trigger channel context is unavailable',
+            }),
+        );
+    });
+
+    it('does not publish trigger success when the delivery lease was superseded', async () => {
+        const fixture = createWorkerFixture({ deliveredAffected: 0 });
+        await fixture.service.onModuleInit();
+
+        await fixture.getProcessJob()(createJob());
+        fixture.service.onModuleDestroy();
+
+        expect(fixture.enqueueRun).toHaveBeenCalledOnce();
+        expect(fixture.domainEvents.publishTriggerFired).not.toHaveBeenCalled();
     });
 
     it('keeps a failed run enqueue observable and retryable', async () => {
@@ -293,6 +394,88 @@ describe('EventTriggerOutboxService delivery', () => {
         );
     });
 
+    it('marks an unpinned historical delivery as permanently failed', async () => {
+        const fixture = createWorkerFixture();
+        fixture.delivery.revisionId = null;
+        await fixture.service.onModuleInit();
+
+        await expect(fixture.getProcessJob()(createJob())).resolves.toBeUndefined();
+        fixture.service.onModuleDestroy();
+
+        expect(
+            fixture.pipelineService.startPinnedIdempotentRunWithSeed,
+        ).not.toHaveBeenCalled();
+        expect(fixture.enqueueRun).not.toHaveBeenCalled();
+        expect(fixture.outboxRepo.update).toHaveBeenCalledWith(
+            expect.objectContaining({
+                status: EventTriggerOutboxStatus.PROCESSING,
+            }),
+            expect.objectContaining({
+                status: EventTriggerOutboxStatus.FAILED,
+                failedAt: expect.any(Date),
+                leaseExpiresAt: null,
+                dispatchToken: null,
+                lastError: expect.stringContaining('Published revision none is unavailable'),
+            }),
+        );
+        expect(fixture.logger.error).toHaveBeenCalledWith(
+            'Event outbox delivery failed permanently',
+            expect.any(Error),
+            { deliveryId: '10' },
+        );
+    });
+
+    it.each([
+        'Archived pipeline cannot run',
+        'Pipeline is disabled',
+    ])('marks a delivery permanently failed when its pipeline is no longer runnable: %s', async errorMessage => {
+        const fixture = createWorkerFixture();
+        fixture.pipelineService.startPinnedIdempotentRunWithSeed.mockRejectedValueOnce(
+            new PipelineNotRunnableError(errorMessage),
+        );
+        await fixture.service.onModuleInit();
+
+        await expect(fixture.getProcessJob()(createJob())).resolves.toBeUndefined();
+        fixture.service.onModuleDestroy();
+
+        expect(fixture.outboxRepo.update).toHaveBeenCalledWith(
+            expect.objectContaining({
+                status: EventTriggerOutboxStatus.PROCESSING,
+            }),
+            expect.objectContaining({
+                status: EventTriggerOutboxStatus.FAILED,
+                failedAt: expect.any(Date),
+                lastError: errorMessage,
+            }),
+        );
+        expect(fixture.enqueueRun).not.toHaveBeenCalled();
+    });
+
+    it('marks a delivery permanently failed when its pipeline was deleted', async () => {
+        const fixture = createWorkerFixture();
+        fixture.pipelineService.startPinnedIdempotentRunWithSeed.mockRejectedValueOnce(
+            new EntityNotFoundError('Pipeline', fixture.delivery.pipelineId),
+        );
+        await fixture.service.onModuleInit();
+
+        await expect(fixture.getProcessJob()(createJob())).resolves.toBeUndefined();
+        fixture.service.onModuleDestroy();
+
+        expect(fixture.outboxRepo.update).toHaveBeenCalledWith(
+            expect.objectContaining({
+                status: EventTriggerOutboxStatus.PROCESSING,
+            }),
+            expect.objectContaining({
+                status: EventTriggerOutboxStatus.FAILED,
+                failedAt: expect.any(Date),
+                leaseExpiresAt: null,
+                dispatchToken: null,
+                lastError: 'Pipeline "product-event-sync" no longer exists',
+            }),
+        );
+        expect(fixture.enqueueRun).not.toHaveBeenCalled();
+    });
+
     it('ignores stale duplicate jobs whose dispatch token no longer owns the row', async () => {
         const fixture = createWorkerFixture({ claimAffected: 0 });
         await fixture.service.onModuleInit();
@@ -300,7 +483,7 @@ describe('EventTriggerOutboxService delivery', () => {
         await fixture.getProcessJob()(createJob());
         fixture.service.onModuleDestroy();
 
-        expect(fixture.pipelineService.startIdempotentRunWithSeed).not.toHaveBeenCalled();
+        expect(fixture.pipelineService.startPinnedIdempotentRunWithSeed).not.toHaveBeenCalled();
         expect(fixture.enqueueRun).not.toHaveBeenCalled();
         expect(fixture.domainEvents.publishTriggerFired).not.toHaveBeenCalled();
     });

@@ -7,6 +7,7 @@ function createConfig(overrides: Partial<MessageConsumerConfig>): MessageConsume
     return {
         pipelineId: 1,
         pipelineCode: 'orders',
+        revisionId: 7,
         triggerKey: 'queue',
         queueType: 'internal',
         connectionCode: '',

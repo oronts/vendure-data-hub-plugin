@@ -83,7 +83,7 @@ export class MemoryLockBackend implements LockBackend {
         let count = 0;
 
         for (const [key, entry] of this.locks.entries()) {
-            if (entry.expiresAt < now) {
+            if (entry.expiresAt <= now) {
                 this.locks.delete(key);
                 count++;
             }

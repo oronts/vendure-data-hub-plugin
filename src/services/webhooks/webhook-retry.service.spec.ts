@@ -76,6 +76,7 @@ function createFixture(
         };
         return values[code] ?? null;
     });
+    const publishWebhookDelivery = vi.fn();
     const service = new WebhookRetryService(
         { getRepository: vi.fn(() => repository) } as never,
         {
@@ -101,6 +102,7 @@ function createFixture(
             error: vi.fn(),
             log: vi.fn(),
         })) } as never,
+        { publishWebhookDelivery } as never,
     );
     service.configureSsrfProtection({ disableSsrfProtection: true });
     const ctx = {
@@ -112,6 +114,7 @@ function createFixture(
         repository,
         add,
         resolve,
+        publishWebhookDelivery,
         ctx,
         getProcessJob: () => processJob,
     };
@@ -203,6 +206,57 @@ describe('WebhookRetryService durable delivery', () => {
         fixture.service.onModuleDestroy();
     });
 
+    it('rejects idempotency reuse when the request contract changes', async () => {
+        const fixture = createFixture();
+        await fixture.service.onModuleInit();
+        await fixture.service.sendWebhook(
+            fixture.ctx,
+            { id: 'orders', url: 'https://hooks.example.com/orders' },
+            { orderId: '1' },
+            { idempotencyKey: 'same-request-key' },
+        );
+
+        await expect(fixture.service.sendWebhook(
+            fixture.ctx,
+            { id: 'orders', url: 'https://backup.example.com/orders' },
+            { orderId: '1' },
+            { idempotencyKey: 'same-request-key' },
+        )).rejects.toThrow('Webhook idempotency key conflict');
+
+        expect(fixture.repository.rows).toHaveLength(1);
+        expect(fixture.add).toHaveBeenCalledOnce();
+        fixture.service.onModuleDestroy();
+    });
+
+    it('treats retryable status ordering as the same request contract', async () => {
+        const fixture = createFixture();
+        await fixture.service.onModuleInit();
+        const first = await fixture.service.sendWebhook(
+            fixture.ctx,
+            {
+                id: 'orders',
+                url: 'https://hooks.example.com/orders',
+                retryConfig: { retryableStatusCodes: [429, 503] },
+            },
+            { orderId: '1' },
+            { idempotencyKey: 'status-order-key' },
+        );
+        const duplicate = await fixture.service.sendWebhook(
+            fixture.ctx,
+            {
+                id: 'orders',
+                url: 'https://hooks.example.com/orders',
+                retryConfig: { retryableStatusCodes: [503, 429] },
+            },
+            { orderId: '1' },
+            { idempotencyKey: 'status-order-key' },
+        );
+
+        expect(duplicate).toEqual(first);
+        expect(fixture.repository.rows).toHaveLength(1);
+        fixture.service.onModuleDestroy();
+    });
+
     it('resolves Secret Codes only in the worker attempt and never stores a response body', async () => {
         const fixture = createFixture();
         await fixture.service.onModuleInit();
@@ -238,6 +292,57 @@ describe('WebhookRetryService durable delivery', () => {
         expect(request?.body).toBe(JSON.stringify({ orderId: '1' }));
         expect(persisted.status).toBe(WebhookDeliveryStatus.DELIVERED);
         expect(persisted).not.toHaveProperty('responseBody');
+        fixture.service.onModuleDestroy();
+    });
+
+    it('does not send after losing the dispatch lease before renewal', async () => {
+        const fixture = createFixture();
+        await fixture.service.onModuleInit();
+        await fixture.service.sendWebhook(
+            fixture.ctx,
+            { id: 'orders', url: 'https://hooks.example.com/orders' },
+            { orderId: '1' },
+        );
+        const persisted = fixture.repository.rows[0];
+        vi.spyOn(fixture.repository, 'update').mockResolvedValueOnce({ affected: 0 });
+
+        await fixture.getProcessJob()?.({
+            data: {
+                deliveryId: String(persisted.id),
+                dispatchToken: persisted.dispatchToken ?? '',
+            },
+        } as Job<{ deliveryId: string; dispatchToken: string }>);
+
+        expect(globalThis.fetch).not.toHaveBeenCalled();
+        expect(fixture.publishWebhookDelivery).not.toHaveBeenCalled();
+        fixture.service.onModuleDestroy();
+    });
+
+    it('does not publish delivery success after losing ownership during the request', async () => {
+        const fixture = createFixture();
+        await fixture.service.onModuleInit();
+        await fixture.service.sendWebhook(
+            fixture.ctx,
+            { id: 'orders', url: 'https://hooks.example.com/orders' },
+            { orderId: '1' },
+        );
+        const persisted = fixture.repository.rows[0];
+        const update = fixture.repository.update.bind(fixture.repository);
+        vi.spyOn(fixture.repository, 'update').mockImplementation(async (criteria, values) => (
+            values.status === WebhookDeliveryStatus.DELIVERED
+                ? { affected: 0 }
+                : update(criteria, values)
+        ));
+
+        await fixture.getProcessJob()?.({
+            data: {
+                deliveryId: String(persisted.id),
+                dispatchToken: persisted.dispatchToken ?? '',
+            },
+        } as Job<{ deliveryId: string; dispatchToken: string }>);
+
+        expect(globalThis.fetch).toHaveBeenCalledOnce();
+        expect(fixture.publishWebhookDelivery).not.toHaveBeenCalled();
         fixture.service.onModuleDestroy();
     });
 

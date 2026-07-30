@@ -1,7 +1,12 @@
 import * as crypto from 'crypto';
 import { DISTRIBUTED_LOCK, RATE_LIMIT } from '../../constants';
 import { getErrorMessage } from '../../utils/error.utils';
-import { sanitizeUrlForLogging } from '../../utils/url-sanitize.utils';
+import {
+    createConfiguredRedisClient,
+    describeRedisConnection,
+    type RedisClientConstructor,
+    type RedisConnectionConfiguration,
+} from '../runtime/redis-configuration';
 import type { DataHubLogger } from '../logger';
 
 interface RedisRateLimitClient {
@@ -17,6 +22,16 @@ interface RedisRateLimitClient {
     get(key: string): Promise<string | null>;
     quit(): Promise<void>;
     disconnect(reconnect?: boolean): void;
+}
+
+interface RedisRateLimitClientOptions {
+    autoResendUnfulfilledCommands: boolean;
+    commandTimeout: number;
+    connectTimeout: number;
+    enableOfflineQueue: boolean;
+    lazyConnect: boolean;
+    maxRetriesPerRequest: number;
+    retryStrategy: (times: number) => number | null;
 }
 
 export interface RedisRateLimitIncrement {
@@ -43,37 +58,27 @@ export class RedisRateLimitBackend {
     ) {}
 
     static async create(
-        url: string,
+        connection: RedisConnectionConfiguration | string,
         logger: DataHubLogger,
     ): Promise<RedisRateLimitBackend> {
         const ioredisModule = await import('ioredis') as {
             default?: unknown;
             [key: string]: unknown;
         };
-        const Redis = (ioredisModule.default || ioredisModule) as new (
-            url: string,
-            options: {
-                commandTimeout: number;
-                connectTimeout: number;
-                enableOfflineQueue: boolean;
-                lazyConnect: boolean;
-                maxRetriesPerRequest: number;
-                retryStrategy: (times: number) => number | null;
-            },
-        ) => RedisRateLimitClient;
-        const client = new Redis(url, {
+        const Redis = (ioredisModule.default || ioredisModule) as RedisClientConstructor<
+            RedisRateLimitClient,
+            RedisRateLimitClientOptions
+        >;
+        const client = createConfiguredRedisClient(Redis, connection, {
+            autoResendUnfulfilledCommands: false,
             commandTimeout: RATE_LIMIT.REDIS_COMMAND_TIMEOUT_MS,
             connectTimeout: RATE_LIMIT.REDIS_CONNECT_TIMEOUT_MS,
             enableOfflineQueue: false,
             lazyConnect: true,
             maxRetriesPerRequest: DISTRIBUTED_LOCK.MAX_RETRIES_PER_REQUEST,
-            retryStrategy: times => (
-                times > DISTRIBUTED_LOCK.MAX_RETRIES_PER_REQUEST
-                    ? null
-                    : Math.min(
-                        times * RATE_LIMIT.REDIS_RETRY_DELAY_MS,
-                        DISTRIBUTED_LOCK.MAX_RETRY_DELAY_MS,
-                    )
+            retryStrategy: times => Math.min(
+                times * RATE_LIMIT.REDIS_RETRY_DELAY_MS,
+                DISTRIBUTED_LOCK.MAX_RETRY_DELAY_MS,
             ),
         });
         client.on('error', error => {
@@ -92,7 +97,7 @@ export class RedisRateLimitBackend {
         }
 
         logger.info('Connected to Redis for distributed webhook rate limiting', {
-            url: sanitizeUrlForLogging(url),
+            url: describeRedisConnection(connection),
         });
         return new RedisRateLimitBackend(client, logger);
     }

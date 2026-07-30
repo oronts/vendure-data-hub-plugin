@@ -13,6 +13,7 @@ import type {
     TransformExecutor,
 } from '../executors';
 import type { RecordObject } from '../executor-types';
+import { executeGraph, type ExecuteGraphParams } from './graph-executor';
 import { executeLinear, type LinearExecutorParams } from './linear-executor';
 
 const SOURCE_RECORD = { sku: 'SKU-1' };
@@ -110,6 +111,131 @@ describe('linear execution metrics', () => {
             loaded: 0,
             skipped: 1,
             idempotencySkipped: 1,
+        });
+    });
+
+    it('counts terminal records when a pipeline has no side-effect step', async () => {
+        const params = createParams({
+            loadResult: { ok: 0, fail: 0, skipped: 0 },
+        });
+        params.definition.steps = [
+            params.definition.steps[0],
+            {
+                key: 'validate',
+                type: StepType.VALIDATE,
+                config: {},
+            },
+        ];
+        params.extractExecutor = {
+            execute: vi.fn(async () => [SOURCE_RECORD, { sku: '' }]),
+        } as never;
+        params.transformExecutor = {
+            executeValidate: vi.fn(async () => [SOURCE_RECORD]),
+        } as never;
+
+        const result = await executeLinear(params);
+
+        expect(result).toMatchObject({
+            processed: 2,
+            succeeded: 1,
+            failed: 1,
+            skipped: 0,
+        });
+    });
+});
+
+describe('graph execution metrics', () => {
+    it.each([false, true])(
+        'counts source outcomes in a %s parallel graph without side effects',
+        async parallel => {
+        const definition = {
+            version: 1,
+            steps: [
+                {
+                    key: 'source',
+                    type: StepType.EXTRACT,
+                    config: { adapterCode: 'test-source' },
+                },
+                {
+                    key: 'validate',
+                    type: StepType.VALIDATE,
+                    config: {},
+                },
+            ],
+            edges: [{ from: 'source', to: 'validate' }],
+            context: parallel ? {
+                parallelExecution: {
+                    enabled: true,
+                    maxConcurrentSteps: 2,
+                    errorPolicy: 'FAIL_FAST',
+                },
+            } : undefined,
+        } as PipelineDefinition;
+        const params = createParams({
+            loadResult: { ok: 0, fail: 0, skipped: 0 },
+        }) as LinearExecutorParams & ExecuteGraphParams;
+        params.definition = definition;
+        params.extractExecutor = {
+            execute: vi.fn(async () => [SOURCE_RECORD, { sku: '' }]),
+        } as never;
+        params.transformExecutor = {
+            executeValidate: vi.fn(async () => [SOURCE_RECORD]),
+        } as never;
+
+        const result = await executeGraph(params);
+
+        expect(result).toMatchObject({
+            processed: 2,
+            succeeded: 1,
+            failed: 1,
+            skipped: 0,
+        });
+        },
+    );
+
+    it('does not double-count a record across parallel transform branches', async () => {
+        const definition = {
+            version: 1,
+            steps: [
+                {
+                    key: 'source',
+                    type: StepType.EXTRACT,
+                    config: { adapterCode: 'test-source' },
+                },
+                { key: 'left', type: StepType.TRANSFORM, config: {} },
+                { key: 'right', type: StepType.TRANSFORM, config: {} },
+            ],
+            edges: [
+                { from: 'source', to: 'left' },
+                { from: 'source', to: 'right' },
+            ],
+            context: {
+                parallelExecution: {
+                    enabled: true,
+                    maxConcurrentSteps: 2,
+                    errorPolicy: 'FAIL_FAST',
+                },
+            },
+        } as PipelineDefinition;
+        const params = createParams({
+            loadResult: { ok: 0, fail: 0, skipped: 0 },
+        }) as LinearExecutorParams & ExecuteGraphParams;
+        params.definition = definition;
+        params.transformExecutor = {
+            executeOperator: vi.fn(async (
+                _ctx: unknown,
+                _step: unknown,
+                records: RecordObject[],
+            ) => records),
+        } as never;
+
+        const result = await executeGraph(params);
+
+        expect(result).toMatchObject({
+            processed: 1,
+            succeeded: 1,
+            failed: 0,
+            skipped: 0,
         });
     });
 });

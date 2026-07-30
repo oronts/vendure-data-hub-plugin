@@ -33,11 +33,16 @@ describe('Vendure EVENT trigger contract', () => {
                 { key: 'legacy', type: 'TRIGGER', config: { type: 'EVENT', event: 'product.*' } },
             ],
         };
-        const pipeline = { id: 7, code: 'events', definition } as Pick<Pipeline, 'id' | 'code' | 'definition'>;
+        const pipeline = {
+            id: 7,
+            code: 'events',
+            revisionId: 11,
+            definition,
+        } as Pick<Pipeline, 'id' | 'code' | 'definition'> & { revisionId: number };
 
         expect(discoverEventTriggers(pipeline)).toEqual([
-            { pipelineId: 7, pipelineCode: 'events', triggerKey: 'product', event: 'ProductEvent' },
-            { pipelineId: 7, pipelineCode: 'events', triggerKey: 'order', event: 'OrderPlacedEvent' },
+            { pipelineId: 7, pipelineCode: 'events', revisionId: 11, triggerKey: 'product', event: 'ProductEvent' },
+            { pipelineId: 7, pipelineCode: 'events', revisionId: 11, triggerKey: 'order', event: 'OrderPlacedEvent' },
         ]);
     });
 

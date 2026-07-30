@@ -45,8 +45,35 @@ export function sha256(value: string): string {
     return createHash('sha256').update(value).digest('hex');
 }
 
-export function createRequestFingerprint(webhookId: string, serializedPayload: string): string {
-    return sha256(JSON.stringify({ webhookId, payload: serializedPayload }));
+export function createRequestFingerprint(
+    config: WebhookConfig,
+    serializedPayload: string,
+    additionalHeaders?: Readonly<Record<string, string>>,
+): string {
+    const requestContract = canonicalizeJson({
+        webhookId: config.id,
+        url: config.url,
+        method: config.method ?? 'POST',
+        headers: config.headers,
+        additionalHeaders,
+        secretCode: config.secretCode,
+        headerSecretCodes: config.headerSecretCodes,
+        signatureHeader: config.signatureHeader,
+        retryConfig: config.retryConfig,
+        payload: serializedPayload,
+    });
+    return sha256(JSON.stringify(requestContract));
+}
+
+function canonicalizeJson(value: unknown): unknown {
+    if (Array.isArray(value)) return value.map(canonicalizeJson);
+    if (!value || typeof value !== 'object') return value;
+    return Object.fromEntries(
+        Object.entries(value as Record<string, unknown>)
+            .filter(([, item]) => item !== undefined)
+            .sort(([left], [right]) => left.localeCompare(right))
+            .map(([key, item]) => [key, canonicalizeJson(item)]),
+    );
 }
 
 export function signPayload(payload: string, secret: string): string {

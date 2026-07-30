@@ -2,7 +2,7 @@ import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { LOGGER_CONTEXTS, INTERNAL_TIMINGS } from '../../constants/index';
 import { RATE_LIMIT } from '../../constants/defaults';
 import { getErrorMessage } from '../../utils/error.utils';
-import { getConfiguredRedisUrl } from '../runtime/redis-configuration';
+import { getConfiguredRedisConnection } from '../runtime/redis-configuration';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
 import { RedisRateLimitBackend } from './redis-rate-limit.backend';
 
@@ -37,7 +37,7 @@ export class RateLimitBackendUnavailableError extends Error {
 export class RateLimitService implements OnModuleInit, OnModuleDestroy {
     private readonly logger: DataHubLogger;
     private readonly store = new Map<string, RateLimitEntry>();
-    private readonly redisUrl = getConfiguredRedisUrl();
+    private readonly redisConnection = getConfiguredRedisConnection();
     private readonly cleanupInterval?: NodeJS.Timeout;
     private redisBackend?: RedisRateLimitBackend;
     private redisInitialization?: Promise<void>;
@@ -46,7 +46,7 @@ export class RateLimitService implements OnModuleInit, OnModuleDestroy {
 
     constructor(loggerFactory: DataHubLoggerFactory) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.RATE_LIMIT);
-        if (!this.redisUrl) {
+        if (!this.redisConnection) {
             this.cleanupInterval = setInterval(
                 () => this.cleanup(),
                 INTERNAL_TIMINGS.CLEANUP_INTERVAL_MS,
@@ -56,9 +56,9 @@ export class RateLimitService implements OnModuleInit, OnModuleDestroy {
     }
 
     async onModuleInit(): Promise<void> {
-        if (!this.redisUrl) {
+        if (!this.redisConnection) {
             this.logger.warn(
-                'Using process-local webhook rate limiting; configure DATAHUB_REDIS_URL or REDIS_URL before running multiple API instances',
+                'Using process-local webhook rate limiting; configure a Redis URL or Sentinel before running multiple API instances',
             );
             return;
         }
@@ -81,7 +81,7 @@ export class RateLimitService implements OnModuleInit, OnModuleDestroy {
         this.assertLimits(maxRequests, windowMs);
         const keyString = this.generateKey(key);
         const now = Date.now();
-        const entry = this.redisUrl
+        const entry = this.redisConnection
             ? await this.incrementRedis(keyString, windowMs)
             : this.incrementLocal(keyString, now, windowMs);
         const limited = entry.count > maxRequests;
@@ -99,7 +99,7 @@ export class RateLimitService implements OnModuleInit, OnModuleDestroy {
 
     async reset(key: RateLimitKey): Promise<void> {
         const keyString = this.generateKey(key);
-        if (this.redisUrl) {
+        if (this.redisConnection) {
             const backend = await this.ensureRedisBackend();
             try {
                 await backend.reset(keyString);
@@ -115,7 +115,7 @@ export class RateLimitService implements OnModuleInit, OnModuleDestroy {
 
     async getCount(key: RateLimitKey): Promise<number> {
         const keyString = this.generateKey(key);
-        if (!this.redisUrl) {
+        if (!this.redisConnection) {
             return this.store.get(keyString)?.count ?? 0;
         }
         const backend = await this.ensureRedisBackend();
@@ -173,7 +173,7 @@ export class RateLimitService implements OnModuleInit, OnModuleDestroy {
     }
 
     private async ensureRedisBackend(): Promise<RedisRateLimitBackend> {
-        if (!this.redisUrl || this.shuttingDown) {
+        if (!this.redisConnection || this.shuttingDown) {
             throw new RateLimitBackendUnavailableError();
         }
         if (this.redisBackend) return this.redisBackend;
@@ -198,7 +198,7 @@ export class RateLimitService implements OnModuleInit, OnModuleDestroy {
     private async initializeRedis(): Promise<void> {
         try {
             this.redisBackend = await RedisRateLimitBackend.create(
-                this.redisUrl!,
+                this.redisConnection!,
                 this.logger,
             );
             this.nextRedisInitializationAt = 0;

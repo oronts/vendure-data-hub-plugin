@@ -1,7 +1,7 @@
 import { Injectable, OnModuleDestroy, Optional } from '@nestjs/common';
-import { EventBus } from '@vendure/core';
-import { Subject, Observable } from 'rxjs';
-import { share } from 'rxjs/operators';
+import { EventBus, RequestContext } from '@vendure/core';
+import { Subject, Observable, Subscription } from 'rxjs';
+import { filter, share } from 'rxjs/operators';
 import { DOMAIN_EVENTS } from '../../constants/index';
 
 export type DomainEventPayload = Record<string, unknown>;
@@ -11,6 +11,8 @@ export class DataHubDomainEvent<T = DomainEventPayload> {
     constructor(
         public readonly name: string,
         public readonly payload?: T,
+        public ctx?: RequestContext,
+        public readonly deferLocalDelivery = false,
     ) {}
 }
 
@@ -31,38 +33,68 @@ export class DomainEventsService implements OnModuleDestroy {
     private buffer: BufferedEvent[] = [];
     private readonly max = DOMAIN_EVENTS.MAX_EVENTS;
     private eventSubject = new Subject<DataHubEvent>();
+    private deferredSubscription?: Subscription;
     readonly events$: Observable<DataHubEvent> = this.eventSubject.asObservable().pipe(share());
 
-    constructor(@Optional() private eventBus?: EventBus) {}
+    constructor(@Optional() private eventBus?: EventBus) {
+        if (this.eventBus && typeof this.eventBus.ofType === 'function') {
+            this.deferredSubscription = this.eventBus
+                .ofType<DataHubDomainEvent>(DataHubDomainEvent)
+                .pipe(filter(event => event.deferLocalDelivery))
+                .subscribe(event => {
+                    this.deliverLocal(event.name, event.payload, event.createdAt);
+                });
+        }
+    }
 
     onModuleDestroy(): void {
+        this.deferredSubscription?.unsubscribe();
         this.eventSubject.complete();
     }
 
     publish<T extends DomainEventPayload = DomainEventPayload>(name: string, payload?: T): void {
         try {
-            const createdAt = new Date();
+            const event = new DataHubDomainEvent<T>(name, payload);
 
             if (this.eventBus) {
-                // Domain events are observational; consume async EventBus failures so
-                // telemetry cannot create an unhandled rejection in pipeline execution.
                 void this.eventBus
-                    .publish(new DataHubDomainEvent<T>(name, payload))
+                    .publish(event)
                     .catch(() => undefined);
             }
-
-            const ev: BufferedEvent = { name, payload, createdAt };
-            this.buffer.push(ev);
-            if (this.buffer.length > this.max) this.buffer.splice(0, this.buffer.length - this.max);
-
-            this.eventSubject.next({
-                type: name,
-                payload: payload ?? {},
-                createdAt,
-            });
+            this.deliverLocal(name, payload, event.createdAt);
         } catch {
-            // Domain event buffering is non-critical - silently ignore errors to avoid disrupting main flow
+            return;
         }
+    }
+
+    private publishAfterCommit<T extends DomainEventPayload>(
+        ctx: RequestContext,
+        name: string,
+        payload: T,
+    ): void {
+        const event = new DataHubDomainEvent(name, payload, ctx, true);
+        if (this.eventBus && this.deferredSubscription) {
+            void this.eventBus.publish(event).catch(() => undefined);
+            return;
+        }
+        this.deliverLocal(name, payload, event.createdAt);
+    }
+
+    private deliverLocal<T extends DomainEventPayload>(
+        name: string,
+        payload: T | undefined,
+        createdAt: Date,
+    ): void {
+        const event: BufferedEvent = { name, payload, createdAt };
+        this.buffer.push(event);
+        if (this.buffer.length > this.max) {
+            this.buffer.splice(0, this.buffer.length - this.max);
+        }
+        this.eventSubject.next({
+            type: name,
+            payload: payload ?? {},
+            createdAt,
+        });
     }
 
     list(limit: number = DOMAIN_EVENTS.DEFAULT_LIMIT): BufferedEvent[] {
@@ -147,20 +179,34 @@ export class DomainEventsService implements OnModuleDestroy {
         });
     }
 
-    publishPipelineDeleted(pipelineId: string, pipelineCode: string): void {
+    publishPipelineDeleted(
+        pipelineId: string,
+        pipelineCode: string,
+        channelId?: string,
+    ): void {
         this.publish('PipelineDeleted', {
             pipelineId,
             pipelineCode,
+            channelId,
             deletedAt: new Date(),
         });
     }
 
-    publishPipelinePublished(pipelineId: string, pipelineCode: string): void {
-        this.publish('PipelinePublished', {
+    publishPipelinePublished(
+        pipelineId: string,
+        pipelineCode: string,
+        ctx?: RequestContext,
+    ): void {
+        const payload = {
             pipelineId,
             pipelineCode,
             publishedAt: new Date(),
-        });
+        };
+        if (ctx) {
+            this.publishAfterCommit(ctx, 'PipelinePublished', payload);
+            return;
+        }
+        this.publish('PipelinePublished', payload);
     }
 
     publishPipelineArchived(pipelineId: string, pipelineCode: string): void {

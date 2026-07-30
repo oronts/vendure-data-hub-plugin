@@ -8,6 +8,7 @@ function createConfig(): MessageConsumerConfig {
     return {
         pipelineId: 1,
         pipelineCode: 'catalog-sync',
+        revisionId: 7,
         triggerKey: 'orders',
         queueType: 'internal',
         connectionCode: '',

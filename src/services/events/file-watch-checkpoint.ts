@@ -22,6 +22,8 @@ export interface PendingFileRun {
         modifiedAt: string;
         size: number;
     };
+    revisionId: string;
+    connectionCode: string;
     attempt: number;
     runId?: string;
 }
@@ -65,7 +67,11 @@ export function findNextEligibleFile(
         .sort((left, right) => compareFilePositions(createFilePosition(left), createFilePosition(right)))[0];
 }
 
-export function createPendingFileRun(file: DiscoveredFile): PendingFileRun {
+export function createPendingFileRun(
+    file: DiscoveredFile,
+    revisionId: string,
+    connectionCode: string,
+): PendingFileRun {
     return {
         file: {
             path: file.path,
@@ -73,6 +79,8 @@ export function createPendingFileRun(file: DiscoveredFile): PendingFileRun {
             modifiedAt: file.modifiedAt.toISOString(),
             size: file.size,
         },
+        revisionId,
+        connectionCode,
         attempt: 0,
     };
 }
@@ -142,6 +150,8 @@ export function writeFileWatchCheckpoint(
                 modifiedAt: state.pending.file.modifiedAt,
                 size: state.pending.file.size,
             },
+            revisionId: state.pending.revisionId,
+            connectionCode: state.pending.connectionCode,
             attempt: state.pending.attempt,
             ...(state.pending.runId ? { runId: state.pending.runId } : {}),
         };
@@ -177,6 +187,10 @@ function parsePending(value: JsonValue | undefined): PendingFileRun | undefined 
         !Number.isFinite(Date.parse(file.modifiedAt)) ||
         typeof file.size !== 'number' ||
         !Number.isFinite(file.size) ||
+        typeof pending.revisionId !== 'string' ||
+        pending.revisionId.trim().length === 0 ||
+        typeof pending.connectionCode !== 'string' ||
+        pending.connectionCode.trim().length === 0 ||
         typeof pending.attempt !== 'number' ||
         !Number.isSafeInteger(pending.attempt) ||
         pending.attempt < 0 ||
@@ -192,6 +206,8 @@ function parsePending(value: JsonValue | undefined): PendingFileRun | undefined 
             modifiedAt: file.modifiedAt,
             size: file.size,
         },
+        revisionId: pending.revisionId as string,
+        connectionCode: pending.connectionCode as string,
         attempt: pending.attempt,
         ...(typeof pending.runId === 'string' ? { runId: pending.runId } : {}),
     };

@@ -617,6 +617,18 @@ describe('OtlpExporterService', () => {
             endpoint: COLLECTOR_ENDPOINT,
             maxRequestBodyBytes: 1_023,
         })).toThrow('telemetry.maxRequestBodyBytes');
+        expect(() => createExporter({
+            endpoint: 'http://collector.example.com',
+            tls: { caFile: '/run/certs/collector-ca.pem' },
+        })).toThrow('telemetry.tls requires an HTTPS endpoint');
+        expect(() => createExporter({
+            endpoint: COLLECTOR_ENDPOINT,
+            tls: { clientCertificateFile: '/run/certs/client.pem' },
+        })).toThrow('clientCertificateFile and clientKeyFile');
+        expect(() => createExporter({
+            endpoint: COLLECTOR_ENDPOINT,
+            tls: {},
+        })).toThrow('telemetry.tls must configure');
     });
 });
 

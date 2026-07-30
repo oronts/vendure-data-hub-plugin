@@ -39,13 +39,15 @@ export interface LockResult {
 /**
  * Distributed Locking Service
  *
- * Distributed locking for horizontal scaling with automatic fallback:
- * 1. Redis (when available) - Best for multi-instance deployments
- * 2. PostgreSQL table locks - Works with any PostgreSQL setup
- * 3. In-memory locks - Fallback for single-instance deployments
+ * Distributed locking for horizontal scaling with deterministic selection:
+ * 1. An explicitly selected backend, which fails closed when unavailable
+ * 2. Configured standalone Redis or Redis Sentinel
+ * 3. PostgreSQL advisory locks for a PostgreSQL Vendure database
+ * 4. Explicit in-memory locking for single-process deployments only
  *
  * Configuration via environment variables:
- * - DATAHUB_REDIS_URL: Redis connection URL (e.g., redis://localhost:6379)
+ * - DATAHUB_REDIS_URL: Standalone Redis connection URL
+ * - DATAHUB_REDIS_SENTINELS and DATAHUB_REDIS_SENTINEL_NAME: Sentinel discovery
  * - DATAHUB_LOCK_BACKEND: Force a specific backend ('redis', 'postgres', 'memory')
  */
 

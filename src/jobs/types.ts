@@ -60,6 +60,8 @@ export interface ScheduledTimer {
     handle: NodeJS.Timeout;
     /** Timer type */
     type: TimerType;
+    /** Stable schedule configuration signature used during refresh reconciliation */
+    signature?: string;
 }
 
 /**

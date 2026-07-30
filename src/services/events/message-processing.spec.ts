@@ -7,11 +7,13 @@ import type { MessageConsumerConfig } from './consumer-discovery';
 import type { ActiveConsumer } from './consumer-lifecycle';
 import { MessageProcessing } from './message-processing';
 import { QueueRunWaitTimeoutError } from './message-run-waiter';
+import { PipelineRevisionMismatchError } from '../pipeline/pipeline-policy';
 
 function createConfig(overrides: Partial<MessageConsumerConfig> = {}): MessageConsumerConfig {
     return {
         pipelineId: 1,
         pipelineCode: 'orders',
+        revisionId: 7,
         triggerKey: 'queue',
         queueType: 'internal',
         connectionCode: '',
@@ -94,6 +96,33 @@ type ProcessingInternals = {
 };
 
 describe('MessageProcessing reliability', () => {
+    it('requeues without retry or DLQ when the published revision changes', async () => {
+        const startIdempotentRunWithSeed = vi.fn().mockRejectedValue(
+            new PipelineRevisionMismatchError(7, 8),
+        );
+        const nack = vi.fn().mockResolvedValue(undefined);
+        const publish = vi.fn();
+        const adapter = createAdapter({ nack, publish });
+        const consumer = createConsumer({
+            maxRetries: 3,
+            deadLetterQueue: 'orders.dlq',
+        });
+        const { processor } = createProcessor(startIdempotentRunWithSeed);
+
+        await (processor as unknown as ProcessingInternals).processDelivery(
+            consumer,
+            adapter,
+            {} as QueueConnectionConfig,
+            { messageId: 'message-1', payload: {}, deliveryTag: 'delivery-1' },
+        );
+
+        expect(consumer.running).toBe(false);
+        expect(startIdempotentRunWithSeed).toHaveBeenCalledOnce();
+        expect(nack).toHaveBeenCalledWith(expect.anything(), 'delivery-1', true);
+        expect(publish).not.toHaveBeenCalled();
+        expect(consumer.messagesFailed).toBe(0);
+    });
+
     it('honors enqueue retries and acknowledges only after a successful terminal run', async () => {
         const startIdempotentRunWithSeed = vi.fn()
             .mockRejectedValueOnce(new Error('first'))

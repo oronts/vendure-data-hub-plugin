@@ -1,10 +1,12 @@
+import { RequestContext } from '@vendure/core';
+import { Subject } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import {
     INTERNAL_EVENT_TYPES,
     STEP_EVENT_TYPES,
     WEBHOOK_EVENT_TYPES,
 } from '../../constants/events';
-import { DomainEventsService } from './domain-events.service';
+import { DataHubDomainEvent, DomainEventsService } from './domain-events.service';
 
 describe('DomainEventsService', () => {
     it('keeps local delivery while consuming an asynchronous EventBus rejection', async () => {
@@ -27,6 +29,37 @@ describe('DomainEventsService', () => {
         ]);
 
         subscription.unsubscribe();
+        service.onModuleDestroy();
+    });
+
+    it('delivers publication locally only after Vendure releases the transaction event', async () => {
+        const released = new Subject<DataHubDomainEvent>();
+        let published: DataHubDomainEvent | undefined;
+        const eventBus = {
+            ofType: vi.fn(() => released.asObservable()),
+            publish: vi.fn(async (event: DataHubDomainEvent) => {
+                published = event;
+            }),
+        };
+        const service = new DomainEventsService(eventBus as never);
+        const observed: string[] = [];
+        service.events$.subscribe(event => observed.push(event.type));
+        const ctx = {} as RequestContext;
+
+        service.publishPipelinePublished('1', 'catalog', ctx);
+        await Promise.resolve();
+
+        expect(observed).toEqual([]);
+        expect(service.count).toBe(0);
+        expect(published).toMatchObject({
+            name: 'PipelinePublished',
+            ctx,
+            deferLocalDelivery: true,
+        });
+
+        released.next(published as DataHubDomainEvent);
+        expect(observed).toEqual(['PipelinePublished']);
+        expect(service.count).toBe(1);
         service.onModuleDestroy();
     });
 

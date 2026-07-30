@@ -3,6 +3,7 @@ import type { DataHubLogger } from '../logger';
 import { RedisRateLimitBackend } from './redis-rate-limit.backend';
 
 const redis = vi.hoisted(() => ({
+    construct: vi.fn(),
     connect: vi.fn(),
     ping: vi.fn(),
     on: vi.fn(),
@@ -15,6 +16,10 @@ vi.mock('ioredis', () => ({
         readonly ping = redis.ping;
         readonly on = redis.on;
         readonly disconnect = redis.disconnect;
+
+        constructor(first: unknown, second?: unknown) {
+            redis.construct(first, second);
+        }
     },
 }));
 
@@ -32,6 +37,56 @@ describe('RedisRateLimitBackend', () => {
         vi.clearAllMocks();
         redis.connect.mockResolvedValue(undefined);
         redis.ping.mockResolvedValue('PONG');
+    });
+
+    it('constructs a master-discovery client for Sentinel without logging credentials', async () => {
+        const logger = createLogger();
+        await RedisRateLimitBackend.create({
+            mode: 'sentinel',
+            sentinels: [
+                { host: 'sentinel-a', port: 26379 },
+                { host: 'sentinel-b', port: 26380 },
+            ],
+            masterName: 'datahub-primary',
+            db: 3,
+            username: 'application-user',
+            password: 'application-secret',
+            sentinelUsername: 'sentinel-user',
+            sentinelPassword: 'sentinel-secret',
+            tls: true,
+            sentinelTls: true,
+        }, logger);
+
+        expect(redis.construct).toHaveBeenCalledWith(
+            expect.objectContaining({
+                sentinels: [
+                    { host: 'sentinel-a', port: 26379 },
+                    { host: 'sentinel-b', port: 26380 },
+                ],
+                name: 'datahub-primary',
+                role: 'master',
+                db: 3,
+                username: 'application-user',
+                password: 'application-secret',
+                sentinelUsername: 'sentinel-user',
+                sentinelPassword: 'sentinel-secret',
+                tls: {},
+                sentinelTLS: {},
+                enableTLSForSentinelMode: true,
+                autoResendUnfulfilledCommands: false,
+                enableOfflineQueue: false,
+                lazyConnect: true,
+                maxRetriesPerRequest: 0,
+            }),
+            undefined,
+        );
+        expect(logger.info).toHaveBeenCalledWith(
+            'Connected to Redis for distributed webhook rate limiting',
+            { url: 'sentinel://sentinel-a:26379,sentinel-b:26380/datahub-primary?db=3' },
+        );
+        expect(JSON.stringify(
+            (logger.info as ReturnType<typeof vi.fn>).mock.calls,
+        )).not.toContain('secret');
     });
 
     it('routes client errors through the structured logger', async () => {

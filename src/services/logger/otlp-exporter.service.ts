@@ -1,10 +1,12 @@
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import {
     Inject,
     Injectable,
     OnModuleDestroy,
     OnModuleInit,
 } from '@nestjs/common';
+import { Agent, type Dispatcher } from 'undici';
 import { DATAHUB_PLUGIN_OPTIONS } from '../../constants/core';
 import { OTLP_TELEMETRY } from '../../constants/defaults/telemetry-defaults';
 import type { DataHubPluginOptions } from '../../types';
@@ -34,6 +36,7 @@ const RETRYABLE_HTTP_STATUSES: ReadonlySet<number> = new Set([
     504,
 ]);
 type TelemetrySignal = 'metrics' | 'traces';
+type OtlpRequestInit = RequestInit & { dispatcher?: Dispatcher };
 
 interface RetryState {
     failures: number;
@@ -144,6 +147,7 @@ export class OtlpExporterService implements OnModuleInit, OnModuleDestroy {
     private readonly config: ResolvedTelemetryConfig | undefined;
     private readonly startTimeUnixNano = toUnixNano(Date.now());
     private readonly spanQueue: OtlpSpan[] = [];
+    private readonly dispatcher?: Agent;
     private metricsRegistry?: MetricsRegistry;
     private interval?: ReturnType<typeof setInterval>;
     private activeFlush?: Promise<void>;
@@ -160,6 +164,23 @@ export class OtlpExporterService implements OnModuleInit, OnModuleDestroy {
         const config = resolveOtlpConfig(options.telemetry);
         this.config = config
             ? { ...config, serviceInstanceId: randomUUID() }
+            : undefined;
+        this.dispatcher = config?.tls
+            ? new Agent({
+                connect: {
+                    ca: config.tls.caFile
+                        ? readFileSync(config.tls.caFile)
+                        : undefined,
+                    cert: config.tls.clientCertificateFile
+                        ? readFileSync(config.tls.clientCertificateFile)
+                        : undefined,
+                    key: config.tls.clientKeyFile
+                        ? readFileSync(config.tls.clientKeyFile)
+                        : undefined,
+                    passphrase: config.tls.clientKeyPassphrase,
+                    rejectUnauthorized: true,
+                },
+            })
             : undefined;
     }
 
@@ -196,6 +217,7 @@ export class OtlpExporterService implements OnModuleInit, OnModuleDestroy {
                 break;
             }
         }
+        await this.dispatcher?.close();
     }
 
     bindMetricsRegistry(registry: MetricsRegistry): void {
@@ -291,7 +313,7 @@ export class OtlpExporterService implements OnModuleInit, OnModuleDestroy {
                     false,
                 );
             }
-            const response = await fetch(`${this.config.endpoint}${signalPath}`, {
+            const request: OtlpRequestInit = {
                 method: 'POST',
                 headers: {
                     ...this.config.headers,
@@ -299,7 +321,9 @@ export class OtlpExporterService implements OnModuleInit, OnModuleDestroy {
                 },
                 body,
                 signal: controller.signal,
-            });
+                ...(this.dispatcher ? { dispatcher: this.dispatcher } : {}),
+            };
+            const response = await fetch(`${this.config.endpoint}${signalPath}`, request);
             if (!response.ok) {
                 const retryAfterMs = parseRetryAfter(
                     response.headers.get('retry-after'),

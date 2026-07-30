@@ -13,6 +13,7 @@ import {
     executeParallel,
     executeSequential,
 } from './graph-execution-strategies';
+import { reconcileCompletionOutcomes } from './outcome-metrics';
 
 export type { GraphExecutionResult };
 export type { ExecuteGraphParams } from './graph-execution-context';
@@ -66,5 +67,11 @@ export async function executeGraph(
     } else {
         await executeSequential(strategy);
     }
+    reconcileCompletionOutcomes(
+        metrics,
+        executionParams.seed?.mode === 'RECORDS'
+            ? executionParams.seed.records.length
+            : 0,
+    );
     return metrics;
 }

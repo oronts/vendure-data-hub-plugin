@@ -2,20 +2,19 @@ import { LockBackendType } from '../../../constants/enums';
 
 export interface LockBackendPlanInput {
     forcedBackend?: string;
-    redisUrl?: string;
+    redisConfigured?: boolean;
     databaseType?: string;
 }
 
 export type LockBackendPlan =
     | { type: LockBackendType.MEMORY }
     | { type: LockBackendType.POSTGRES }
-    | { type: LockBackendType.REDIS; redisUrl: string };
+    | { type: LockBackendType.REDIS };
 
 const LOCK_BACKEND_VALUES = new Set<string>(Object.values(LockBackendType));
 
 export function resolveLockBackendPlan(input: LockBackendPlanInput): LockBackendPlan {
     const forcedBackend = normalizeForcedBackend(input.forcedBackend);
-    const redisUrl = input.redisUrl?.trim();
     const databaseType = input.databaseType?.trim().toLowerCase();
 
     if (forcedBackend === LockBackendType.MEMORY) {
@@ -23,10 +22,12 @@ export function resolveLockBackendPlan(input: LockBackendPlanInput): LockBackend
     }
 
     if (forcedBackend === LockBackendType.REDIS) {
-        if (!redisUrl) {
-            throw new Error('DATAHUB_LOCK_BACKEND=REDIS requires DATAHUB_REDIS_URL or REDIS_URL');
+        if (!input.redisConfigured) {
+            throw new Error(
+                'DATAHUB_LOCK_BACKEND=REDIS requires a Redis URL or Sentinel configuration',
+            );
         }
-        return { type: LockBackendType.REDIS, redisUrl };
+        return { type: LockBackendType.REDIS };
     }
 
     if (forcedBackend === LockBackendType.POSTGRES) {
@@ -38,8 +39,8 @@ export function resolveLockBackendPlan(input: LockBackendPlanInput): LockBackend
         return { type: LockBackendType.POSTGRES };
     }
 
-    if (redisUrl) {
-        return { type: LockBackendType.REDIS, redisUrl };
+    if (input.redisConfigured) {
+        return { type: LockBackendType.REDIS };
     }
 
     if (databaseType === 'postgres') {

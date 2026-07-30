@@ -48,7 +48,11 @@ describe('file-watch checkpoint state', () => {
     });
 
     it('round-trips independent trigger state while preserving unrelated checkpoint data', () => {
-        const pending = createPendingFileRun(file('/in/a.csv'));
+        const pending = createPendingFileRun(
+            file('/in/a.csv'),
+            'revision-7',
+            'warehouse-s3',
+        );
         const data = writeFileWatchCheckpoint(
             { extractor: { cursor: 'page-2' } },
             'file-trigger',

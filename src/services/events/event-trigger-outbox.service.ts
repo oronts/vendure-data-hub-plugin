@@ -1,7 +1,7 @@
-import { createHash, randomUUID } from 'crypto';
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { CurrencyCode, LanguageCode } from '@vendure/common/lib/generated-types';
 import {
+    EntityNotFoundError,
     Job,
     JobQueue,
     JobQueueService,
@@ -14,42 +14,44 @@ import { In, LessThanOrEqual } from 'typeorm';
 import {
     EVENT_TRIGGER_OUTBOX,
     LOGGER_CONTEXTS,
-    PipelineStatus,
     QUEUE_NAMES,
-    RunStatus,
     SCHEDULER,
 } from '../../constants';
 import {
     DataHubEventTriggerOutbox,
     EventTriggerOutboxStatus,
-    Pipeline,
     PipelineRun,
 } from '../../entities/pipeline';
 import { DataHubRunQueueHandler } from '../../jobs';
-import { ensureError, getErrorMessage } from '../../utils/error.utils';
+import { ensureError } from '../../utils/error.utils';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { DomainEventsService } from './domain-events.service';
+import { loadRunnablePipelineDefinitions } from '../pipeline/active-pipeline-definitions';
+import {
+    PipelineNotRunnableError,
+    PublishedPipelineRevisionUnavailableError,
+} from '../pipeline/pipeline-policy';
 import {
     createEventSeedRecords,
     discoverEventTriggers,
     getVendureEventType,
 } from './event-trigger.contract';
+import {
+    createEventTriggerDeliveries,
+    createOutboxDispatchToken,
+    getVendureEventContext,
+    isQueueableRunStatus,
+    nextOutboxLeaseExpiry,
+    outboxRetryDelayMs,
+    RECOVERABLE_OUTBOX_STATUSES,
+    truncateOutboxError,
+} from './event-trigger-outbox.helpers';
 
 interface EventTriggerOutboxJobData {
     deliveryId: string;
     dispatchToken: string;
 }
-
-const RECOVERABLE_STATUSES = [
-    EventTriggerOutboxStatus.DISPATCHING,
-    EventTriggerOutboxStatus.QUEUED,
-    EventTriggerOutboxStatus.PROCESSING,
-] as const;
-
-const QUEUEABLE_RUN_STATUSES = new Set<RunStatus>([
-    RunStatus.PENDING,
-]);
 
 @Injectable()
 export class EventTriggerOutboxService implements OnModuleInit, OnModuleDestroy {
@@ -101,51 +103,19 @@ export class EventTriggerOutboxService implements OnModuleInit, OnModuleDestroy 
 
     async capture(vendureEvent: VendureEvent): Promise<number> {
         const eventType = getVendureEventType(vendureEvent);
-        const ctx = this.getEventContext(vendureEvent);
-        const pipelineRepo = this.connection.getRepository(ctx, Pipeline);
-        const pipelines = await pipelineRepo.find({
-            where: {
-                status: PipelineStatus.PUBLISHED,
-                enabled: true,
-            },
-            take: SCHEDULER.MAX_PIPELINE_DISCOVERY + 1,
-        });
-        if (pipelines.length > SCHEDULER.MAX_PIPELINE_DISCOVERY) {
-            throw new Error(
-                `EVENT trigger discovery exceeded the safe limit of ${SCHEDULER.MAX_PIPELINE_DISCOVERY}`,
-            );
-        }
+        const ctx = getVendureEventContext(vendureEvent);
+        const pipelines = await loadRunnablePipelineDefinitions(
+            this.connection,
+            ctx,
+            SCHEDULER.MAX_PIPELINE_DISCOVERY,
+        );
 
         const triggers = pipelines.flatMap(discoverEventTriggers)
             .filter(trigger => trigger.event === eventType);
         if (triggers.length === 0) return 0;
 
-        const eventDeliveryId = randomUUID();
         const seedRecords = createEventSeedRecords(eventType, vendureEvent);
-        const now = new Date();
-        const deliveries = triggers.map(trigger => {
-            const delivery = Object.assign(new DataHubEventTriggerOutbox(), {
-                deliveryKey: this.createDeliveryKey(eventDeliveryId, trigger.pipelineId, trigger.triggerKey),
-                eventType,
-                pipelineId: trigger.pipelineId,
-                pipelineCode: trigger.pipelineCode,
-                triggerKey: trigger.triggerKey,
-                channelId: String(ctx.channelId),
-                channelToken: ctx.channel.token,
-                languageCode: ctx.languageCode,
-                currencyCode: ctx.currencyCode,
-                status: EventTriggerOutboxStatus.PENDING,
-                attempts: 0,
-                availableAt: now,
-                leaseExpiresAt: null,
-                dispatchToken: null,
-                lastError: null,
-                runId: null,
-                deliveredAt: null,
-            });
-            delivery.seedRecords = seedRecords;
-            return delivery;
-        });
+        const deliveries = createEventTriggerDeliveries(ctx, eventType, triggers, seedRecords);
 
         await this.connection.getRepository(ctx, DataHubEventTriggerOutbox).save(deliveries);
         this.logger.debug('Captured Vendure event deliveries in outbox', {
@@ -154,20 +124,6 @@ export class EventTriggerOutboxService implements OnModuleInit, OnModuleDestroy 
             channelId: String(ctx.channelId),
         });
         return deliveries.length;
-    }
-
-    private getEventContext(vendureEvent: VendureEvent): RequestContext {
-        const ctx = (vendureEvent as VendureEvent & { ctx?: RequestContext }).ctx;
-        if (!ctx) {
-            throw new Error('Supported Vendure EVENT trigger was published without RequestContext');
-        }
-        return ctx;
-    }
-
-    private createDeliveryKey(eventDeliveryId: string, pipelineId: string | number, triggerKey: string): string {
-        return createHash('sha256')
-            .update(`${eventDeliveryId}:${String(pipelineId)}:${triggerKey}`)
-            .digest('hex');
     }
 
     private async dispatchPending(): Promise<void> {
@@ -194,10 +150,23 @@ export class EventTriggerOutboxService implements OnModuleInit, OnModuleDestroy 
 
     private async recoverExpiredLeases(ctx: RequestContext): Promise<void> {
         const now = new Date();
-        await this.connection.getRepository(ctx, DataHubEventTriggerOutbox).update(
+        const repo = this.connection.getRepository(ctx, DataHubEventTriggerOutbox);
+        const expiredLeaseCriteria = {
+            status: In([...RECOVERABLE_OUTBOX_STATUSES]),
+            leaseExpiresAt: LessThanOrEqual(now),
+        };
+        const expired = await repo.find({
+            select: { id: true },
+            where: expiredLeaseCriteria,
+            order: { leaseExpiresAt: 'ASC' },
+            take: EVENT_TRIGGER_OUTBOX.BATCH_SIZE,
+        });
+        if (expired.length === 0) return;
+
+        await repo.update(
             {
-                status: In([...RECOVERABLE_STATUSES]),
-                leaseExpiresAt: LessThanOrEqual(now),
+                ...expiredLeaseCriteria,
+                id: In(expired.map(delivery => delivery.id)),
             },
             {
                 status: EventTriggerOutboxStatus.PENDING,
@@ -212,8 +181,8 @@ export class EventTriggerOutboxService implements OnModuleInit, OnModuleDestroy 
         ctx: RequestContext,
         delivery: DataHubEventTriggerOutbox,
     ): Promise<void> {
-        const dispatchToken = createHash('sha256').update(randomUUID()).digest('hex');
-        const leaseExpiresAt = this.nextLeaseExpiry();
+        const dispatchToken = createOutboxDispatchToken();
+        const leaseExpiresAt = nextOutboxLeaseExpiry();
         const repo = this.connection.getRepository(ctx, DataHubEventTriggerOutbox);
         const claim = await repo.update(
             {
@@ -267,7 +236,7 @@ export class EventTriggerOutboxService implements OnModuleInit, OnModuleDestroy 
             },
             {
                 status: EventTriggerOutboxStatus.PROCESSING,
-                leaseExpiresAt: this.nextLeaseExpiry(),
+                leaseExpiresAt: nextOutboxLeaseExpiry(),
             },
         );
         if (claim.affected !== 1) return;
@@ -277,11 +246,11 @@ export class EventTriggerOutboxService implements OnModuleInit, OnModuleDestroy 
             if (!delivery) return;
             const ctx = await this.createDeliveryContext(delivery);
             const run = await this.getOrCreateRun(ctx, delivery);
-            if (QUEUEABLE_RUN_STATUSES.has(run.status)) {
+            if (isQueueableRunStatus(run.status)) {
                 await this.runQueue.enqueueRun(run.id);
             }
             const deliveredAt = new Date();
-            await repo.update(
+            const transition = await repo.update(
                 {
                     id: deliveryId,
                     dispatchToken,
@@ -295,6 +264,7 @@ export class EventTriggerOutboxService implements OnModuleInit, OnModuleDestroy 
                     lastError: null,
                 },
             );
+            if (transition.affected !== 1) return;
             this.domainEvents.publishTriggerFired(String(delivery.pipelineId), 'EVENT', {
                 pipelineCode: delivery.pipelineCode,
                 event: delivery.eventType,
@@ -303,7 +273,19 @@ export class EventTriggerOutboxService implements OnModuleInit, OnModuleDestroy 
                 seedRecordCount: delivery.seedRecords.length,
             });
         } catch (error) {
-            await this.handleJobFailure(
+            if (
+                error instanceof PublishedPipelineRevisionUnavailableError
+                || error instanceof PipelineNotRunnableError
+            ) {
+                await this.markPermanentlyFailed(
+                    adminCtx,
+                    deliveryId,
+                    dispatchToken,
+                    error,
+                );
+                return;
+            }
+            const retainedOwnership = await this.handleJobFailure(
                 adminCtx,
                 deliveryId,
                 dispatchToken,
@@ -311,17 +293,21 @@ export class EventTriggerOutboxService implements OnModuleInit, OnModuleDestroy 
                 job.retries + 1,
                 error,
             );
-            throw error;
+            if (retainedOwnership) throw error;
         }
     }
 
     private async createDeliveryContext(delivery: DataHubEventTriggerOutbox): Promise<RequestContext> {
-        return this.requestContextService.create({
+        const ctx = await this.requestContextService.create({
             apiType: 'admin',
             channelOrToken: delivery.channelToken,
             languageCode: delivery.languageCode as LanguageCode,
             currencyCode: delivery.currencyCode as CurrencyCode,
         });
+        if (String(ctx.channelId) !== delivery.channelId) {
+            throw new PipelineNotRunnableError('Event trigger channel context is unavailable');
+        }
+        return ctx;
     }
 
     private async getOrCreateRun(
@@ -333,29 +319,48 @@ export class EventTriggerOutboxService implements OnModuleInit, OnModuleDestroy 
             if (existing) return existing;
         }
 
-        const result = await this.pipelineService.startIdempotentRunWithSeed(
-            ctx,
-            delivery.pipelineId,
-            delivery.seedRecords,
-            {
-                triggerKey: delivery.triggerKey,
-                skipPermissionCheck: true,
-                triggeredBy: `event:${delivery.eventType}:${delivery.triggerKey}`,
-                idempotencyKey: delivery.deliveryKey,
-                idempotencyTtlSeconds: EVENT_TRIGGER_OUTBOX.IDEMPOTENCY_TTL_SECONDS,
-                requestFingerprint: JSON.stringify({
-                    event: delivery.eventType,
-                    records: delivery.seedRecords,
-                }),
-                deferQueueEnqueue: true,
-            },
-        );
+        if (delivery.revisionId == null) {
+            throw new PublishedPipelineRevisionUnavailableError(
+                delivery.pipelineCode,
+                null,
+            );
+        }
+        let result: Awaited<
+            ReturnType<PipelineService['startPinnedIdempotentRunWithSeed']>
+        >;
+        try {
+            result = await this.pipelineService.startPinnedIdempotentRunWithSeed(
+                ctx,
+                delivery.pipelineId,
+                delivery.revisionId,
+                delivery.seedRecords,
+                {
+                    triggerKey: delivery.triggerKey,
+                    skipPermissionCheck: true,
+                    triggeredBy: `event:${delivery.eventType}:${delivery.triggerKey}`,
+                    idempotencyKey: delivery.deliveryKey,
+                    idempotencyTtlSeconds: EVENT_TRIGGER_OUTBOX.IDEMPOTENCY_TTL_SECONDS,
+                    requestFingerprint: JSON.stringify({
+                        event: delivery.eventType,
+                        records: delivery.seedRecords,
+                    }),
+                    deferQueueEnqueue: true,
+                },
+            );
+        } catch (error) {
+            if (error instanceof EntityNotFoundError) {
+                throw new PipelineNotRunnableError(
+                    `Pipeline "${delivery.pipelineCode}" no longer exists`,
+                );
+            }
+            throw error;
+        }
         delivery.runId = String(result.run.id);
         const dispatchToken = delivery.dispatchToken;
         if (!dispatchToken) {
             throw new Error(`Outbox delivery ${String(delivery.id)} lost its dispatch token`);
         }
-        await this.connection.getRepository(ctx, DataHubEventTriggerOutbox).update(
+        const transition = await this.connection.getRepository(ctx, DataHubEventTriggerOutbox).update(
             {
                 id: delivery.id,
                 dispatchToken,
@@ -363,7 +368,37 @@ export class EventTriggerOutboxService implements OnModuleInit, OnModuleDestroy 
             },
             { runId: delivery.runId },
         );
+        if (transition.affected !== 1) {
+            throw new Error(`Outbox delivery ${String(delivery.id)} lost lease ownership`);
+        }
         return result.run;
+    }
+
+    private async markPermanentlyFailed(
+        ctx: RequestContext,
+        deliveryId: string,
+        dispatchToken: string,
+        error: PublishedPipelineRevisionUnavailableError | PipelineNotRunnableError,
+    ): Promise<void> {
+        const failedAt = new Date();
+        const transition = await this.connection.getRepository(ctx, DataHubEventTriggerOutbox).update(
+            {
+                id: deliveryId,
+                dispatchToken,
+                status: EventTriggerOutboxStatus.PROCESSING,
+            },
+            {
+                status: EventTriggerOutboxStatus.FAILED,
+                failedAt,
+                leaseExpiresAt: null,
+                dispatchToken: null,
+                lastError: truncateOutboxError(error),
+            },
+        );
+        if (transition.affected !== 1) return;
+        this.logger.error('Event outbox delivery failed permanently', error, {
+            deliveryId,
+        });
     }
 
     private async handleJobFailure(
@@ -373,25 +408,33 @@ export class EventTriggerOutboxService implements OnModuleInit, OnModuleDestroy 
         attempt: number,
         maxAttempts: number,
         error: unknown,
-    ): Promise<void> {
+    ): Promise<boolean> {
         const repo = this.connection.getRepository(ctx, DataHubEventTriggerOutbox);
         const current = await repo.findOne({ where: { id: deliveryId, dispatchToken } });
-        if (!current) return;
+        if (!current) return false;
 
         const nextAttempts = current.attempts + 1;
-        const lastError = this.truncateError(error);
+        const lastError = truncateOutboxError(error);
         if (attempt < maxAttempts) {
-            await repo.update(
+            const transition = await repo.update(
                 { id: deliveryId, dispatchToken, status: EventTriggerOutboxStatus.PROCESSING },
                 {
                     status: EventTriggerOutboxStatus.QUEUED,
                     attempts: nextAttempts,
-                    leaseExpiresAt: this.nextLeaseExpiry(),
+                    leaseExpiresAt: nextOutboxLeaseExpiry(),
                     lastError,
                 },
             );
+            if (transition.affected !== 1) return false;
         } else {
-            await this.releaseForRetry(ctx, deliveryId, dispatchToken, current.attempts, error);
+            const released = await this.releaseForRetry(
+                ctx,
+                deliveryId,
+                dispatchToken,
+                current.attempts,
+                error,
+            );
+            if (!released) return false;
         }
 
         this.logger.error('Event outbox delivery attempt failed', ensureError(error), {
@@ -402,6 +445,7 @@ export class EventTriggerOutboxService implements OnModuleInit, OnModuleDestroy 
             maxAttempts,
             retryScheduled: attempt >= maxAttempts,
         });
+        return true;
     }
 
     private async releaseForRetry(
@@ -410,35 +454,20 @@ export class EventTriggerOutboxService implements OnModuleInit, OnModuleDestroy 
         dispatchToken: string,
         attempts: number,
         error: unknown,
-    ): Promise<void> {
+    ): Promise<boolean> {
         const nextAttempts = attempts + 1;
-        await this.connection.getRepository(ctx, DataHubEventTriggerOutbox).update(
+        const result = await this.connection.getRepository(ctx, DataHubEventTriggerOutbox).update(
             { id: deliveryId, dispatchToken },
             {
                 status: EventTriggerOutboxStatus.PENDING,
                 attempts: nextAttempts,
-                availableAt: new Date(Date.now() + this.retryDelayMs(nextAttempts)),
+                availableAt: new Date(Date.now() + outboxRetryDelayMs(nextAttempts)),
                 leaseExpiresAt: null,
                 dispatchToken: null,
-                lastError: this.truncateError(error),
+                lastError: truncateOutboxError(error),
             },
         );
-    }
-
-    private retryDelayMs(attempts: number): number {
-        const exponent = Math.max(0, attempts - 1);
-        return Math.min(
-            EVENT_TRIGGER_OUTBOX.RETRY_BASE_DELAY_MS * 2 ** exponent,
-            EVENT_TRIGGER_OUTBOX.RETRY_MAX_DELAY_MS,
-        );
-    }
-
-    private nextLeaseExpiry(): Date {
-        return new Date(Date.now() + EVENT_TRIGGER_OUTBOX.LEASE_DURATION_MS);
-    }
-
-    private truncateError(error: unknown): string {
-        return getErrorMessage(error).slice(0, EVENT_TRIGGER_OUTBOX.LAST_ERROR_MAX_LENGTH);
+        return result.affected === 1;
     }
 
 }

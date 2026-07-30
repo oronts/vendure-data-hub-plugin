@@ -17,21 +17,18 @@ describe('resolveLockBackendPlan', () => {
         })).toThrow('Invalid DATAHUB_LOCK_BACKEND');
     });
 
-    it('requires a URL for an explicit Redis backend', () => {
+    it('requires Redis configuration for an explicit Redis backend', () => {
         expect(() => resolveLockBackendPlan({
             forcedBackend: 'redis',
             databaseType: 'postgres',
-        })).toThrow('requires DATAHUB_REDIS_URL or REDIS_URL');
+        })).toThrow('requires a Redis URL or Sentinel configuration');
     });
 
     it('uses configured Redis independently of the Vendure database', () => {
         expect(resolveLockBackendPlan({
-            redisUrl: 'redis://locks.internal:6379',
+            redisConfigured: true,
             databaseType: 'mysql',
-        })).toEqual({
-            type: LockBackendType.REDIS,
-            redisUrl: 'redis://locks.internal:6379',
-        });
+        })).toEqual({ type: LockBackendType.REDIS });
     });
 
     it('selects PostgreSQL only for a PostgreSQL Vendure database', () => {

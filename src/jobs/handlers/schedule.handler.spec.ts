@@ -3,7 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Pipeline, PipelineRevision, PipelineRun } from '../../entities/pipeline';
 import { PipelineStatus, RevisionType } from '../../constants/enums';
 import type { SchedulerConfig } from '../../types/plugin-options';
+import { ScheduledPipelineExecutionService } from './schedule-execution.service';
 import { DataHubScheduleHandler } from './schedule.handler';
+import { ScheduleTimerService } from './schedule-timer.service';
 
 function createScheduledPipeline(
     intervalSec = 300,
@@ -33,6 +35,8 @@ interface FixtureOptions {
     scheduler?: SchedulerConfig;
     startRun?: () => Promise<unknown>;
     ensureSynchronized?: () => Promise<void>;
+    isWorker?: boolean;
+    runTasksInWorkerOnly?: boolean;
     distributedLock?: {
         acquire: ReturnType<typeof vi.fn>;
         release: ReturnType<typeof vi.fn>;
@@ -90,25 +94,47 @@ function createFixture(options: FixtureOptions = {}) {
         warn: vi.fn(),
         error: vi.fn(),
     };
-    const handler = new DataHubScheduleHandler(
+    const runtimeConfigService = {
+        getSchedulerConfig: () => ({
+            checkIntervalMs: 30_000,
+            refreshIntervalMs: 60_000,
+            minIntervalMs: 1_000,
+            maxPipelineDiscovery: 1_000,
+            maxTrackingEntries: 1_000,
+            maxConsecutiveFailures: 5,
+            ...options.scheduler,
+        }),
+    };
+    const loggerFactory = { createLogger: () => logger };
+    const scheduleExecution = new ScheduledPipelineExecutionService(
         connection as never,
         requestContextService as never,
         pipelineService as never,
+        runtimeConfigService as never,
+        domainEvents as never,
+        loggerFactory as never,
+        options.distributedLock as never,
+    );
+    const scheduleTimers = new ScheduleTimerService(
+        runtimeConfigService as never,
+        scheduleExecution,
+        loggerFactory as never,
+    );
+    const handler = new DataHubScheduleHandler(
+        connection as never,
+        requestContextService as never,
         {
-            getSchedulerConfig: () => ({
-                checkIntervalMs: 30_000,
-                refreshIntervalMs: 60_000,
-                minIntervalMs: 1_000,
-                maxPipelineDiscovery: 1_000,
-                maxTrackingEntries: 1_000,
-                maxConsecutiveFailures: 5,
-                ...options.scheduler,
-            }),
+            schedulerOptions: {
+                runTasksInWorkerOnly: options.runTasksInWorkerOnly ?? true,
+            },
         } as never,
+        { isWorker: options.isWorker ?? true } as never,
+        runtimeConfigService as never,
         configSync as never,
         domainEvents as never,
-        { createLogger: () => logger } as never,
-        options.distributedLock as never,
+        scheduleExecution,
+        scheduleTimers,
+        loggerFactory as never,
     );
     return {
         handler,
@@ -142,6 +168,26 @@ describe('DataHubScheduleHandler refresh reconciliation', () => {
         expect(fixture.pipelineService.startRun).toHaveBeenCalledOnce();
         expect(fixture.handler.getActiveScheduleCount()).toBe(1);
         await fixture.handler.onModuleDestroy();
+    });
+
+    it('uses Vendure scheduler ownership to avoid API and worker duplication', async () => {
+        const apiFixture = createFixture({ isWorker: false });
+        await apiFixture.handler.onApplicationBootstrap();
+
+        expect(apiFixture.configSync.ensureSynchronized).not.toHaveBeenCalled();
+        expect(apiFixture.pipelineRepository.find).not.toHaveBeenCalled();
+        expect(apiFixture.handler.getActiveScheduleCount()).toBe(0);
+        await apiFixture.handler.onModuleDestroy();
+
+        const singleProcessFixture = createFixture({
+            isWorker: false,
+            runTasksInWorkerOnly: false,
+        });
+        await singleProcessFixture.handler.onApplicationBootstrap();
+
+        expect(singleProcessFixture.configSync.ensureSynchronized).toHaveBeenCalledOnce();
+        expect(singleProcessFixture.handler.getActiveScheduleCount()).toBe(1);
+        await singleProcessFixture.handler.onModuleDestroy();
     });
 
     it('retains active schedules when discovery fails', async () => {
@@ -332,6 +378,34 @@ describe('DataHubScheduleHandler distributed occurrence claims', () => {
             release: vi.fn(async () => true),
         };
     }
+
+    it('does not start an in-flight claimed occurrence after shutdown begins', async () => {
+        let resolveClaim: ((result: { acquired: true; token: string }) => void) | undefined;
+        const distributedLock = {
+            acquire: vi.fn(() => new Promise<{ acquired: true; token: string }>(resolve => {
+                resolveClaim = resolve;
+            })),
+            release: vi.fn(async () => true),
+        };
+        const fixture = createFixture({
+            scheduler: { minIntervalMs: 1_000 },
+            distributedLock,
+        });
+        fixture.revision.definition = createScheduledPipeline(1).definition;
+        await fixture.handler.onApplicationBootstrap();
+
+        vi.advanceTimersByTime(1_000);
+        await Promise.resolve();
+        expect(distributedLock.acquire).toHaveBeenCalledOnce();
+
+        await fixture.handler.onModuleDestroy();
+        resolveClaim?.({ acquired: true, token: 'claim-token' });
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(fixture.pipelineService.startRun).not.toHaveBeenCalled();
+        expect(fixture.handler.getCircuitBreakerStatus().size).toBe(0);
+    });
 
     it('starts each interval occurrence once across replicas', async () => {
         const distributedLock = createSharedLock();

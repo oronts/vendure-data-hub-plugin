@@ -1,7 +1,13 @@
 import { LockBackend, LockState, LockStatus } from './lock-backend.interface';
 import { DataHubLogger } from '../../logger';
 import { DISTRIBUTED_LOCK } from '../../../constants/index';
-import { sanitizeUrlForLogging } from '../../../utils/url-sanitize.utils';
+import { getErrorMessage } from '../../../utils/error.utils';
+import {
+    createConfiguredRedisClient,
+    describeRedisConnection,
+    type RedisClientConstructor,
+    type RedisConnectionConfiguration,
+} from '../redis-configuration';
 
 /**
  * Redis client interface for lock operations
@@ -11,6 +17,7 @@ import { sanitizeUrlForLogging } from '../../../utils/url-sanitize.utils';
  * compatible with the dynamically imported ioredis module.
  */
 interface RedisClient {
+    on(event: 'error', listener: (error: unknown) => void): unknown;
     set(key: string, value: string, mode: 'PX', ttl: number, flag: 'NX'): Promise<'OK' | null>;
     get(key: string): Promise<string | null>;
     pttl(key: string): Promise<number>;
@@ -19,6 +26,21 @@ interface RedisClient {
     quit(): Promise<void>;
     disconnect(reconnect?: boolean): void;
 }
+
+interface RedisLockClientOptions {
+    autoResendUnfulfilledCommands: boolean;
+    commandTimeout: number;
+    connectTimeout: number;
+    enableOfflineQueue: boolean;
+    maxRetriesPerRequest: number;
+    retryStrategy: (times: number) => number | null;
+    lazyConnect: boolean;
+}
+
+type ConnectedRedisClient = RedisClient & {
+    connect(): Promise<void>;
+    ping(): Promise<string>;
+};
 
 /**
  * Redis lock backend for distributed multi-instance deployments
@@ -64,33 +86,37 @@ export class RedisLockBackend implements LockBackend {
     /**
      * Create a Redis lock backend with connection
      */
-    static async create(url: string, logger: DataHubLogger): Promise<RedisLockBackend> {
-        // Dynamic import of ioredis - we use unknown and type assertion
-        // since ioredis is an optional peer dependency
+    static async create(
+        connection: RedisConnectionConfiguration | string,
+        logger: DataHubLogger,
+    ): Promise<RedisLockBackend> {
+        // Keep the dynamically loaded client behind the narrow RedisClient contract.
         const ioredisModule = await import('ioredis') as { default?: unknown; [key: string]: unknown };
-        const Redis = (ioredisModule.default || ioredisModule) as new (url: string, options: {
-            commandTimeout: number;
-            connectTimeout: number;
-            enableOfflineQueue: boolean;
-            maxRetriesPerRequest: number;
-            retryStrategy: (times: number) => number | null;
-            lazyConnect: boolean;
-        }) => RedisClient & { connect(): Promise<void>; ping(): Promise<string> };
+        const Redis = (ioredisModule.default || ioredisModule) as RedisClientConstructor<
+            ConnectedRedisClient,
+            RedisLockClientOptions
+        >;
 
         // Create Redis client with retry strategy
-        const client = new Redis(url, {
+        const client = createConfiguredRedisClient(Redis, connection, {
+            autoResendUnfulfilledCommands: false,
             commandTimeout: DISTRIBUTED_LOCK.REDIS_COMMAND_TIMEOUT_MS,
             connectTimeout: DISTRIBUTED_LOCK.REDIS_CONNECT_TIMEOUT_MS,
             enableOfflineQueue: false,
             maxRetriesPerRequest: DISTRIBUTED_LOCK.MAX_RETRIES_PER_REQUEST,
             retryStrategy: (times: number) => {
-                if (times > DISTRIBUTED_LOCK.MAX_RETRIES_PER_REQUEST) return null;
                 return Math.min(
                     times * DISTRIBUTED_LOCK.REDIS_RETRY_DELAY_MS,
                     DISTRIBUTED_LOCK.MAX_RETRY_DELAY_MS,
                 );
             },
             lazyConnect: true,
+        });
+        client.on('error', error => {
+            logger.error(
+                'Redis distributed lock connection error',
+                error instanceof Error ? error : new Error(getErrorMessage(error)),
+            );
         });
 
         try {
@@ -102,7 +128,7 @@ export class RedisLockBackend implements LockBackend {
         }
 
         logger.info('Connected to Redis for distributed locking', {
-            url: sanitizeUrlForLogging(url),
+            url: describeRedisConnection(connection),
         });
 
         return new RedisLockBackend(client, logger);

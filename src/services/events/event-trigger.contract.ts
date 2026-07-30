@@ -44,6 +44,7 @@ export const VENDURE_EVENT_CLASSES = {
 export interface DiscoveredEventTrigger {
     pipelineId: ID;
     pipelineCode: string;
+    revisionId: ID;
     triggerKey: string;
     event: VendureEventType;
 }
@@ -96,7 +97,9 @@ export function getVendureEventType(vendureEvent: VendureEvent): VendureEventTyp
     throw new Error(`Unsupported Vendure event class: ${vendureEvent.constructor.name}`);
 }
 
-export function discoverEventTriggers(pipeline: Pick<Pipeline, 'id' | 'code' | 'definition'>): DiscoveredEventTrigger[] {
+export function discoverEventTriggers(
+    pipeline: Pick<Pipeline, 'id' | 'code' | 'definition'> & { revisionId: ID },
+): DiscoveredEventTrigger[] {
     const definition = pipeline.definition as PipelineDefinition | undefined;
     return findEnabledTriggersByType(definition, TriggerType.EVENT).flatMap(trigger => {
         const event = parseTriggerConfig(trigger)?.event;
@@ -104,6 +107,7 @@ export function discoverEventTriggers(pipeline: Pick<Pipeline, 'id' | 'code' | '
             ? [{
                 pipelineId: pipeline.id,
                 pipelineCode: pipeline.code,
+                revisionId: pipeline.revisionId,
                 triggerKey: trigger.key,
                 event,
             }]

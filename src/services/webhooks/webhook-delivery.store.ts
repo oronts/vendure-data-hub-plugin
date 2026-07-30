@@ -114,32 +114,41 @@ export class WebhookDeliveryStore {
         return result.affected === 1;
     }
 
-    recoverExpiredLeases(ctx: RequestContext, now: Date): Promise<unknown> {
-        return this.repo(ctx).update(
-            {
-                status: In([...ACTIVE_STATUSES]),
-                leaseExpiresAt: LessThanOrEqual(now),
-            },
+    async recoverExpiredLeases(ctx: RequestContext, now: Date): Promise<number> {
+        const repo = this.repo(ctx);
+        const criteria = {
+            status: In([...ACTIVE_STATUSES]),
+            leaseExpiresAt: LessThanOrEqual(now),
+        };
+        const expired = await repo.find({
+            select: { id: true },
+            where: criteria,
+            order: { leaseExpiresAt: 'ASC' },
+            take: WEBHOOK_QUEUE.MAINTENANCE_BATCH_SIZE,
+        });
+        if (expired.length === 0) return 0;
+
+        const result = await repo.update(
+            { ...criteria, id: In(expired.map(delivery => delivery.id)) },
             { leaseExpiresAt: null, dispatchToken: null },
         );
+        return result.affected ?? 0;
     }
 
-    async deleteExpiredHistory(ctx: RequestContext, now: Date): Promise<void> {
+    async deleteExpiredHistory(
+        ctx: RequestContext,
+        now: Date,
+    ): Promise<{ delivered: number; deadLetters: number }> {
         const repo = this.repo(ctx);
-        await Promise.all([
-            repo.delete({
-                status: WebhookDeliveryStatus.DELIVERED,
-                deliveredAt: LessThan(
-                    new Date(now.getTime() - WEBHOOK_QUEUE.DELIVERED_RETENTION_MS),
-                ),
-            }),
-            repo.delete({
-                status: WebhookDeliveryStatus.DEAD_LETTER,
-                lastAttemptAt: LessThan(
-                    new Date(now.getTime() - WEBHOOK_QUEUE.DEAD_LETTER_RETENTION_MS),
-                ),
-            }),
-        ]);
+        const deliveredCutoff = new Date(
+            now.getTime() - WEBHOOK_QUEUE.DELIVERED_RETENTION_MS,
+        );
+        const deadLetterCutoff = new Date(
+            now.getTime() - WEBHOOK_QUEUE.DEAD_LETTER_RETENTION_MS,
+        );
+        const delivered = await this.deleteDeliveredHistory(repo, deliveredCutoff);
+        const deadLetters = await this.deleteDeadLetterHistory(repo, deadLetterCutoff);
+        return { delivered, deadLetters };
     }
 
     findDue(ctx: RequestContext, now: Date): Promise<DataHubWebhookDelivery[]> {
@@ -202,19 +211,20 @@ export class WebhookDeliveryStore {
         return this.repo(ctx).findOne({ where: { id: deliveryId, dispatchToken } });
     }
 
-    renewLease(
+    async renewLease(
         ctx: RequestContext,
         deliveryId: string | number,
         dispatchToken: string,
         now: Date,
-    ): Promise<unknown> {
-        return this.repo(ctx).update(
+    ): Promise<boolean> {
+        const result = await this.repo(ctx).update(
             { id: deliveryId, dispatchToken },
             { leaseExpiresAt: this.leaseExpiry(now) },
         );
+        return result.affected === 1;
     }
 
-    markDelivered(
+    async markDelivered(
         ctx: RequestContext,
         delivery: DataHubWebhookDelivery,
         dispatchToken: string,
@@ -222,8 +232,8 @@ export class WebhookDeliveryStore {
         attemptedAt: Date,
         responseStatus: number,
         deliveredAt: Date,
-    ): Promise<unknown> {
-        return this.repo(ctx).update(
+    ): Promise<boolean> {
+        const result = await this.repo(ctx).update(
             { id: delivery.id, dispatchToken },
             {
                 status: WebhookDeliveryStatus.DELIVERED,
@@ -238,15 +248,16 @@ export class WebhookDeliveryStore {
                 deliveredAt,
             },
         );
+        return result.affected === 1;
     }
 
-    markFailed(
+    async markFailed(
         ctx: RequestContext,
         delivery: DataHubWebhookDelivery,
         dispatchToken: string,
         update: DeliveryFailureUpdate,
-    ): Promise<unknown> {
-        return this.repo(ctx).update(
+    ): Promise<boolean> {
+        const result = await this.repo(ctx).update(
             { id: delivery.id, dispatchToken },
             {
                 status: update.status,
@@ -260,6 +271,7 @@ export class WebhookDeliveryStore {
                 lastError: update.error.slice(0, WEBHOOK_QUEUE.LAST_ERROR_MAX_LENGTH),
             },
         );
+        return result.affected === 1;
     }
 
     private leaseExpiry(now: Date): Date {
@@ -268,5 +280,68 @@ export class WebhookDeliveryStore {
 
     private repo(ctx: RequestContext) {
         return this.connection.getRepository(ctx, DataHubWebhookDelivery);
+    }
+
+    private async deleteDeliveredHistory(
+        repo: ReturnType<WebhookDeliveryStore['repo']>,
+        cutoff: Date,
+    ): Promise<number> {
+        let deleted = 0;
+        while (deleted < WEBHOOK_QUEUE.MAX_MAINTENANCE_ROWS_PER_PASS) {
+            const rows = await repo.find({
+                select: { id: true },
+                where: {
+                    status: WebhookDeliveryStatus.DELIVERED,
+                    deliveredAt: LessThan(cutoff),
+                },
+                order: { deliveredAt: 'ASC' },
+                take: this.nextMaintenanceBatchSize(deleted),
+            });
+            if (rows.length === 0) break;
+            const result = await repo.delete({
+                id: In(rows.map(row => row.id)),
+                status: WebhookDeliveryStatus.DELIVERED,
+                deliveredAt: LessThan(cutoff),
+            });
+            const affected = result.affected ?? 0;
+            deleted += affected;
+            if (affected === 0 || rows.length < WEBHOOK_QUEUE.MAINTENANCE_BATCH_SIZE) break;
+        }
+        return deleted;
+    }
+
+    private async deleteDeadLetterHistory(
+        repo: ReturnType<WebhookDeliveryStore['repo']>,
+        cutoff: Date,
+    ): Promise<number> {
+        let deleted = 0;
+        while (deleted < WEBHOOK_QUEUE.MAX_MAINTENANCE_ROWS_PER_PASS) {
+            const rows = await repo.find({
+                select: { id: true },
+                where: {
+                    status: WebhookDeliveryStatus.DEAD_LETTER,
+                    lastAttemptAt: LessThan(cutoff),
+                },
+                order: { lastAttemptAt: 'ASC' },
+                take: this.nextMaintenanceBatchSize(deleted),
+            });
+            if (rows.length === 0) break;
+            const result = await repo.delete({
+                id: In(rows.map(row => row.id)),
+                status: WebhookDeliveryStatus.DEAD_LETTER,
+                lastAttemptAt: LessThan(cutoff),
+            });
+            const affected = result.affected ?? 0;
+            deleted += affected;
+            if (affected === 0 || rows.length < WEBHOOK_QUEUE.MAINTENANCE_BATCH_SIZE) break;
+        }
+        return deleted;
+    }
+
+    private nextMaintenanceBatchSize(deleted: number): number {
+        return Math.min(
+            WEBHOOK_QUEUE.MAINTENANCE_BATCH_SIZE,
+            WEBHOOK_QUEUE.MAX_MAINTENANCE_ROWS_PER_PASS - deleted,
+        );
     }
 }
