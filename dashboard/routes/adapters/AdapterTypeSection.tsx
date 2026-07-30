@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { useLingui } from '@lingui/react/macro';
 import { CheckCircle2, Info, Puzzle, Sparkles } from 'lucide-react';
 import { Badge } from '@vendure/dashboard';
 import { AdapterCard } from './AdapterCard';
@@ -25,6 +26,7 @@ export function AdapterTypeSection({
     onSelect: (adapter: DataHubAdapter) => void;
     isBuiltIn: (code: string) => boolean;
 }>) {
+    const { t } = useLingui();
     const Icon = resolveIconName(icon);
     const builtIn = React.useMemo(() => adapters.filter(a => isBuiltIn(a.code)), [adapters, isBuiltIn]);
     const custom = React.useMemo(() => adapters.filter(a => !isBuiltIn(a.code)), [adapters, isBuiltIn]);
@@ -54,7 +56,7 @@ export function AdapterTypeSection({
                 <div>
                     <h4 className="text-sm font-medium mb-3 flex items-center gap-2 text-muted-foreground">
                         <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                        Built-in
+                        {t`Built-in`}
                         <span className="text-xs font-normal">({builtIn.length})</span>
                     </h4>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -67,7 +69,15 @@ export function AdapterTypeSection({
                             />
                         ))}
                     </div>
-                    {hasMoreBuiltIn && <LoadMoreButton remaining={remainingBuiltIn} onClick={loadMoreBuiltIn} data-testid={`datahub-adapters-load-more-builtin-${type}`} />}
+                    {hasMoreBuiltIn && (
+                        <LoadMoreButton
+                            remaining={remainingBuiltIn}
+                            onClick={loadMoreBuiltIn}
+                            label={t`Load more (${remainingBuiltIn} remaining)`}
+                            loadingLabel={t`Loading…`}
+                            data-testid={`datahub-adapters-load-more-builtin-${type}`}
+                        />
+                    )}
                 </div>
             )}
 
@@ -75,7 +85,7 @@ export function AdapterTypeSection({
                 <div>
                     <h4 className="text-sm font-medium mb-3 flex items-center gap-2 text-muted-foreground">
                         <Sparkles className="w-4 h-4 text-violet-600 dark:text-violet-400" />
-                        Custom
+                        {t`Custom`}
                         <span className="text-xs font-normal">({custom.length})</span>
                     </h4>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -87,7 +97,15 @@ export function AdapterTypeSection({
                             />
                         ))}
                     </div>
-                    {hasMoreCustom && <LoadMoreButton remaining={remainingCustom} onClick={loadMoreCustom} data-testid={`datahub-adapters-load-more-custom-${type}`} />}
+                    {hasMoreCustom && (
+                        <LoadMoreButton
+                            remaining={remainingCustom}
+                            onClick={loadMoreCustom}
+                            label={t`Load more (${remainingCustom} remaining)`}
+                            loadingLabel={t`Loading…`}
+                            data-testid={`datahub-adapters-load-more-custom-${type}`}
+                        />
+                    )}
                 </div>
             )}
 
@@ -96,8 +114,12 @@ export function AdapterTypeSection({
                     <div className="mx-auto w-12 h-12 rounded-full bg-muted/50 flex items-center justify-center mb-3">
                         <Info className="w-6 h-6 opacity-50" />
                     </div>
-                    <p className="font-medium">No {label.toLowerCase()} registered</p>
-                    <p className="text-sm mt-1">Register adapters in your plugin configuration.</p>
+                    <p className="font-medium">
+                        {t`No ${label} registered`}
+                    </p>
+                    <p className="text-sm mt-1">
+                        {t`Register adapters in your plugin configuration.`}
+                    </p>
                 </div>
             )}
         </div>

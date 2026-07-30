@@ -1,12 +1,15 @@
 import * as React from 'react';
+import { useLingui } from '@lingui/react/macro';
 import { formatSmartDateTime } from '../../../utils';
 import { COMPONENT_WIDTHS } from '../../../constants';
 import { LogLevelBadge } from './LogLevelBadge';
-import type { DataHubLog } from '../../../types';
+import type { DataHubLogsApiQuery } from '../../../types';
+
+export type LogListItem = DataHubLogsApiQuery['dataHubLogs']['items'][number];
 
 interface LogTableRowProps {
-    log: DataHubLog;
-    onSelect: (log: DataHubLog) => void;
+    log: LogListItem;
+    onSelect: (log: LogListItem) => void;
 }
 
 /**
@@ -17,6 +20,8 @@ export const LogTableRow = React.memo(function LogTableRow({
     log,
     onSelect,
 }: LogTableRowProps) {
+    const { i18n, t } = useLingui();
+    const count = log.recordsFailed ?? 0;
     const handleClick = React.useCallback(() => onSelect(log), [onSelect, log]);
     const handleKeyDown = React.useCallback((e: React.KeyboardEvent) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -35,7 +40,7 @@ export const LogTableRow = React.memo(function LogTableRow({
             data-testid={`datahub-log-row-${log.id}`}
         >
             <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">
-                {formatSmartDateTime(log.createdAt)}
+                {formatSmartDateTime(log.createdAt, i18n.locale)}
             </td>
             <td className="px-3 py-2">
                 <LogLevelBadge level={log.level} />
@@ -56,9 +61,9 @@ export const LogTableRow = React.memo(function LogTableRow({
                 {log.recordsProcessed != null ? (
                     <span>
                         {log.recordsProcessed}
-                        {(log.recordsFailed ?? 0) > 0 && (
+                        {count > 0 && (
                             <span className="text-red-600 dark:text-red-400 ml-1">
-                                ({log.recordsFailed} failed)
+                                ({t`${count} failed`})
                             </span>
                         )}
                     </span>

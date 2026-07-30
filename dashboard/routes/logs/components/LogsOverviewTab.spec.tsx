@@ -29,47 +29,13 @@ vi.mock('@vendure/dashboard', () => ({
     usePermissions: () => ({ hasPermissions: hooks.hasPermissions }),
 }));
 
-vi.mock('@lingui/react', () => ({
+vi.mock('@lingui/react/macro', () => ({
+    Trans: ({ children }: { children?: ReactNode }) => createElement('span', null, children),
     useLingui: () => ({
-        i18n: {
-            locale: 'en',
-            _: (id: string, values?: Record<string, unknown>) => {
-                const messages: Record<string, string> = {
-                    'logs.analyticsDashboard': 'Analytics Dashboard',
-                    'logs.analyticsDescription': 'Pipeline execution metrics and log statistics',
-                    'logs.runAnalytics': 'Run analytics',
-                    'logs.logDiagnostics': 'Log diagnostics',
-                    'logs.totalPipelines': 'Total pipelines',
-                    'logs.enabledPipelines': 'Enabled pipelines',
-                    'logs.runsToday': 'Runs today',
-                    'logs.runsThisWeek': 'Runs this week',
-                    'logs.successToday': 'Success today',
-                    'logs.successThisWeek': 'Success this week',
-                    'logs.retainedLogs': 'Retained logs',
-                    'logs.recordsProcessedToday': 'Records processed today',
-                    'logs.recordsFailedToday': 'Records failed today',
-                    'logs.averageRunDurationToday': 'Average run duration today',
-                    'logs.averageLogDuration': 'Average log duration',
-                    'logs.averageDuration': 'Avg Duration',
-                    'logs.byLevel': 'By Level',
-                    'logs.errorsToday': 'Errors Today',
-                    'logs.noPipelines': 'No pipelines found',
-                    'logs.pipelineHealth': 'Pipeline Health',
-                    'logs.pipelinePermissionDetail': 'You do not have permission to view pipeline metadata. Aggregate log analytics and log records remain available.',
-                    'logs.pipelinePermissionRequired': 'Pipeline metadata requires pipeline read permission',
-                    'logs.pipelineStatsTotal': 'Log statistics for each pipeline ({count} total)',
-                    'logs.refresh': 'Refresh',
-                    'logs.recordsProcessed': 'Records Processed',
-                    'logs.recordsFailed': 'Records Failed',
-                    'logs.totalLogs': 'Total Logs',
-                    'logs.warningsToday': 'Warnings Today',
-                };
-                return (messages[id] ?? id).replace(
-                    /\{(\w+)\}/g,
-                    (_match, key: string) => String(values?.[key] ?? ''),
-                );
-            },
-        },
+        t: (strings: TemplateStringsArray, ...values: unknown[]) => strings.reduce(
+            (result, part, index) => result + part + String(values[index] ?? ''),
+            '',
+        ),
     }),
 }));
 
@@ -214,7 +180,7 @@ describe('LogsOverviewTab permissions', () => {
         expect(markup).toContain('Total pipelines: 50');
         expect(markup).toContain('Retained logs: 25');
         expect(markup).toContain('Errors Today: 2');
-        expect(markup).toContain('You do not have permission to view pipeline metadata.');
+        expect(markup).toContain('You do not have permission to view pipeline details.');
         expect(markup).not.toContain('ErrorState');
         expect(hooks.usePipelineList).toHaveBeenCalledWith(
             expect.objectContaining({ enabled: false }),

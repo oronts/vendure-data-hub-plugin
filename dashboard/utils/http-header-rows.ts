@@ -1,24 +1,25 @@
-export function rekeyHttpHeaderRow(
-    rowIds: Map<string, string>,
-    previousName: string,
-    nextName: string,
-    rowId: string,
-): void {
-    const previousKey = previousName.trim();
-    const nextKey = nextName.trim();
+export function hasHttpHeaderName(
+    headers: Readonly<Record<string, string>>,
+    candidateName: string,
+    excludedName?: string,
+): boolean {
+    const normalizedCandidate = candidateName.trim().toLowerCase();
+    const normalizedExcluded = excludedName?.trim().toLowerCase();
 
-    if (previousKey && rowIds.get(previousKey) === rowId) {
-        rowIds.delete(previousKey);
-    }
-    if (nextKey) {
-        rowIds.set(nextKey, rowId);
-    }
+    return Object.keys(headers).some(name => {
+        const normalizedName = name.toLowerCase();
+        return normalizedName !== normalizedExcluded
+            && normalizedName === normalizedCandidate;
+    });
 }
 
-export function upsertHttpHeaderRow<T extends { id: string; name: string }>(
-    rows: readonly T[],
-    row: T,
-): T[] {
-    const otherRows = rows.filter(item => item.id !== row.id);
-    return row.name.trim() ? [...otherRows, row] : otherRows;
+export function renameHttpHeader(
+    headers: Readonly<Record<string, string>>,
+    previousName: string,
+    nextName: string,
+): Record<string, string> {
+    const normalizedNextName = nextName.trim();
+    return Object.fromEntries(Object.entries(headers).map(([name, value]) => (
+        name === previousName ? [normalizedNextName, value] : [name, value]
+    )));
 }

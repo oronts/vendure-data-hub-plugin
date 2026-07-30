@@ -44,7 +44,12 @@ export function SchemaIdentityFields({
                 control={form.control}
                 rules={{ required: t`Schema ID is required` }}
                 render={({ field }) => (
-                    <Input {...field} placeholder="catalog.product" autoComplete="off" />
+                    <Input
+                        {...field}
+                        aria-label={t`Schema ID`}
+                        placeholder="catalog.product"
+                        autoComplete="off"
+                    />
                 )}
             />
             <FormFieldWrapper
@@ -53,7 +58,12 @@ export function SchemaIdentityFields({
                 control={form.control}
                 rules={{ required: t`Version is required` }}
                 render={({ field }) => (
-                    <Input {...field} placeholder="1.0.0" autoComplete="off" />
+                    <Input
+                        {...field}
+                        aria-label={t`Version`}
+                        placeholder="1.0.0"
+                        autoComplete="off"
+                    />
                 )}
             />
             <FormFieldWrapper
@@ -62,7 +72,7 @@ export function SchemaIdentityFields({
                 control={form.control}
                 render={({ field }) => (
                     <Select value={field.value} onValueChange={field.onChange}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectTrigger aria-label={t`Compatibility`}><SelectValue /></SelectTrigger>
                         <SelectContent>
                             {COMPATIBILITY_OPTIONS.map(option => (
                                 <SelectItem key={option} value={option}>{option}</SelectItem>
@@ -82,7 +92,7 @@ export function ReadOnlyField({
     return (
         <div className="space-y-2">
             <span className="text-sm font-medium">{label}</span>
-            <Input value={value ?? ''} disabled />
+            <Input value={value ?? ''} aria-label={label} disabled />
         </div>
     );
 }

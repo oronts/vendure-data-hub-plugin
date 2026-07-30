@@ -19,5 +19,7 @@ export interface Consumer {
     isActive: boolean;
     messagesProcessed: number;
     messagesFailed: number;
+    autoStart: boolean;
+    desiredEnabled: boolean;
     lastMessageAt?: string | null;
 }

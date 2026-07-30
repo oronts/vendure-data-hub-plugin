@@ -1,16 +1,11 @@
 import * as React from 'react';
-import { Trans, useLingui } from '@lingui/react/macro';
+import { Trans } from '@lingui/react/macro';
 import { formatKey, formatValue } from '../../../utils';
-import { COMPONENT_HEIGHTS } from '../../../constants';
 import { TestResultContainer, JsonDisplay } from './TestResultContainer';
 import type { TestResult } from './step-test-handlers';
 
 interface LoadTestResultsProps {
     result: TestResult;
-}
-
-interface FeedPreviewProps {
-    feedContent: { content: string; contentType: string; itemCount: number };
 }
 
 /**
@@ -40,28 +35,6 @@ function LoadSimulationResult({
 }
 
 /**
- * Display component for FEED step preview results
- */
-function FeedPreview({ feedContent }: FeedPreviewProps) {
-    const { t } = useLingui();
-    return (
-        <div className="space-y-2">
-            <div className="flex items-center gap-4 text-sm">
-                <span>
-                    <strong><Trans>Items</Trans>:</strong> {feedContent.itemCount}
-                </span>
-                <span>
-                    <strong><Trans>Type</Trans>:</strong> {feedContent.contentType}
-                </span>
-            </div>
-            <pre className={`text-xs bg-muted p-3 rounded overflow-auto ${COMPONENT_HEIGHTS.SCROLL_AREA_SM} whitespace-pre-wrap`}>
-                {feedContent.content || t`(empty)`}
-            </pre>
-        </div>
-    );
-}
-
-/**
  * Display component for LOAD step test results
  */
 export function LoadTestResults({ result }: LoadTestResultsProps) {
@@ -72,21 +45,6 @@ export function LoadTestResults({ result }: LoadTestResultsProps) {
     return (
         <TestResultContainer result={result}>
             <LoadSimulationResult simulation={result.loadSimulation} />
-        </TestResultContainer>
-    );
-}
-
-/**
- * Display component for FEED step test results
- */
-export function FeedTestResults({ result }: LoadTestResultsProps) {
-    if (!result.feedContent) {
-        return null;
-    }
-
-    return (
-        <TestResultContainer result={result}>
-            <FeedPreview feedContent={result.feedContent} />
         </TestResultContainer>
     );
 }

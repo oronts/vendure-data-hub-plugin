@@ -14,7 +14,8 @@ vi.mock('@lingui/react/macro', () => ({
 }));
 
 vi.mock('@vendure/dashboard', () => ({
-    Button: ({ children }: { children?: ReactNode }) => createElement('button', null, children),
+    Button: ({ children, className }: { children?: ReactNode; className?: string }) =>
+        createElement('button', { className }, children),
 }));
 
 vi.mock('lucide-react', async importOriginal => ({
@@ -101,5 +102,14 @@ describe('TemplateStep template query states', () => {
         );
 
         expect(markup).toContain('data-testid="template-gallery"');
+    });
+
+    it('stacks the manual action on narrow viewports', () => {
+        const markup = renderToStaticMarkup(
+            <TemplateStep {...baseProps} isLoading={false} isError={false} />,
+        );
+
+        expect(markup).toContain('flex flex-col');
+        expect(markup).toContain('w-full sm:w-auto sm:shrink-0');
     });
 });

@@ -58,6 +58,9 @@ const adaptersDocument = graphql(`
             }
             icon
             color
+            version
+            deprecated
+            deprecatedMessage
             pure
             async
             batchable
@@ -74,11 +77,12 @@ const adaptersDocument = graphql(`
 `);
 
 export function useAdapters() {
-    return useQuery({
+    const query = useQuery({
         queryKey: adapterKeys.catalog(),
         queryFn: () => api.query(adaptersDocument).then((res) => res.dataHubAdapters),
         staleTime: CACHE_TIMES.ADAPTER_CATALOG,
     });
+    return query;
 }
 
 export function useAdaptersByType(type: string) {
@@ -89,4 +93,3 @@ export function useAdaptersByType(type: string) {
     );
     return { ...rest, data: filtered };
 }
-

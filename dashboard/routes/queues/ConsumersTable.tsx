@@ -55,9 +55,25 @@ const ConsumerRow = React.memo(function ConsumerRow({
             <td className="px-3 py-2 font-mono text-muted-foreground text-xs">{consumer.triggerKey}</td>
             <td className="px-3 py-2 font-mono text-muted-foreground text-xs">{consumer.queueName}</td>
             <td className="px-3 py-2">
-                <Badge variant={consumer.isActive ? 'default' : 'secondary'}>
-                    {consumer.isActive ? <Trans>Active</Trans> : <Trans>Stopped</Trans>}
+                <Badge variant={consumer.isActive && consumer.desiredEnabled ? 'default' : 'secondary'}>
+                    {consumer.isActive && !consumer.desiredEnabled ? (
+                        <Trans>Stopping</Trans>
+                    ) : consumer.isActive ? (
+                        <Trans>Active</Trans>
+                    ) : consumer.desiredEnabled ? (
+                        <Trans>Standby</Trans>
+                    ) : (
+                        <Trans>Stopped</Trans>
+                    )}
                 </Badge>
+            </td>
+            <td className="px-3 py-2">
+                <Badge variant={consumer.desiredEnabled ? 'default' : 'secondary'}>
+                    {consumer.desiredEnabled ? <Trans>Enabled</Trans> : <Trans>Disabled</Trans>}
+                </Badge>
+                <div className="mt-1 text-xs text-muted-foreground">
+                    {consumer.autoStart ? <Trans>Auto-start on</Trans> : <Trans>Auto-start off</Trans>}
+                </div>
             </td>
             <td className="px-3 py-2">{consumer.messagesProcessed}</td>
             <td className="px-3 py-2">
@@ -74,7 +90,7 @@ const ConsumerRow = React.memo(function ConsumerRow({
             </td>
             <td className="px-3 py-2">
                 <PermissionGuard requires={[DATAHUB_PERMISSIONS.RUN_PIPELINE]}>
-                    {consumer.isActive ? (
+                    {consumer.desiredEnabled ? (
                         <Button
                             size="sm"
                             variant="outline"
@@ -122,7 +138,7 @@ export function ConsumersTable({
         <>
             <div className="mb-4">
                 <p className="text-sm text-muted-foreground">
-                    <Trans>Message queue consumers that process pipeline triggers. Start/stop consumers to manage message processing.</Trans>
+                    <Trans>Start and stop update durable intent. A local owner reacts immediately; a remote owner can take up to 60 seconds.</Trans>
                 </p>
             </div>
             <div className="overflow-x-auto">
@@ -140,7 +156,10 @@ export function ConsumersTable({
                             <Trans>Queue</Trans>
                         </th>
                         <th scope="col" className="text-left px-3 py-2">
-                            <Trans>Status</Trans>
+                            <Trans>Local status</Trans>
+                        </th>
+                        <th scope="col" className="text-left px-3 py-2">
+                            <Trans>Desired</Trans>
                         </th>
                         <th scope="col" className="text-left px-3 py-2">
                             <Trans>Processed</Trans>
@@ -169,7 +188,7 @@ export function ConsumersTable({
                     ))}
                     {consumers.length === 0 && (
                         <tr>
-                            <td className="px-3 py-8 text-muted-foreground text-center" colSpan={8}>
+                            <td className="px-3 py-8 text-muted-foreground text-center" colSpan={9}>
                                 <Radio className="w-8 h-8 mx-auto mb-2 text-muted-foreground/50" />
                                 <Trans>No message queue consumers configured</Trans>
                             </td>

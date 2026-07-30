@@ -183,8 +183,6 @@ export {
     useFieldTransformTypes,
     useWizardStrategyMappings,
     useQueryTypeOptions,
-    useCronPresets,
-    useAckModes,
 } from './use-config-options';
 
 export type { ComparisonOperatorOption, ConfigOptionValue, ConfigOptionsData, ConnectionSchema, ConnectionSchemaField, DestinationSchema, TypedOptionValue, HookStageCategoryConfig } from './use-config-options';

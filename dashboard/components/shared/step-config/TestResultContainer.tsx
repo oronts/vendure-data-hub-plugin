@@ -16,7 +16,7 @@ export interface TestResultContainerProps {
  * Consistent layout with status badge, message, and optional view toggle.
  *
  * Used by: ExtractTestResults, TransformTestResults, LoadTestResults,
- * FeedTestResults, ValidateTestResults, GenericTestResults
+ * ValidateTestResults, GenericTestResults
  */
 export function TestResultContainer({
     result,

@@ -48,13 +48,16 @@ export function PreviewStep({ parsedData, isParsing }: PreviewStepProps) {
 
             <Card>
                 <ScrollArea className={COMPONENT_HEIGHTS.WIZARD_PANE_MD}>
-                    <div className="min-w-max">
-                        <table className="w-full text-sm">
+                    <div className="overflow-x-auto">
+                        <table className="min-w-max w-full text-sm">
+                            <caption className="sr-only">
+                                <Trans>Preview data</Trans>
+                            </caption>
                             <thead className="sticky top-0 bg-muted">
                                 <tr>
-                                    <th className="px-4 py-2 text-left font-medium text-muted-foreground">#</th>
+                                    <th scope="col" className="px-4 py-2 text-left font-medium text-muted-foreground">#</th>
                                     {parsedData.headers.map(header => (
-                                        <th key={header} className="px-4 py-2 text-left font-medium">
+                                        <th scope="col" key={header} className="px-4 py-2 text-left font-medium">
                                             {header}
                                         </th>
                                     ))}

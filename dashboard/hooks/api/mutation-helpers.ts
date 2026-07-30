@@ -16,18 +16,6 @@ export function createMutationErrorHandler(title: string, options?: MutationErro
     };
 }
 
-interface MutationSuccessOptions {
-    showToast?: boolean;
-}
-
-export function createMutationSuccessHandler(message: string, options?: MutationSuccessOptions) {
-    return () => {
-        if (options?.showToast !== false) {
-            toast.success(message);
-        }
-    };
-}
-
 export function handleMutationError(title: string, error: unknown): void {
     const message = getErrorMessage(error);
     toast.error(title, { description: message });

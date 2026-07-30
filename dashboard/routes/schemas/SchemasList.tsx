@@ -52,6 +52,9 @@ function SchemasListPage({ route }: Readonly<{ route: SchemasRoute }>) {
                 title={i18n._(DATAHUB_NAV_LABELS.SCHEMAS)}
                 listQuery={schemasListDocument}
                 route={route}
+                onSearchTermChange={searchTerm => ({
+                    schemaId: { contains: searchTerm },
+                })}
                 defaultColumnOrder={[
                     'schemaId',
                     'version',

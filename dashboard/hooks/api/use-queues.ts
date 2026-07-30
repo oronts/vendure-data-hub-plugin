@@ -64,6 +64,8 @@ const consumersDocument = graphql(`
             triggerKey
             queueName
             isActive
+            autoStart
+            desiredEnabled
             messagesProcessed
             messagesFailed
             lastMessageAt

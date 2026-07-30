@@ -1,6 +1,5 @@
 import * as React from 'react';
-import { useLingui } from '@lingui/react';
-import { Trans } from '@lingui/react/macro';
+import { Trans, useLingui } from '@lingui/react/macro';
 import { Button, DashboardRouteDefinition, DetailFormGrid, FormFieldWrapper, Input, Page, PageActionBar, PageActionBarRight, PageBlock, PageLayout, PageTitle, api, detailPageRouteLoader, useDetailPage, Select, SelectTrigger, SelectContent, SelectItem, SelectValue, PermissionGuard } from '@vendure/dashboard';
 import { useNavigate } from '@tanstack/react-router';
 import { useWatch } from 'react-hook-form';
@@ -18,7 +17,6 @@ import { CONFIGURATION_SOURCE, getErrorMessage } from '../../../shared';
 import { CODE_PATTERN, getEntityLabel } from '../../utils';
 import { FieldError } from '../../components/common';
 import { DATAHUB_NAV_LABELS, DATAHUB_PAGE_LABELS, DATAHUB_PERMISSIONS, DETAIL_ROUTES, ROUTES, CONNECTION_DEFAULT_TYPE, SELECT_WIDTHS } from '../../constants';
-import { CONNECTION_DETAIL_TRANSLATION_IDS } from '../../constants/connection-detail-labels';
 import {
     connectionDetailDocument,
     createConnectionDocument,
@@ -53,7 +51,7 @@ export const connectionDetail: DashboardRouteDefinition = {
 type DashboardRoute = Parameters<DashboardRouteDefinition['component']>[0];
 
 function ConnectionDetailPage({ route }: { route: DashboardRoute }) {
-    const { i18n } = useLingui();
+    const { i18n, t } = useLingui();
     const fieldIdPrefix = React.useId();
     const fieldIds = {
         codeLabel: `${fieldIdPrefix}-code-label`,
@@ -91,14 +89,14 @@ function ConnectionDetailPage({ route }: { route: DashboardRoute }) {
         transformUpdateInput: input => prepareConnectionInput(input, connectionSchemas),
         params: { id: params.id },
         onSuccess: async data => {
-            toast.success(i18n._(CONNECTION_DETAIL_TRANSLATION_IDS.SAVE_SUCCESS));
+            toast.success(t`Connection saved successfully`);
             resetForm();
             if (creating && typeof data === 'object' && data !== null && 'id' in data) {
                 await navigate({ to: `../$id`, params: { id: data.id } });
             }
         },
         onError: err => {
-            toast.error(i18n._(CONNECTION_DETAIL_TRANSLATION_IDS.SAVE_ERROR), {
+            toast.error(t`Failed to save connection`, {
                 description: getErrorMessage(err),
             });
         },
@@ -157,9 +155,7 @@ function ConnectionDetailPage({ route }: { route: DashboardRoute }) {
         isRecord(watchedConfig) ? watchedConfig : {},
         connectionSchemas,
     ) === null;
-    const configurationError = i18n._(
-        CONNECTION_DETAIL_TRANSLATION_IDS.CONFIG_INVALID,
-    );
+    const configurationError = t`Complete or correct the connection settings before saving.`;
     const managedByCodeFirst = !creating
         && entity?.configurationSource === CONFIGURATION_SOURCE.CODE_FIRST;
     const connectionSubmitHandler = (event: React.FormEvent<HTMLFormElement>) => {
@@ -197,9 +193,7 @@ function ConnectionDetailPage({ route }: { route: DashboardRoute }) {
                             || managedByCodeFirst
                         }
                     >
-                        {i18n._(creating
-                            ? CONNECTION_DETAIL_TRANSLATION_IDS.CREATE
-                            : CONNECTION_DETAIL_TRANSLATION_IDS.UPDATE)}
+                        {creating ? <Trans>Create</Trans> : <Trans>Update</Trans>}
                     </Button>
                 </PageActionBarRight>
             </PageActionBar>
@@ -223,20 +217,20 @@ function ConnectionDetailPage({ route }: { route: DashboardRoute }) {
                             name="code"
                             label={(
                                 <span id={fieldIds.codeLabel}>
-                                    {i18n._(CONNECTION_DETAIL_TRANSLATION_IDS.CODE)}
+                                    <Trans>Code</Trans>
                                 </span>
                             )}
                             description={(
                                 <span id={fieldIds.codeDescription}>
-                                    {i18n._(CONNECTION_DETAIL_TRANSLATION_IDS.CODE_HELP)}
+                                    <Trans>Unique identifier for this connection</Trans>
                                 </span>
                             )}
                             control={form.control}
                             rules={{
-                                required: i18n._(CONNECTION_DETAIL_TRANSLATION_IDS.CODE_REQUIRED),
+                                required: t`Code is required`,
                                 pattern: {
                                     value: CODE_PATTERN,
-                                    message: i18n._(CONNECTION_DETAIL_TRANSLATION_IDS.CODE_PATTERN),
+                                    message: t`Must start with a letter and contain only letters, numbers, hyphens, and underscores`,
                                 },
                             }}
                             render={({ field }) => (
@@ -253,15 +247,13 @@ function ConnectionDetailPage({ route }: { route: DashboardRoute }) {
                             name="type"
                             label={(
                                 <span id={fieldIds.typeLabel}>
-                                    {i18n._(CONNECTION_DETAIL_TRANSLATION_IDS.CONNECTION_TYPE)}
+                                    <Trans>Connection Type</Trans>
                                 </span>
                             )}
                             renderFormControl={false}
                             control={form.control}
                             rules={{
-                                required: i18n._(
-                                    CONNECTION_DETAIL_TRANSLATION_IDS.CONNECTION_TYPE_REQUIRED,
-                                ),
+                                required: t`Connection type is required`,
                             }}
                             render={({ field, fieldState }) => {
                                 const effectiveType =
@@ -294,9 +286,7 @@ function ConnectionDetailPage({ route }: { route: DashboardRoute }) {
                                         aria-labelledby={fieldIds.typeLabel}
                                     >
                                         <SelectValue
-                                            placeholder={i18n._(
-                                                CONNECTION_DETAIL_TRANSLATION_IDS.SELECT_TYPE,
-                                            )}
+                                            placeholder={t`Select type`}
                                         />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -314,7 +304,7 @@ function ConnectionDetailPage({ route }: { route: DashboardRoute }) {
 
                     <div className="mt-6">
                         <h3 className="text-sm font-medium mb-4">
-                            {i18n._(CONNECTION_DETAIL_TRANSLATION_IDS.SETTINGS)}
+                            <Trans>Connection Settings</Trans>
                         </h3>
                         <FormFieldWrapper
                             name="config"
@@ -326,9 +316,7 @@ function ConnectionDetailPage({ route }: { route: DashboardRoute }) {
                                     (form.getValues('type') || CONNECTION_DEFAULT_TYPE) as UIConnectionType,
                                     isRecord(value) ? value : {},
                                     connectionSchemas,
-                                ) === null || i18n._(
-                                    CONNECTION_DETAIL_TRANSLATION_IDS.CONFIG_INVALID,
-                                ),
+                                ) === null || t`Complete or correct the connection settings before saving.`,
                             }}
                             render={({ field, fieldState }) => {
                                 const serverConfig = normalizeConnectionConfig(

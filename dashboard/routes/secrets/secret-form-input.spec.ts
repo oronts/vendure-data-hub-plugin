@@ -1,7 +1,60 @@
 import { describe, expect, it } from 'vitest';
-import { prepareSecretCreateInput, prepareSecretUpdateInput } from './secret-form-input';
+import {
+    prepareSecretCreateInput,
+    prepareSecretUpdateInput,
+    getSecretValueValidationIssue,
+    SecretFormInputError,
+} from './secret-form-input';
 
 describe('secret form input serialization', () => {
+    it('validates ENV names without silently trimming server-significant input', () => {
+        expect(getSecretValueValidationIssue({
+            value: ' API_KEY ',
+            provider: 'ENV',
+            existingProvider: 'ENV',
+            creating: true,
+            clearValue: false,
+        })).toBe('INVALID_ENV_NAME');
+        expect(getSecretValueValidationIssue({
+            value: 'API_KEY',
+            provider: 'ENV',
+            existingProvider: 'ENV',
+            creating: true,
+            clearValue: false,
+        })).toBeNull();
+        expect(getSecretValueValidationIssue({
+            value: '   ',
+            provider: 'ENV',
+            existingProvider: 'ENV',
+            creating: false,
+            clearValue: false,
+        })).toBe('INVALID_ENV_NAME');
+    });
+
+    it('requires a replacement when creating or changing provider', () => {
+        expect(getSecretValueValidationIssue({
+            value: '',
+            provider: 'INLINE',
+            existingProvider: 'ENV',
+            creating: false,
+            clearValue: false,
+        })).toBe('INLINE_VALUE_REQUIRED');
+        expect(getSecretValueValidationIssue({
+            value: '',
+            provider: 'ENV',
+            existingProvider: 'ENV',
+            creating: false,
+            clearValue: true,
+        })).toBeNull();
+        expect(getSecretValueValidationIssue({
+            value: '',
+            provider: 'ENV',
+            existingProvider: 'ENV',
+            creating: true,
+            clearValue: true,
+        })).toBe('ENV_NAME_REQUIRED');
+    });
+
     it('requires a value and defaults create input to the ENV provider', () => {
         expect(() =>
             prepareSecretCreateInput({
@@ -9,7 +62,11 @@ describe('secret form input serialization', () => {
                 provider: '',
                 value: '',
             }),
-        ).toThrow(/non-empty secret value is required/);
+        ).toThrow(
+            expect.objectContaining<Partial<SecretFormInputError>>({
+                code: 'VALUE_REQUIRED',
+            }),
+        );
 
         expect(
             prepareSecretCreateInput({
@@ -68,7 +125,11 @@ describe('secret form input serialization', () => {
                 value: 'replacement',
                 clearValue: true,
             }),
-        ).toThrow(/cannot be replaced and cleared/);
+        ).toThrow(
+            expect.objectContaining<Partial<SecretFormInputError>>({
+                code: 'CONFLICTING_VALUE_ACTIONS',
+            }),
+        );
     });
 
     it('preserves explicit metadata null', () => {

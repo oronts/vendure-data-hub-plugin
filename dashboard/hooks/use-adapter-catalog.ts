@@ -4,11 +4,14 @@ import {
     type LucideIcon,
 } from 'lucide-react';
 import { useAdapters } from './api/use-adapters';
-import { FALLBACK_COLORS, UI_ADAPTER_CATEGORY, ADAPTER_TYPE_TO_NODE_TYPE, ADAPTER_TYPE_TO_CATEGORY } from '../constants';
+import { useStepMappings } from './api/use-config-options';
+import { FALLBACK_COLORS, UI_ADAPTER_CATEGORY } from '../constants';
+import type { StepMappings } from '../constants/step-mappings';
 import { mapAdapterSchema } from '../utils/adapter-schema';
 import { resolveIconName } from '../utils/icon-resolver';
 import type { AdapterSchema } from '../../shared/types';
 import { useDynamicMetadataTranslations } from './use-dynamic-metadata-translations';
+import { resolveAdapterPresentation } from './adapter-presentation';
 
 export interface AdapterMetadata {
     code: string;
@@ -45,13 +48,6 @@ interface AdapterCatalog {
     all: AdapterMetadata[];
 }
 
-function adapterTypeToNodeType(adapterType: string): AdapterNodeType {
-    return (ADAPTER_TYPE_TO_NODE_TYPE[adapterType] ?? 'transform') as AdapterNodeType;
-}
-
-function adapterTypeToCategory(adapterType: string): string {
-    return ADAPTER_TYPE_TO_CATEGORY[adapterType] ?? 'other';
-}
 
 function buildAdapterMetadata(adapter: {
     code: string;
@@ -70,7 +66,11 @@ function buildAdapterMetadata(adapter: {
     categoryOrder?: number | null;
     wizardHidden?: boolean | null;
     builtIn?: boolean | null;
-}, translateAdapter: ReturnType<typeof useDynamicMetadataTranslations>['translateAdapter']): AdapterMetadata {
+}, translateAdapter: ReturnType<typeof useDynamicMetadataTranslations>['translateAdapter'],
+mappings: Pick<
+    StepMappings,
+    'adapterTypeToNodeType' | 'adapterTypeToCategory'
+>): AdapterMetadata {
     const code = adapter.code;
     const type = adapter.type;
     const builtIn = adapter.builtIn === true;
@@ -80,6 +80,7 @@ function buildAdapterMetadata(adapter: {
     const icon = resolveIconName(adapter.icon) ?? Settings;
     const color = adapter.color ?? FALLBACK_COLORS.UNKNOWN_STEP_COLOR;
 
+    const presentation = resolveAdapterPresentation(type, mappings);
     return {
         code,
         type,
@@ -93,8 +94,8 @@ function buildAdapterMetadata(adapter: {
         ) || undefined,
         icon,
         color,
-        category: adapterTypeToCategory(type),
-        nodeType: adapterTypeToNodeType(type),
+        category: presentation.category,
+        nodeType: presentation.nodeType,
         schema: mapAdapterSchema(adapter.schema),
         entityType: adapter.entityType ?? undefined,
         formatType: adapter.formatType ?? undefined,
@@ -121,10 +122,12 @@ interface UseAdapterCatalogResult {
 export function useAdapterCatalog(): UseAdapterCatalogResult {
     const { data: adaptersData, isLoading: adaptersLoading, error: adaptersError } = useAdapters();
     const { translateAdapter } = useDynamicMetadataTranslations();
+    const { mappings, isLoading: mappingsLoading } = useStepMappings();
 
     const adapters: AdapterMetadata[] = React.useMemo(
-        () => (adaptersData ?? []).map(adapter => buildAdapterMetadata(adapter, translateAdapter)),
-        [adaptersData, translateAdapter],
+        () => (adaptersData ?? []).map(adapter =>
+            buildAdapterMetadata(adapter, translateAdapter, mappings)),
+        [adaptersData, mappings, translateAdapter],
     );
 
     const catalog: AdapterCatalog = React.useMemo(() => {
@@ -165,7 +168,7 @@ export function useAdapterCatalog(): UseAdapterCatalogResult {
     return {
         catalog,
         adapters,
-        isLoading: adaptersLoading,
+        isLoading: adaptersLoading || mappingsLoading,
         error: adaptersError as Error | null,
         getAdapter,
         getAdaptersByType,

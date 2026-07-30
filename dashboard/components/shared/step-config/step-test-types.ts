@@ -19,6 +19,5 @@ export interface TestResult {
         before: Record<string, unknown>;
         after: Record<string, unknown>;
     }>;
-    feedContent?: { content: string; contentType: string; itemCount: number };
     loadSimulation?: Record<string, unknown>;
 }

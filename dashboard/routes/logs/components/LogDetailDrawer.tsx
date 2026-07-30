@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { memo } from 'react';
+import { Trans, useLingui } from '@lingui/react/macro';
 import {
     Button,
     Drawer,
@@ -13,10 +14,10 @@ import { Link } from '@tanstack/react-router';
 import { LogLevelBadge } from './LogLevelBadge';
 import { ROUTES } from '../../../constants';
 import { formatDateTime } from '../../../utils';
-import type { DataHubLog } from '../../../types';
+import type { LogListItem } from './LogTableRow';
 
 interface LogDetailDrawerProps {
-    log: DataHubLog | null;
+    log: LogListItem | null;
     onClose: () => void;
 }
 
@@ -25,6 +26,7 @@ interface LogDetailDrawerProps {
  * Shows message, context, metadata, and links to related pipeline.
  */
 export const LogDetailDrawer = memo(function LogDetailDrawer({ log, onClose }: LogDetailDrawerProps) {
+    const { i18n } = useLingui();
     const handleOpenChange = React.useCallback((open: boolean) => {
         if (!open) onClose();
     }, [onClose]);
@@ -33,9 +35,11 @@ export const LogDetailDrawer = memo(function LogDetailDrawer({ log, onClose }: L
         <Drawer open={!!log} onOpenChange={handleOpenChange}>
             <DrawerContent data-testid="datahub-log-detail-drawer">
                 <DrawerHeader>
-                    <DrawerTitle>Log Details</DrawerTitle>
+                    <DrawerTitle><Trans>Log Details</Trans></DrawerTitle>
                     <DrawerDescription>
-                        {log?.createdAt ? formatDateTime(log.createdAt) : ''}
+                        {log?.createdAt
+                            ? formatDateTime(log.createdAt, undefined, i18n.locale)
+                            : ''}
                     </DrawerDescription>
                 </DrawerHeader>
                 {log && (
@@ -55,7 +59,9 @@ export const LogDetailDrawer = memo(function LogDetailDrawer({ log, onClose }: L
                         </div>
 
                         <div>
-                            <div className="text-sm font-medium mb-1">Message</div>
+                            <div className="text-sm font-medium mb-1">
+                                <Trans>Message</Trans>
+                            </div>
                             <div className="p-3 bg-muted rounded-lg text-sm font-mono whitespace-pre-wrap">
                                 {log.message}
                             </div>
@@ -63,21 +69,21 @@ export const LogDetailDrawer = memo(function LogDetailDrawer({ log, onClose }: L
 
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                             <div>
-                                <div className="text-xs text-muted-foreground">Step</div>
+                                <div className="text-xs text-muted-foreground"><Trans>Step</Trans></div>
                                 <div className="font-mono text-sm">{log.stepKey ?? '—'}</div>
                             </div>
                             <div>
-                                <div className="text-xs text-muted-foreground">Duration</div>
+                                <div className="text-xs text-muted-foreground"><Trans>Duration</Trans></div>
                                 <div className="text-sm">
                                     {log.durationMs != null ? `${log.durationMs}ms` : '—'}
                                 </div>
                             </div>
                             <div>
-                                <div className="text-xs text-muted-foreground">Records Processed</div>
+                                <div className="text-xs text-muted-foreground"><Trans>Records Processed</Trans></div>
                                 <div className="text-sm">{log.recordsProcessed ?? '—'}</div>
                             </div>
                             <div>
-                                <div className="text-xs text-muted-foreground">Records Failed</div>
+                                <div className="text-xs text-muted-foreground"><Trans>Records Failed</Trans></div>
                                 <div className={`text-sm ${(log.recordsFailed ?? 0) > 0 ? 'text-red-600 dark:text-red-400' : ''}`}>
                                     {log.recordsFailed ?? '—'}
                                 </div>
@@ -86,14 +92,14 @@ export const LogDetailDrawer = memo(function LogDetailDrawer({ log, onClose }: L
 
                         {log.context && Object.keys(log.context).length > 0 && (
                             <div>
-                                <div className="text-sm font-medium mb-1">Context</div>
+                                <div className="text-sm font-medium mb-1"><Trans>Context</Trans></div>
                                 <Json value={log.context} />
                             </div>
                         )}
 
                         {log.metadata && Object.keys(log.metadata).length > 0 && (
                             <div>
-                                <div className="text-sm font-medium mb-1">Metadata</div>
+                                <div className="text-sm font-medium mb-1"><Trans>Metadata</Trans></div>
                                 <Json value={log.metadata} />
                             </div>
                         )}
@@ -105,7 +111,7 @@ export const LogDetailDrawer = memo(function LogDetailDrawer({ log, onClose }: L
                                         to={`${ROUTES.PIPELINES}/$id`}
                                         params={{ id: log.pipeline.id }}
                                     >
-                                        View Pipeline
+                                        <Trans>View Pipeline</Trans>
                                     </Link>
                                 </Button>
                             </div>

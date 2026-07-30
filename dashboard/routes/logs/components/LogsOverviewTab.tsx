@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useLingui } from '@lingui/react';
+import { Trans, useLingui } from '@lingui/react/macro';
 import {
     Button,
     Card,
@@ -28,17 +28,25 @@ import { ErrorState, LoadingState, StatCard, LoadMoreButton } from '../../../com
 import { LevelBadge } from './LogLevelBadge';
 import { SortOrder, type DataHubPipeline } from '../../../types';
 import { DATAHUB_PERMISSIONS } from '../../../constants';
-import { LOGS_TRANSLATION_IDS } from '../../../constants/logs-labels';
 import { RunAnalyticsPanel } from './RunAnalyticsPanel';
 
 /**
  * Pipeline statistics card showing log counts and performance metrics
  */
 const PipelineStatCard = React.memo(function PipelineStatCard({ pipeline }: { pipeline: Pick<DataHubPipeline, 'id' | 'code' | 'name'> }) {
-    const { i18n } = useLingui();
+    const { t } = useLingui();
     const { data: stats, isLoading } = useLogStats(pipeline.id);
     const logCount = stats?.total ?? 0;
     const errorCount = stats?.errorsToday ?? 0;
+    const duration = stats?.avgDurationMs;
+    const logCountLabel = (() => {
+        const count = logCount;
+        return count === 1 ? t`${count} log` : t`${count} logs`;
+    })();
+    const errorCountLabel = (() => {
+        const count = errorCount;
+        return count === 1 ? t`${count} error today` : t`${count} errors today`;
+    })();
 
     return (
         <div className="border rounded-lg p-3">
@@ -50,28 +58,16 @@ const PipelineStatCard = React.memo(function PipelineStatCard({ pipeline }: { pi
                 <span className="text-muted-foreground">
                     {isLoading
                         ? '\u2014'
-                        : i18n._(
-                            logCount === 1
-                                ? LOGS_TRANSLATION_IDS.LOG_COUNT_ONE
-                                : LOGS_TRANSLATION_IDS.LOG_COUNT_MULTIPLE,
-                            { count: logCount },
-                        )}
+                        : logCountLabel}
                 </span>
                 {!isLoading && (stats?.errorsToday ?? 0) > 0 && (
                     <span className="text-red-600 dark:text-red-400">
-                        {i18n._(
-                            errorCount === 1
-                                ? LOGS_TRANSLATION_IDS.ERRORS_TODAY_COUNT_ONE
-                                : LOGS_TRANSLATION_IDS.ERRORS_TODAY_COUNT_MULTIPLE,
-                            { count: errorCount },
-                        )}
+                        {errorCountLabel}
                     </span>
                 )}
-                {!isLoading && (stats?.avgDurationMs ?? 0) > 0 && (
+                {!isLoading && (duration ?? 0) > 0 && (
                     <span className="text-muted-foreground">
-                        {i18n._(LOGS_TRANSLATION_IDS.AVERAGE_DURATION_VALUE, {
-                            duration: stats?.avgDurationMs,
-                        })}
+                        {t`avg ${duration}ms`}
                     </span>
                 )}
             </div>
@@ -86,7 +82,7 @@ const PIPELINE_HEALTH_PAGE_SIZE = 6;
  * Shows total logs, errors, warnings, average duration, and per-pipeline metrics.
  */
 export function LogsOverviewTab() {
-    const { i18n } = useLingui();
+    const { t } = useLingui();
     const { formatNumber } = useLocalFormat();
     const queryClient = useQueryClient();
     const { hasPermissions } = usePermissions();
@@ -110,6 +106,10 @@ export function LogsOverviewTab() {
     const pipelines = pipelinesQuery.data?.items ?? [];
     const totalPipelines = pipelinesQuery.data?.totalItems ?? 0;
     const remainingPipelines = Math.max(0, totalPipelines - pipelines.length);
+    const pipelineStatsDescription = (() => {
+        const count = totalPipelines;
+        return t`Log statistics for each pipeline (${count} total)`;
+    })();
 
     const handleRefetch = React.useCallback(() => {
         void queryClient.refetchQueries({ queryKey: logKeys.stats() });
@@ -124,10 +124,10 @@ export function LogsOverviewTab() {
     if (statsQuery.isError || (canReadPipelines && pipelinesQuery.isError)) {
         return (
             <ErrorState
-                title={i18n._(LOGS_TRANSLATION_IDS.FAILED_LOAD_ANALYTICS)}
+                title={t`Failed to load log statistics`}
                 message={statsQuery.error?.message
                     || (canReadPipelines ? pipelinesQuery.error?.message : undefined)
-                    || i18n._(LOGS_TRANSLATION_IDS.UNEXPECTED_ERROR)}
+                    || t`An unexpected error occurred`}
                 onRetry={handleRefetch}
             />
         );
@@ -138,7 +138,7 @@ export function LogsOverviewTab() {
             <LoadingState
                 type="card"
                 rows={2}
-                message={i18n._(LOGS_TRANSLATION_IDS.LOADING_ANALYTICS)}
+                message={t`Loading analytics...`}
             />
         );
     }
@@ -151,51 +151,51 @@ export function LogsOverviewTab() {
                         <div className="flex items-center gap-2">
                             <Activity className="w-5 h-5 text-primary" />
                             <CardTitle>
-                                {i18n._(LOGS_TRANSLATION_IDS.ANALYTICS_DASHBOARD)}
+                                <Trans>Analytics Dashboard</Trans>
                             </CardTitle>
                         </div>
                         <Button variant="ghost" size="sm" onClick={handleRefetch} disabled={statsQuery.isLoading}>
                             <RefreshCw className={`w-4 h-4 mr-2 ${statsQuery.isLoading ? 'animate-spin' : ''}`} />
-                            {i18n._(LOGS_TRANSLATION_IDS.REFRESH)}
+                            <Trans>Refresh</Trans>
                         </Button>
                     </div>
                     <CardDescription>
-                        {i18n._(LOGS_TRANSLATION_IDS.ANALYTICS_DESCRIPTION)}
+                        <Trans>Pipeline execution metrics and log statistics</Trans>
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
                     <RunAnalyticsPanel enabled={canViewAnalytics} />
                     <h3 className="text-sm font-medium mb-3">
-                        {i18n._(LOGS_TRANSLATION_IDS.LOG_DIAGNOSTICS)}
+                        <Trans>Log diagnostics</Trans>
                     </h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                         <StatCard
-                            title={i18n._(LOGS_TRANSLATION_IDS.RETAINED_LOGS)}
+                            title={t`Retained logs`}
                             value={formatNumber(stats?.total ?? 0)}
                             icon={<TrendingUp className="w-4 h-4" />}
                             variant="info"
                         />
                         <StatCard
-                            title={i18n._(LOGS_TRANSLATION_IDS.ERRORS_TODAY)}
+                            title={t`Errors Today`}
                             value={formatNumber(stats?.errorsToday ?? 0)}
                             icon={<AlertCircle className="w-4 h-4" />}
                             variant="error"
                         />
                         <StatCard
-                            title={i18n._(LOGS_TRANSLATION_IDS.WARNINGS_TODAY)}
+                            title={t`Warnings Today`}
                             value={formatNumber(stats?.warningsToday ?? 0)}
                             icon={<AlertTriangle className="w-4 h-4" />}
                             variant="warning"
                         />
                         <StatCard
-                            title={i18n._(LOGS_TRANSLATION_IDS.AVERAGE_LOG_DURATION)}
+                            title={t`Average log duration`}
                             value={`${formatNumber(stats?.avgDurationMs ?? 0)}ms`}
                             icon={<Clock className="w-4 h-4" />}
                             variant="success"
                         />
                         <div className="border rounded-lg p-3 bg-muted/30">
                             <div className="text-xs text-muted-foreground mb-2">
-                                {i18n._(LOGS_TRANSLATION_IDS.BY_LEVEL)}
+                                <Trans>By Level</Trans>
                             </div>
                             <div className="flex gap-2">
                                 {logLevels.map(level => (
@@ -216,14 +216,12 @@ export function LogsOverviewTab() {
                     <div className="flex items-center justify-between">
                         <div>
                             <CardTitle className="text-base">
-                                {i18n._(LOGS_TRANSLATION_IDS.PIPELINE_HEALTH)}
+                                <Trans>Pipeline Health</Trans>
                             </CardTitle>
                             <CardDescription>
                                 {canReadPipelines
-                                    ? i18n._(LOGS_TRANSLATION_IDS.PIPELINE_STATS_TOTAL, {
-                                        count: totalPipelines,
-                                    })
-                                    : i18n._(LOGS_TRANSLATION_IDS.PIPELINE_PERMISSION_REQUIRED)}
+                                    ? pipelineStatsDescription
+                                    : t`Pipeline statistics require permission`}
                             </CardDescription>
                         </div>
                     </div>
@@ -231,7 +229,7 @@ export function LogsOverviewTab() {
                 <CardContent>
                     {!canReadPipelines ? (
                         <div className="rounded-md border bg-muted/30 p-4 text-sm text-muted-foreground">
-                            {i18n._(LOGS_TRANSLATION_IDS.PIPELINE_PERMISSION_DETAIL)}
+                            <Trans>You do not have permission to view pipeline details.</Trans>
                         </div>
                     ) : (
                         <>
@@ -252,7 +250,7 @@ export function LogsOverviewTab() {
                             )}
                             {pipelines.length === 0 && (
                                 <div className="text-center py-8 text-muted-foreground">
-                                    {i18n._(LOGS_TRANSLATION_IDS.NO_PIPELINES)}
+                                    <Trans>No pipelines found</Trans>
                                 </div>
                             )}
                         </>

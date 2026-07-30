@@ -188,10 +188,13 @@ function TemplatePreviewComponent({ template, onUseTemplate }: TemplatePreviewPr
                             </div>
                             <div className="overflow-x-auto border rounded">
                                 <table className="w-full text-xs">
+                                    <caption className="sr-only">
+                                        <Trans>Preview data</Trans>
+                                    </caption>
                                     <thead className="bg-muted">
                                         <tr>
                                             {[...template.requiredFields, ...template.optionalFields].map(field => (
-                                                <th key={field} className="px-3 py-2 text-left font-medium">
+                                                <th scope="col" key={field} className="px-3 py-2 text-left font-medium">
                                                     {field}
                                                 </th>
                                             ))}

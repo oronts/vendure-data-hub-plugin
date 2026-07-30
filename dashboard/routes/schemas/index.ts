@@ -1,2 +1,2 @@
 export { schemasList } from './SchemasList';
-export { schemaDetail } from './SchemaDetail';
+export { schemaDetail, schemaVersionCreate } from './SchemaDetail';

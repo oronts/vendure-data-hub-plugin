@@ -23,27 +23,26 @@ import {
     SelectValue,
     PermissionGuard,
 } from '@vendure/dashboard';
-import { useLingui } from '@lingui/react';
+import { Trans, useLingui } from '@lingui/react/macro';
 import { useNavigate } from '@tanstack/react-router';
 import { toast } from 'sonner';
 import { AlertCircle, Key, Server, Trash2, Undo2 } from 'lucide-react';
-import { ENV_VARIABLE_NAME_PATTERN, getErrorMessage } from '../../../shared';
+import { getErrorMessage } from '../../../shared';
 import { CODE_PATTERN, getEntityLabel } from '../../utils';
 import {
     DATAHUB_NAV_LABELS,
-    DATAHUB_FIELD_TRANSLATION_IDS,
     DATAHUB_PAGE_LABELS,
     DATAHUB_PERMISSIONS,
     DETAIL_ROUTES,
     ROUTES,
     SECRET_PROVIDER,
     SECRET_PROVIDER_TRANSLATION_IDS,
-    SECRET_DETAIL_TRANSLATION_IDS,
     SELECT_WIDTHS,
 } from '../../constants';
 import {
     prepareSecretCreateInput,
     prepareSecretUpdateInput,
+    getSecretValueValidationIssue,
     SecretFormInputError,
 } from './secret-form-input';
 import {
@@ -55,6 +54,7 @@ import {
     useSecretSecurity,
 } from '../../hooks';
 import { AllPermissionsGuard, ManagedResourceChannels } from '../../components/shared';
+import { SecretStatusNotices, SecretValueNotices } from './SecretNotices';
 
 const SECRET_DETAIL_PAGE_ID = 'data-hub-secret-detail';
 
@@ -88,7 +88,7 @@ function SecretDetailPermissionGate({ route }: { route: DashboardRoute }) {
 }
 
 function SecretDetailPage({ route }: { route: DashboardRoute }) {
-    const { i18n } = useLingui();
+    const { i18n, t } = useLingui();
     const fieldIdPrefix = React.useId();
     const fieldIds = {
         codeLabel: `${fieldIdPrefix}-code-label`,
@@ -102,9 +102,12 @@ function SecretDetailPage({ route }: { route: DashboardRoute }) {
     const navigate = useNavigate();
     const creating = params.id === 'new';
     const { hasPermissions } = usePermissions();
-    const canUpdateChannels = hasPermissions([DATAHUB_PERMISSIONS.UPDATE_SECRET]);
+    const canCreateSecret = hasPermissions([DATAHUB_PERMISSIONS.CREATE_SECRET]);
+    const canUpdateSecret = hasPermissions([DATAHUB_PERMISSIONS.UPDATE_SECRET]);
+    const canEditSecret = creating ? canCreateSecret : canUpdateSecret;
 
-    const { data: secretSecurity } = useSecretSecurity();
+    const secretSecurityQuery = useSecretSecurity();
+    const secretSecurity = secretSecurityQuery.data;
     const { form, submitHandler, entity, isPending, resetForm, refreshEntity } = useDetailPage({
         pageId: SECRET_DETAIL_PAGE_ID,
         queryDocument: secretDetailDocument,
@@ -123,7 +126,7 @@ function SecretDetailPage({ route }: { route: DashboardRoute }) {
         transformUpdateInput: prepareSecretUpdateInput,
         params: { id: params.id },
         onSuccess: async (data) => {
-            toast.success(i18n._(SECRET_DETAIL_TRANSLATION_IDS.SAVE_SUCCESS));
+            toast.success(t`Secret saved successfully`);
             resetForm();
             if (creating && typeof data === 'object' && data !== null && 'id' in data) {
                 await navigate({ to: `../$id`, params: { id: data.id } });
@@ -131,13 +134,11 @@ function SecretDetailPage({ route }: { route: DashboardRoute }) {
         },
         onError: (err) => {
             const description = err instanceof SecretFormInputError
-                ? i18n._(
-                    err.code === 'VALUE_REQUIRED'
-                        ? SECRET_DETAIL_TRANSLATION_IDS.SECRET_VALUE_REQUIRED
-                        : SECRET_DETAIL_TRANSLATION_IDS.CONFLICTING_VALUE_ACTIONS,
-                )
+                ? err.code === 'VALUE_REQUIRED'
+                    ? t`Secret value is required when creating a new secret`
+                    : t`A secret value cannot be replaced and cleared at the same time.`
                 : getErrorMessage(err);
-            toast.error(i18n._(SECRET_DETAIL_TRANSLATION_IDS.SAVE_ERROR), {
+            toast.error(t`Failed to save secret`, {
                 description,
             });
         },
@@ -159,12 +160,21 @@ function SecretDetailPage({ route }: { route: DashboardRoute }) {
     const clearScheduled = form.watch('clearValue') === true;
     const providerChanged = !creating && provider !== existingProvider;
     const hasReplacement = currentValue.trim().length > 0;
+    const formDisabled = !canEditSecret || isPending || entity?.isOverridden === true;
+    const inlineStorageAvailable = secretSecurity?.inlineStorageAvailable === true;
 
     const inlineDescription = secretSecurity?.mode === 'ENCRYPTED'
-        ? i18n._(SECRET_DETAIL_TRANSLATION_IDS.INLINE_ENCRYPTED_HELP)
-        : i18n._(SECRET_DETAIL_TRANSLATION_IDS.INLINE_UNAVAILABLE_HELP);
+        ? t`The actual secret value (stored encrypted)`
+        : secretSecurityQuery.isLoading
+            ? t`Checking inline storage availability…`
+            : t`Inline storage is unavailable until a master key is configured`;
     return (
-        <Page pageId={SECRET_DETAIL_PAGE_ID} form={form} submitHandler={submitHandler}>
+        <Page
+            pageId={SECRET_DETAIL_PAGE_ID}
+            form={form}
+            submitHandler={submitHandler}
+            entity={entity}
+        >
             <PageTitle>
                 {creating ? i18n._(DATAHUB_PAGE_LABELS.NEW_SECRET) : (entity?.code ?? '')}
             </PageTitle>
@@ -182,47 +192,36 @@ function SecretDetailPage({ route }: { route: DashboardRoute }) {
                                 entity?.isOverridden === true
                             }
                         >
-                            {i18n._(creating
-                                ? SECRET_DETAIL_TRANSLATION_IDS.CREATE
-                                : SECRET_DETAIL_TRANSLATION_IDS.UPDATE)}
+                            {creating ? <Trans>Create</Trans> : <Trans>Update</Trans>}
                         </Button>
                     </PermissionGuard>
                 </PageActionBarRight>
             </PageActionBar>
             <PageLayout>
                 <PageBlock column="main" blockId="secret-form">
-                    {entity?.isOverridden && (
-                        <div className="mb-4 p-3 bg-amber-500/10 rounded-lg flex items-start gap-2">
-                            <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5" />
-                            <div className="text-sm">
-                                <p className="font-medium">
-                                    {i18n._(SECRET_DETAIL_TRANSLATION_IDS.OVERRIDDEN_TITLE)}
-                                </p>
-                                <p className="text-muted-foreground">
-                                    {i18n._(SECRET_DETAIL_TRANSLATION_IDS.OVERRIDDEN_DESCRIPTION)}
-                                </p>
+                    <SecretStatusNotices
+                        isOverridden={entity?.isOverridden === true}
+                        valueStatus={entity?.valueStatus}
+                        securityMode={secretSecurity?.mode}
+                    />
+                    {secretSecurityQuery.isError && (
+                        <div
+                            className="mb-4 flex flex-col items-start gap-3 rounded-lg bg-destructive/10 p-3 text-sm sm:flex-row sm:items-center sm:justify-between"
+                            role="alert"
+                        >
+                            <div className="flex items-start gap-2 text-destructive">
+                                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                                <span><Trans>Inline storage availability could not be verified. Environment variable references remain available.</Trans></span>
                             </div>
-                        </div>
-                    )}
-                    {entity?.valueStatus === 'UNENCRYPTED' && (
-                        <div className="mb-4 p-3 bg-destructive/10 rounded-lg flex items-start gap-2">
-                            <AlertCircle className="w-4 h-4 text-destructive mt-0.5" />
-                            <div className="text-sm">
-                                <p className="font-medium text-destructive">
-                                    {i18n._(SECRET_DETAIL_TRANSLATION_IDS.UNENCRYPTED_TITLE)}
-                                </p>
-                                <p className="text-muted-foreground">
-                                    {i18n._(SECRET_DETAIL_TRANSLATION_IDS.UNENCRYPTED_DESCRIPTION)}
-                                </p>
-                            </div>
-                        </div>
-                    )}
-                    {secretSecurity?.mode === 'STRICT_DISABLED' && (
-                        <div className="mb-4 p-3 bg-muted rounded-lg flex items-start gap-2">
-                            <AlertCircle className="w-4 h-4 text-muted-foreground mt-0.5" />
-                            <p className="text-sm text-muted-foreground">
-                                {i18n._(SECRET_DETAIL_TRANSLATION_IDS.INLINE_DISABLED_DESCRIPTION)}
-                            </p>
+                            <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => void secretSecurityQuery.refetch()}
+                                disabled={secretSecurityQuery.isFetching}
+                            >
+                                <Trans>Retry</Trans>
+                            </Button>
                         </div>
                     )}
                     <DetailFormGrid>
@@ -231,19 +230,19 @@ function SecretDetailPage({ route }: { route: DashboardRoute }) {
                             name="code"
                             label={(
                                 <span id={fieldIds.codeLabel}>
-                                    {i18n._(DATAHUB_FIELD_TRANSLATION_IDS.CODE)}
+                                    <Trans>Code</Trans>
                                 </span>
                             )}
                             description={(
                                 <span id={fieldIds.codeDescription}>
-                                    {i18n._(SECRET_DETAIL_TRANSLATION_IDS.CODE_HELP)}
+                                    <Trans>Unique identifier used to reference this secret</Trans>
                                 </span>
                             )}
                             rules={{
-                                required: i18n._(SECRET_DETAIL_TRANSLATION_IDS.CODE_REQUIRED),
+                                required: t`Code is required`,
                                 pattern: {
                                     value: CODE_PATTERN,
-                                    message: i18n._(SECRET_DETAIL_TRANSLATION_IDS.CODE_PATTERN),
+                                    message: t`Must start with a letter and contain only letters, numbers, hyphens, and underscores`,
                                 },
                             }}
                             render={({ field }) => (
@@ -251,7 +250,7 @@ function SecretDetailPage({ route }: { route: DashboardRoute }) {
                                     {...field}
                                     aria-labelledby={fieldIds.codeLabel}
                                     aria-describedby={fieldIds.codeDescription}
-                                    disabled={entity?.isOverridden === true}
+                                    disabled={formDisabled}
                                     placeholder="my-api-key"
                                 />
                             )}
@@ -261,17 +260,17 @@ function SecretDetailPage({ route }: { route: DashboardRoute }) {
                             name="provider"
                             label={(
                                 <span id={fieldIds.providerLabel}>
-                                    {i18n._(DATAHUB_FIELD_TRANSLATION_IDS.PROVIDER)}
+                                    <Trans>Provider</Trans>
                                 </span>
                             )}
                             description={(
                                 <span id={fieldIds.providerDescription}>
-                                    {i18n._(SECRET_DETAIL_TRANSLATION_IDS.PROVIDER_HELP)}
+                                    <Trans>How the secret value is resolved</Trans>
                                 </span>
                             )}
                             renderFormControl={false}
                             rules={{
-                                required: i18n._(SECRET_DETAIL_TRANSLATION_IDS.PROVIDER_REQUIRED),
+                                required: t`Provider is required`,
                             }}
                             render={({ field }) => {
                                 const effectiveProvider =
@@ -279,7 +278,7 @@ function SecretDetailPage({ route }: { route: DashboardRoute }) {
                                 return (
                                     <div>
                                         <Select
-                                            disabled={entity?.isOverridden === true}
+                                            disabled={formDisabled}
                                             value={effectiveProvider}
                                             onValueChange={(value) => {
                                                 field.onChange(value);
@@ -300,24 +299,22 @@ function SecretDetailPage({ route }: { route: DashboardRoute }) {
                                                 aria-describedby={fieldIds.providerDescription}
                                             >
                                                 <SelectValue
-                                                    placeholder={i18n._(
-                                                        SECRET_DETAIL_TRANSLATION_IDS.SELECT_PROVIDER,
-                                                    )}
+                                                    placeholder={t`Select provider`}
                                                 />
                                             </SelectTrigger>
                                             <SelectContent>
                                                 <SelectItem
                                                     value={SECRET_PROVIDER.INLINE}
-                                                    disabled={secretSecurity?.inlineStorageAvailable === false}
+                                                    disabled={!inlineStorageAvailable}
                                                 >
                                                     <div className="flex items-center gap-2">
-                                                        <Key className="w-4 h-4" />
+                                                        <Key className="h-4 w-4" aria-hidden="true" />
                                                         {i18n._(SECRET_PROVIDER_TRANSLATION_IDS.INLINE)}
                                                     </div>
                                                 </SelectItem>
                                                 <SelectItem value={SECRET_PROVIDER.ENV}>
                                                     <div className="flex items-center gap-2">
-                                                        <Server className="w-4 h-4" />
+                                                        <Server className="h-4 w-4" aria-hidden="true" />
                                                         {i18n._(SECRET_PROVIDER_TRANSLATION_IDS.ENV)}
                                                     </div>
                                                 </SelectItem>
@@ -335,15 +332,15 @@ function SecretDetailPage({ route }: { route: DashboardRoute }) {
                             name="value"
                             label={(
                                 <span id={fieldIds.valueLabel}>
-                                    {i18n._(provider === SECRET_PROVIDER.ENV
-                                        ? SECRET_DETAIL_TRANSLATION_IDS.ENVIRONMENT_NAME
-                                        : SECRET_DETAIL_TRANSLATION_IDS.SECRET_VALUE)}
+                                    {provider === SECRET_PROVIDER.ENV
+                                        ? <Trans>Environment variable name</Trans>
+                                        : <Trans>Secret value</Trans>}
                                 </span>
                             )}
                             description={(
                                 <span id={fieldIds.valueDescription}>
                                     {provider === SECRET_PROVIDER.ENV
-                                        ? i18n._(SECRET_DETAIL_TRANSLATION_IDS.ENVIRONMENT_NAME_HELP)
+                                        ? <Trans>Name of the environment variable to read at runtime</Trans>
                                         : inlineDescription}
                                 </span>
                             )}
@@ -352,24 +349,21 @@ function SecretDetailPage({ route }: { route: DashboardRoute }) {
                                     const selectedProvider = (form.getValues('provider') || existingProvider) as
                                         | 'INLINE'
                                         | 'ENV';
-                                    const normalizedValue = value?.trim() ?? '';
-                                    const replacementProvided = normalizedValue.length > 0;
-                                    const providerWillChange = !creating && selectedProvider !== existingProvider;
-
-                                    if (form.getValues('clearValue') === true && !providerWillChange) {
-                                        return true;
+                                    const issue = getSecretValueValidationIssue({
+                                        value,
+                                        provider: selectedProvider,
+                                        existingProvider,
+                                        creating,
+                                        clearValue: form.getValues('clearValue') === true,
+                                    });
+                                    if (issue === 'ENV_NAME_REQUIRED') {
+                                        return t`Environment variable name is required`;
                                     }
-                                    if ((creating || providerWillChange) && !replacementProvided) {
-                                        return selectedProvider === SECRET_PROVIDER.ENV
-                                            ? i18n._(SECRET_DETAIL_TRANSLATION_IDS.ENVIRONMENT_NAME_REQUIRED)
-                                            : i18n._(SECRET_DETAIL_TRANSLATION_IDS.SECRET_VALUE_REQUIRED);
+                                    if (issue === 'INLINE_VALUE_REQUIRED') {
+                                        return t`Secret value is required when creating a secret or changing provider`;
                                     }
-                                    if (
-                                        selectedProvider === SECRET_PROVIDER.ENV &&
-                                        replacementProvided &&
-                                        !ENV_VARIABLE_NAME_PATTERN.test(normalizedValue)
-                                    ) {
-                                        return i18n._(SECRET_DETAIL_TRANSLATION_IDS.ENVIRONMENT_NAME_FORMAT);
+                                    if (issue === 'INVALID_ENV_NAME') {
+                                        return t`Environment variable names should be uppercase with underscores and no spaces (e.g., MY_API_KEY)`;
                                     }
                                     return true;
                                 },
@@ -381,11 +375,18 @@ function SecretDetailPage({ route }: { route: DashboardRoute }) {
                                     aria-labelledby={fieldIds.valueLabel}
                                     aria-describedby={fieldIds.valueDescription}
                                     value={field.value || ''}
-                                    disabled={clearScheduled || entity?.isOverridden === true}
+                                    disabled={
+                                        clearScheduled
+                                        || formDisabled
+                                        || (provider === SECRET_PROVIDER.INLINE && !inlineStorageAvailable)
+                                    }
+                                    autoComplete={provider === SECRET_PROVIDER.ENV ? 'off' : 'new-password'}
+                                    autoCapitalize={provider === SECRET_PROVIDER.ENV ? 'characters' : 'none'}
+                                    spellCheck={false}
                                     placeholder={
                                         provider === SECRET_PROVIDER.ENV
                                             ? 'MY_API_KEY'
-                                            : i18n._(SECRET_DETAIL_TRANSLATION_IDS.ENTER_SECRET_VALUE)
+                                            : t`Enter secret value`
                                     }
                                     onChange={(event) => {
                                         if (form.getValues('clearValue') === true) {
@@ -415,16 +416,14 @@ function SecretDetailPage({ route }: { route: DashboardRoute }) {
                                             void form.trigger('value');
                                         }}
                                     >
-                                        <Undo2 className="w-4 h-4" />
-                                        {i18n._(SECRET_DETAIL_TRANSLATION_IDS.UNDO_CLEAR)}
+                                        <Undo2 className="h-4 w-4" aria-hidden="true" />
+                                        <Trans>Undo clear</Trans>
                                     </Button>
                                 ) : (
                                     <ConfirmationDialog
-                                        title={i18n._(SECRET_DETAIL_TRANSLATION_IDS.CLEAR_DIALOG_TITLE)}
-                                        description={i18n._(
-                                            SECRET_DETAIL_TRANSLATION_IDS.CLEAR_DIALOG_DESCRIPTION,
-                                        )}
-                                        confirmText={i18n._(SECRET_DETAIL_TRANSLATION_IDS.CLEAR_VALUE)}
+                                        title={t`Clear stored secret value?`}
+                                        description={t`The stored value or environment variable reference will be removed when you save this secret. This cannot be recovered from the Data Hub.`}
+                                        confirmText={t`Clear value`}
                                         onConfirm={() => {
                                             form.setValue('value', '', {
                                                 shouldDirty: true,
@@ -438,8 +437,8 @@ function SecretDetailPage({ route }: { route: DashboardRoute }) {
                                         }}
                                     >
                                         <Button type="button" variant="outline">
-                                            <Trash2 className="w-4 h-4" />
-                                            {i18n._(SECRET_DETAIL_TRANSLATION_IDS.CLEAR_STORED_VALUE)}
+                                            <Trash2 className="h-4 w-4" aria-hidden="true" />
+                                            <Trans>Clear stored value</Trans>
                                         </Button>
                                     </ConfirmationDialog>
                                 )}
@@ -447,54 +446,22 @@ function SecretDetailPage({ route }: { route: DashboardRoute }) {
                         </div>
                     )}
 
-                    {clearScheduled && (
-                        <div className="mt-4 p-3 bg-destructive/10 rounded-lg flex items-start gap-2">
-                            <AlertCircle className="w-4 h-4 text-destructive mt-0.5" />
-                            <div className="text-sm">
-                                <p className="font-medium text-destructive">
-                                    {i18n._(SECRET_DETAIL_TRANSLATION_IDS.CLEAR_SCHEDULED_TITLE)}
-                                </p>
-                                <p className="text-muted-foreground">
-                                    {i18n._(SECRET_DETAIL_TRANSLATION_IDS.CLEAR_SCHEDULED_DESCRIPTION)}
-                                </p>
-                            </div>
-                        </div>
-                    )}
-
-                    {hasStoredValue && !hasReplacement && !clearScheduled && !providerChanged && (
-                        <div className="mt-4 p-3 bg-muted rounded-lg flex items-start gap-2">
-                            <AlertCircle className="w-4 h-4 text-muted-foreground mt-0.5" />
-                            <div className="text-sm text-muted-foreground">
-                                <p className="font-medium">
-                                    {i18n._(SECRET_DETAIL_TRANSLATION_IDS.RETAINED_TITLE)}
-                                </p>
-                                <p>
-                                    {i18n._(SECRET_DETAIL_TRANSLATION_IDS.RETAINED_DESCRIPTION)}
-                                </p>
-                            </div>
-                        </div>
-                    )}
-
-                    {provider === SECRET_PROVIDER.ENV && (
-                        <div className="mt-4 p-3 bg-muted rounded-lg flex items-start gap-2">
-                            <AlertCircle className="w-4 h-4 text-muted-foreground mt-0.5" />
-                            <div className="text-sm text-muted-foreground">
-                                <p className="font-medium">
-                                    {i18n._(SECRET_PROVIDER_TRANSLATION_IDS.ENV)}
-                                </p>
-                                <p>
-                                    {i18n._(SECRET_DETAIL_TRANSLATION_IDS.ENVIRONMENT_DESCRIPTION)}
-                                </p>
-                            </div>
-                        </div>
-                    )}
+                    <div className="mt-4">
+                        <SecretValueNotices
+                            provider={provider}
+                            hasStoredValue={hasStoredValue}
+                            hasReplacement={hasReplacement}
+                            clearScheduled={clearScheduled}
+                            providerChanged={providerChanged}
+                        />
+                    </div>
                 </PageBlock>
                 {entity && (
                     <PageBlock column="side" blockId="secret-channels">
                         <ManagedResourceChannels
                             channels={entity.channels}
                             entityLabel={entity.code}
-                            canUpdate={canUpdateChannels}
+                            canUpdate={canUpdateSecret}
                             onAssign={channelId => api.mutate(
                                 assignSecretsToChannelDocument,
                                 { input: { secretIds: [String(entity.id)], channelId } },

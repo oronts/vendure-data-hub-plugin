@@ -1,52 +1,48 @@
 import * as React from 'react';
+import { Trans, useLingui } from '@lingui/react/macro';
 import {
     Button,
-    DashboardRouteDefinition,
-    Input,
-    Json,
-    Page,
-    PageActionBar,
-    PageActionBarRight,
-    PageBlock,
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-    PermissionGuard,
-    usePermissions,
     Card,
     CardContent,
     CardDescription,
     CardHeader,
     CardTitle,
-    Badge,
+    DashboardRouteDefinition,
+    Json,
     Label,
+    Page,
+    PageActionBar,
+    PageActionBarRight,
+    PageBlock,
+    PageLayout,
+    PageTitle,
+    PermissionGuard,
+    usePermissions,
 } from '@vendure/dashboard';
+import { AlertCircle, Info, RefreshCw, Zap } from 'lucide-react';
 import { toast } from 'sonner';
-import { DATAHUB_NAV_SECTION, UI_DEFAULTS, UI_LIMITS, QUERY_LIMITS, ROUTES, DATAHUB_PERMISSIONS, TOAST_HOOK, FALLBACK_STAGE_CATEGORIES } from '../../constants';
-import { formatDateTime } from '../../utils';
+import { getErrorMessage } from '../../../shared';
+import { ErrorState, LoadingState, PipelineSelector } from '../../components/shared';
 import {
-    Play,
-    RefreshCw,
-    Zap,
-    CheckCircle2,
-    XCircle,
-    Info,
-    Clock,
-    Loader2,
-} from 'lucide-react';
+    DATAHUB_NAV_LABELS,
+    DATAHUB_NAV_SECTION,
+    DATAHUB_PERMISSIONS,
+    FALLBACK_STAGE_CATEGORIES,
+    ROUTES,
+    UI_DEFAULTS,
+} from '../../constants';
 import {
-    usePipelines,
-    usePipelineHooks,
+    useConfigOptions,
     useEvents,
+    usePipeline,
+    usePipelineHooks,
     useTestHook,
-    useHookStages,
-    useHookStageCategories,
-    handleMutationError,
 } from '../../hooks';
-import type { HookStageCategoryConfig } from '../../hooks';
-import { ErrorState, LoadingState } from '../../components/shared';
+import type { PipelineDefinition } from '../../types';
+import { hasAllPermissions } from '../../utils/permissions';
+import { getPipelineExecutionPermissions } from '../../utils/pipeline-permissions';
+import { HookEventsTable } from './HookEventsTable';
+import { HookStageSection } from './HookStageSection';
 import { buildHookStages } from './hook-stages';
 import type { HookStage } from './hook-stages';
 
@@ -55,11 +51,11 @@ export const hooksPage: DashboardRouteDefinition = {
         sectionId: DATAHUB_NAV_SECTION,
         id: 'data-hub-hooks',
         url: ROUTES.HOOKS,
-        title: 'Hooks & Events',
+        title: DATAHUB_NAV_LABELS.HOOKS,
         requiresPermission: DATAHUB_PERMISSIONS.READ_PIPELINE,
     },
     path: ROUTES.HOOKS,
-    loader: () => ({ breadcrumb: 'Hooks & Events' }),
+    loader: () => ({ breadcrumb: DATAHUB_NAV_LABELS.HOOKS }),
     component: () => (
         <PermissionGuard requires={[DATAHUB_PERMISSIONS.READ_PIPELINE]}>
             <HooksPage />
@@ -67,91 +63,114 @@ export const hooksPage: DashboardRouteDefinition = {
     ),
 };
 
-interface HookStageSectionProps {
-    categoryInfo: HookStageCategoryConfig;
-    stages: HookStage[];
-    hooks: Record<string, unknown>;
-    selectedStage: HookStage | null;
-    isPending: boolean;
-    testResult: 'success' | 'error' | null;
-    onTest: (stage: HookStage) => void;
-    disabled: boolean;
-}
-
-function HookStageSection({ categoryInfo, stages: allStages, hooks, selectedStage, isPending, testResult, onTest, disabled }: HookStageSectionProps) {
-    const stages = allStages.filter(s => s.category === categoryInfo.key);
-
-    return (
-        <div className="mb-6">
-            <div className="flex items-center gap-2 mb-3">
-                <Badge className={categoryInfo.color}>{categoryInfo.label}</Badge>
-                <span className="text-sm text-muted-foreground">{categoryInfo.description}</span>
-            </div>
-            <div className={`grid gap-3 ${categoryInfo.gridClass}`}>
-                {stages.map(stage => (
-                    <HookStageCard
-                        key={stage.key}
-                        stage={stage}
-                        isConfigured={!!hooks[stage.key]}
-                        isSelected={selectedStage?.key === stage.key}
-                        isLoading={isPending && selectedStage?.key === stage.key}
-                        testResult={selectedStage?.key === stage.key ? testResult : null}
-                        onTest={() => onTest(stage)}
-                        disabled={disabled || !hooks[stage.key]}
-                    />
-                ))}
-            </div>
-        </div>
-    );
-}
-
 function HooksPage() {
+    const { t } = useLingui();
     const { hasPermissions } = usePermissions();
-    const canTestHooks = hasPermissions([DATAHUB_PERMISSIONS.RUN_PIPELINE]);
-    const [pipelineId, setPipelineId] = React.useState<string>('');
+    const [pipelineId, setPipelineId] = React.useState('');
     const [selectedStage, setSelectedStage] = React.useState<HookStage | null>(null);
     const [testResult, setTestResult] = React.useState<'success' | 'error' | null>(null);
     const [testSummary, setTestSummary] = React.useState<string | null>(null);
-    const [eventFilter, setEventFilter] = React.useState('');
 
-    const pipelinesQuery = usePipelines({ take: QUERY_LIMITS.ALL_ITEMS });
+    const configOptionsQuery = useConfigOptions();
+    const selectedPipelineQuery = usePipeline(pipelineId || undefined);
     const hooksQuery = usePipelineHooks(pipelineId || undefined);
     const eventsQuery = useEvents(UI_DEFAULTS.EVENTS_LIMIT);
     const testMutation = useTestHook();
-    const { refetch: refetchPipelines } = pipelinesQuery;
-    const { refetch: refetchEvents } = eventsQuery;
-    const { mutate: testHook } = testMutation;
-    const { hookStages: backendStages } = useHookStages();
-    const { categories: backendCategories } = useHookStageCategories();
 
-    const stages = React.useMemo(() => buildHookStages(backendStages), [backendStages]);
-    const stageCategories = React.useMemo(
-        () => backendCategories.length > 0 ? backendCategories : FALLBACK_STAGE_CATEGORIES,
-        [backendCategories],
+    const stages = React.useMemo(
+        () => buildHookStages(configOptionsQuery.data?.hookStages ?? []),
+        [configOptionsQuery.data?.hookStages],
     );
+    const stageCategories = React.useMemo(() => {
+        const backendCategories = configOptionsQuery.data?.hookStageCategories ?? [];
+        if (backendCategories.length > 0) return backendCategories;
+        return FALLBACK_STAGE_CATEGORIES.map(category => {
+            if (category.key === 'lifecycle') {
+                return {
+                    ...category,
+                    label: t`Lifecycle`,
+                    description: t`Track pipeline start, completion, and failure`,
+                };
+            }
+            if (category.key === 'data') {
+                return {
+                    ...category,
+                    label: t`Data processing`,
+                    description: t`Intercept data at each processing step`,
+                };
+            }
+            if (category.key === 'error') {
+                return {
+                    ...category,
+                    label: t`Error handling`,
+                    description: t`Handle errors and retries`,
+                };
+            }
+            return category;
+        });
+    }, [configOptionsQuery.data?.hookStageCategories, t]);
 
     const hooks = hooksQuery.data ?? {};
-    const pipelines = pipelinesQuery.data?.items ?? [];
-    const selectedPipeline = pipelines.find(p => String(p.id) === pipelineId);
+    const selectedPipeline = selectedPipelineQuery.data;
+    const executionPermissions = getPipelineExecutionPermissions(
+        selectedPipeline?.definition as PipelineDefinition | undefined,
+        DATAHUB_PERMISSIONS.RUN_PIPELINE,
+    );
+    const canTestHooks = pipelineId !== ''
+        && selectedPipelineQuery.isSuccess
+        && selectedPipeline != null
+        && hasAllPermissions(
+            executionPermissions,
+            permission => hasPermissions([permission]),
+        );
+    const hookDataLoading = configOptionsQuery.isLoading
+        || (pipelineId !== '' && (
+            selectedPipelineQuery.isLoading
+            || hooksQuery.isLoading
+        ));
+    const hookDataError = configOptionsQuery.error
+        ?? selectedPipelineQuery.error
+        ?? hooksQuery.error;
+    const hookDisabledReason = pipelineId === ''
+        ? t`Select a pipeline to test its hooks`
+        : selectedPipeline == null
+            ? t`The selected pipeline is unavailable`
+            : !canTestHooks
+                ? t`You do not have all permissions required to test this pipeline`
+                : null;
 
-    const isLoading = pipelinesQuery.isLoading;
-    const hasError = pipelinesQuery.isError || eventsQuery.isError || hooksQuery.isError;
-    const errorMessage = pipelinesQuery.error?.message || eventsQuery.error?.message || hooksQuery.error?.message;
+    const resetTestState = React.useCallback(() => {
+        setSelectedStage(null);
+        setTestResult(null);
+        setTestSummary(null);
+    }, []);
 
-    const handleRetry = React.useCallback(() => {
-        void refetchPipelines();
-        void refetchEvents();
-    }, [refetchEvents, refetchPipelines]);
+    const handlePipelineChange = React.useCallback((nextPipelineId: string) => {
+        setPipelineId(nextPipelineId);
+        resetTestState();
+    }, [resetTestState]);
+
+    const refetchHookData = React.useCallback(() => {
+        void configOptionsQuery.refetch();
+        if (pipelineId !== '') {
+            void selectedPipelineQuery.refetch();
+            void hooksQuery.refetch();
+        }
+    }, [configOptionsQuery, hooksQuery, pipelineId, selectedPipelineQuery]);
 
     const runTest = React.useCallback((stage: HookStage) => {
         if (!pipelineId) {
-            toast.error(TOAST_HOOK.SELECT_PIPELINE_FIRST);
+            toast.error(t`Please select a pipeline first`);
+            return;
+        }
+        if (!canTestHooks) {
+            toast.error(t`You do not have all permissions required to test this pipeline`);
             return;
         }
         setSelectedStage(stage);
         setTestResult(null);
         setTestSummary(null);
-        testHook(
+        testMutation.mutate(
             {
                 pipelineId,
                 stage: stage.key,
@@ -159,97 +178,84 @@ function HooksPage() {
             },
             {
                 onSuccess: result => {
-                    const summary = `${result.executed} executed, ${result.skipped} skipped, ${result.failed} failed`;
+                    const summary = t`${result.executed} executed, ${result.skipped} skipped, ${result.failed} failed`;
                     setTestSummary(summary);
                     if (result.status === 'FAILED' || result.status === 'PARTIAL') {
                         setTestResult('error');
-                        toast.error(`Hook test ${result.status.toLowerCase()}: ${summary}`);
+                        toast.error(t`Hook test ${result.status}: ${summary}`);
                     } else if (result.status === 'SKIPPED') {
                         setTestResult('error');
-                        toast.error(`Hook test skipped: ${summary}`);
+                        toast.error(t`Hook test skipped: ${summary}`);
                     } else {
                         setTestResult('success');
-                        toast.success(`${TOAST_HOOK.TEST_SUCCESS}: ${summary}`);
+                        toast.success(t`Hook test completed successfully: ${summary}`);
                     }
-                    void refetchEvents();
+                    void eventsQuery.refetch();
                 },
-                onError: (err: unknown) => {
+                onError: error => {
                     setTestResult('error');
-                    handleMutationError('test hook', err);
+                    toast.error(t`Failed to test hook`, {
+                        description: getErrorMessage(error),
+                    });
                 },
-            }
+            },
         );
-    }, [pipelineId, refetchEvents, testHook]);
+    }, [canTestHooks, eventsQuery, pipelineId, t, testMutation]);
 
     return (
         <Page pageId="data-hub-hooks">
+            <PageTitle><Trans>Hooks & Events</Trans></PageTitle>
             <PageActionBar>
                 <PageActionBarRight>
                     <Button
                         variant="ghost"
-                        onClick={() => eventsQuery.refetch()}
+                        onClick={() => void eventsQuery.refetch()}
                         disabled={eventsQuery.isFetching}
                     >
-                        <RefreshCw className={`w-4 h-4 mr-2 ${eventsQuery.isFetching ? 'animate-spin' : ''}`} />
-                        Refresh Events
+                        <RefreshCw
+                            className={`mr-2 h-4 w-4 ${eventsQuery.isFetching ? 'animate-spin' : ''}`}
+                            aria-hidden="true"
+                        />
+                        <Trans>Refresh events</Trans>
                     </Button>
                 </PageActionBarRight>
             </PageActionBar>
 
-            {hasError && (
-                <PageBlock column="main" blockId="error">
-                    <ErrorState
-                        title="Failed to load data"
-                        message={errorMessage || 'An unexpected error occurred'}
-                        onRetry={handleRetry}
-                    />
-                </PageBlock>
-            )}
-
-            {isLoading && !hasError && (
-                <PageBlock column="main" blockId="loading">
-                    <LoadingState type="card" rows={3} message="Loading pipelines and hooks..." />
-                </PageBlock>
-            )}
-
+            <PageLayout>
             <PageBlock column="main" blockId="intro">
                 <Card>
                     <CardHeader className="pb-3">
                         <div className="flex items-center gap-2">
-                            <Zap className="w-5 h-5 text-primary" />
-                            <CardTitle>Pipeline Hooks</CardTitle>
+                            <Zap className="h-5 w-5 text-primary" aria-hidden="true" />
+                            <CardTitle><Trans>Pipeline hooks</Trans></CardTitle>
                         </div>
                         <CardDescription>
-                            This page is for hook observability and testing configured actions. Hook definitions are
-                            managed in the pipeline definition; unconfigured stages cannot be tested here.
+                            <Trans>Observe hooks and test configured actions. Hook definitions are managed in the pipeline definition; unconfigured stages cannot be tested here.</Trans>
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <div className="flex items-end gap-4">
-                            <div className="flex-1 max-w-xs">
-                                <Label className="text-sm font-medium mb-1.5 block">
-                                    Select Pipeline
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:gap-4">
+                            <div className="w-full sm:max-w-xs sm:flex-1">
+                                <Label
+                                    htmlFor="datahub-hooks-pipeline"
+                                    className="mb-1.5 block text-sm font-medium"
+                                >
+                                    <Trans>Select pipeline</Trans>
                                 </Label>
-                                <Select value={pipelineId} onValueChange={setPipelineId}>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Choose a pipeline to test..." />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {pipelines.map(p => (
-                                            <SelectItem key={p.id} value={String(p.id)}>
-                                                {p.name}
-                                                <span className="text-muted-foreground ml-2 text-xs">
-                                                    ({p.code})
-                                                </span>
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
+                                <PipelineSelector
+                                    id="datahub-hooks-pipeline"
+                                    value={pipelineId}
+                                    onValueChange={handlePipelineChange}
+                                    placeholder={t`Choose a pipeline to test…`}
+                                    disabled={testMutation.isPending}
+                                    className="w-full"
+                                    data-testid="datahub-hooks-pipeline-selector"
+                                />
                             </div>
                             {selectedPipeline && (
-                                <div className="text-sm text-muted-foreground">
-                                    <Info className="w-4 h-4 inline mr-1" />
-                                    Testing hooks for <strong>{selectedPipeline.name}</strong>
+                                <div className="min-w-0 text-sm text-muted-foreground">
+                                    <Info className="mr-1 inline h-4 w-4" aria-hidden="true" />
+                                    <Trans>Testing hooks for {selectedPipeline.name}</Trans>
                                 </div>
                             )}
                         </div>
@@ -259,41 +265,56 @@ function HooksPage() {
 
             <PageBlock column="main" blockId="stages">
                 <div className="mb-4">
-                    <h3 className="text-lg font-semibold mb-1">Hook Stages</h3>
+                    <h2 className="mb-1 text-lg font-semibold"><Trans>Hook stages</Trans></h2>
                     <p className="text-sm text-muted-foreground">
-                        Configured stages can be tested with sample data. Results appear in Recent Events.
+                        <Trans>Configured stages can be tested with sample data. Results appear in recent events.</Trans>
                     </p>
                 </div>
-
-                {testSummary && (
-                    <p className="mb-4 text-sm text-muted-foreground" role="status">
-                        Last test: {testSummary}
-                    </p>
-                )}
-
-                {stageCategories.map(cat => (
-                    <HookStageSection
-                        key={cat.key}
-                        categoryInfo={cat}
-                        stages={stages}
-                        hooks={hooks as Record<string, unknown>}
-                        selectedStage={selectedStage}
-                        isPending={testMutation.isPending}
-                        testResult={testResult}
-                        onTest={runTest}
-                        disabled={!pipelineId || !canTestHooks}
+                {hookDataLoading ? (
+                    <LoadingState type="card" rows={3} message={t`Loading hooks…`} />
+                ) : hookDataError ? (
+                    <ErrorState
+                        title={t`Failed to load hook data`}
+                        message={getErrorMessage(hookDataError)}
+                        onRetry={refetchHookData}
                     />
-                ))}
+                ) : stages.length === 0 ? (
+                    <div className="rounded-lg border p-6 text-center text-sm text-muted-foreground">
+                        <AlertCircle className="mx-auto mb-2 h-5 w-5" aria-hidden="true" />
+                        <Trans>No hook stage metadata is available.</Trans>
+                    </div>
+                ) : (
+                    <>
+                        {testSummary && (
+                            <p className="mb-4 text-sm text-muted-foreground" role="status" aria-live="polite">
+                                <Trans>Last test: {testSummary}</Trans>
+                            </p>
+                        )}
+                        {stageCategories.map(category => (
+                            <HookStageSection
+                                key={category.key}
+                                categoryInfo={category}
+                                stages={stages}
+                                hooks={hooks as Record<string, unknown>}
+                                selectedStage={selectedStage}
+                                isPending={testMutation.isPending}
+                                testResult={testResult}
+                                onTest={runTest}
+                                disabledReason={hookDisabledReason}
+                            />
+                        ))}
+                    </>
+                )}
             </PageBlock>
 
-            {pipelineId && Object.keys(hooks).length > 0 && (
+            {pipelineId && hooksQuery.isSuccess && Object.keys(hooks).length > 0 && (
                 <PageBlock column="main" blockId="configured">
                     <details className="group">
-                        <summary className="cursor-pointer text-sm font-medium mb-2 flex items-center gap-2">
-                            <span>View Raw Hook Configuration</span>
-                            <span className="text-muted-foreground">(Advanced)</span>
+                        <summary className="mb-2 flex cursor-pointer flex-wrap items-center gap-2 text-sm font-medium">
+                            <span><Trans>View raw hook configuration</Trans></span>
+                            <span className="text-muted-foreground">(<Trans>Advanced</Trans>)</span>
                         </summary>
-                        <div className="mt-2 p-3 bg-muted rounded-lg">
+                        <div className="mt-2 overflow-x-auto rounded-lg bg-muted p-3">
                             <Json value={hooks} />
                         </div>
                     </details>
@@ -301,156 +322,19 @@ function HooksPage() {
             )}
 
             <PageBlock column="main" blockId="events">
-                <div className="flex items-center justify-between mb-4">
-                    <div>
-                        <h3 className="text-lg font-semibold">Recent Events</h3>
-                        <p className="text-sm text-muted-foreground">
-                            Live feed of events triggered by hooks (auto-refreshes every 5s)
-                        </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <Input
-                            className="w-48"
-                            placeholder="Filter events..."
-                            aria-label="Filter hook events"
-                            value={eventFilter}
-                            onChange={e => setEventFilter(e.target.value)}
-                        />
-                    </div>
-                </div>
-
-                <div className="border rounded-lg overflow-hidden">
-                    <table className="w-full text-sm">
-                        <thead>
-                            <tr className="bg-muted">
-                                <th className="text-left px-3 py-2 w-32">Time</th>
-                                <th className="text-left px-3 py-2 w-48">Event</th>
-                                <th className="text-left px-3 py-2">Payload</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {(eventsQuery.data ?? [])
-                                .filter(e => !eventFilter || (e.name ?? '').toLowerCase().includes(eventFilter.toLowerCase()))
-                                .slice(0, UI_LIMITS.TABLE_PREVIEW_ROWS)
-                                .map((e, i) => (
-                                    <tr key={`${e.createdAt}-${e.name}-${i}`} className="border-t align-top hover:bg-muted/50">
-                                        <td className="px-3 py-2 text-muted-foreground">
-                                            <Clock className="w-3 h-3 inline mr-1" />
-                                            {formatDateTime(e.createdAt as string)}
-                                        </td>
-                                        <td className="px-3 py-2">
-                                            <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
-                                                {e.name}
-                                            </code>
-                                        </td>
-                                        <td className="px-3 py-2">
-                                            <Json value={e.payload as Record<string, unknown>} />
-                                        </td>
-                                    </tr>
-                                ))}
-                            {(eventsQuery.data ?? [])
-                                .filter(e => !eventFilter || (e.name ?? '').toLowerCase().includes(eventFilter.toLowerCase()))
-                                .length === 0 && (
-                                <tr>
-                                    <td colSpan={3} className="px-3 py-8 text-center text-muted-foreground">
-                                        <Info className="w-5 h-5 mx-auto mb-2 opacity-50" />
-                                        {eventFilter ? 'No matching events.' : 'No events have been observed yet.'}
-                                    </td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
+                {eventsQuery.isLoading ? (
+                    <LoadingState type="table" rows={3} message={t`Loading recent events…`} />
+                ) : eventsQuery.isError ? (
+                    <ErrorState
+                        title={t`Failed to load recent events`}
+                        message={getErrorMessage(eventsQuery.error)}
+                        onRetry={() => void eventsQuery.refetch()}
+                    />
+                ) : (
+                    <HookEventsTable events={eventsQuery.data ?? []} />
+                )}
             </PageBlock>
+            </PageLayout>
         </Page>
     );
 }
-
-const HookStageCard = React.memo(function HookStageCard({
-    stage,
-    isConfigured,
-    isSelected,
-    isLoading,
-    testResult,
-    onTest,
-    disabled,
-}: Readonly<{
-    stage: HookStage;
-    isConfigured: boolean;
-    isSelected: boolean;
-    isLoading: boolean;
-    testResult: 'success' | 'error' | null;
-    onTest: () => void;
-    disabled: boolean;
-}>) {
-    const handleClick = React.useCallback(() => {
-        if (!disabled) {
-            onTest();
-        }
-    }, [disabled, onTest]);
-
-    const handleKeyDown = React.useCallback((e: React.KeyboardEvent) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            if (!disabled) {
-                onTest();
-            }
-        }
-    }, [disabled, onTest]);
-
-    return (
-        <div
-            className={`
-                border rounded-lg p-3 transition-all cursor-pointer
-                ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:border-primary hover:shadow-sm'}
-                ${isSelected ? 'border-primary ring-1 ring-primary' : ''}
-                ${isConfigured ? 'bg-primary/5' : ''}
-            `}
-            onClick={handleClick}
-            onKeyDown={handleKeyDown}
-            role="button"
-            tabIndex={disabled ? -1 : 0}
-            aria-label={isConfigured ? `Test ${stage.label} hook stage` : `${stage.label} hook stage is not configured`}
-            aria-disabled={disabled}
-        >
-            <div className="flex items-start justify-between mb-2">
-                <div className="flex items-center gap-2">
-                    <div className={`p-1.5 rounded ${isConfigured ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
-                        <stage.icon className="w-4 h-4" />
-                    </div>
-                    <div>
-                        <div className="font-medium text-sm">{stage.label}</div>
-                        {isConfigured && (
-                            <Badge variant="outline" className="text-xs mt-0.5">
-                                Configured
-                            </Badge>
-                        )}
-                    </div>
-                </div>
-                {isLoading && <Loader2 className="w-4 h-4 animate-spin text-primary" />}
-                {!isLoading && testResult === 'success' && (
-                    <CheckCircle2 className="w-4 h-4 text-green-600 dark:text-green-400" />
-                )}
-                {!isLoading && testResult === 'error' && (
-                    <XCircle className="w-4 h-4 text-red-600 dark:text-red-400" />
-                )}
-            </div>
-            <p className="text-xs text-muted-foreground line-clamp-2">
-                {stage.description}
-            </p>
-            {!disabled && (
-                <div className="mt-2 pt-2 border-t">
-                    <div className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Play className="w-3 h-3" />
-                        Click to test
-                    </div>
-                </div>
-            )}
-            {disabled && !isConfigured && (
-                <div className="mt-2 pt-2 border-t text-xs text-muted-foreground">
-                    Not configured in this pipeline
-                </div>
-            )}
-        </div>
-    );
-});

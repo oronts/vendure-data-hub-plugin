@@ -1,7 +1,6 @@
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { api } from '@vendure/dashboard';
 import { graphql } from '../../gql';
-import { createMutationErrorHandler } from './mutation-helpers';
 import { createQueryKeys } from '../../utils/query-key-factory';
 import { POLLING_INTERVALS } from '../../constants';
 
@@ -73,6 +72,5 @@ export function useTestHook() {
             payload?: Record<string, unknown>;
         }) =>
             api.mutate(hookTestDocument, { pipelineId, stage, payload }).then(res => res.runDataHubHookTest),
-        onError: createMutationErrorHandler('test hook'),
     });
 }

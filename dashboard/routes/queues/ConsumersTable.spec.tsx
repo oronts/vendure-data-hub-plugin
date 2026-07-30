@@ -60,9 +60,10 @@ vi.mock('../../utils', () => ({
 }));
 
 const consumers: Consumer[] = [
-    { pipelineCode: 'orders', triggerKey: 'events', queueName: 'orders-queue', isActive: true, messagesProcessed: 1, messagesFailed: 0, lastMessageAt: null },
-    { pipelineCode: 'inventory', triggerKey: 'events', queueName: 'inventory-queue', isActive: true, messagesProcessed: 2, messagesFailed: 0, lastMessageAt: null },
-    { pipelineCode: 'exports', triggerKey: 'timer', queueName: 'exports-queue', isActive: false, messagesProcessed: 3, messagesFailed: 0, lastMessageAt: null },
+    { pipelineCode: 'orders', triggerKey: 'events', queueName: 'orders-queue', isActive: true, autoStart: true, desiredEnabled: true, messagesProcessed: 1, messagesFailed: 0, lastMessageAt: null },
+    { pipelineCode: 'inventory', triggerKey: 'events', queueName: 'inventory-queue', isActive: false, autoStart: false, desiredEnabled: true, messagesProcessed: 2, messagesFailed: 0, lastMessageAt: null },
+    { pipelineCode: 'exports', triggerKey: 'timer', queueName: 'exports-queue', isActive: false, autoStart: true, desiredEnabled: false, messagesProcessed: 3, messagesFailed: 0, lastMessageAt: null },
+    { pipelineCode: 'remote-stop', triggerKey: 'events', queueName: 'remote-stop-queue', isActive: true, autoStart: true, desiredEnabled: false, messagesProcessed: 4, messagesFailed: 0, lastMessageAt: null },
 ];
 
 function render(): string {
@@ -85,10 +86,15 @@ describe('ConsumersTable lifecycle controls', () => {
     it('requires run permission and keeps the dense table mobile-scrollable', () => {
         const markup = render();
 
-        expect(markup.match(/data-requires="RunDataHubPipeline"/g)).toHaveLength(3);
+        expect(markup.match(/data-requires="RunDataHubPipeline"/g)).toHaveLength(4);
         expect(markup).not.toContain('UpdateDataHubPipeline');
         expect(markup).toContain('class="overflow-x-auto"');
         expect(markup).toContain('<caption');
+        expect(markup).toContain('Standby');
+        expect(markup).toContain('Auto-start off');
+        expect(markup).toContain('Disabled');
+        expect(markup).toContain('Stopping');
+        expect(markup).toContain('remote owner can take up to 60 seconds');
     });
 
     it('disables only the consumer rows owned by pending mutations', () => {

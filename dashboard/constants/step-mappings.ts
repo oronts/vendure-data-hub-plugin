@@ -5,21 +5,6 @@ import type { StepConfig } from './steps';
 import { DEFAULT_STEP_CONFIGS } from './steps';
 import { resolveIconName } from '../utils/icon-resolver';
 
-export const NODE_CATEGORIES = {
-    TRIGGER: 'trigger',
-    SOURCE: 'source',
-    TRANSFORM: 'transform',
-    VALIDATE: 'validate',
-    CONDITION: 'condition',
-    ENRICH: 'enrich',
-    LOAD: 'load',
-    EXPORT: 'export',
-    FEED: 'feed',
-    SINK: 'sink',
-    FILTER: 'filter',
-    GATE: 'gate',
-} as const satisfies Record<string, VisualNodeCategory>;
-
 export const ADAPTER_TYPES = {
     TRIGGER: 'TRIGGER',
     EXTRACTOR: 'EXTRACTOR',

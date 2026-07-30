@@ -61,17 +61,21 @@ function TemplateStepComponent({
                 </p>
             </div>
 
-            <div className="flex items-center gap-4 p-4 border rounded-lg bg-muted/30">
-                <div className="p-3 bg-background rounded-lg border">
+            <div className="flex flex-col gap-4 p-4 border rounded-lg bg-muted/30 sm:flex-row sm:items-center">
+                <div className="self-start p-3 bg-background rounded-lg border sm:self-center">
                     <FileCode className="h-6 w-6 text-muted-foreground" />
                 </div>
-                <div className="flex-1">
+                <div className="min-w-0 flex-1">
                     <h3 className="font-medium"><Trans>Start from scratch</Trans></h3>
                     <p className="text-sm text-muted-foreground">
                         <Trans>Build a custom import configuration step by step.</Trans>
                     </p>
                 </div>
-                <Button variant="outline" onClick={onStartFromScratch}>
+                <Button
+                    className="w-full sm:w-auto sm:shrink-0"
+                    variant="outline"
+                    onClick={onStartFromScratch}
+                >
                     <Trans>Create custom import</Trans>
                 </Button>
             </div>
