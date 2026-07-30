@@ -12,13 +12,14 @@ import {
     FeedConfig,
     VariantWithCustomFields,
     GoogleShoppingItem,
+    FeedGenerationDiagnostics,
 } from './feed-types';
-import { getGoogleAvailability } from './feed-helpers';
-import { SERVICE_DEFAULTS } from '../../constants/index';
+import { getFeedBaseUrl, getGoogleAvailability } from './feed-helpers';
 import { PRODUCT_CONDITIONS, FEED_LIMITS } from './feed-constants';
 import { LOGGER_CONTEXTS } from '../../constants/core';
 import { DataHubLoggerFactory } from '../../services/logger';
 import { buildBaseFeedItem } from './feed-item-builder';
+import { recordFeedItemWarning, recordGeneratedFeedItem } from './feed-diagnostics';
 
 const feedLogger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.FEED_GENERATOR);
 
@@ -31,8 +32,9 @@ export async function generateGoogleShoppingFeed(
     config: FeedConfig,
     connection: TransactionalConnection,
     moneyPrecision: number,
+    diagnostics?: FeedGenerationDiagnostics,
 ): Promise<string> {
-    const baseUrl = config.options?.baseUrl || SERVICE_DEFAULTS.EXAMPLE_BASE_URL;
+    const baseUrl = getFeedBaseUrl(config);
 
     const items: GoogleShoppingItem[] = [];
 
@@ -41,7 +43,8 @@ export async function generateGoogleShoppingFeed(
             const sku = variant.sku || variant.id.toString();
             const item = await buildBaseFeedItem(variant, config, getGoogleAvailability, PRODUCT_CONDITIONS.NEW, moneyPrecision);
             if (!item) {
-                feedLogger.warn(`Skipping variant ${sku}: invalid price (${variant.priceWithTax}) or currency ("${config.options?.currency || ''}")`);
+                const warning = `Skipping variant ${sku}: invalid price (${variant.priceWithTax}) or currency ("${config.options?.currency || ''}")`;
+                feedLogger.warn(recordFeedItemWarning(diagnostics, warning));
                 continue;
             }
 
@@ -102,8 +105,10 @@ export async function generateGoogleShoppingFeed(
             if (item.customLabels.customLabel4) googleItem['g:custom_label_4'] = item.customLabels.customLabel4;
 
             items.push(googleItem);
+            recordGeneratedFeedItem(diagnostics);
         } catch (error) {
-            feedLogger.warn(`Failed to process variant ${variant.id}: ${error}`);
+            const warning = `Failed to process variant ${variant.id}: ${String(error)}`;
+            feedLogger.warn(recordFeedItemWarning(diagnostics, warning));
         }
     }
 

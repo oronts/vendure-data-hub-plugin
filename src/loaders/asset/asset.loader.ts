@@ -11,8 +11,8 @@ import {
     EntityFieldSchema,
     TargetOperation,
 } from '../../types/index';
-import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
-import { LOGGER_CONTEXTS } from '../../constants/index';
+import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger/datahub-logger';
+import { LOGGER_CONTEXTS } from '../../constants/core';
 import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
 import {
     BaseEntityLoader,
@@ -33,6 +33,7 @@ import {
     createReadStreamFromBuffer,
     shouldUpdateField,
 } from './helpers';
+import { sanitizeUrlForLogging } from '../../utils/url-sanitize.utils';
 
 /** Loads Asset entities via AssetService. Supports CREATE, UPDATE, UPSERT. */
 @Injectable()
@@ -177,7 +178,7 @@ export class AssetLoader extends BaseEntityLoader<AssetInput, Asset> {
         try {
             const fileData = await downloadFile(record.sourceUrl);
             if (!fileData) {
-                this.logger.warn(`Failed to download ${record.sourceUrl}`);
+                this.logger.warn(`Failed to download ${sanitizeUrlForLogging(record.sourceUrl)}`);
                 return null;
             }
 
@@ -211,7 +212,9 @@ export class AssetLoader extends BaseEntityLoader<AssetInput, Asset> {
             this.logger.log(`Created asset ${assetName} (ID: ${asset.id})`);
             return asset.id;
         } catch (error) {
-            this.logger.error(`Failed to create asset from URL ${record.sourceUrl}: ${error}`);
+            this.logger.error(
+                `Failed to create asset from URL ${sanitizeUrlForLogging(record.sourceUrl)}: ${error}`,
+            );
             return null;
         }
     }

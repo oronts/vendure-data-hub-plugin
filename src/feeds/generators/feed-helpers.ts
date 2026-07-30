@@ -5,7 +5,7 @@
  */
 
 import { Product } from '@vendure/core';
-import { VariantWithCustomFields } from './feed-types';
+import type { FeedConfig, VariantWithCustomFields } from './feed-types';
 import {
     GOOGLE_AVAILABILITY,
     FACEBOOK_AVAILABILITY,
@@ -17,6 +17,14 @@ import {
     GenericAvailabilityStatus,
 } from './feed-constants';
 import { minorToMajorUnits } from '../../utils/money.utils';
+
+export function getFeedBaseUrl(config: FeedConfig): string {
+    const baseUrl = config.options?.baseUrl?.trim();
+    if (!baseUrl) {
+        throw new Error('baseUrl is required for built-in feed formats');
+    }
+    return baseUrl.replace(/\/$/, '');
+}
 
 export function getSaleableStockLevel(variant: VariantWithCustomFields): number {
     return Math.max(0, variant.saleableStockLevel ?? 0);
@@ -81,19 +89,22 @@ export function buildProductUrl(
     utmParams?: Record<string, string>,
 ): string {
     const product = variant.product;
-    const slug = product?.slug || variant.id.toString();
-    let url = `${baseUrl}/product/${slug}`;
+    const slug = encodeURIComponent(product?.slug || variant.id.toString());
+    const url = `${baseUrl}/product/${slug}`;
+    const params = new URLSearchParams();
 
     if (variant.sku) {
-        url += `?variant=${variant.sku}`;
+        params.set('variant', variant.sku);
     }
 
     if (utmParams) {
-        const params = new URLSearchParams(utmParams);
-        url += (url.includes('?') ? '&' : '?') + params.toString();
+        for (const [key, value] of Object.entries(utmParams)) {
+            params.set(key, value);
+        }
     }
 
-    return url;
+    const query = params.toString();
+    return query ? `${url}?${query}` : url;
 }
 
 /**
@@ -208,8 +219,13 @@ export function stripHtml(html: string): string {
 /**
  * Escape value for CSV
  */
-export function csvEscape(value: string): string {
-    if (value.includes('"') || value.includes(',') || value.includes('\n')) {
+export function csvEscape(value: string, delimiter = ','): string {
+    if (
+        value.includes('"')
+        || value.includes(delimiter)
+        || value.includes('\n')
+        || value.includes('\r')
+    ) {
         return `"${value.replace(/"/g, '""')}"`;
     }
     return value;

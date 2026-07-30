@@ -37,6 +37,23 @@ function createBatchExtractor(code: string): BatchExtractorAdapter<unknown> {
     };
 }
 
+interface TypedExtractorConfig {
+    endpoint: string;
+}
+
+function createTypedExtractor(code: string): ExtractorAdapter<TypedExtractorConfig> {
+    return {
+        type: 'EXTRACTOR',
+        code,
+        version: '1.0.0',
+        apiVersion: 1,
+        schema: { fields: [] },
+        async *extract(_context, config) {
+            yield { data: { endpoint: config.endpoint } };
+        },
+    };
+}
+
 describe('DataHubRegistryService runtime extractors', () => {
     it('rejects invalid lifecycle metadata without registering a definition', () => {
         const registry = new DataHubRegistryService();
@@ -62,6 +79,15 @@ describe('DataHubRegistryService runtime extractors', () => {
     it('registers and narrows a batch extractor', () => {
         const registry = new DataHubRegistryService();
         const extractor = createBatchExtractor('custom-batch');
+
+        registry.registerRuntime(extractor);
+
+        expect(registry.getExtractorRuntime(extractor.code)).toBe(extractor);
+    });
+
+    it('registers an extractor with a strongly typed configuration', () => {
+        const registry = new DataHubRegistryService();
+        const extractor = createTypedExtractor('typed-stream');
 
         registry.registerRuntime(extractor);
 

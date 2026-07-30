@@ -1,3 +1,4 @@
+import type { ID } from '@vendure/core';
 import { InputRecord } from '../../types/index';
 import { TargetOperation } from '../../types/index';
 import { VendureEntityType } from '../../constants/enums';
@@ -14,12 +15,14 @@ export interface ProductVariantInput extends InputRecord {
     /** URL slug of the parent product */
     productSlug?: string;
     /** ID of the parent product */
-    productId?: string;
+    productId?: ID;
     /** Available inventory quantity */
     stockOnHand?: number;
     /** Whether to track stock levels */
     trackInventory?: boolean;
-    /** Tax category code or name */
+    /** Stable TaxCategory ID */
+    taxCategoryId?: string | number;
+    /** Tax category code stored in customFields.code */
     taxCategoryCode?: string;
     /** Array of facet value codes to assign */
     facetValueCodes?: string[];
@@ -34,11 +37,6 @@ export interface ProductVariantInput extends InputRecord {
     /** Multi-language translations array (each entry: { languageCode, name }) */
     translations?: Array<{ languageCode: string; name: string }>;
 }
-
-/**
- * Default product name used when auto-creating a product for orphan variants
- */
-export const DEFAULT_PRODUCT_NAME = 'Imported Product';
 
 export const PRODUCT_VARIANT_LOADER_METADATA = {
     entityType: VendureEntityType.PRODUCT_VARIANT,

@@ -60,10 +60,11 @@ import {
 } from './enrichment';
 
 import {
-    aggregateOperator, countOperator, uniqueOperator, flattenOperator,
+    aggregateOperator, countOperator, uniqueOperator, deduplicateRecordsOperator, flattenOperator,
     firstOperator, lastOperator, expandOperator,
     multiJoinOperator,
     AGGREGATE_OPERATOR_DEFINITION, COUNT_OPERATOR_DEFINITION, UNIQUE_OPERATOR_DEFINITION,
+    DEDUPLICATE_RECORDS_OPERATOR_DEFINITION,
     FLATTEN_OPERATOR_DEFINITION, FIRST_OPERATOR_DEFINITION, LAST_OPERATOR_DEFINITION,
     EXPAND_OPERATOR_DEFINITION, MULTI_JOIN_OPERATOR_DEFINITION,
 } from './aggregation';
@@ -186,6 +187,10 @@ export const OPERATOR_REGISTRY: Record<string, OperatorRegistryEntry> = {
     aggregate: { definition: AGGREGATE_OPERATOR_DEFINITION, fn: op(aggregateOperator) },
     count: { definition: COUNT_OPERATOR_DEFINITION, fn: op(countOperator) },
     unique: { definition: UNIQUE_OPERATOR_DEFINITION, fn: op(uniqueOperator) },
+    deduplicateRecords: {
+        definition: DEDUPLICATE_RECORDS_OPERATOR_DEFINITION,
+        fn: op(deduplicateRecordsOperator),
+    },
     flatten: { definition: FLATTEN_OPERATOR_DEFINITION, fn: op(flattenOperator) },
     first: { definition: FIRST_OPERATOR_DEFINITION, fn: op(firstOperator) },
     last: { definition: LAST_OPERATOR_DEFINITION, fn: op(lastOperator) },

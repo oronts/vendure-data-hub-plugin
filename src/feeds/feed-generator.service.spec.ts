@@ -6,8 +6,11 @@ import {
     FeedConfigValidationError,
     FeedGeneratorService,
 } from './feed-generator.service';
+import { FeedCatalogService } from './feed-catalog.service';
 import { FeedPersistenceService } from './feed-persistence.service';
 import type { FeedConfig } from './generators/feed-types';
+
+const TEST_FEED_BASE_URL = 'https://shop.example.com';
 
 function createGenerationFixture(
     variantCount: number,
@@ -56,13 +59,16 @@ function createGenerationFixture(
         contentType: 'application/json',
         fileExtension: 'json',
     }));
-    const service = new FeedGeneratorService(
-        {} as never,
-        { entityOptions: { moneyStrategy: { precision: 2 } } } as never,
+    const catalog = new FeedCatalogService(
         productVariantService as never,
         productService as never,
         collectionService as never,
+    );
+    const service = new FeedGeneratorService(
         {} as never,
+        { entityOptions: { moneyStrategy: { precision: 2 } } } as never,
+        {} as never,
+        catalog,
         {
             get: vi.fn(async () => ({
                 code: 'catalog',
@@ -170,9 +176,7 @@ function createFixture() {
             connection as never,
             {} as never,
             {} as never,
-            {} as never,
-            {} as never,
-            {} as never,
+            { getFilteredVariants: vi.fn() } as never,
             persistence,
             distributedLock as never,
             loggerFactory as never,
@@ -236,6 +240,53 @@ describe('FeedGeneratorService durable contract', () => {
         );
         expect(result.itemCount).toBe(5);
     });
+
+    it('uses diagnostics reported by a custom generator', async () => {
+        const fixture = createGenerationFixture(3);
+        fixture.service.registerCustomGenerator({
+            code: 'bounded-json',
+            name: 'Bounded JSON',
+            generate: vi.fn().mockResolvedValue({
+                content: '[{"id":"1"}]',
+                contentType: 'application/json',
+                fileExtension: 'json',
+                itemCount: 1,
+                warnings: ['Skipped two invalid variants'],
+                errors: ['Variant 2 was rejected'],
+            }),
+        });
+
+        const result = await fixture.service.generateFeed(
+            createContext(),
+            'catalog',
+        );
+
+        expect(result.itemCount).toBe(1);
+        expect(result.warnings).toEqual(['Skipped two invalid variants']);
+        expect(result.errors).toEqual(['Variant 2 was rejected']);
+    });
+
+    it('rejects an invalid custom generator item count', async () => {
+        const fixture = createGenerationFixture(1);
+        fixture.service.registerCustomGenerator({
+            code: 'bounded-json',
+            name: 'Bounded JSON',
+            generate: vi.fn().mockResolvedValue({
+                content: '[]',
+                contentType: 'application/json',
+                fileExtension: 'json',
+                itemCount: -1,
+            }),
+        });
+
+        await expect(fixture.service.generateFeed(
+            createContext(),
+            'catalog',
+        )).rejects.toThrow(
+            'Custom feed generator itemCount must be a non-negative safe integer',
+        );
+    });
+
 
     it('backfills preview results after Vendure price and stock filters', async () => {
         const fixture = createGenerationFixture(3, undefined, {
@@ -344,6 +395,7 @@ describe('FeedGeneratorService durable contract', () => {
             code: 'catalog',
             name: 'Catalog',
             format: 'CSV',
+            options: { baseUrl: TEST_FEED_BASE_URL },
         };
 
         const registered = await fixture.createService().createFeed(ctx, input);
@@ -369,11 +421,13 @@ describe('FeedGeneratorService durable contract', () => {
             code: 'catalog',
             name: 'Channel one',
             format: 'CSV',
+            options: { baseUrl: TEST_FEED_BASE_URL },
         });
         await service.createFeed(createContext('channel-2', 'channel-two'), {
             code: 'catalog',
             name: 'Channel two',
             format: 'JSON',
+            options: { baseUrl: TEST_FEED_BASE_URL },
         });
 
         await expect(service.getRegisteredFeeds(
@@ -395,7 +449,13 @@ describe('FeedGeneratorService durable contract', () => {
             code: 'meta',
             name: 'Meta',
             format: 'META_CATALOG',
+            options: { baseUrl: TEST_FEED_BASE_URL },
         })).resolves.toMatchObject({ format: 'META_CATALOG' });
+        await expect(service.createFeed(ctx, {
+            code: 'missing-base-url',
+            name: 'Missing base URL',
+            format: 'CSV',
+        })).rejects.toThrow('baseUrl is required for built-in feed formats');
         await expect(service.createFeed(ctx, {
             code: 'amazon',
             name: 'Amazon',
@@ -405,12 +465,14 @@ describe('FeedGeneratorService durable contract', () => {
             code: 'invalid-cron',
             name: 'Invalid cron',
             format: 'CSV',
+            options: { baseUrl: TEST_FEED_BASE_URL },
             schedule: { enabled: true, cron: '' },
         })).rejects.toThrow('Invalid cron expression');
         await expect(service.createFeed(ctx, {
             code: 'invalid-timezone',
             name: 'Invalid timezone',
             format: 'CSV',
+            options: { baseUrl: TEST_FEED_BASE_URL },
             schedule: {
                 enabled: true,
                 cron: '0 4 * * *',
@@ -421,19 +483,20 @@ describe('FeedGeneratorService durable contract', () => {
             code: 'unsafe-filter',
             name: 'Unsafe filter',
             format: 'CSV',
+            options: { baseUrl: TEST_FEED_BASE_URL },
             filters: { customFilter: 'variant.enabled' } as never,
         })).rejects.toThrow('customFilter is not supported');
         await expect(service.createFeed(ctx, {
             code: 'invalid-image-size',
             name: 'Invalid image size',
             format: 'CSV',
-            options: { imageSize: 'thumbnail' } as never,
+            options: { baseUrl: TEST_FEED_BASE_URL, imageSize: 'thumbnail' } as never,
         })).rejects.toThrow('imageSize must be "preview" or "original"');
         await expect(service.createFeed(ctx, {
             code: 'invalid-currency',
             name: 'Invalid currency',
             format: 'CSV',
-            options: { currency: 'usd' },
+            options: { baseUrl: TEST_FEED_BASE_URL, currency: 'usd' },
         })).rejects.toThrow('currency must be an uppercase ISO 4217 code');
     });
 
@@ -443,6 +506,7 @@ describe('FeedGeneratorService durable contract', () => {
         const baseConfig = {
             name: 'Invalid JSON config',
             format: 'CSV',
+            options: { baseUrl: TEST_FEED_BASE_URL },
         } as const;
 
         await expect(service.createFeed(ctx, {
@@ -453,7 +517,10 @@ describe('FeedGeneratorService durable contract', () => {
         await expect(service.createFeed(ctx, {
             ...baseConfig,
             code: 'invalid-utm-params',
-            options: { utmParams: { campaign: 42 } } as never,
+            options: {
+                baseUrl: TEST_FEED_BASE_URL,
+                utmParams: { campaign: 42 },
+            } as never,
         })).rejects.toThrow('utmParams must be an object with string values');
         await expect(service.createFeed(ctx, {
             ...baseConfig,
@@ -475,6 +542,7 @@ describe('FeedGeneratorService durable contract', () => {
             name: 'Catalog',
             format: 'CSV',
             channelToken: 'another-channel',
+            options: { baseUrl: TEST_FEED_BASE_URL },
         })).rejects.toThrow('must match the active request channel');
     });
 
@@ -486,6 +554,7 @@ describe('FeedGeneratorService durable contract', () => {
             code: 'catalog',
             name: 'Catalog',
             format: 'CSV',
+            options: { baseUrl: TEST_FEED_BASE_URL },
         });
         fixture.entities[0].artifactFileId = 'file_old_0123456789abcdef';
         fixture.entities[0].artifactGeneratedAt = new Date();
@@ -494,6 +563,7 @@ describe('FeedGeneratorService durable contract', () => {
             code: 'catalog',
             name: 'Updated catalog',
             format: 'JSON',
+            options: { baseUrl: TEST_FEED_BASE_URL },
         });
 
         expect(updated?.id).toBe('1');
@@ -512,6 +582,7 @@ describe('FeedGeneratorService durable contract', () => {
             code: 'catalog',
             name: 'Catalog',
             format: 'CSV',
+            options: { baseUrl: TEST_FEED_BASE_URL },
         });
         vi.spyOn(service, 'generateFeedAsBuffer').mockResolvedValue({
             content: Buffer.from('sku,name\nSKU-1,Product'),
@@ -556,12 +627,14 @@ describe('FeedGeneratorService durable contract', () => {
             code: 'catalog',
             name: 'Original',
             format: 'CSV',
+            options: { baseUrl: TEST_FEED_BASE_URL },
         });
 
         await expect(service.createFeed(ctx, {
             code: 'catalog',
             name: 'Replacement',
             format: 'JSON',
+            options: { baseUrl: TEST_FEED_BASE_URL },
         })).rejects.toThrow('already exists in this channel');
         await expect(service.getFeed(ctx, 'catalog')).resolves.toMatchObject({
             name: 'Original',
@@ -578,12 +651,14 @@ describe('FeedGeneratorService durable contract', () => {
             code: 'catalog',
             name: 'Channel one',
             format: 'CSV',
+            options: { baseUrl: TEST_FEED_BASE_URL },
         });
 
         await expect(service.updateFeed(channelTwo, created.id, {
             code: 'catalog',
             name: 'Cross-channel update',
             format: 'JSON',
+            options: { baseUrl: TEST_FEED_BASE_URL },
         })).resolves.toBeUndefined();
         await expect(service.deleteFeed(channelTwo, created.id)).resolves.toBe(false);
         await expect(service.getFeed(channelOne, 'catalog')).resolves.toMatchObject({
@@ -600,6 +675,7 @@ describe('FeedGeneratorService durable contract', () => {
             code: 'catalog',
             name: 'Catalog',
             format: 'CSV',
+            options: { baseUrl: TEST_FEED_BASE_URL },
         });
         fixture.entities[0].artifactFileId = 'file_old_0123456789abcdef';
 
@@ -630,6 +706,7 @@ describe('FeedGeneratorService durable contract', () => {
             code: 'catalog',
             name: 'Catalog',
             format: 'CSV',
+            options: { baseUrl: TEST_FEED_BASE_URL },
         };
         const created = await service.createFeed(ctx, definition);
         fixture.entities[0].artifactFileId = 'file_old_0123456789abcdef';
@@ -650,6 +727,7 @@ describe('FeedGeneratorService durable contract', () => {
             code: 'catalog',
             name: 'Catalog',
             format: 'CSV',
+            options: { baseUrl: TEST_FEED_BASE_URL },
             schedule: {
                 enabled: true,
                 cron: '0 4 * * *',
@@ -662,6 +740,7 @@ describe('FeedGeneratorService durable contract', () => {
             code: 'catalog',
             name: 'Catalog',
             format: 'CSV',
+            options: { baseUrl: TEST_FEED_BASE_URL },
             schedule: {
                 enabled: true,
                 cron: '30 4 * * *',

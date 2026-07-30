@@ -3,6 +3,7 @@
  */
 
 import { ImportTemplate } from './types';
+import { createCsvFileSource } from './csv-file-source';
 
 /**
  * Simple Customers CSV Template
@@ -26,20 +27,7 @@ export const simpleCustomersTemplate: ImportTemplate = {
     definition: {
         version: 1,
         type: 'IMPORT',
-        source: {
-            type: 'FILE_UPLOAD',
-            format: {
-                format: 'CSV',
-                csv: {
-                    delimiter: ',',
-                    headerRow: true,
-                    trimWhitespace: true,
-                },
-            },
-            config: {
-                type: 'FILE_UPLOAD',
-            },
-        },
+        source: createCsvFileSource({ trimWhitespace: true }),
         target: {
             entity: 'CUSTOMER',
             operation: 'UPSERT',
@@ -105,19 +93,7 @@ export const customersWithAddressesTemplate: ImportTemplate = {
     definition: {
         version: 1,
         type: 'IMPORT',
-        source: {
-            type: 'FILE_UPLOAD',
-            format: {
-                format: 'CSV',
-                csv: {
-                    delimiter: ',',
-                    headerRow: true,
-                },
-            },
-            config: {
-                type: 'FILE_UPLOAD',
-            },
-        },
+        source: createCsvFileSource(),
         target: {
             entity: 'CUSTOMER',
             operation: 'UPSERT',

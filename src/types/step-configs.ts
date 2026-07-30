@@ -5,9 +5,9 @@ import type {
     TypedLoaderConfig,
     TypedExporterConfig,
     TypedFeedConfig,
-    SchemaValidatorConfig,
     RouteConfig,
 } from '../../shared/types';
+import type { ValidateStepConfig as DslValidateStepConfig } from '../sdk/dsl/step-configs';
 
 // ============================================================================
 // Base Step Config Interface
@@ -95,7 +95,7 @@ export function isTransformStepConfig(config: unknown): config is TransformStepC
 // Validate Step Config
 // ============================================================================
 
-export type ValidateStepConfig = SchemaValidatorConfig & {
+export type ValidateStepConfig = DslValidateStepConfig & {
     adapterCode?: string;
 };
 
@@ -110,12 +110,16 @@ export interface EnrichStepConfig {
     computed?: Record<string, string>;
     sourceType?: 'VENDURE' | 'HTTP' | 'STATIC';
     url?: string;
+    connectionCode?: string;
     keyField?: string;
     target?: string;
     responsePath?: string;
     cacheTtlSec?: number;
     skipOn404?: boolean;
     bearerTokenSecretCode?: string;
+    apiKeySecretCode?: string;
+    apiKeyHeader?: string;
+    basicAuthSecretCode?: string;
     entityType?: string;
     sourceField?: string;
     lookupField?: string;
@@ -193,4 +197,3 @@ export function getAdapterCode(step: PipelineStepDefinition): string {
     }
     return '';
 }
-

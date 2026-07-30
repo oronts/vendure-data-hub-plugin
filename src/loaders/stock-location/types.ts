@@ -18,7 +18,7 @@ export const STOCK_LOCATION_LOADER_METADATA = {
     name: 'Stock Location Loader',
     description: 'Imports stock locations/warehouses for inventory management',
     adapterCode: 'stockLocationUpsert',
-    supportedOperations: ['CREATE', 'UPDATE', 'UPSERT', 'DELETE'] as TargetOperation[],
+    supportedOperations: ['CREATE', 'UPDATE', 'UPSERT'] as TargetOperation[],
     lookupFields: ['name', 'id'],
     requiredFields: ['name'],
 } as const;

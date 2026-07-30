@@ -11,8 +11,8 @@ import {
     EntityFieldSchema,
     TargetOperation,
 } from '../../types/index';
-import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
-import { LOGGER_CONTEXTS } from '../../constants/index';
+import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger/datahub-logger';
+import { LOGGER_CONTEXTS } from '../../constants/core';
 import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
 import {
     BaseEntityLoader,
@@ -25,7 +25,6 @@ import {
 import {
     PromotionInput,
     PROMOTION_LOADER_METADATA,
-    DEFAULT_PROMOTION_ACTION,
 } from './types';
 import {
     buildConfigurableOperations,
@@ -76,10 +75,11 @@ export class PromotionLoader extends BaseEntityLoader<PromotionInput, Promotion>
             .requireStringForCreate('name', record.name, operation, 'Promotion name is required');
 
         if (operation === TARGET_OPERATION.CREATE || operation === TARGET_OPERATION.UPSERT) {
-            builder.addWarningIf(
+            builder.addErrorIf(
                 !record.actions || record.actions.length === 0,
                 'actions',
-                'No actions specified. Promotion will have no effect.',
+                'Promotion creation requires at least one action',
+                'MISSING_ACTIONS',
             );
         }
 
@@ -210,7 +210,7 @@ export class PromotionLoader extends BaseEntityLoader<PromotionInput, Promotion>
         const actions = buildConfigurableOperations(record.actions ?? []);
 
         if (actions.length === 0) {
-            actions.push({ ...DEFAULT_PROMOTION_ACTION });
+            throw new Error('Promotion creation requires at least one action');
         }
 
         const result = await this.promotionService.createPromotion(ctx, {

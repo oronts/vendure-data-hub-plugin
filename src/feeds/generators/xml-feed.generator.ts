@@ -7,14 +7,16 @@
 import { RequestContext } from '@vendure/core';
 import { TransactionalConnection } from '@vendure/core';
 import { XMLBuilder } from 'fast-xml-parser';
-import { SERVICE_DEFAULTS, XML_NAMESPACES, TRANSFORM_LIMITS } from '../../constants/index';
+import { XML_NAMESPACES, TRANSFORM_LIMITS } from '../../constants/index';
 import {
     FeedConfig,
     VariantWithCustomFields,
     ProductWithCustomFields,
+    FeedGenerationDiagnostics,
 } from './feed-types';
 import {
     buildProductUrl,
+    getFeedBaseUrl,
     getImageUrl,
     extractFacetValue,
     getProductType,
@@ -25,6 +27,7 @@ import { FEED_DEFAULTS, GenericAvailabilityStatus } from './feed-constants';
 import { LOGGER_CONTEXTS } from '../../constants/core';
 import { DataHubLoggerFactory } from '../../services/logger';
 import { minorToMajorUnits } from '../../utils/money.utils';
+import { recordFeedItemWarning, recordGeneratedFeedItem } from './feed-diagnostics';
 
 const feedLogger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.FEED_GENERATOR);
 
@@ -104,7 +107,7 @@ async function transformVariantToXMLItem(
     moneyPrecision: number,
     options: XMLGeneratorOptions,
 ): Promise<XMLFeedItem> {
-    const baseUrl = config.options?.baseUrl || SERVICE_DEFAULTS.EXAMPLE_BASE_URL;
+    const baseUrl = getFeedBaseUrl(config);
     const currency = String(variant.currencyCode ?? config.options?.currency ?? FEED_DEFAULTS.CURRENCY);
     const product = variant.product as ProductWithCustomFields | undefined;
 
@@ -161,6 +164,7 @@ export async function generateXMLFeed(
     connection: TransactionalConnection,
     moneyPrecision: number,
     options?: XMLGeneratorOptions,
+    diagnostics?: FeedGenerationDiagnostics,
 ): Promise<string> {
     const opts: XMLGeneratorOptions = {
         rootElement: 'feed',
@@ -172,15 +176,17 @@ export async function generateXMLFeed(
         ...options,
     };
 
-    const baseUrl = config.options?.baseUrl || SERVICE_DEFAULTS.EXAMPLE_BASE_URL;
+    const baseUrl = getFeedBaseUrl(config);
     const items: XMLFeedItem[] = [];
 
     for (const variant of products) {
         try {
             const item = await transformVariantToXMLItem(ctx, variant, config, connection, moneyPrecision, opts);
             items.push(item);
+            recordGeneratedFeedItem(diagnostics);
         } catch (error) {
-            feedLogger.warn(`Failed to process variant ${variant.id}: ${error}`);
+            const warning = `Failed to process variant ${variant.id}: ${String(error)}`;
+            feedLogger.warn(recordFeedItemWarning(diagnostics, warning));
         }
     }
 
@@ -230,7 +236,7 @@ export async function generateAtomFeed(
     _connection: TransactionalConnection,
     moneyPrecision: number,
 ): Promise<string> {
-    const baseUrl = config.options?.baseUrl || SERVICE_DEFAULTS.EXAMPLE_BASE_URL;
+    const baseUrl = getFeedBaseUrl(config);
     const currency = config.options?.currency || FEED_DEFAULTS.CURRENCY;
 
     const entries = await Promise.all(
@@ -304,7 +310,7 @@ export async function generateRSSFeed(
     config: FeedConfig,
     _connection: TransactionalConnection,
 ): Promise<string> {
-    const baseUrl = config.options?.baseUrl || SERVICE_DEFAULTS.EXAMPLE_BASE_URL;
+    const baseUrl = getFeedBaseUrl(config);
 
     const items = await Promise.all(
         products.map(async variant => {

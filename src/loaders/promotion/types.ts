@@ -46,17 +46,7 @@ export const PROMOTION_LOADER_METADATA = {
     name: 'Promotion Loader',
     description: 'Imports promotions, discounts, and coupon codes',
     adapterCode: 'promotionUpsert',
-    supportedOperations: ['CREATE', 'UPDATE', 'UPSERT', 'DELETE'] as TargetOperation[],
+    supportedOperations: ['CREATE', 'UPDATE', 'UPSERT'] as TargetOperation[],
     lookupFields: ['couponCode', 'id', 'name'],
     requiredFields: ['name'],
 } as const;
-
-/**
- * Default promotion action used when no actions are specified.
- * This is a placeholder 0% discount to satisfy Vendure's requirement
- * that promotions must have at least one action.
- */
-export const DEFAULT_PROMOTION_ACTION: { code: string; arguments: { name: string; value: string }[] } = {
-    code: 'order_percentage_discount',
-    arguments: [{ name: 'discount', value: '0' }],
-};

@@ -1,11 +1,57 @@
 import { describe, expect, it } from 'vitest';
 import { VariantWithCustomFields } from './feed-types';
 import {
+    buildProductUrl,
+    csvEscape,
     formatPrice,
+    getFeedBaseUrl,
     getFeedStockQuantity,
     getImageUrl,
     getSaleableStockLevel,
 } from './feed-helpers';
+
+describe('feed base URL', () => {
+    it('normalizes the configured storefront URL without inventing a host', () => {
+        expect(getFeedBaseUrl({
+            code: 'catalog',
+            name: 'Catalog',
+            format: 'CSV',
+            options: { baseUrl: 'https://shop.example.com/' },
+        })).toBe('https://shop.example.com');
+        expect(() => getFeedBaseUrl({
+            code: 'catalog',
+            name: 'Catalog',
+            format: 'CSV',
+        })).toThrow('baseUrl is required for built-in feed formats');
+    });
+});
+
+describe('feed product URL', () => {
+    it('encodes product, variant, and tracking values as distinct URL components', () => {
+        const variant = {
+            id: 42,
+            sku: 'SKU &?/+',
+            product: { slug: 'summer/shirt' },
+        } as unknown as VariantWithCustomFields;
+
+        expect(buildProductUrl(
+            'https://shop.example.com',
+            variant,
+            { utm_source: 'catalog & sale' },
+        )).toBe(
+            'https://shop.example.com/product/summer%2Fshirt?variant=SKU+%26%3F%2F%2B&utm_source=catalog+%26+sale',
+        );
+    });
+});
+
+describe('delimited feed escaping', () => {
+    it('quotes the active delimiter, CR/LF, and embedded quotes', () => {
+        expect(csvEscape('value\tother', '\t')).toBe('"value\tother"');
+        expect(csvEscape('line\rreturn', '\t')).toBe('"line\rreturn"');
+        expect(csvEscape('say "hello"', '\t')).toBe('"say ""hello"""');
+        expect(csvEscape('plain', '\t')).toBe('plain');
+    });
+});
 
 describe('feed stock helpers', () => {
     it('uses the Vendure saleable stock result', () => {

@@ -6,6 +6,7 @@ import {
     ProductService,
     FacetValueService,
     AssetService,
+    TransactionalConnection,
 } from '@vendure/core';
 import {
     LoaderContext,
@@ -13,8 +14,8 @@ import {
     EntityFieldSchema,
     TargetOperation,
 } from '../../types/index';
-import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
-import { LOGGER_CONTEXTS } from '../../constants/index';
+import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger/datahub-logger';
+import { LOGGER_CONTEXTS } from '../../constants/core';
 import { VendureEntityType } from '../../constants/enums';
 import {
     BaseEntityLoader,
@@ -23,6 +24,7 @@ import {
     ValidationBuilder,
     EntityLookupHelper,
     createLookupHelper,
+    createCustomFieldLookupStrategy,
 } from '../base';
 import {
     ProductInput,
@@ -36,6 +38,7 @@ import {
     handleAssets,
     handleFeaturedAsset,
 } from '../shared-helpers';
+import { ASSET_AND_CUSTOM_FIELD_SCHEMA_FIELDS } from '../shared-field-schemas';
 import { ProductUpsertLoaderConfig } from '../../types/index';
 
 /** Loads Product entities via ProductService. Supports CREATE, UPDATE, UPSERT. */
@@ -47,6 +50,7 @@ export class ProductLoader extends BaseEntityLoader<ProductInput, Product> {
     private readonly lookupHelper: EntityLookupHelper<ProductService, Product, ProductInput>;
 
     constructor(
+        private connection: TransactionalConnection,
         private productService: ProductService,
         private facetValueService: FacetValueService,
         private assetService: AssetService,
@@ -57,7 +61,12 @@ export class ProductLoader extends BaseEntityLoader<ProductInput, Product> {
         this.lookupHelper = createLookupHelper<ProductService, Product, ProductInput>(this.productService)
             .addFilterStrategy('slug', 'slug', (ctx, svc, opts) => svc.findAll(ctx, opts))
             .addIdStrategy((ctx, svc, id) => svc.findOne(ctx, id))
-            .addFilterStrategy('name', 'name', (ctx, svc, opts) => svc.findAll(ctx, opts));
+            .addFilterStrategy('name', 'name', (ctx, svc, opts) => svc.findAll(ctx, opts))
+            .addCustomStrategy(createCustomFieldLookupStrategy(
+                this.connection,
+                Product,
+                'externalId',
+            ));
     }
 
     protected getDuplicateErrorMessage(record: ProductInput): string {
@@ -128,24 +137,7 @@ export class ProductLoader extends BaseEntityLoader<ProductInput, Product> {
                     description: 'Array of facet value codes to assign',
                     example: ['category-electronics', 'brand-acme'],
                 },
-                {
-                    key: 'assetUrls',
-                    label: 'Asset URLs',
-                    type: 'array',
-                    description: 'URLs of images to attach',
-                },
-                {
-                    key: 'featuredAssetUrl',
-                    label: 'Featured Asset URL',
-                    type: 'string',
-                    description: 'URL of the featured/main image',
-                },
-                {
-                    key: 'customFields',
-                    label: 'Custom Fields',
-                    type: 'object',
-                    description: 'Custom field values',
-                },
+                ...ASSET_AND_CUSTOM_FIELD_SCHEMA_FIELDS,
             ],
         };
     }

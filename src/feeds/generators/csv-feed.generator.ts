@@ -6,17 +6,18 @@
 
 import { RequestContext } from '@vendure/core';
 import { TransactionalConnection } from '@vendure/core';
-import { SERVICE_DEFAULTS } from '../../constants/index';
 import {
     FeedConfig,
     FeedFieldMapping,
     VariantWithCustomFields,
     ProductWithCustomFields,
     CustomFieldValue,
+    FeedGenerationDiagnostics,
 } from './feed-types';
 import {
     formatPrice,
     buildProductUrl,
+    getFeedBaseUrl,
     getImageUrl,
     extractFacetValue,
     getProductType,
@@ -29,6 +30,7 @@ import { FIELD_PREFIX, FEED_DEFAULTS, GENERIC_AVAILABILITY } from './feed-consta
 import { LOGGER_CONTEXTS } from '../../constants/core';
 import { DataHubLoggerFactory } from '../../services/logger';
 import { minorToMajorUnits } from '../../utils/money.utils';
+import { recordFeedItemWarning, recordGeneratedFeedItem } from './feed-diagnostics';
 
 const feedLogger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.FEED_GENERATOR);
 
@@ -38,6 +40,7 @@ const feedLogger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.FEED_GENERATOR);
 export interface CSVFieldConfig {
     header: string;
     source: string;
+    default?: CustomFieldValue;
     transform?: (value: CustomFieldValue | string, variant: VariantWithCustomFields, product?: ProductWithCustomFields) => string;
 }
 
@@ -86,7 +89,7 @@ function getFieldValue(
     moneyPrecision: number,
     productType?: string,
 ): string {
-    const baseUrl = config.options?.baseUrl || SERVICE_DEFAULTS.EXAMPLE_BASE_URL;
+    const baseUrl = getFeedBaseUrl(config);
     const currency = String(variant.currencyCode ?? config.options?.currency ?? FEED_DEFAULTS.CURRENCY);
 
     switch (source) {
@@ -164,6 +167,7 @@ function buildFieldsFromMappings(
         return {
             header,
             source: mapping.source,
+            default: mapping.default,
         };
     });
 }
@@ -178,7 +182,9 @@ export async function generateCSVFeed(
     connection: TransactionalConnection,
     moneyPrecision: number,
     options?: CSVGeneratorOptions,
+    diagnostics?: FeedGenerationDiagnostics,
 ): Promise<string> {
+    getFeedBaseUrl(config);
     const delimiter = options?.delimiter ?? ',';
     const includeHeader = options?.includeHeader ?? true;
     const lineEnding = options?.lineEnding ?? '\n';
@@ -220,19 +226,30 @@ export async function generateCSVFeed(
             }
 
             const row = fields.map(field => {
+                const value = getFieldValue(
+                    field.source,
+                    variant,
+                    product,
+                    ctx,
+                    config,
+                    connection,
+                    moneyPrecision,
+                    productType,
+                );
+                const resolvedValue = value !== '' || field.default === undefined
+                    ? value
+                    : String(field.default ?? '');
                 if (field.transform) {
-                    return field.transform(
-                        getFieldValue(field.source, variant, product, ctx, config, connection, moneyPrecision, productType),
-                        variant,
-                        product,
-                    );
+                    return field.transform(resolvedValue, variant, product);
                 }
-                return getFieldValue(field.source, variant, product, ctx, config, connection, moneyPrecision, productType);
+                return resolvedValue;
             });
 
             rows.push(row);
+            recordGeneratedFeedItem(diagnostics);
         } catch (error) {
-            feedLogger.warn(`Failed to process variant ${variant.id}: ${error}`);
+            const warning = `Failed to process variant ${variant.id}: ${String(error)}`;
+            feedLogger.warn(recordFeedItemWarning(diagnostics, warning));
         }
     }
 

@@ -23,6 +23,14 @@ export interface UniqueOperatorConfig extends BaseOperatorConfig {
     readonly by?: string;
 }
 
+export type DeduplicateRecordsStrategy = 'FIRST' | 'LAST' | 'LOWEST' | 'HIGHEST';
+
+export interface DeduplicateRecordsOperatorConfig extends BaseOperatorConfig {
+    readonly key: string;
+    readonly keep?: DeduplicateRecordsStrategy;
+    readonly priority?: string;
+}
+
 export interface FlattenOperatorConfig extends BaseOperatorConfig {
     readonly source: string;
     readonly target?: string;

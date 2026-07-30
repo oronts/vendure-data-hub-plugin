@@ -1,6 +1,6 @@
-import { ID, RequestContext, TaxCategoryService, ZoneService, TaxCategory } from '@vendure/core';
+import { ID, RequestContext, TaxCategoryService, ZoneService } from '@vendure/core';
 import { TaxRateInput } from './types';
-import { PAGINATION } from '../../constants/defaults';
+import { resolveEntityReferenceId } from '../entity-reference.helpers';
 
 export { isRecoverableError, shouldUpdateField } from '../shared-helpers';
 
@@ -13,33 +13,24 @@ export async function resolveTaxCategoryId(
     record: TaxRateInput,
     cache: Map<string, ID>,
 ): Promise<ID | null> {
-    // Try ID first
-    if (record.taxCategoryId) {
-        return record.taxCategoryId as ID;
-    }
+    const cacheKey = record.taxCategoryId !== undefined
+        ? `tc:id:${String(record.taxCategoryId)}`
+        : record.taxCategoryCode !== undefined
+            ? `tc:code:${record.taxCategoryCode}`
+            : undefined;
+    if (cacheKey && cache.has(cacheKey)) return cache.get(cacheKey) ?? null;
 
-    // Check cache
-    if (record.taxCategoryCode && cache.has(`tc:${record.taxCategoryCode}`)) {
-        return cache.get(`tc:${record.taxCategoryCode}`) ?? null;
-    }
-
-    // Look up by code (name is used as code in Vendure for tax categories)
-    if (record.taxCategoryCode) {
-        const taxCategories = await taxCategoryService.findAll(ctx, { take: PAGINATION.MAX_LOOKUP_LIMIT } as any);
-        // TaxCategoryService.findAll may return TaxCategory[] or PaginatedList
-        const categoriesList = Array.isArray(taxCategories)
-            ? taxCategories
-            : (taxCategories as unknown as { items: TaxCategory[] }).items || [];
-        const match = categoriesList.find(
-            (tc: TaxCategory) => tc.name.toLowerCase() === record.taxCategoryCode?.toLowerCase()
-        );
-        if (match) {
-            cache.set(`tc:${record.taxCategoryCode}`, match.id);
-            return match.id;
-        }
-    }
-
-    return null;
+    const id = await resolveEntityReferenceId(
+        ctx,
+        taxCategoryService,
+        'Tax category',
+        {
+            id: record.taxCategoryId as ID | undefined,
+            code: record.taxCategoryCode,
+        },
+    );
+    if (cacheKey && id !== null) cache.set(cacheKey, id);
+    return id;
 }
 
 /**
@@ -51,28 +42,22 @@ export async function resolveZoneId(
     record: TaxRateInput,
     cache: Map<string, ID>,
 ): Promise<ID | null> {
-    // Try ID first
-    if (record.zoneId) {
-        return record.zoneId as ID;
-    }
+    const cacheKey = record.zoneId !== undefined
+        ? `zone:id:${String(record.zoneId)}`
+        : record.zoneCode !== undefined
+            ? `zone:code:${record.zoneCode}`
+            : undefined;
+    if (cacheKey && cache.has(cacheKey)) return cache.get(cacheKey) ?? null;
 
-    // Check cache
-    if (record.zoneCode && cache.has(`zone:${record.zoneCode}`)) {
-        return cache.get(`zone:${record.zoneCode}`) ?? null;
-    }
-
-    // Look up by code (name is used as identifier for zones)
-    if (record.zoneCode) {
-        const zones = await zoneService.findAll(ctx, { take: PAGINATION.MAX_LOOKUP_LIMIT } as any);
-        const match = zones.items.find(
-            z => z.name.toLowerCase() === record.zoneCode?.toLowerCase()
-        );
-        if (match) {
-            cache.set(`zone:${record.zoneCode}`, match.id);
-            return match.id;
-        }
-    }
-
-    return null;
+    const id = await resolveEntityReferenceId(
+        ctx,
+        zoneService,
+        'Zone',
+        {
+            id: record.zoneId as ID | undefined,
+            code: record.zoneCode,
+        },
+    );
+    if (cacheKey && id !== null) cache.set(cacheKey, id);
+    return id;
 }
-

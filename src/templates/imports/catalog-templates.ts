@@ -3,6 +3,7 @@
  */
 
 import { ImportTemplate } from './types';
+import { createCsvFileSource } from './csv-file-source';
 
 /**
  * Collections CSV Template
@@ -27,19 +28,7 @@ export const collectionsTemplate: ImportTemplate = {
     definition: {
         version: 1,
         type: 'IMPORT',
-        source: {
-            type: 'FILE_UPLOAD',
-            format: {
-                format: 'CSV',
-                csv: {
-                    delimiter: ',',
-                    headerRow: true,
-                },
-            },
-            config: {
-                type: 'FILE_UPLOAD',
-            },
-        },
+        source: createCsvFileSource(),
         target: {
             entity: 'COLLECTION',
             operation: 'UPSERT',
@@ -91,19 +80,7 @@ export const facetsTemplate: ImportTemplate = {
     definition: {
         version: 1,
         type: 'IMPORT',
-        source: {
-            type: 'FILE_UPLOAD',
-            format: {
-                format: 'CSV',
-                csv: {
-                    delimiter: ',',
-                    headerRow: true,
-                },
-            },
-            config: {
-                type: 'FILE_UPLOAD',
-            },
-        },
+        source: createCsvFileSource(),
         target: {
             entity: 'FACET_VALUE',
             operation: 'UPSERT',

@@ -47,8 +47,7 @@ export interface AdapterFormatHelpers {
 export type UnitType =
     | 'g' | 'kg' | 'lb' | 'oz'
     | 'cm' | 'm' | 'mm' | 'in' | 'ft'
-    | 'ml' | 'l' | 'gal'
-    | 'c' | 'f' | 'k';
+    | 'ml' | 'l' | 'gal';
 
 export interface ConversionHelpers {
     toMinorUnits(amount: number, decimals?: number): number;

@@ -33,6 +33,7 @@ import {
 } from '../../types/index';
 import type { StepType } from '../../../shared/types';
 import { STEP_TYPE } from '../../../shared/constants/enums';
+import { PARALLEL_EXECUTION } from '../../../shared/constants';
 import { validateEnrichmentConfig } from '../../validation/enrichment-config.validator';
 import {
     TriggerConfig,
@@ -49,6 +50,11 @@ import {
 } from './step-configs';
 import { DEFAULT_TRIGGER_TYPE } from '../constants';
 import { validateNonEmptyString, validateUniqueKey, validateVersion } from './validation-helpers';
+
+interface RouteDefaultTarget {
+    readonly routeStepKey: string;
+    readonly targetStepKey: string;
+}
 
 // PIPELINE BUILDER INTERFACE
 
@@ -79,6 +85,8 @@ export interface PipelineBuilder {
     edge(from: string, to: string, options?: string | { branch?: string; dependencyOnly?: boolean }): this;
     build(): PipelineDefinition;
 }
+
+export { definePipeline, edge, step, steps } from './pipeline-primitives';
 
 // HELPER FUNCTIONS
 
@@ -156,10 +164,12 @@ export function createPipeline(): PipelineBuilder {
         hooks?: PipelineHooks;
         steps: PipelineStepDefinition[];
         edges: PipelineEdge[];
+        routeDefaultTargets: RouteDefaultTarget[];
     } = {
         version: 1,
         steps: [],
         edges: [],
+        routeDefaultTargets: [],
     };
 
     const builder: PipelineBuilder = {
@@ -196,8 +206,20 @@ export function createPipeline(): PipelineBuilder {
             return this;
         },
         parallel(config?: { maxConcurrentSteps?: number; errorPolicy?: 'FAIL_FAST' | 'CONTINUE' | 'BEST_EFFORT' }) {
-            if (config?.maxConcurrentSteps !== undefined && (typeof config.maxConcurrentSteps !== 'number' || config.maxConcurrentSteps < 1)) {
-                throw new Error('maxConcurrentSteps must be a positive number');
+            if (
+                config?.maxConcurrentSteps !== undefined
+                && (
+                    !Number.isSafeInteger(config.maxConcurrentSteps)
+                    || config.maxConcurrentSteps < PARALLEL_EXECUTION.MIN_CONCURRENT_STEPS
+                    || config.maxConcurrentSteps > PARALLEL_EXECUTION.MAX_CONCURRENT_STEPS
+                )
+            ) {
+                throw new Error(
+                    'maxConcurrentSteps must be an integer from '
+                    + PARALLEL_EXECUTION.MIN_CONCURRENT_STEPS
+                    + ' to '
+                    + PARALLEL_EXECUTION.MAX_CONCURRENT_STEPS,
+                );
             }
             const validPolicies = ['FAIL_FAST', 'CONTINUE', 'BEST_EFFORT'];
             if (config?.errorPolicy !== undefined && !validPolicies.includes(config.errorPolicy)) {
@@ -263,8 +285,22 @@ export function createPipeline(): PipelineBuilder {
                     );
                 }
             }
-            const { adapterCode, ...rest } = config;
-            state.steps.push(createStep(key, STEP_TYPE.ENRICH, rest as unknown as JsonObject, adapterCode ? { adapterCode } : undefined));
+            const {
+                adapterCode,
+                throughput,
+                async: asyncFlag,
+                ...rest
+            } = config;
+            state.steps.push(createStep(
+                key,
+                STEP_TYPE.ENRICH,
+                rest as unknown as JsonObject,
+                {
+                    adapterCode,
+                    throughput,
+                    async: asyncFlag,
+                },
+            ));
             return this;
         },
         route(key: string, config: RouteStepConfig) {
@@ -273,15 +309,45 @@ export function createPipeline(): PipelineBuilder {
             if (!config.branches || !Array.isArray(config.branches) || config.branches.length === 0) {
                 throw new Error('Route step requires at least one branch');
             }
-            state.steps.push(createStep(key, STEP_TYPE.ROUTE, config as unknown as JsonObject, { adapterCode: 'condition' }));
+            const { defaultTo, ...routeConfig } = config;
+            if (defaultTo !== undefined) {
+                validateNonEmptyString(defaultTo, 'Route default target');
+                state.routeDefaultTargets.push({
+                    routeStepKey: key,
+                    targetStepKey: defaultTo,
+                });
+            }
+            state.steps.push(createStep(key, STEP_TYPE.ROUTE, routeConfig as unknown as JsonObject, { adapterCode: 'condition' }));
             return this;
         },
         load(key: string, config: LoadStepConfig) {
             validateNonEmptyString(key, 'Step key');
             validateUniqueKey(state.steps, key);
             validateNonEmptyString(config.adapterCode, 'Adapter code');
-            const { throughput, async: asyncFlag, adapterCode, ...rest } = config;
-            state.steps.push(createStep(key, STEP_TYPE.LOAD, rest as unknown as JsonObject, { throughput, async: asyncFlag, adapterCode }));
+            const {
+                throughput,
+                async: asyncFlag,
+                adapterCode,
+                channelStrategy,
+                channelIds,
+                validationMode,
+                ...rest
+            } = config;
+            const context = channelStrategy !== undefined
+                || channelIds !== undefined
+                || validationMode !== undefined
+                ? {
+                    ...(channelStrategy === undefined ? {} : { channelStrategy }),
+                    ...(channelIds === undefined ? {} : { channelIds }),
+                    ...(validationMode === undefined ? {} : { validationMode }),
+                }
+                : undefined;
+            state.steps.push(createStep(key, STEP_TYPE.LOAD, rest as unknown as JsonObject, {
+                throughput,
+                async: asyncFlag,
+                adapterCode,
+                context,
+            }));
             return this;
         },
         export(key: string, config: ExportStepConfig) {
@@ -344,9 +410,33 @@ export function createPipeline(): PipelineBuilder {
                 }
             }
 
+            const edges = state.edges.map(edge => {
+                if (edge.branch !== undefined) return edge;
+                const defaultTarget = state.routeDefaultTargets.find(candidate => (
+                    candidate.routeStepKey === edge.from
+                    && candidate.targetStepKey === edge.to
+                ));
+                return defaultTarget === undefined
+                    ? edge
+                    : { ...edge, branch: 'default' };
+            });
+            for (const defaultTarget of state.routeDefaultTargets) {
+                const hasDefaultEdge = edges.some(edge => (
+                    edge.from === defaultTarget.routeStepKey
+                    && edge.to === defaultTarget.targetStepKey
+                    && edge.branch === 'default'
+                ));
+                if (!hasDefaultEdge) {
+                    throw new Error(
+                        `Route "${defaultTarget.routeStepKey}" default target `
+                        + `"${defaultTarget.targetStepKey}" requires a matching edge`,
+                    );
+                }
+            }
+
             // Detect cycles in graph pipelines
-            if (state.edges.length > 0) {
-                const cycle = detectCycle(state.edges);
+            if (edges.length > 0) {
+                const cycle = detectCycle(edges);
                 if (cycle) {
                     throw new Error(`Pipeline "${state.name}" contains a cycle: ${cycle.join(' -> ')}`);
                 }
@@ -359,7 +449,7 @@ export function createPipeline(): PipelineBuilder {
                     ? { description: state.description }
                     : {}),
                 steps: state.steps,
-                ...(state.edges.length > 0 ? { edges: state.edges } : {}),
+                ...(edges.length > 0 ? { edges } : {}),
                 ...(state.dependsOn !== undefined
                     ? { dependsOn: state.dependsOn }
                     : {}),
@@ -373,48 +463,4 @@ export function createPipeline(): PipelineBuilder {
     };
 
     return builder;
-}
-
-export function definePipeline<T extends PipelineDefinition>(definition: T): T {
-    return definition;
-}
-
-export function step(
-    key: string,
-    type: StepType,
-    config: JsonObject,
-    extras?: Partial<Omit<PipelineStepDefinition, 'key' | 'type' | 'config'>>,
-): PipelineStepDefinition {
-    validateNonEmptyString(key, 'Step key');
-    return createStep(key, type, config, extras);
-}
-
-export const steps = {
-    trigger: (key: string, config: JsonObject = {}, extras?: Partial<Omit<PipelineStepDefinition, 'key' | 'type' | 'config'>>) =>
-        step(key, STEP_TYPE.TRIGGER, config, extras),
-    extract: (key: string, config: JsonObject, extras?: Partial<Omit<PipelineStepDefinition, 'key' | 'type' | 'config'>>) =>
-        step(key, STEP_TYPE.EXTRACT, config, extras),
-    transform: (key: string, config: JsonObject, extras?: Partial<Omit<PipelineStepDefinition, 'key' | 'type' | 'config'>>) =>
-        step(key, STEP_TYPE.TRANSFORM, config, extras),
-    validate: (key: string, config: JsonObject, extras?: Partial<Omit<PipelineStepDefinition, 'key' | 'type' | 'config'>>) =>
-        step(key, STEP_TYPE.VALIDATE, config, extras),
-    enrich: (key: string, config: JsonObject, extras?: Partial<Omit<PipelineStepDefinition, 'key' | 'type' | 'config'>>) =>
-        step(key, STEP_TYPE.ENRICH, config, extras),
-    route: (key: string, config: JsonObject, extras?: Partial<Omit<PipelineStepDefinition, 'key' | 'type' | 'config'>>) =>
-        step(key, STEP_TYPE.ROUTE, config, extras),
-    load: (key: string, config: JsonObject, extras?: Partial<Omit<PipelineStepDefinition, 'key' | 'type' | 'config'>>) =>
-        step(key, STEP_TYPE.LOAD, config, extras),
-    export: (key: string, config: JsonObject, extras?: Partial<Omit<PipelineStepDefinition, 'key' | 'type' | 'config'>>) =>
-        step(key, STEP_TYPE.EXPORT, config, extras),
-    feed: (key: string, config: JsonObject, extras?: Partial<Omit<PipelineStepDefinition, 'key' | 'type' | 'config'>>) =>
-        step(key, STEP_TYPE.FEED, config, extras),
-    sink: (key: string, config: JsonObject, extras?: Partial<Omit<PipelineStepDefinition, 'key' | 'type' | 'config'>>) =>
-        step(key, STEP_TYPE.SINK, config, extras),
-    gate: (key: string, config: JsonObject, extras?: Partial<Omit<PipelineStepDefinition, 'key' | 'type' | 'config'>>) =>
-        step(key, STEP_TYPE.GATE, config, extras),
-};
-
-export function edge(from: string, to: string, options?: string | { branch?: string; dependencyOnly?: boolean }): PipelineEdge {
-    const opts = typeof options === 'string' ? { branch: options } : options;
-    return createEdge(from, to, opts);
 }

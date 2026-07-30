@@ -30,9 +30,8 @@ import { StockLocationLoader } from './stock-location';
 import { InventoryLoader } from './inventory';
 import { AssetLoader } from './asset';
 
-// Use Type<unknown> because entity loaders have different generic parameters
-// (e.g., ProductLoader implements EntityLoader<ProductInput>), and NestJS
-// providers accept any class reference.
+// The concrete loaders use different input types, so the constructor registry
+// stays unknown until LoaderRegistryService verifies the resolved instance.
 type LoaderClass = Type<unknown>;
 
 /**

@@ -6,6 +6,7 @@ import {
     CustomerService,
     CustomerGroupService,
     CountryService,
+    TransactionalConnection,
 } from '@vendure/core';
 import {
     LoaderContext,
@@ -13,8 +14,8 @@ import {
     EntityFieldSchema,
     TargetOperation,
 } from '../../types/index';
-import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
-import { LOGGER_CONTEXTS } from '../../constants/index';
+import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger/datahub-logger';
+import { LOGGER_CONTEXTS } from '../../constants/core';
 import { VendureEntityType } from '../../constants/enums';
 import {
     BaseEntityLoader,
@@ -23,6 +24,7 @@ import {
     ValidationBuilder,
     EntityLookupHelper,
     createLookupHelper,
+    createCustomFieldLookupStrategy,
 } from '../base';
 import {
     CustomerInput,
@@ -33,6 +35,23 @@ import {
     handleCustomerAddresses,
     shouldUpdateField,
 } from './helpers';
+import type { AddressesMode } from '../../../shared/types/adapter-config.types';
+
+const ADDRESS_MODES = [
+    'UPSERT_BY_MATCH',
+    'REPLACE_ALL',
+    'APPEND_ONLY',
+    'SKIP',
+] as const satisfies readonly AddressesMode[];
+
+function parseAddressesMode(value: unknown): AddressesMode {
+    const mode = value ?? 'UPSERT_BY_MATCH';
+    if (typeof mode !== 'string' || !ADDRESS_MODES.some(candidate => candidate === mode)) {
+        throw new Error(`Unsupported customer address mode "${String(mode)}"`);
+    }
+    return mode as AddressesMode;
+}
+
 
 /** Loads Customer entities via CustomerService. Supports CREATE, UPDATE, UPSERT. */
 @Injectable()
@@ -43,6 +62,7 @@ export class CustomerLoader extends BaseEntityLoader<CustomerInput, Customer> {
     private readonly lookupHelper: EntityLookupHelper<CustomerService, Customer, CustomerInput>;
 
     constructor(
+        private connection: TransactionalConnection,
         private customerService: CustomerService,
         private customerGroupService: CustomerGroupService,
         private countryService: CountryService,
@@ -52,7 +72,12 @@ export class CustomerLoader extends BaseEntityLoader<CustomerInput, Customer> {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.CUSTOMER_LOADER);
         this.lookupHelper = createLookupHelper<CustomerService, Customer, CustomerInput>(this.customerService)
             .addFilterStrategy('emailAddress', 'emailAddress', (ctx, svc, opts) => svc.findAll(ctx, opts))
-            .addIdStrategy((ctx, svc, id) => svc.findOne(ctx, id));
+            .addIdStrategy((ctx, svc, id) => svc.findOne(ctx, id))
+            .addCustomStrategy(createCustomFieldLookupStrategy(
+                this.connection,
+                Customer,
+                'externalId',
+            ));
     }
 
     protected getDuplicateErrorMessage(record: CustomerInput): string {
@@ -246,9 +271,15 @@ export class CustomerLoader extends BaseEntityLoader<CustomerInput, Customer> {
         }
 
         if (record.addresses && shouldUpdateField('addresses', options.updateOnlyFields)) {
-            const addressesMode = (options.config?.addressesMode as string) || 'UPSERT_BY_MATCH';
-            const matchFieldsStr = (options.config?.addressMatchFields as string) || 'streetLine1,city,countryCode';
-            const matchFields = matchFieldsStr.split(',').map(f => f.trim());
+            const addressesMode = parseAddressesMode(options.config?.addressesMode);
+            const rawMatchFields = options.config?.addressMatchFields;
+            if (rawMatchFields !== undefined && typeof rawMatchFields !== 'string') {
+                throw new Error('Customer addressMatchFields must be a comma-separated string');
+            }
+            const matchFields = (rawMatchFields ?? 'streetLine1,city,countryCode')
+                .split(',')
+                .map(field => field.trim())
+                .filter(Boolean);
 
             await handleCustomerAddresses(
                 ctx,
@@ -256,8 +287,8 @@ export class CustomerLoader extends BaseEntityLoader<CustomerInput, Customer> {
                 this.countryService,
                 customerId,
                 record.addresses,
-                { mode: addressesMode as any, matchFields },
-                this.logger
+                { mode: addressesMode, matchFields },
+                this.logger,
             );
         }
 

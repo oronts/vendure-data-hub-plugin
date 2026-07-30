@@ -24,7 +24,6 @@ export const DATE_FORMAT_OPERATOR_DEFINITION: AdapterDefinition = {
     categoryLabel: 'Date',
     categoryOrder: 5,
     pure: true,
-    fieldTransform: true,
     schema: {
         fields: [
             { key: 'source', label: 'Source field path', type: 'string', required: true },
@@ -151,14 +150,9 @@ export const NOW_OPERATOR_DEFINITION: AdapterDefinition = {
             {
                 key: 'format',
                 label: 'Output format',
-                type: 'select',
-                options: [
-                    { value: 'ISO', label: 'ISO 8601 (2024-01-15T10:30:00.000Z)' },
-                    { value: 'timestamp', label: 'Unix timestamp (milliseconds)' },
-                    { value: 'date', label: 'Date only (YYYY-MM-DD)' },
-                    { value: 'datetime', label: 'Date and time (YYYY-MM-DD HH:mm:ss)' },
-                ],
-                description: 'Or use a custom format like YYYY/MM/DD',
+                type: 'string',
+                defaultValue: 'ISO',
+                description: 'ISO, timestamp, date, datetime, or a custom format such as YYYY/MM/DD',
             },
         ],
     },

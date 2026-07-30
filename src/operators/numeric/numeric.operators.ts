@@ -68,7 +68,6 @@ export const CURRENCY_OPERATOR_DEFINITION: AdapterDefinition = {
     categoryLabel: 'Numeric',
     categoryOrder: 2,
     pure: true,
-    fieldTransform: true,
     schema: {
         fields: [
             { key: 'source', label: 'Source field path', type: 'string', required: true },
@@ -219,7 +218,6 @@ export const FORMAT_NUMBER_OPERATOR_DEFINITION: AdapterDefinition = {
     categoryLabel: 'Numeric',
     categoryOrder: 2,
     pure: true,
-    fieldTransform: true,
     schema: {
         fields: [
             { key: 'source', label: 'Source field path', type: 'string', required: true },

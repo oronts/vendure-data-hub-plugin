@@ -73,22 +73,28 @@ const RUNTIME_METADATA_FIELDS = [
     'fieldTransform',
 ] as const satisfies readonly (keyof AdapterDefinition)[];
 
-function assertRuntimeMetadataMatches(
-    key: string,
+export function assertAdapterDefinitionMatchesRuntime(
     definition: AdapterDefinition,
     runtime: DataHubAdapter,
     runtimeBuiltIn: boolean,
 ): void {
+    const definitionKey = `${definition.type}:${definition.code}`;
+    const runtimeKey = `${runtime.type}:${runtime.code}`;
+    if (definitionKey !== runtimeKey) {
+        throw new Error(
+            `Runtime adapter identity does not match registered definition: ${definitionKey} !== ${runtimeKey}`,
+        );
+    }
     const definitionBuiltIn = definition.builtIn === true;
     if (definitionBuiltIn !== runtimeBuiltIn) {
         throw new Error(
-            `Runtime adapter origin does not match registered definition: ${key}`,
+            `Runtime adapter origin does not match registered definition: ${runtimeKey}`,
         );
     }
     for (const field of RUNTIME_METADATA_FIELDS) {
         if (!isDeepStrictEqual(definition[field], runtime[field])) {
             throw new Error(
-                `Runtime adapter metadata does not match registered definition for ${key}: ${field}`,
+                `Runtime adapter metadata does not match registered definition for ${runtimeKey}: ${field}`,
             );
         }
     }
@@ -192,8 +198,7 @@ export class DataHubRegistryService {
             throw new Error(`Custom runtime cannot override built-in adapter: ${key}`);
         }
         if (existingDefinition) {
-            assertRuntimeMetadataMatches(
-                key,
+            assertAdapterDefinitionMatchesRuntime(
                 existingDefinition,
                 prepared as DataHubAdapter,
                 options?.builtIn === true,

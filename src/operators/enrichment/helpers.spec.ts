@@ -4,9 +4,12 @@ import {
     applyHttpLookup,
     applyHttpLookupBatch,
     getHttpLookupCacheStats,
+    getCircuitBreakerStats,
+    getRateLimiterStats,
     resetEnrichmentState,
 } from './helpers';
 import { configureGlobalSsrfProtection } from '../../utils/url-security.utils';
+import { SINK } from '../../constants/defaults';
 import { httpLookupOperator } from './enrichment.operators';
 import type { JsonObject } from '../types';
 import type {
@@ -92,6 +95,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+    vi.useRealTimers();
     configureGlobalSsrfProtection({});
     vi.unstubAllGlobals();
 });
@@ -547,6 +551,9 @@ describe('httpLookup outbound security', () => {
         ['maxRetries', { maxRetries: 11 }],
         ['batchSize', { batchSize: 0 }],
         ['rateLimitPerSecond', { rateLimitPerSecond: 0 }],
+        ['timeoutMs', { timeoutMs: Number.NaN }],
+        ['cacheTtlSec', { cacheTtlSec: Number.POSITIVE_INFINITY }],
+        ['maxRetries', { maxRetries: 1.5 }],
     ])('rejects invalid %s before fetch', async (_name, invalidConfig) => {
         const fetchSpy = vi.mocked(globalThis.fetch);
 
@@ -556,6 +563,77 @@ describe('httpLookup outbound security', () => {
         })).rejects.toThrow('must be an integer');
 
         expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it('bounds batch concurrency while preserving input order', async () => {
+        let active = 0;
+        let peak = 0;
+        vi.stubGlobal('fetch', vi.fn(async (input: string | URL) => {
+            active += 1;
+            peak = Math.max(peak, active);
+            await new Promise(resolve => setTimeout(resolve, 5));
+            active -= 1;
+            return new Response(JSON.stringify({ id: new URL(input).pathname.slice(1) }), {
+                headers: { 'content-type': 'application/json' },
+            });
+        }));
+
+        const result = await applyHttpLookupBatch(
+            Array.from({ length: 5 }, (_, id) => ({ id })),
+            {
+                ...BASE_HTTP_LOOKUP_CONFIG,
+                url: 'https://example.com/{{id}}',
+                batchSize: 2,
+                cacheTtlSec: 0,
+                rateLimitPerSecond: 10_000,
+            },
+        );
+
+        expect(peak).toBe(2);
+        expect(result.records.map(record => record.lookup)).toEqual([
+            { id: '0' },
+            { id: '1' },
+            { id: '2' },
+            { id: '3' },
+            { id: '4' },
+        ]);
+    });
+
+    it('retries a failed secure request before recording a circuit failure', async () => {
+        vi.useFakeTimers();
+        const fetchSpy = vi.fn()
+            .mockResolvedValueOnce(new Response(null, { status: 503 }))
+            .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), {
+                headers: { 'content-type': 'application/json' },
+            }));
+        vi.stubGlobal('fetch', fetchSpy);
+
+        const lookup = applyHttpLookup({}, {
+            ...BASE_HTTP_LOOKUP_CONFIG,
+            cacheTtlSec: 0,
+            maxRetries: 1,
+        });
+        await vi.advanceTimersByTimeAsync(SINK.BACKOFF_BASE_DELAY_MS);
+
+        await expect(lookup).resolves.toMatchObject({ record: { lookup: { ok: true } } });
+        expect(fetchSpy).toHaveBeenCalledTimes(2);
+        expect(getCircuitBreakerStats().values().next().value?.failures).toBe(0);
+    });
+
+    it('clears cache, circuit, and limiter state together', async () => {
+        vi.stubGlobal('fetch', vi.fn(async () => new Response(
+            JSON.stringify({ ok: true }),
+            { headers: { 'content-type': 'application/json' } },
+        )));
+        await applyHttpLookup({}, BASE_HTTP_LOOKUP_CONFIG);
+
+        expect(getHttpLookupCacheStats().size).toBe(1);
+        expect(getCircuitBreakerStats().size).toBe(1);
+        expect(getRateLimiterStats().size).toBe(1);
+        resetEnrichmentState();
+        expect(getHttpLookupCacheStats().size).toBe(0);
+        expect(getCircuitBreakerStats().size).toBe(0);
+        expect(getRateLimiterStats().size).toBe(0);
     });
 });
 

@@ -1,7 +1,7 @@
 import { ID, RequestContext, CustomerService, ShippingMethodService, OrderService, ProductVariantService } from '@vendure/core';
 import { OrderLineInput } from './types';
 import { LinesMode } from '../../../shared/types';
-import { DataHubLogger } from '../../services/logger';
+import { DataHubLogger } from '../../services/logger/datahub-logger';
 
 export { isRecoverableError, shouldUpdateField, findVariantBySku } from '../shared-helpers';
 import { findVariantBySku } from '../shared-helpers';
@@ -52,20 +52,30 @@ export async function handleOrderLines(
         return;
     }
 
-    // Helper to find variant by SKU and add line
-    const addLine = async (line: OrderLineInput): Promise<boolean> => {
+    const resolvedLines: Array<OrderLineInput & { quantity: number; variantId: ID }> = [];
+    for (const line of lines) {
         const quantity = Number(line.quantity);
-        if (isNaN(quantity) || quantity < 1) {
-            logger.warn(`Invalid quantity for line: ${JSON.stringify(line)}`);
-            return false;
+        if (!Number.isInteger(quantity) || quantity < 1) {
+            throw new Error(`Order line for SKU "${line.sku}" requires a positive whole quantity`);
         }
         const variant = await findVariantBySku(productVariantService, ctx, line.sku);
         if (!variant) {
-            logger.warn(`Variant with SKU "${line.sku}" not found, skipping line`);
-            return false;
+            throw new Error(`Variant with SKU "${line.sku}" was not found`);
         }
-        await orderService.addItemToOrder(ctx, orderId, variant.id, quantity);
-        return true;
+        resolvedLines.push({ ...line, quantity, variantId: variant.id });
+    }
+
+    const addLine = async (
+        line: OrderLineInput & { quantity: number; variantId: ID },
+    ): Promise<void> => {
+        const result = await orderService.addItemToOrder(
+            ctx,
+            orderId,
+            line.variantId,
+            line.quantity,
+            line.customFields,
+        );
+        assertOrderMutationSucceeded(`add SKU "${line.sku}"`, result);
     };
 
     // Guard: cannot modify lines on orders in non-modifiable states (produces SQL NaN errors)
@@ -75,14 +85,12 @@ export async function handleOrderLines(
     ]);
     const checkOrder = await orderService.findOne(ctx, orderId, ['lines']);
     if (checkOrder && nonModifiableStates.has(checkOrder.state)) {
-        logger.warn(`Cannot modify lines on order ${orderId} in state ${checkOrder.state}`);
-        return;
+        throw new Error(`Cannot modify lines on order ${orderId} in state ${checkOrder.state}`);
     }
 
     switch (mode) {
         case 'APPEND_ONLY':
-            // Always add new lines (allows duplicates - current behavior)
-            for (const line of lines) {
+            for (const line of resolvedLines) {
                 await addLine(line);
             }
             break;
@@ -92,7 +100,7 @@ export async function handleOrderLines(
             const order = await orderService.findOne(ctx, orderId, ['lines', 'lines.productVariant']);
             if (!order || !order.lines) {
                 // No existing lines, just add all
-                for (const line of lines) {
+                for (const line of resolvedLines) {
                     await addLine(line);
                 }
                 return;
@@ -103,24 +111,23 @@ export async function handleOrderLines(
                 order.lines.map(line => [line.productVariant.sku, line])
             );
 
-            for (const newLine of lines) {
+            for (const newLine of resolvedLines) {
                 const existing = existingBySku.get(newLine.sku);
                 if (existing) {
-                    // SKU exists: add quantities
-                    const parsedQty = Number(newLine.quantity);
-                    if (isNaN(parsedQty) || parsedQty < 1) {
-                        logger.warn(`Invalid quantity for merge line SKU "${newLine.sku}": ${JSON.stringify(newLine.quantity)}`);
-                        continue;
-                    }
                     if (!existing.id) {
-                        logger.warn(`Existing order line for SKU "${newLine.sku}" has no ID, skipping merge`);
-                        continue;
+                        throw new Error(`Existing order line for SKU "${newLine.sku}" has no ID`);
                     }
-                    const newQuantity = existing.quantity + parsedQty;
-                    await orderService.adjustOrderLine(ctx, orderId, existing.id, newQuantity);
-                    logger.debug(`Merged line for SKU "${newLine.sku}": ${existing.quantity} + ${parsedQty} = ${newQuantity}`);
+                    const newQuantity = existing.quantity + newLine.quantity;
+                    const result = await orderService.adjustOrderLine(
+                        ctx,
+                        orderId,
+                        existing.id,
+                        newQuantity,
+                        newLine.customFields,
+                    );
+                    assertOrderMutationSucceeded(`merge SKU "${newLine.sku}"`, result);
+                    logger.debug(`Merged line for SKU "${newLine.sku}": ${existing.quantity} + ${newLine.quantity} = ${newQuantity}`);
                 } else {
-                    // New SKU: add line item
                     await addLine(newLine);
                 }
             }
@@ -131,19 +138,18 @@ export async function handleOrderLines(
             const existingOrder = await orderService.findOne(ctx, orderId, ['lines']);
 
             if (existingOrder?.lines && existingOrder.lines.length > 0) {
-                // Remove all existing lines
+                const missingId = existingOrder.lines.find(line => !line.id);
+                if (missingId) {
+                    throw new Error(`Cannot replace order lines because an existing line has no ID`);
+                }
                 for (const line of existingOrder.lines) {
-                    if (!line.id) {
-                        logger.warn(`Order line without ID found during REPLACE_ALL, skipping removal`);
-                        continue;
-                    }
-                    await orderService.adjustOrderLine(ctx, orderId, line.id, 0);
+                    const result = await orderService.adjustOrderLine(ctx, orderId, line.id, 0);
+                    assertOrderMutationSucceeded('remove existing line', result);
                 }
                 logger.debug(`Removed ${existingOrder.lines.length} existing order lines`);
             }
 
-            // Add new lines
-            for (const line of lines) {
+            for (const line of resolvedLines) {
                 await addLine(line);
             }
             break;
@@ -151,3 +157,13 @@ export async function handleOrderLines(
     }
 }
 
+function assertOrderMutationSucceeded(action: string, result: unknown): void {
+    if (!result || typeof result !== 'object' || !('errorCode' in result)) {
+        return;
+    }
+    const error = result as { errorCode?: unknown; message?: unknown };
+    const detail = typeof error.message === 'string'
+        ? error.message
+        : String(error.errorCode ?? 'unknown error');
+    throw new Error(`Failed to ${action}: ${detail}`);
+}

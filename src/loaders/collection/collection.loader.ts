@@ -5,6 +5,7 @@ import {
     RequestContext,
     CollectionService,
     AssetService,
+    TransactionalConnection,
 } from '@vendure/core';
 import {
     LoaderContext,
@@ -12,8 +13,8 @@ import {
     EntityFieldSchema,
     TargetOperation,
 } from '../../types/index';
-import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
-import { LOGGER_CONTEXTS } from '../../constants/index';
+import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger/datahub-logger';
+import { LOGGER_CONTEXTS } from '../../constants/core';
 import { VendureEntityType } from '../../constants/enums';
 import {
     BaseEntityLoader,
@@ -22,6 +23,7 @@ import {
     ValidationBuilder,
     EntityLookupHelper,
     createLookupHelper,
+    createCustomFieldLookupStrategy,
 } from '../base';
 import {
     CollectionInput,
@@ -38,6 +40,7 @@ import {
     handleCollectionFilters,
 } from './helpers';
 import { handleAssets } from '../shared-helpers';
+import { ASSET_AND_CUSTOM_FIELD_SCHEMA_FIELDS } from '../shared-field-schemas';
 import type { CollectionUpsertLoaderConfig } from '../../../shared/types';
 
 /** Loads Collection entities via CollectionService. Supports CREATE, UPDATE, UPSERT. */
@@ -49,6 +52,7 @@ export class CollectionLoader extends BaseEntityLoader<CollectionInput, Collecti
     private readonly lookupHelper: EntityLookupHelper<CollectionService, Collection, CollectionInput>;
 
     constructor(
+        private connection: TransactionalConnection,
         private collectionService: CollectionService,
         private assetService: AssetService,
         loggerFactory: DataHubLoggerFactory,
@@ -58,7 +62,12 @@ export class CollectionLoader extends BaseEntityLoader<CollectionInput, Collecti
         this.lookupHelper = createLookupHelper<CollectionService, Collection, CollectionInput>(this.collectionService)
             .addFilterStrategy('slug', 'slug', (ctx, svc, opts) => svc.findAll(ctx, opts))
             .addIdStrategy((ctx, svc, id) => svc.findOne(ctx, id))
-            .addFilterStrategy('name', 'name', (ctx, svc, opts) => svc.findAll(ctx, opts));
+            .addFilterStrategy('name', 'name', (ctx, svc, opts) => svc.findAll(ctx, opts))
+            .addCustomStrategy(createCustomFieldLookupStrategy(
+                this.connection,
+                Collection,
+                'externalId',
+            ));
     }
 
     /**
@@ -95,7 +104,11 @@ export class CollectionLoader extends BaseEntityLoader<CollectionInput, Collecti
         if (record.parentSlug || record.parentId) {
             const parent = await findParentCollection(ctx, this.collectionService, record);
             if (!parent) {
-                builder.addWarning('parent', 'Parent collection not found, will create at root level');
+                builder.addError(
+                    'parent',
+                    'Parent collection was not found',
+                    'PARENT_NOT_FOUND',
+                );
             }
         }
 
@@ -169,29 +182,18 @@ export class CollectionLoader extends BaseEntityLoader<CollectionInput, Collecti
                     type: 'array',
                     description: 'Filter rules for automatic product assignment',
                 },
-                {
-                    key: 'assetUrls',
-                    label: 'Asset URLs',
-                    type: 'array',
-                    description: 'URLs of images to attach',
-                },
-                {
-                    key: 'featuredAssetUrl',
-                    label: 'Featured Asset URL',
-                    type: 'string',
-                    description: 'URL of the featured/main image',
-                },
-                {
-                    key: 'customFields',
-                    label: 'Custom Fields',
-                    type: 'object',
-                    description: 'Custom field values',
-                },
+                ...ASSET_AND_CUSTOM_FIELD_SCHEMA_FIELDS,
             ],
         };
     }
 
     protected async createEntity(context: LoaderContext, record: CollectionInput): Promise<ID | null> {
+        return this.connection.withTransaction(context.ctx, async ctx =>
+            this.createCollectionEntity({ ...context, ctx }, record),
+        );
+    }
+
+    private async createCollectionEntity(context: LoaderContext, record: CollectionInput): Promise<ID | null> {
         const { ctx } = context;
 
         const slug = record.slug || slugify(record.name);
@@ -220,15 +222,11 @@ export class CollectionLoader extends BaseEntityLoader<CollectionInput, Collecti
         });
 
         if (record.position !== undefined && record.position >= 0) {
-            try {
-                await this.collectionService.move(ctx, {
-                    collectionId: collection.id,
-                    parentId: parentId ?? collection.parent?.id,
-                    index: record.position,
-                });
-            } catch (error) {
-                this.logger.warn(`Could not set position for collection ${slug}: ${error}`);
-            }
+            await this.collectionService.move(ctx, {
+                collectionId: collection.id,
+                parentId: parentId ?? collection.parent?.id,
+                index: record.position,
+            });
         }
 
         // Handle assets with mode (default: UPSERT_BY_URL for create)
@@ -250,6 +248,12 @@ export class CollectionLoader extends BaseEntityLoader<CollectionInput, Collecti
     }
 
     protected async updateEntity(context: LoaderContext, collectionId: ID, record: CollectionInput): Promise<void> {
+        await this.connection.withTransaction(context.ctx, async ctx =>
+            this.updateCollectionEntity({ ...context, ctx }, collectionId, record),
+        );
+    }
+
+    private async updateCollectionEntity(context: LoaderContext, collectionId: ID, record: CollectionInput): Promise<void> {
         const { ctx, options } = context;
 
         const updateInput: Record<string, unknown> = { id: collectionId };

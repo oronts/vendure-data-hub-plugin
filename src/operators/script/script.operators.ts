@@ -25,7 +25,7 @@ import { SafeEvaluatorConfig } from '../../runtime/sandbox';
 // which imports ../operators -> this file
 import { SAFE_EVALUATOR } from '../../constants/defaults';
 import { LOGGER_CONTEXTS } from '../../constants/core';
-import { DataHubLoggerFactory } from '../../services/logger';
+import { DataHubLoggerFactory } from '../../services/logger/datahub-logger';
 
 const DEFAULT_TIMEOUT = SAFE_EVALUATOR.DEFAULT_TIMEOUT_MS;
 const scriptLogger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.SCRIPT_OPERATOR);
@@ -53,7 +53,20 @@ export function configureScriptOperators(config: {
         scriptSecurityConfig = config.security;
     }
     if (config.evaluator?.defaultTimeoutMs !== undefined) {
+        assertScriptTimeout(config.evaluator.defaultTimeoutMs, 'defaultTimeoutMs');
         scriptDefaultTimeoutMs = config.evaluator.defaultTimeoutMs;
+    }
+}
+
+function assertScriptTimeout(timeout: number, field = 'timeout'): void {
+    if (
+        !Number.isInteger(timeout)
+        || timeout < SAFE_EVALUATOR.MIN_TIMEOUT_MS
+        || timeout > SAFE_EVALUATOR.MAX_TIMEOUT_MS
+    ) {
+        throw new Error(
+            `${field} must be an integer between ${SAFE_EVALUATOR.MIN_TIMEOUT_MS} and ${SAFE_EVALUATOR.MAX_TIMEOUT_MS}`,
+        );
     }
 }
 
@@ -108,7 +121,7 @@ export const SCRIPT_OPERATOR_DEFINITION: AdapterDefinition = {
                 key: 'timeout',
                 label: 'Timeout (ms)',
                 type: 'number',
-                description: 'Maximum execution time in milliseconds (default: 5000)',
+                description: `Maximum execution time in milliseconds (${SAFE_EVALUATOR.MIN_TIMEOUT_MS}-${SAFE_EVALUATOR.MAX_TIMEOUT_MS}; default: ${SAFE_EVALUATOR.DEFAULT_TIMEOUT_MS})`,
             },
             {
                 key: 'failOnError',
@@ -186,6 +199,15 @@ export function scriptOperator(
 
     if (!code || typeof code !== 'string') {
         return { records: [...records], errors: [{ message: 'Script code is required' }] };
+    }
+
+    try {
+        assertScriptTimeout(timeout);
+    } catch (error) {
+        return {
+            records: [...records],
+            errors: [{ message: getErrorMessage(error) }],
+        };
     }
 
     // Validate script block before execution using security rules

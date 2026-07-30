@@ -54,7 +54,7 @@ export const CHANNEL_LOADER_METADATA = {
     name: 'Channel Loader',
     description: 'Imports channels/storefronts with currency, language, and zone settings',
     adapterCode: 'channelUpsert',
-    supportedOperations: ['CREATE', 'UPDATE', 'UPSERT', 'DELETE'] as TargetOperation[],
+    supportedOperations: ['CREATE', 'UPDATE', 'UPSERT'] as TargetOperation[],
     lookupFields: ['code', 'token', 'id'],
     requiredFields: ['code', 'defaultLanguageCode', 'defaultCurrencyCode'],
 } as const;

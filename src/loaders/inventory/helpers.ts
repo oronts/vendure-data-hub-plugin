@@ -10,7 +10,14 @@ export async function resolveStockLocationId(
     cache: Map<string, ID>,
 ): Promise<ID | undefined> {
     if (record.stockLocationId) {
-        return record.stockLocationId as ID;
+        const location = await stockLocationService.findOne(
+            ctx,
+            record.stockLocationId as ID,
+        );
+        if (!location) {
+            throw new Error(`Stock location ID "${String(record.stockLocationId)}" was not found`);
+        }
+        return location.id;
     }
 
     if (record.stockLocationName) {
@@ -27,8 +34,8 @@ export async function resolveStockLocationId(
             cache.set(record.stockLocationName, id);
             return id;
         }
+        throw new Error(`Stock location "${record.stockLocationName}" was not found`);
     }
 
     return undefined;
 }
-

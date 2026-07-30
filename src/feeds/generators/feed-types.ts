@@ -118,6 +118,11 @@ export interface GeneratedFeed {
     warnings: string[];
 }
 
+export interface FeedGenerationDiagnostics {
+    itemCount: number;
+    warnings: string[];
+}
+
 export interface RegisteredFeedConfig extends FeedConfig {
     id: ID;
     createdAt: Date;
@@ -219,6 +224,9 @@ export interface CustomFeedResult {
     content: string;
     contentType: string;
     fileExtension: string;
+    itemCount?: number;
+    warnings?: string[];
+    errors?: string[];
 }
 
 /**

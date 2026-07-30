@@ -12,6 +12,8 @@ const VALID_BUILT_IN_FORMATS = [
     'xml',
 ] as const;
 
+const FIELD_MAPPING_FORMATS = new Set(['csv', 'json', 'custom']);
+
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -120,17 +122,25 @@ export function validateFeedConfig(
             config.options,
         );
     }
+    const baseUrl = config.options?.baseUrl;
     if (
-        config.options?.baseUrl !== undefined
-        && (
-            typeof config.options.baseUrl !== 'string'
-            || !VALIDATION_PATTERNS.URL.test(config.options.baseUrl)
-        )
+        normalizedFormat !== 'custom'
+        && (typeof baseUrl !== 'string' || baseUrl.trim() === '')
+    ) {
+        throw new FeedConfigValidationError(
+            'baseUrl is required for built-in feed formats',
+            'options.baseUrl',
+            baseUrl,
+        );
+    }
+    if (
+        baseUrl !== undefined
+        && (typeof baseUrl !== 'string' || !VALIDATION_PATTERNS.URL.test(baseUrl))
     ) {
         throw new FeedConfigValidationError(
             'baseUrl must be a valid URL',
             'options.baseUrl',
-            config.options.baseUrl,
+            baseUrl,
         );
     }
     if (
@@ -277,6 +287,16 @@ export function validateFeedConfig(
     ) {
         throw new FeedConfigValidationError(
             'fieldMappings must map non-empty headers to field paths or mapping objects',
+            'fieldMappings',
+            config.fieldMappings,
+        );
+    }
+    if (
+        config.fieldMappings !== undefined
+        && !FIELD_MAPPING_FORMATS.has(normalizedFormat)
+    ) {
+        throw new FeedConfigValidationError(
+            `fieldMappings are not supported for ${normalizedFormat} feeds`,
             'fieldMappings',
             config.fieldMappings,
         );

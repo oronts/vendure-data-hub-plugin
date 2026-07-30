@@ -15,6 +15,7 @@ import {
 import {
     formatPrice,
     buildProductUrl,
+    getFeedBaseUrl,
     getImageUrl,
     getAdditionalImages,
     extractFacetValue,
@@ -25,7 +26,7 @@ import {
     toStringOrUndefined,
     extractCustomLabels,
 } from './feed-helpers';
-import { SERVICE_DEFAULTS, TRUNCATION } from '../../constants/index';
+import { TRUNCATION } from '../../constants/index';
 import { FEED_LIMITS, FEED_DEFAULTS } from './feed-constants';
 
 /**
@@ -82,7 +83,7 @@ export async function buildBaseFeedItem(
     condition: string,
     moneyPrecision: number,
 ): Promise<BaseFeedItem | null> {
-    const baseUrl = config.options?.baseUrl || SERVICE_DEFAULTS.EXAMPLE_BASE_URL;
+    const baseUrl = getFeedBaseUrl(config);
     const currency = String(variant.currencyCode ?? config.options?.currency ?? FEED_DEFAULTS.CURRENCY);
     const product = variant.product as ProductWithCustomFields | undefined;
     const customFields = variant.customFields || {};

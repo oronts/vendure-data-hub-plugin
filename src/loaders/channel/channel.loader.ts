@@ -14,8 +14,8 @@ import {
     EntityFieldSchema,
     TargetOperation,
 } from '../../types/index';
-import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
-import { LOGGER_CONTEXTS } from '../../constants/index';
+import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger/datahub-logger';
+import { LOGGER_CONTEXTS } from '../../constants/core';
 import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
 import {
     BaseEntityLoader,
@@ -62,8 +62,7 @@ export class ChannelLoader extends BaseEntityLoader<ChannelInput, Channel> {
                 lookup: async (ctx, svc, value) => {
                     if (!value || typeof value !== 'string') return null;
                     const channels = await svc.findAll(ctx);
-                    const channelsList = channels as unknown as Array<{ id: ID; code: string }>;
-                    const match = channelsList.find((c) => c.code === value);
+                    const match = channels.items.find(channel => channel.code === value);
                     if (match) {
                         const fullChannel = await svc.findOne(ctx, match.id);
                         if (fullChannel) {
@@ -391,6 +390,10 @@ export class ChannelLoader extends BaseEntityLoader<ChannelInput, Channel> {
     protected async updateEntity(context: LoaderContext, channelId: ID, record: ChannelInput): Promise<void> {
         const { ctx, options } = context;
 
+        const existing = await this.channelService.findOne(ctx, channelId);
+        if (!existing) {
+            throw new Error(`Channel ${String(channelId)} was not found`);
+        }
         // Resolve zone IDs if needed
         let defaultTaxZoneId: ID | undefined;
         if ((record.defaultTaxZoneCode || record.defaultTaxZoneId) && shouldUpdateField('defaultTaxZoneId', options.updateOnlyFields)) {
@@ -419,21 +422,44 @@ export class ChannelLoader extends BaseEntityLoader<ChannelInput, Channel> {
         if (record.code !== undefined && shouldUpdateField('code', options.updateOnlyFields)) {
             updateInput.code = record.code;
         }
+        if (record.token !== undefined && shouldUpdateField('token', options.updateOnlyFields)) {
+            updateInput.token = record.token;
+        }
 
+        const defaultLanguageCode = record.defaultLanguageCode !== undefined
+            ? parseLanguageCode(record.defaultLanguageCode)
+            : existing.defaultLanguageCode;
         if (record.defaultLanguageCode !== undefined && shouldUpdateField('defaultLanguageCode', options.updateOnlyFields)) {
-            updateInput.defaultLanguageCode = parseLanguageCode(record.defaultLanguageCode);
+            if (!defaultLanguageCode) {
+                throw new Error(`Invalid default language code "${record.defaultLanguageCode}"`);
+            }
+            updateInput.defaultLanguageCode = defaultLanguageCode;
         }
 
         if (record.availableLanguageCodes !== undefined && shouldUpdateField('availableLanguageCodes', options.updateOnlyFields)) {
-            updateInput.availableLanguageCodes = parseLanguageCodes(record.availableLanguageCodes);
+            const availableLanguageCodes = parseLanguageCodes(record.availableLanguageCodes);
+            if (defaultLanguageCode && !availableLanguageCodes.includes(defaultLanguageCode)) {
+                availableLanguageCodes.unshift(defaultLanguageCode);
+            }
+            updateInput.availableLanguageCodes = availableLanguageCodes;
         }
 
+        const defaultCurrencyCode = record.defaultCurrencyCode !== undefined
+            ? parseCurrencyCode(record.defaultCurrencyCode)
+            : existing.defaultCurrencyCode;
         if (record.defaultCurrencyCode !== undefined && shouldUpdateField('defaultCurrencyCode', options.updateOnlyFields)) {
-            updateInput.defaultCurrencyCode = parseCurrencyCode(record.defaultCurrencyCode);
+            if (!defaultCurrencyCode) {
+                throw new Error(`Invalid default currency code "${record.defaultCurrencyCode}"`);
+            }
+            updateInput.defaultCurrencyCode = defaultCurrencyCode;
         }
 
         if (record.availableCurrencyCodes !== undefined && shouldUpdateField('availableCurrencyCodes', options.updateOnlyFields)) {
-            updateInput.availableCurrencyCodes = parseCurrencyCodes(record.availableCurrencyCodes);
+            const availableCurrencyCodes = parseCurrencyCodes(record.availableCurrencyCodes);
+            if (defaultCurrencyCode && !availableCurrencyCodes.includes(defaultCurrencyCode)) {
+                availableCurrencyCodes.unshift(defaultCurrencyCode);
+            }
+            updateInput.availableCurrencyCodes = availableCurrencyCodes;
         }
 
         if (record.pricesIncludeTax !== undefined && shouldUpdateField('pricesIncludeTax', options.updateOnlyFields)) {
@@ -451,8 +477,17 @@ export class ChannelLoader extends BaseEntityLoader<ChannelInput, Channel> {
         if (record.customFields !== undefined && shouldUpdateField('customFields', options.updateOnlyFields)) {
             updateInput.customFields = record.customFields;
         }
+        if (record.sellerId !== undefined && shouldUpdateField('sellerId', options.updateOnlyFields)) {
+            updateInput.sellerId = record.sellerId;
+        }
 
-        await this.channelService.update(ctx, updateInput as Parameters<typeof this.channelService.update>[1]);
+        const updateResult = await this.channelService.update(
+            ctx,
+            updateInput as Parameters<typeof this.channelService.update>[1],
+        );
+        if ('errorCode' in updateResult) {
+            throw new Error(`Failed to update channel: ${updateResult.message}`);
+        }
 
         this.logger.debug(`Updated channel ${record.code} (ID: ${channelId})`);
     }

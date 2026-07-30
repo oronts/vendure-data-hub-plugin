@@ -6,7 +6,6 @@
 
 import { RequestContext } from '@vendure/core';
 import { TransactionalConnection } from '@vendure/core';
-import { SERVICE_DEFAULTS } from '../../constants/index';
 import {
     FeedConfig,
     FeedFieldMapping,
@@ -14,9 +13,11 @@ import {
     ProductWithCustomFields,
     CustomFieldsRecord,
     CustomFieldValue,
+    FeedGenerationDiagnostics,
 } from './feed-types';
 import {
     buildProductUrl,
+    getFeedBaseUrl,
     getImageUrl,
     getAdditionalImages,
     extractFacetValue,
@@ -29,6 +30,7 @@ import { FIELD_PREFIX, FEED_LIMITS, FEED_DEFAULTS, GenericAvailabilityStatus } f
 import { LOGGER_CONTEXTS } from '../../constants/core';
 import { DataHubLoggerFactory } from '../../services/logger';
 import { minorToMajorUnits } from '../../utils/money.utils';
+import { recordFeedItemWarning, recordGeneratedFeedItem } from './feed-diagnostics';
 
 const feedLogger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.FEED_GENERATOR);
 
@@ -102,7 +104,7 @@ async function transformVariantToItem(
     moneyPrecision: number,
     options: JSONGeneratorOptions,
 ): Promise<JSONFeedItem> {
-    const baseUrl = config.options?.baseUrl || SERVICE_DEFAULTS.EXAMPLE_BASE_URL;
+    const baseUrl = getFeedBaseUrl(config);
     const currency = String(variant.currencyCode ?? config.options?.currency ?? FEED_DEFAULTS.CURRENCY);
     const product = variant.product as ProductWithCustomFields | undefined;
     const stockOnHand = getFeedStockQuantity(variant);
@@ -245,7 +247,9 @@ export async function generateJSONFeed(
     connection: TransactionalConnection,
     moneyPrecision: number,
     options?: JSONGeneratorOptions,
+    diagnostics?: FeedGenerationDiagnostics,
 ): Promise<string> {
+    getFeedBaseUrl(config);
     const opts: JSONGeneratorOptions = {
         includeAdditionalImages: true,
         includeCustomFields: false,
@@ -253,6 +257,7 @@ export async function generateJSONFeed(
         prettyPrint: true,
         indentSpaces: FEED_LIMITS.JSON_INDENT_SPACES,
         includeMetadata: true,
+        customMappings: config.fieldMappings,
         ...options,
     };
 
@@ -263,8 +268,10 @@ export async function generateJSONFeed(
         try {
             const item = await transformVariantToItem(ctx, variant, config, connection, moneyPrecision, opts);
             items.push(item);
+            recordGeneratedFeedItem(diagnostics);
         } catch (error) {
-            feedLogger.warn(`Failed to process variant ${variant.id}: ${error}`);
+            const warning = `Failed to process variant ${variant.id}: ${String(error)}`;
+            feedLogger.warn(recordFeedItemWarning(diagnostics, warning));
         }
     }
 

@@ -1,7 +1,7 @@
 import { JsonValue, JsonObject } from '../types';
 import { validateRegexSafety } from '../utils/safe-regex.utils';
 import { globToRegex } from '../../shared';
-import { TRANSFORM_LIMITS } from '../constants/index';
+import { TRANSFORM_LIMITS } from '../constants/defaults/core-defaults';
 import {
     getNestedValue as getNestedValueUtil,
     setNestedValue as setNestedValueUtil,

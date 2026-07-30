@@ -161,7 +161,7 @@ export const REPLACE_OPERATOR_DEFINITION: AdapterDefinition = {
         fields: [
             { key: 'path', label: 'Field path', type: 'string', required: true },
             { key: 'search', label: 'Search text', type: 'string', required: true },
-            { key: 'replacement', label: 'Replacement', type: 'string', required: true },
+            { key: 'replacement', label: 'Replacement', type: 'string', required: true, defaultValue: '' },
             { key: 'all', label: 'Replace all occurrences', type: 'boolean' },
         ],
     },
@@ -246,7 +246,7 @@ export const REPLACE_REGEX_OPERATOR_DEFINITION: AdapterDefinition = {
         fields: [
             { key: 'path', label: 'Field path', type: 'string', required: true },
             { key: 'pattern', label: 'Regex pattern', type: 'string', required: true, description: 'Regular expression pattern (without delimiters)' },
-            { key: 'replacement', label: 'Replacement', type: 'string', required: true, description: 'Replacement string (use $1, $2 for capture groups)' },
+            { key: 'replacement', label: 'Replacement', type: 'string', required: true, defaultValue: '', description: 'Replacement string (use $1, $2 for capture groups)' },
             { key: 'flags', label: 'Regex flags', type: 'string', description: 'e.g., "gi" for global case-insensitive. Default: "g"' },
         ],
     },

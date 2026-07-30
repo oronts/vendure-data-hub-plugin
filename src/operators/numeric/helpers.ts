@@ -7,7 +7,7 @@ import {
     VOLUME_UNITS,
     convertUnit,
 } from '../../constants/units';
-import { TRANSFORM_LIMITS } from '../../constants/index';
+import { TRANSFORM_LIMITS } from '../../constants/defaults/core-defaults';
 
 /** Clamp decimal places to a safe range to prevent Math.pow(10, n) overflow. */
 function clampDecimals(decimals: number): number {

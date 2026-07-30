@@ -29,7 +29,7 @@ export async function resolveZoneId(
     }
 
     // Look up by code/name
-    const zones = await zoneService.findAll(ctx, { take: PAGINATION.MAX_LOOKUP_LIMIT } as any);
+    const zones = await zoneService.findAll(ctx, { take: PAGINATION.MAX_LOOKUP_LIMIT });
     const match = zones.items.find(
         z => z.name.toLowerCase() === zoneCode.toLowerCase()
     );
@@ -92,4 +92,3 @@ export function parseLanguageCodes(codes: string[]): LanguageCode[] {
 export function generateChannelToken(code: string): string {
     return `${code.toLowerCase().replace(/[^a-z0-9]/g, '')}_${randomHexSlice(8)}`;
 }
-

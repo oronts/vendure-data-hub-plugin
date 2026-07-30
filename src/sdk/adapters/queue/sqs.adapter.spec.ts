@@ -82,7 +82,7 @@ describe('SqsAdapter AUTO acknowledgment', () => {
         const send = vi.fn(async (command: unknown) => {
             commands.push(command);
             return command instanceof SendMessageBatchCommand
-                ? { Successful: [{ Id: 'message-1', MessageId: 'aws-message-1' }] }
+                ? { Successful: [{ Id: '0', MessageId: 'aws-message-1' }] }
                 : {};
         });
         class FakeSqsClient {
@@ -162,7 +162,7 @@ describe('SqsAdapter AUTO acknowledgment', () => {
         const commands: unknown[] = [];
         const send = vi.fn(async (command: unknown) => {
             commands.push(command);
-            return { Successful: [{ Id: 'message-1', MessageId: 'aws-message-1' }] };
+            return { Successful: [{ Id: '0', MessageId: 'aws-message-1' }] };
         });
         class FakeSqsClient {
             readonly send = send;
@@ -400,4 +400,5 @@ describe('SqsAdapter AUTO acknowledgment', () => {
         expect(send.mock.calls.filter(([command]) =>
             command instanceof ReceiveMessageCommand)).toHaveLength(1);
     });
+
 });

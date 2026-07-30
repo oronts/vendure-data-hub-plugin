@@ -13,8 +13,8 @@ import {
     EntityFieldSchema,
     TargetOperation,
 } from '../../types/index';
-import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
-import { LOGGER_CONTEXTS } from '../../constants/index';
+import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger/datahub-logger';
+import { LOGGER_CONTEXTS } from '../../constants/core';
 import { VendureEntityType } from '../../constants/enums';
 import {
     BaseEntityLoader,
@@ -106,7 +106,7 @@ export class InventoryLoader extends BaseEntityLoader<InventoryInput, ProductVar
                     key: 'stockLocationName',
                     label: 'Stock Location Name',
                     type: 'string',
-                    description: 'Name of the stock location (uses default if not specified)',
+                    description: 'Exact stock location name (uses Vendure default if not specified)',
                     example: 'Main Warehouse',
                 },
                 {
@@ -146,8 +146,7 @@ export class InventoryLoader extends BaseEntityLoader<InventoryInput, ProductVar
 
         let targetLocationId = stockLocationId;
         if (!targetLocationId) {
-            const locations = await this.stockLocationService.findAll(ctx, {});
-            targetLocationId = locations.totalItems > 0 ? locations.items[0].id : undefined;
+            targetLocationId = (await this.stockLocationService.defaultStockLocation(ctx)).id;
         }
 
         if (!targetLocationId) {

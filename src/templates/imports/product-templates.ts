@@ -3,6 +3,7 @@
  */
 
 import { ImportTemplate } from './types';
+import { createCsvFileSource } from './csv-file-source';
 
 /**
  * Simple Products CSV Template
@@ -27,21 +28,10 @@ export const simpleProductsTemplate: ImportTemplate = {
     definition: {
         version: 1,
         type: 'IMPORT',
-        source: {
-            type: 'FILE_UPLOAD',
-            format: {
-                format: 'CSV',
-                csv: {
-                    delimiter: ',',
-                    headerRow: true,
-                    trimWhitespace: true,
-                },
-            },
-            config: {
-                type: 'FILE_UPLOAD',
-                allowedExtensions: ['.csv'],
-            },
-        },
+        source: createCsvFileSource({
+            trimWhitespace: true,
+            allowedExtensions: ['.csv'],
+        }),
         target: {
             entity: 'PRODUCT_VARIANT',
             operation: 'UPSERT',
@@ -103,21 +93,10 @@ export const productsWithVariantsTemplate: ImportTemplate = {
     definition: {
         version: 1,
         type: 'IMPORT',
-        source: {
-            type: 'FILE_UPLOAD',
-            format: {
-                format: 'CSV',
-                csv: {
-                    delimiter: ',',
-                    headerRow: true,
-                    trimWhitespace: true,
-                },
-            },
-            config: {
-                type: 'FILE_UPLOAD',
-                allowedExtensions: ['.csv'],
-            },
-        },
+        source: createCsvFileSource({
+            trimWhitespace: true,
+            allowedExtensions: ['.csv'],
+        }),
         target: {
             entity: 'PRODUCT_VARIANT',
             operation: 'UPSERT',
@@ -182,20 +161,7 @@ export const shopifyProductsTemplate: ImportTemplate = {
     definition: {
         version: 1,
         type: 'IMPORT',
-        source: {
-            type: 'FILE_UPLOAD',
-            format: {
-                format: 'CSV',
-                csv: {
-                    delimiter: ',',
-                    headerRow: true,
-                    trimWhitespace: true,
-                },
-            },
-            config: {
-                type: 'FILE_UPLOAD',
-            },
-        },
+        source: createCsvFileSource({ trimWhitespace: true }),
         target: {
             entity: 'PRODUCT_VARIANT',
             operation: 'UPSERT',
@@ -261,20 +227,7 @@ export const woocommerceProductsTemplate: ImportTemplate = {
     definition: {
         version: 1,
         type: 'IMPORT',
-        source: {
-            type: 'FILE_UPLOAD',
-            format: {
-                format: 'CSV',
-                csv: {
-                    delimiter: ',',
-                    headerRow: true,
-                    trimWhitespace: true,
-                },
-            },
-            config: {
-                type: 'FILE_UPLOAD',
-            },
-        },
+        source: createCsvFileSource({ trimWhitespace: true }),
         target: {
             entity: 'PRODUCT_VARIANT',
             operation: 'UPSERT',
@@ -337,19 +290,7 @@ export const priceUpdateTemplate: ImportTemplate = {
     definition: {
         version: 1,
         type: 'IMPORT',
-        source: {
-            type: 'FILE_UPLOAD',
-            format: {
-                format: 'CSV',
-                csv: {
-                    delimiter: ',',
-                    headerRow: true,
-                },
-            },
-            config: {
-                type: 'FILE_UPLOAD',
-            },
-        },
+        source: createCsvFileSource(),
         target: {
             entity: 'PRODUCT_VARIANT',
             operation: 'UPDATE',

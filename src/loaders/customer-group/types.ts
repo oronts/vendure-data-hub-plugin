@@ -16,7 +16,7 @@ export const CUSTOMER_GROUP_LOADER_METADATA = {
     name: 'Customer Group Loader',
     description: 'Imports customer groups/segments with customer assignment',
     adapterCode: 'customerGroupUpsert',
-    supportedOperations: ['CREATE', 'UPDATE', 'UPSERT', 'DELETE'] as TargetOperation[],
+    supportedOperations: ['CREATE', 'UPDATE', 'UPSERT'] as TargetOperation[],
     lookupFields: ['name', 'id'],
     requiredFields: ['name'],
 } as const;

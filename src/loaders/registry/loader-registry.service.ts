@@ -3,12 +3,28 @@ import { ModuleRef } from '@nestjs/core';
 import { EntityLoader, LoaderRegistry, EntityFieldSchema, TargetOperation } from '../../types/index';
 import { VendureEntityType as VendureEntityTypeUnion } from '../../types/index';
 import { VendureEntityType } from '../../constants/enums';
-import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
-import { LOGGER_CONTEXTS } from '../../constants/index';
+import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger/datahub-logger';
+import { LOGGER_CONTEXTS } from '../../constants/core';
 import { ENTITY_LOADER_REGISTRY } from '../entity-loader-registry';
 import { toErrorOrUndefined } from '../../utils/error.utils';
 
 export type LoaderRegistrationCallback = (registry: LoaderRegistryService) => void | Promise<void>;
+
+function isEntityLoader(value: unknown): value is EntityLoader {
+    if (value === null || typeof value !== 'object') {
+        return false;
+    }
+    const candidate = value as Record<string, unknown>;
+    return typeof candidate.entityType === 'string'
+        && typeof candidate.name === 'string'
+        && typeof candidate.load === 'function'
+        && typeof candidate.findExisting === 'function'
+        && typeof candidate.validate === 'function'
+        && typeof candidate.getFieldSchema === 'function'
+        && Array.isArray(candidate.supportedOperations)
+        && Array.isArray(candidate.lookupFields)
+        && Array.isArray(candidate.requiredFields);
+}
 
 @Injectable()
 export class LoaderRegistryService implements LoaderRegistry, OnModuleInit {
@@ -27,7 +43,11 @@ export class LoaderRegistryService implements LoaderRegistry, OnModuleInit {
         try {
             // Auto-register all loaders from the entity loader registry
             for (const [, LoaderClass] of ENTITY_LOADER_REGISTRY) {
-                this.register(await this.moduleRef.resolve(LoaderClass as any));
+                const loader = await this.moduleRef.resolve(LoaderClass);
+                if (!isEntityLoader(loader)) {
+                    throw new Error(`Resolved provider ${LoaderClass.name} is not an entity loader`);
+                }
+                this.register(loader);
             }
 
             for (const callback of this.customCallbacks) {

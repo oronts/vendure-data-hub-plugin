@@ -44,7 +44,7 @@ export const context = {
 
     /** `context.batch(100, { channel: 'default' })` */
     batch(batchSize: number, options?: Partial<Omit<PipelineContext, 'throughput'>>): PipelineContext {
-        return { throughput: { batchSize }, runMode: 'BATCH', ...options };
+        return { throughput: { batchSize }, ...options };
     },
 };
 
