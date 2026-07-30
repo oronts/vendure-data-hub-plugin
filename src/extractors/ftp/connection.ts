@@ -1,4 +1,3 @@
-import { Writable } from 'stream';
 import { Client as BasicFtpClient } from 'basic-ftp';
 import SftpClient from 'ssh2-sftp-client';
 import { ExtractorContext } from '../../types/index';
@@ -10,6 +9,7 @@ import {
     normalizeRemoteHostname,
     resolveSafeRemoteAddress,
 } from '../../utils/remote-host-security.utils';
+import { createBoundedBufferSink } from '../shared/remote-file-content';
 
 const RAW_FTP_CREDENTIAL_FIELDS = [
     'password',
@@ -149,16 +149,9 @@ export async function createFtpClient(
         },
 
         async download(remotePath: string): Promise<Buffer> {
-            const chunks: Buffer[] = [];
-            const writable = new Writable({
-                write(chunk, _encoding, callback) {
-                    chunks.push(Buffer.from(chunk));
-                    callback();
-                },
-            });
-
-            await client.downloadTo(writable, remotePath);
-            return Buffer.concat(chunks);
+            const sink = createBoundedBufferSink(remotePath);
+            await client.downloadTo(sink.writable, remotePath);
+            return sink.toBuffer();
         },
 
         async delete(remotePath: string): Promise<void> {
@@ -233,14 +226,9 @@ export async function createSftpClient(
         },
 
         async download(remotePath: string): Promise<Buffer> {
-            const result = await client.get(remotePath);
-            if (Buffer.isBuffer(result)) {
-                return result;
-            }
-            if (typeof result === 'string') {
-                return Buffer.from(result);
-            }
-            throw new Error('Unexpected SFTP download result type');
+            const sink = createBoundedBufferSink(remotePath);
+            await client.get(remotePath, sink.writable);
+            return sink.toBuffer();
         },
 
         async delete(remotePath: string): Promise<void> {

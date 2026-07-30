@@ -22,12 +22,6 @@ export interface S3XlsxOptions {
     header?: boolean;
 }
 
-export interface S3SelectConfig {
-    enabled: boolean;
-    expression: string;
-    inputSerialization?: 'csv' | 'json';
-}
-
 export interface S3MoveAfterProcessConfig {
     enabled: boolean;
     destinationPrefix: string;
@@ -91,8 +85,6 @@ export interface S3ExtractorConfig extends ExtractorConfig {
     /** Continue on parse errors */
     continueOnError?: boolean;
 
-    /** Use S3 Select for server-side filtering (CSV/JSON only) */
-    s3Select?: S3SelectConfig;
 }
 
 export interface S3ObjectInfo {

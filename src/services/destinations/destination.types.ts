@@ -1,24 +1,13 @@
-/**
- * Destination Types
- *
- * Type definitions for export destination configurations and results.
- */
-
 import { ConnectionAuthType, DESTINATION_TYPE } from '../../constants/index';
 import type { DestinationType as SharedDestinationType } from '../../../shared/types';
 
 export { DESTINATION_TYPE };
 
-/**
- * Delivery destination types - subset of DestinationType that represents
- * actual physical delivery targets. Excludes 'FILE', 'DOWNLOAD', and
- * 'WEBHOOK' which are handled at a higher level in the export pipeline.
- */
-export type DestinationType = Extract<SharedDestinationType, 'S3' | 'SFTP' | 'FTP' | 'HTTP' | 'LOCAL' | 'EMAIL'>;
+export type DestinationType = Extract<
+    SharedDestinationType,
+    'S3' | 'SFTP' | 'FTP' | 'HTTP' | 'LOCAL' | 'EMAIL'
+>;
 
-/**
- * Base destination configuration
- */
 interface BaseDestinationConfig {
     type: DestinationType;
     id: string;
@@ -26,57 +15,120 @@ interface BaseDestinationConfig {
     enabled?: boolean;
 }
 
-/**
- * S3 destination configuration
- */
 export interface S3DestinationConfig extends BaseDestinationConfig {
     type: 'S3';
     bucket: string;
     region: string;
-    accessKeyId: string;
-    secretAccessKey: string;
+    accessKeyIdSecretCode: string;
+    secretAccessKeySecretCode: string;
     prefix?: string;
     acl?: 'private' | 'public-read';
-    endpoint?: string; // For S3-compatible services like MinIO
+    endpoint?: string;
 }
 
-/**
- * SFTP destination configuration
- */
 export interface SFTPDestinationConfig extends BaseDestinationConfig {
     type: 'SFTP';
     host: string;
     port?: number;
     username: string;
-    password?: string;
-    privateKey?: string;
-    passphrase?: string;
+    passwordSecretCode?: string;
+    privateKeySecretCode?: string;
+    passphraseSecretCode?: string;
+    hostKeyFingerprintSecretCode?: string;
     remotePath: string;
     timeout?: number;
 }
 
-/**
- * FTP destination configuration
- */
 export interface FTPDestinationConfig extends BaseDestinationConfig {
     type: 'FTP';
     host: string;
     port?: number;
     username: string;
-    password: string;
+    passwordSecretCode: string;
     remotePath: string;
     secure?: boolean;
 }
 
-/**
- * HTTP destination configuration
- */
+export type DestinationAuthType =
+    | ConnectionAuthType.NONE
+    | ConnectionAuthType.BASIC
+    | ConnectionAuthType.BEARER
+    | ConnectionAuthType.API_KEY;
+
+export interface DestinationAuthConfig {
+    type: DestinationAuthType;
+    secretCode?: string;
+    headerName?: string;
+    username?: string;
+    usernameSecretCode?: string;
+}
+
 export interface HTTPDestinationConfig extends BaseDestinationConfig {
     type: 'HTTP';
     url: string;
     method?: 'POST' | 'PUT' | 'PATCH';
     headers?: Record<string, string>;
-    authType?: ConnectionAuthType;
+    headerSecretCodes?: Record<string, string>;
+    auth?: DestinationAuthConfig;
+}
+
+export interface LocalDestinationConfig extends BaseDestinationConfig {
+    type: 'LOCAL';
+    directory: string;
+}
+
+export interface EmailSmtpConfig {
+    host: string;
+    port: number;
+    secure?: boolean;
+    username?: string;
+    usernameSecretCode?: string;
+    passwordSecretCode?: string;
+}
+
+export interface EmailDestinationConfig extends BaseDestinationConfig {
+    type: 'EMAIL';
+    to: string[];
+    cc?: string[];
+    bcc?: string[];
+    from?: string;
+    subject: string;
+    body?: string;
+    smtp: EmailSmtpConfig;
+}
+
+export type DestinationConfig =
+    | S3DestinationConfig
+    | SFTPDestinationConfig
+    | FTPDestinationConfig
+    | HTTPDestinationConfig
+    | LocalDestinationConfig
+    | EmailDestinationConfig;
+
+export interface ResolvedS3DestinationConfig extends Omit<
+    S3DestinationConfig,
+    'accessKeyIdSecretCode' | 'secretAccessKeySecretCode'
+> {
+    accessKeyId: string;
+    secretAccessKey: string;
+}
+
+export interface ResolvedSFTPDestinationConfig extends Omit<
+    SFTPDestinationConfig,
+    'passwordSecretCode' | 'privateKeySecretCode' | 'passphraseSecretCode' | 'hostKeyFingerprintSecretCode'
+> {
+    password?: string;
+    privateKey?: string;
+    hostKeyFingerprint?: string;
+    passphrase?: string;
+}
+
+export interface ResolvedFTPDestinationConfig extends Omit<FTPDestinationConfig, 'passwordSecretCode'> {
+    password: string;
+}
+
+export interface ResolvedHTTPDestinationConfig extends Omit<HTTPDestinationConfig, 'auth' | 'headerSecretCodes'> {
+    authType?: DestinationAuthType;
     authConfig?: {
         username?: string;
         password?: string;
@@ -86,26 +138,8 @@ export interface HTTPDestinationConfig extends BaseDestinationConfig {
     };
 }
 
-/**
- * Local filesystem destination configuration
- */
-export interface LocalDestinationConfig extends BaseDestinationConfig {
-    type: 'LOCAL';
-    directory: string;
-}
-
-/**
- * Email destination configuration
- */
-export interface EmailDestinationConfig extends BaseDestinationConfig {
-    type: 'EMAIL';
-    to: string[];
-    cc?: string[];
-    bcc?: string[];
-    from?: string;
-    subject: string;
-    body?: string;
-    smtp?: {
+export interface ResolvedEmailDestinationConfig extends Omit<EmailDestinationConfig, 'smtp'> {
+    smtp: {
         host: string;
         port: number;
         secure?: boolean;
@@ -116,20 +150,14 @@ export interface EmailDestinationConfig extends BaseDestinationConfig {
     };
 }
 
-/**
- * Union of all destination configurations
- */
-export type DestinationConfig =
-    | S3DestinationConfig
-    | SFTPDestinationConfig
-    | FTPDestinationConfig
-    | HTTPDestinationConfig
+export type ResolvedDestinationConfig =
+    | ResolvedS3DestinationConfig
+    | ResolvedSFTPDestinationConfig
+    | ResolvedFTPDestinationConfig
+    | ResolvedHTTPDestinationConfig
     | LocalDestinationConfig
-    | EmailDestinationConfig;
+    | ResolvedEmailDestinationConfig;
 
-/**
- * Export delivery result
- */
 export interface DeliveryResult {
     success: boolean;
     destinationId: string;
@@ -137,16 +165,12 @@ export interface DeliveryResult {
     filename: string;
     size: number;
     deliveredAt?: Date;
-    location?: string; // URL or path where file was delivered
+    location?: string;
     error?: string;
     metadata?: Record<string, unknown>;
 }
 
-/**
- * Delivery options
- */
 export interface DeliveryOptions {
     mimeType?: string;
     metadata?: Record<string, unknown>;
 }
-

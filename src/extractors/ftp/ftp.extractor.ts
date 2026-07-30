@@ -8,6 +8,7 @@ import {
     RecordEnvelope,
     StepConfigSchema,
     ExtractorCategory,
+    JsonObject,
 } from '../../types/index';
 import { FileParserService } from '../../parsers/file-parser.service';
 import { getErrorMessage } from '../../utils/error.utils';
@@ -36,7 +37,15 @@ import {
     isValidPort,
 } from './file-operations';
 import { isBlockedHostname } from '../../utils/url-security.utils';
+import { isProductionEnvironment } from '../../utils/remote-host-security.utils';
 import { parseModifiedAfterDate } from '../shared';
+import { resolveConnectionBackedConfig } from '../shared/connection-backed-config';
+import { readRemoteFileSourceReferences } from '../shared/remote-file-source';
+import { assertRemoteFileSize } from '../shared/remote-file-content';
+import {
+    appendRemoteSourceAcknowledgement,
+    createRemoteSourceAcknowledgement,
+} from '../shared/remote-source-acknowledgement';
 
 const MAX_PREVIEW_FILES = TRANSFORM_LIMITS.MAX_PREVIEW_FILES;
 
@@ -58,6 +67,7 @@ export class FtpExtractor implements DataExtractor<FtpExtractorConfig> {
         context: ExtractorContext,
         config: FtpExtractorConfig,
     ): AsyncGenerator<RecordEnvelope, void, undefined> {
+        config = await this.resolveConfig(context, config);
         context.logger.info('Starting FTP/SFTP extraction', {
             protocol: config.protocol,
             host: config.host,
@@ -67,18 +77,40 @@ export class FtpExtractor implements DataExtractor<FtpExtractorConfig> {
         const client = await createClient(context, config);
 
         try {
-            const allFiles = await client.list(config.remotePath);
-            const files = filterFiles(allFiles, config, context.checkpoint.data);
+            const sourceReferences = readRemoteFileSourceReferences(
+                context.sourceRecords,
+                config.connectionCode,
+            );
+            if (sourceReferences !== undefined && sourceReferences.length === 0) {
+                throw new Error('No valid remote-file source reference was provided for this FTP/SFTP extractor');
+            }
+            const files = sourceReferences === undefined
+                ? filterFiles(await client.list(config.remotePath), config, context.checkpoint.data)
+                : sourceReferences.map(reference => ({
+                    path: reference.path,
+                    name: reference.name,
+                    modifiedAt: new Date(reference.modifiedAt),
+                    size: reference.size,
+                    isDirectory: false,
+                }));
             const maxFiles = config.maxFiles || FTP_DEFAULTS.maxFiles;
 
             let filesProcessed = 0;
-            let lastSuccessfulFile: typeof files[number] | undefined;
+            let contiguousWatermark: typeof files[number] | undefined;
+            let canAdvanceWatermark = true;
+            let cancelled = false;
+            let checkpointChanged = false;
+            let nextCheckpoint = { ...context.checkpoint.data };
 
             for (const file of files) {
-                if (await context.isCancelled()) break;
+                if (await context.isCancelled()) {
+                    cancelled = true;
+                    break;
+                }
                 if (filesProcessed >= maxFiles) break;
 
                 try {
+                    assertRemoteFileSize(file.size, buildFtpSourceId(config.protocol, config.host, file.path));
                     const content = await client.download(file.path);
                     const records = await parseFtpContent(content, file.name, config, this.fileParser);
                     const metadata = buildFileMetadata(config.protocol, config.host, file);
@@ -98,32 +130,52 @@ export class FtpExtractor implements DataExtractor<FtpExtractorConfig> {
                         };
                     }
 
-                    // Post-processing
-                    if (config.deleteAfterProcess) {
-                        await client.delete(file.path);
-                        context.logger.debug(`Deleted file: ${file.path}`);
-                    } else if (config.moveAfterProcess?.enabled && config.moveAfterProcess.destinationPath) {
-                        const destPath = calculateDestinationPath(
-                            file.path,
-                            config.moveAfterProcess.destinationPath,
+                    const action = config.deleteAfterProcess
+                        ? { action: 'DELETE' as const }
+                        : config.moveAfterProcess?.enabled && config.moveAfterProcess.destinationPath
+                            ? {
+                                action: 'MOVE' as const,
+                                destinationPath: calculateDestinationPath(
+                                    file.path,
+                                    config.moveAfterProcess.destinationPath,
+                                ),
+                            }
+                            : undefined;
+                    if (action) {
+                        nextCheckpoint = appendRemoteSourceAcknowledgement(
+                            nextCheckpoint,
+                            createRemoteSourceAcknowledgement({
+                                runId: context.runId,
+                                stepKey: context.stepKey,
+                                adapterCode: 'ftp',
+                                sourcePath: file.path,
+                                config: config as unknown as JsonObject,
+                                ...action,
+                            }),
                         );
-                        await client.rename(file.path, destPath);
-                        context.logger.debug(`Moved file: ${file.path} -> ${destPath}`);
+                        checkpointChanged = true;
                     }
 
                     filesProcessed++;
-                    lastSuccessfulFile = file;
+                    if (canAdvanceWatermark && sourceReferences === undefined) {
+                        contiguousWatermark = file;
+                    }
                 } catch (error) {
                     if (!config.continueOnError) throw error;
+                    canAdvanceWatermark = false;
                     context.logger.warn(`Failed to process ${file.path}: ${error}`);
                 }
             }
 
-            if (lastSuccessfulFile) {
-                context.setCheckpoint({
-                    lastProcessedFile: lastSuccessfulFile.path,
-                    lastModifiedAt: lastSuccessfulFile.modifiedAt.toISOString(),
-                });
+            if (!cancelled) {
+                if (contiguousWatermark) {
+                    nextCheckpoint.lastProcessedFile = contiguousWatermark.path;
+                    nextCheckpoint.lastModifiedAt = contiguousWatermark.modifiedAt.toISOString();
+                    checkpointChanged = true;
+                }
+                if (checkpointChanged) {
+                    context.setCheckpoint(nextCheckpoint);
+                }
             }
 
             context.logger.info(`FTP/SFTP extraction completed`, { filesProcessed });
@@ -133,9 +185,10 @@ export class FtpExtractor implements DataExtractor<FtpExtractorConfig> {
     }
 
     async validate(
-        _context: ExtractorContext,
+        context: ExtractorContext,
         config: FtpExtractorConfig,
     ): Promise<ExtractorValidationResult> {
+        config = await this.resolveConfig(context, config);
         const errors: Array<{ field: string; message: string; code?: string }> = [];
         const warnings: Array<{ field?: string; message: string }> = [];
 
@@ -179,6 +232,16 @@ export class FtpExtractor implements DataExtractor<FtpExtractorConfig> {
                 });
             }
         }
+        if (
+            config.protocol === FTP_PROTOCOLS.SFTP &&
+            isProductionEnvironment() &&
+            !config.hostKeyFingerprintSecretCode
+        ) {
+            errors.push({
+                field: 'hostKeyFingerprintSecretCode',
+                message: 'SFTP host-key fingerprint is required in production',
+            });
+        }
 
         if (config.modifiedAfter) {
             const date = parseModifiedAfterDate(config.modifiedAfter);
@@ -207,6 +270,7 @@ export class FtpExtractor implements DataExtractor<FtpExtractorConfig> {
         context: ExtractorContext,
         config: FtpExtractorConfig,
     ): Promise<ConnectionTestResult> {
+        config = await this.resolveConfig(context, config);
         const result = await testFtpConnection(context, config);
 
         if (result.success) {
@@ -241,6 +305,7 @@ export class FtpExtractor implements DataExtractor<FtpExtractorConfig> {
         limit: number = 10,
     ): Promise<ExtractorPreviewResult> {
         try {
+            config = await this.resolveConfig(context, config);
             const client = await createClient(context, config);
             const records: RecordEnvelope[] = [];
 
@@ -252,6 +317,7 @@ export class FtpExtractor implements DataExtractor<FtpExtractorConfig> {
                     if (records.length >= limit) break;
 
                     try {
+                        assertRemoteFileSize(file.size, buildFtpSourceId(config.protocol, config.host, file.path));
                         const content = await client.download(file.path);
                         const parsed = await parseFtpContent(content, file.name, config, this.fileParser);
                         for (const data of parsed.slice(0, limit - records.length)) {
@@ -263,8 +329,8 @@ export class FtpExtractor implements DataExtractor<FtpExtractorConfig> {
                                 },
                             });
                         }
-                    } catch {
-                        // Skip files that fail to parse during preview
+                    } catch (error) {
+                        throw new Error(`Unable to preview ${config.protocol.toUpperCase()} file ${file.path}: ${getErrorMessage(error)}`);
                     }
                 }
 
@@ -293,5 +359,23 @@ export class FtpExtractor implements DataExtractor<FtpExtractorConfig> {
                 },
             };
         }
+    }
+    private async resolveConfig(
+        context: ExtractorContext,
+        config: FtpExtractorConfig,
+    ): Promise<FtpExtractorConfig> {
+        const resolved = await resolveConnectionBackedConfig(
+            context,
+            config as unknown as JsonObject,
+            ['FTP', 'SFTP'],
+        );
+        const protocol = resolved.config.protocol ?? (
+            resolved.connectionType === 'SFTP'
+                ? FTP_PROTOCOLS.SFTP
+                : resolved.connectionType === 'FTP'
+                    ? FTP_PROTOCOLS.FTP
+                    : undefined
+        );
+        return { ...resolved.config, protocol } as unknown as FtpExtractorConfig;
     }
 }

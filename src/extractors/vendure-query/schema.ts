@@ -10,6 +10,7 @@
  */
 import { StepConfigSchema } from '../../../shared/types/extractor.types';
 import { SortOrder } from '../../constants/enums';
+import { FIELD_LIMITS } from '../../constants/validation';
 import { BATCH } from '../../../shared/constants';
 import { SORT_ORDER_OPTIONS, VENDURE_ENTITY_TYPE_OPTIONS } from '../../constants/adapter-schema-options';
 
@@ -49,7 +50,7 @@ export const VENDURE_QUERY_EXTRACTOR_SCHEMA: StepConfigSchema = {
             description: 'Number of records per batch',
             type: 'number',
             defaultValue: BATCH.BULK_SIZE,
-            validation: { min: 1 },
+            validation: { min: 1, max: FIELD_LIMITS.BATCH_SIZE_MAX },
         },
         {
             key: 'sortBy',

@@ -4,16 +4,36 @@
  * Delivery via email attachment using nodemailer.
  */
 
-import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as nodemailer from 'nodemailer';
 import { LOGGER_CONTEXTS, CONTENT_TYPES, EXTENSION_MIME_MAP } from '../../constants/index';
-import { EmailDestinationConfig, DeliveryResult, DeliveryOptions, DESTINATION_TYPE } from './destination.types';
+import { ResolvedEmailDestinationConfig, DeliveryResult, DeliveryOptions, DESTINATION_TYPE } from './destination.types';
 import { DataHubLoggerFactory } from '../logger';
 import { getErrorMessage, toErrorOrUndefined } from '../../utils/error.utils';
-import { securePath } from '../../utils/input-validation.utils';
+import { resolveSafeRemoteAddress } from '../../utils/remote-host-security.utils';
+import type { ConnectionTestResult } from '../../../shared/types';
 
 const logger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.EMAIL_HANDLER);
+
+async function createTransport(config: ResolvedEmailDestinationConfig) {
+    if (!config.smtp) {
+        throw new Error('SMTP configuration is required for email delivery');
+    }
+    const remote = await resolveSafeRemoteAddress(config.smtp.host);
+    return nodemailer.createTransport({
+        host: remote.address,
+        port: config.smtp.port,
+        secure: config.smtp.secure ?? (config.smtp.port === 465),
+        name: remote.hostname,
+        tls: {
+            servername: remote.hostname,
+        },
+        auth: config.smtp.auth ? {
+            user: config.smtp.auth.user,
+            pass: config.smtp.auth.pass,
+        } : undefined,
+    });
+}
 
 /**
  * Escape HTML special characters to prevent XSS attacks
@@ -33,26 +53,25 @@ function escapeHtml(text: string): string {
  * Deliver content via email attachment
  */
 export async function deliverToEmail(
-    config: EmailDestinationConfig,
+    config: ResolvedEmailDestinationConfig,
     content: Buffer,
     filename: string,
     options?: DeliveryOptions,
 ): Promise<DeliveryResult> {
     if (!config.smtp) {
-        logger.warn('Email: SMTP not configured, saving attachment locally');
-        return await saveEmailLocally(config, content, filename);
+        return {
+            success: false,
+            destinationId: config.id,
+            destinationType: DESTINATION_TYPE.EMAIL,
+            filename,
+            size: content.length,
+            error: 'SMTP configuration is required for email delivery',
+        };
     }
 
+    let transporter: Awaited<ReturnType<typeof createTransport>> | undefined;
     try {
-        const transporter = nodemailer.createTransport({
-            host: config.smtp.host,
-            port: config.smtp.port,
-            secure: config.smtp.secure ?? (config.smtp.port === 465),
-            auth: config.smtp.auth ? {
-                user: config.smtp.auth.user,
-                pass: config.smtp.auth.pass,
-            } : undefined,
-        });
+        transporter = await createTransport(config);
 
         const mimeType = options?.mimeType || getMimeType(filename);
 
@@ -74,7 +93,6 @@ export async function deliverToEmail(
         };
 
         const info = await transporter.sendMail(mailOptions);
-
         logger.info(`Email: Sent ${filename}`, { recipients: config.to.join(', ') });
 
         return {
@@ -103,9 +121,35 @@ export async function deliverToEmail(
             size: content.length,
             error: errorMessage,
         };
+    } finally {
+        transporter?.close();
     }
 }
 
+export async function testEmailDestination(
+    config: ResolvedEmailDestinationConfig,
+    start: number,
+): Promise<ConnectionTestResult> {
+    try {
+        const transporter = await createTransport(config);
+        try {
+            await transporter.verify();
+        } finally {
+            transporter.close();
+        }
+        return {
+            success: true,
+            message: 'SMTP server is reachable and accepted the configured credentials',
+            latencyMs: Date.now() - start,
+        };
+    } catch (error) {
+        return {
+            success: false,
+            message: getErrorMessage(error),
+            latencyMs: Date.now() - start,
+        };
+    }
+}
 
 /**
  * Get MIME type from filename
@@ -113,52 +157,4 @@ export async function deliverToEmail(
 function getMimeType(filename: string): string {
     const ext = path.extname(filename).toLowerCase();
     return EXTENSION_MIME_MAP[ext] ?? CONTENT_TYPES.OCTET_STREAM;
-}
-
-/**
- * Save email attachment locally when SMTP not configured
- */
-async function saveEmailLocally(
-    config: EmailDestinationConfig,
-    content: Buffer,
-    filename: string,
-): Promise<DeliveryResult> {
-    const localDir = path.join(process.cwd(), 'exports', 'email-staging', config.id);
-    const localPath = securePath(localDir, filename);
-    const metadataFilename = `${filename}.meta.json`;
-
-    // Create directory if it doesn't exist (recursive: true handles both cases)
-    await fs.mkdir(localDir, { recursive: true });
-
-    await fs.writeFile(localPath, content);
-
-    // Save email metadata
-    const metadataPath = securePath(localDir, metadataFilename);
-    await fs.writeFile(metadataPath, JSON.stringify({
-        to: config.to,
-        cc: config.cc,
-        bcc: config.bcc,
-        subject: config.subject,
-        body: config.body,
-        attachment: filename,
-        createdAt: new Date().toISOString(),
-    }, null, 2));
-
-    return {
-        success: true,
-        destinationId: config.id,
-        destinationType: DESTINATION_TYPE.EMAIL,
-        filename,
-        size: content.length,
-        deliveredAt: new Date(),
-        location: `mailto:${config.to.join(',')}`,
-        metadata: {
-            localStaging: true,
-            localPath,
-            metadataPath,
-            message: 'SMTP not configured - attachment saved locally for manual sending',
-            recipients: config.to,
-            subject: config.subject,
-        },
-    };
 }

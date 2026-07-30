@@ -11,7 +11,10 @@ import {
 } from './pipelines';
 import { DEFAULT_CHANNEL_CODE } from '../../shared/constants';
 import { PIMCORE_EXTRACTOR_LIMITS, PIMCORE_PIPELINE_METADATA } from './constants';
-import { validateGraphQLFieldName } from './extractors/query-builder';
+import {
+    resolvePimcoreQueryContract,
+    validateGraphQLFieldName,
+} from './extractors/query-builder';
 import { buildSafePathFilter } from './utils/security.utils';
 
 export * from './types';
@@ -52,8 +55,8 @@ export const pimcoreConnectorDefinition: ConnectorDefinition<PimcoreConnectorCon
         defaultLanguage: 'en',
         sync: {
             deltaSync: true,
-            batchSize: 100,
-            maxPages: 100,
+            batchSize: PIMCORE_EXTRACTOR_LIMITS.DEFAULT_PAGE_SIZE,
+            maxPages: PIMCORE_EXTRACTOR_LIMITS.DEFAULT_MAX_PAGES,
             includeUnpublished: false,
             includeVariants: true,
         },
@@ -77,6 +80,7 @@ export const pimcoreConnectorDefinition: ConnectorDefinition<PimcoreConnectorCon
             'timeoutMs',
             'sync',
             'mapping',
+            'queries',
             'pipelines',
             'vendureChannel',
             'defaultLanguage',
@@ -117,6 +121,26 @@ export const pimcoreConnectorDefinition: ConnectorDefinition<PimcoreConnectorCon
             'positionField',
         ]);
         validateKnownFields(errors, 'mapping.asset', config.mapping?.asset, ['urlField', 'filenameField']);
+        validateKnownFields(errors, 'queries', config.queries, ['product', 'category', 'asset']);
+        validateKnownFields(errors, 'queries.product', config.queries?.product, [
+            'query',
+            'className',
+            'listingField',
+            'responseField',
+            'fragmentType',
+        ]);
+        validateKnownFields(errors, 'queries.category', config.queries?.category, [
+            'query',
+            'className',
+            'listingField',
+            'responseField',
+            'fragmentType',
+        ]);
+        validateKnownFields(errors, 'queries.asset', config.queries?.asset, [
+            'query',
+            'listingField',
+            'responseField',
+        ]);
         validateKnownFields(errors, 'pipelines', config.pipelines, ['productSync', 'categorySync', 'assetSync']);
         validateKnownFields(errors, 'pipelines.productSync', config.pipelines?.productSync, [
             'enabled',
@@ -186,6 +210,7 @@ export const pimcoreConnectorDefinition: ConnectorDefinition<PimcoreConnectorCon
         validateOptionalNonEmptyString(errors, 'pipelines.assetSync.folderPath', config.pipelines?.assetSync?.folderPath);
 
         validateMappingFieldNames(errors, config.mapping);
+        validateQueryConfigs(errors, config);
         validateMimeTypes(errors, config.pipelines?.assetSync?.mimeTypes);
         validatePathFilter(errors, 'sync.pathFilter', config.sync?.pathFilter);
         validatePathFilter(errors, 'pipelines.categorySync.rootPath', config.pipelines?.categorySync?.rootPath);
@@ -286,6 +311,29 @@ function validateMappingFieldNames(errors: string[], mapping: PimcoreConnectorCo
             } catch (error) {
                 errors.push(error instanceof Error ? error.message : `${path}.${field} must be a GraphQL field name`);
             }
+        }
+    }
+}
+
+function validateQueryConfigs(
+    errors: string[],
+    config: PimcoreConnectorConfig,
+): void {
+    for (const entityType of ['product', 'category', 'asset'] as const) {
+        const queryConfig = config.queries?.[entityType];
+        if (!queryConfig) continue;
+
+        if (queryConfig.query !== undefined && (
+            typeof queryConfig.query !== 'string' || !queryConfig.query.trim()
+        )) {
+            errors.push(`queries.${entityType}.query must be a non-empty string`);
+        }
+        try {
+            resolvePimcoreQueryContract(entityType, queryConfig);
+        } catch (error) {
+            errors.push(error instanceof Error
+                ? error.message
+                : `queries.${entityType} contains an invalid GraphQL name`);
         }
     }
 }

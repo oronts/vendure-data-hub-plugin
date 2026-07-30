@@ -3,6 +3,7 @@ import { HTTP, GraphQLPaginationType, OUTBOUND_RESPONSE_LIMITS } from '../../con
 import { getErrorMessage, toErrorOrUndefined } from '../../utils/error.utils';
 import { executeWithRetry, createRetryConfig } from '../../utils/retry.utils';
 import { secureFetch } from '../../utils/secure-fetch.utils';
+import { createExtractorFetchPolicy } from '../shared';
 import { readResponseText } from '../../utils/secure-response-body.utils';
 import {
     DataExtractor,
@@ -28,6 +29,7 @@ import {
     buildPaginatedVariables,
     initPaginationState,
     updatePaginationState,
+    assertGraphqlResponseSucceeded,
     isValidGraphQLUrl,
     isValidGraphQLQuery,
 } from './helpers';
@@ -99,10 +101,7 @@ export class GraphQLExtractor implements DataExtractor<GraphQLExtractorConfig> {
                 const response = await this.executeQuery(context, config, config.variables);
                 requestCount++;
 
-                if (response.errors?.length) {
-                    const errorMsgs = response.errors.map(e => e.message).join('; ');
-                    context.logger.warn(`GraphQL errors: ${errorMsgs}`);
-                }
+                assertGraphqlResponseSucceeded(response);
 
                 const records = extractGraphqlResponseRecords(response, config.dataPath);
                 context.logger.debug(`Extracted ${records.length} records`);
@@ -139,10 +138,7 @@ export class GraphQLExtractor implements DataExtractor<GraphQLExtractorConfig> {
                     const response = await this.executeQuery(context, config, paginatedVariables);
                     requestCount++;
 
-                    if (response.errors?.length) {
-                        const errorMsgs = response.errors.map(e => e.message).join('; ');
-                        context.logger.warn(`GraphQL errors on page ${state.page + 1}: ${errorMsgs}`);
-                    }
+                    assertGraphqlResponseSucceeded(response, `GraphQL page ${state.page + 1}`);
 
                     const records = extractGraphqlResponseRecords(response, config.dataPath);
 
@@ -307,6 +303,7 @@ export class GraphQLExtractor implements DataExtractor<GraphQLExtractorConfig> {
             }
 
             const response = await this.executeQuery(context, config, variables);
+            assertGraphqlResponseSucceeded(response, 'GraphQL preview');
             const records = extractGraphqlResponseRecords(response, config.dataPath);
             const preview = records.slice(0, limit);
 
@@ -316,10 +313,6 @@ export class GraphQLExtractor implements DataExtractor<GraphQLExtractorConfig> {
                     meta: { sourceId: config.url, sequence: index },
                 })),
                 totalAvailable: records.length,
-                metadata: {
-                    hasErrors: !!response.errors?.length,
-                    errors: response.errors?.map(e => e.message) ?? [],
-                },
             };
         } catch (error) {
             return {
@@ -369,9 +362,10 @@ export class GraphQLExtractor implements DataExtractor<GraphQLExtractorConfig> {
                     headers,
                     body,
                     signal: AbortSignal.timeout(config.timeoutMs || GRAPHQL_DEFAULTS.timeoutMs),
-                });
+                }, undefined, createExtractorFetchPolicy(url, config));
 
                 if (!response.ok) {
+                    await response.body?.cancel().catch(() => undefined);
                     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                 }
 

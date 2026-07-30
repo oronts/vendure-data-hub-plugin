@@ -3,6 +3,7 @@ import { PaginationType, TIME_UNITS, HTTP } from '../../constants/index';
 import { getErrorMessage, toErrorOrUndefined } from '../../utils/error.utils';
 import { executeWithRetry, createRetryConfig, isRetryableError, sleep } from '../../utils/retry.utils';
 import { secureFetch } from '../../utils/secure-fetch.utils';
+import { createExtractorFetchPolicy } from '../shared';
 import {
     DataExtractor,
     ExtractorContext,
@@ -284,9 +285,10 @@ export class HttpApiExtractor implements DataExtractor<HttpApiExtractorConfig> {
                     headers,
                     body,
                     signal: AbortSignal.timeout(config.timeoutMs || HTTP.TIMEOUT_MS),
-                });
+                }, undefined, createExtractorFetchPolicy(url, config));
 
                 if (!response.ok) {
+                    await response.body?.cancel().catch(() => undefined);
                     const httpError = new Error(`HTTP ${response.status}: ${response.statusText}`);
                     (httpError as Error & { statusCode: number }).statusCode = response.status;
                     throw httpError;

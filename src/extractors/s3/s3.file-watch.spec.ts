@@ -11,7 +11,12 @@ vi.mock('./client', async importOriginal => ({
     createS3Client: vi.fn(),
 }));
 
-function createContext(): ExtractorContext {
+function createContext(
+    includeSourceRecords = true,
+    checkpointData: ExtractorContext['checkpoint']['data'] = {
+        processedS3Keys: ['incoming/products.json'],
+    },
+): ExtractorContext {
     return {
         connections: {
             get: vi.fn(),
@@ -26,14 +31,16 @@ function createContext(): ExtractorContext {
                 },
             })),
         },
-        sourceRecords: [createRemoteFileSourceRecord({
-            connectionCode: 'incoming-s3',
-            path: 'incoming/products.json',
-            name: 'products.json',
-            modifiedAt: '2026-07-15T10:00:00.000Z',
-            size: 32,
-        })],
-        checkpoint: { data: { processedS3Keys: ['incoming/products.json'] } },
+        sourceRecords: includeSourceRecords
+            ? [createRemoteFileSourceRecord({
+                connectionCode: 'incoming-s3',
+                path: 'incoming/products.json',
+                name: 'products.json',
+                modifiedAt: '2026-07-15T10:00:00.000Z',
+                size: 32,
+            })]
+            : undefined,
+        checkpoint: { data: checkpointData },
         secrets: { get: vi.fn(), getRequired: vi.fn() },
         logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
         setCheckpoint: vi.fn(),
@@ -87,6 +94,40 @@ describe('S3Extractor file-watch execution', () => {
         expect(vi.mocked(createS3Client).mock.calls[0]?.[1]).toMatchObject({
             bucket: 'catalog-imports',
             region: 'eu-central-1',
+        });
+    });
+
+    it('persists processed keys after ordinary bucket extraction', async () => {
+        const client = {
+            listObjects: vi.fn(async () => ({
+                objects: [{
+                    key: 'incoming/products.json',
+                    size: 32,
+                    lastModified: new Date('2026-07-15T10:00:00.000Z'),
+                }],
+                isTruncated: false,
+            })),
+            getObject: vi.fn(async () => Buffer.from('[{"sku":"SKU-1"}]')),
+            deleteObject: vi.fn(),
+            copyObject: vi.fn(),
+            headBucket: vi.fn(),
+            close: vi.fn(),
+        };
+        vi.mocked(createS3Client).mockResolvedValue(client);
+        const context = createContext(false, {});
+        const extractor = new S3Extractor(new FileParserService());
+
+        for await (const _record of extractor.extract(context, {
+            bucket: 'catalog-imports',
+            prefix: 'incoming/',
+            format: 'JSON',
+            continueOnError: false,
+        } as S3ExtractorConfig)) {
+            // Consume the stream so the extractor can persist its checkpoint.
+        }
+
+        expect(context.setCheckpoint).toHaveBeenCalledWith({
+            processedS3Keys: ['incoming/products.json'],
         });
     });
 });

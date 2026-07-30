@@ -7,6 +7,7 @@
 import {
     Product,
     ProductVariant,
+    ID,
     Customer,
     Collection,
     Facet,
@@ -16,6 +17,7 @@ import {
     Asset,
 } from '@vendure/core';
 import { SelectQueryBuilder, ObjectLiteral } from 'typeorm';
+import { SortOrder } from '../../constants/enums';
 import { JsonObject, JsonValue } from '../../types/index';
 import { VendureEntityType } from '../../types/index';
 import { VendureQueryFilter, VendureQueryExtractorConfig } from './types';
@@ -82,6 +84,7 @@ export function applyFilter<T extends ObjectLiteral>(
             queryBuilder.andWhere(`entity.${filter.field} > :${paramName}`, { [paramName]: filter.value });
             break;
         case 'gte':
+
             queryBuilder.andWhere(`entity.${filter.field} >= :${paramName}`, { [paramName]: filter.value });
             break;
         case 'lt':
@@ -98,6 +101,73 @@ export function applyFilter<T extends ObjectLiteral>(
             const escaped = escapeLikePattern(String(filter.value));
             queryBuilder.andWhere(`entity.${filter.field} LIKE :${paramName}`, { [paramName]: `%${escaped}%` });
             break;
+        }
+    }
+}
+
+const ACTIVE_CHANNEL_JOIN_ALIAS = 'dataHubActiveChannel';
+
+export function configureVendureQuery<T extends ObjectLiteral>(
+    queryBuilder: SelectQueryBuilder<T>,
+    config: VendureQueryExtractorConfig,
+    channelId: ID,
+): void {
+    queryBuilder.innerJoin(
+        `${queryBuilder.alias}.channels`,
+        ACTIVE_CHANNEL_JOIN_ALIAS,
+        `${ACTIVE_CHANNEL_JOIN_ALIAS}.id = :dataHubActiveChannelId`,
+        { dataHubActiveChannelId: channelId },
+    );
+    applyRelationJoins(queryBuilder, config.relations ?? []);
+
+    for (const filter of config.filters ?? []) {
+        applyFilter(queryBuilder, filter);
+    }
+
+    if (config.where) {
+        if (typeof config.where === 'string') {
+            throw new Error('Raw WHERE clauses are not supported. Use config.filters instead.');
+        }
+        for (const [field, value] of Object.entries(config.where)) {
+            if (!validateFieldName(field)) {
+                throw new Error(`Invalid field name in where clause: ${field}`);
+            }
+            const paramName = `where_${field.replace(/\./g, '_')}`;
+            queryBuilder.andWhere(`${queryBuilder.alias}.${field} = :${paramName}`, {
+                [paramName]: value,
+            });
+        }
+    }
+
+    const sortBy = config.sortBy ?? 'createdAt';
+    if (!validateFieldName(sortBy)) {
+        throw new Error(`Invalid sortBy field name: ${sortBy}`);
+    }
+    const sortOrder = config.sortOrder ?? SortOrder.ASC;
+    queryBuilder.orderBy(`${queryBuilder.alias}.${sortBy}`, sortOrder);
+    if (sortBy !== 'id') {
+        queryBuilder.addOrderBy(`${queryBuilder.alias}.id`, sortOrder);
+    }
+}
+
+function applyRelationJoins<T extends ObjectLiteral>(
+    queryBuilder: SelectQueryBuilder<T>,
+    relations: readonly string[],
+): void {
+    const aliasByPath = new Map<string, string>([['', queryBuilder.alias]]);
+    for (const relation of relations) {
+        if (!validateFieldName(relation)) {
+            throw new Error(`Invalid relation name: ${relation}`);
+        }
+        const segments = relation.split('.');
+        for (let index = 0; index < segments.length; index++) {
+            const path = segments.slice(0, index + 1).join('.');
+            if (aliasByPath.has(path)) continue;
+            const parentPath = segments.slice(0, index).join('.');
+            const parentAlias = aliasByPath.get(parentPath);
+            const alias = `dataHubRelation${aliasByPath.size}`;
+            queryBuilder.leftJoinAndSelect(`${parentAlias}.${segments[index]}`, alias);
+            aliasByPath.set(path, alias);
         }
     }
 }

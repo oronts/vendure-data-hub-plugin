@@ -18,12 +18,17 @@ import { PimcoreObjectListing } from '../types';
 import {
     PIMCORE_EXTRACTOR_LIMITS,
     PIMCORE_SOURCE_ORIGIN_FIELD,
+    PIMCORE_SOURCE_URL_FIELD,
 } from '../constants';
+import { getNestedValue } from '../../../shared/utils/object-path';
+import { resolvePimcoreAssetUrl } from '../utils/url.utils';
 import {
     createPimcoreAssetQuery,
     createPimcoreCategoryQuery,
     createPimcoreProductQuery,
+    validateGraphQLFieldName,
 } from './query-builder';
+import { PIMCORE_GRAPHQL_EXTRACTOR_SCHEMA } from './pimcore-graphql.schema';
 
 const RETRYABLE_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
 
@@ -31,6 +36,7 @@ export interface PimcoreGraphQLExtractorConfig {
     connectionCode: string;
     entityType: 'product' | 'category' | 'asset';
     query?: string;
+    responseField?: string;
     variables?: Record<string, unknown>;
     filter?: string | Record<string, unknown>;
     sortBy?: string;
@@ -43,6 +49,7 @@ export interface PimcoreGraphQLExtractorConfig {
     timeoutMs?: number;
     maxRetries?: number;
     retryDelayMs?: number;
+    assetUrlField?: string;
 }
 
 interface GraphQLResult {
@@ -76,107 +83,7 @@ export const pimcoreGraphQLExtractor: ExtractorAdapter<PimcoreGraphQLExtractorCo
     description: 'Extract data from Pimcore DataHub GraphQL API',
     version: '1.0.0',
     apiVersion: CURRENT_ADAPTER_API_VERSION,
-    schema: {
-        fields: [
-            {
-                key: 'connectionCode',
-                label: 'GraphQL connection',
-                type: 'connection',
-                required: true,
-                placeholder: 'pimcore-graphql',
-                description: 'Saved HTTP, REST, or GraphQL connection containing the endpoint, headers, and authentication.',
-                group: 'connection',
-            },
-            {
-                key: 'timeoutMs',
-                label: 'Request timeout (ms)',
-                type: 'number',
-                defaultValue: PIMCORE_EXTRACTOR_LIMITS.DEFAULT_TIMEOUT_MS,
-                validation: { min: 1, max: PIMCORE_EXTRACTOR_LIMITS.MAX_TIMEOUT_MS },
-                group: 'connection',
-            },
-            {
-                key: 'entityType',
-                label: 'Entity type',
-                type: 'select',
-                required: true,
-                options: [
-                    { value: 'product', label: 'Product' },
-                    { value: 'category', label: 'Category' },
-                    { value: 'asset', label: 'Asset' },
-                ],
-                group: 'query',
-            },
-            {
-                key: 'first',
-                label: 'Page size',
-                type: 'number',
-                defaultValue: PIMCORE_EXTRACTOR_LIMITS.DEFAULT_PAGE_SIZE,
-                validation: { min: 1, max: PIMCORE_EXTRACTOR_LIMITS.MAX_PAGE_SIZE },
-                group: 'pagination',
-            },
-            {
-                key: 'maxPages',
-                label: 'Maximum pages',
-                type: 'number',
-                defaultValue: PIMCORE_EXTRACTOR_LIMITS.DEFAULT_MAX_PAGES,
-                validation: { min: 1, max: PIMCORE_EXTRACTOR_LIMITS.MAX_PAGES },
-                group: 'pagination',
-            },
-            {
-                key: 'after',
-                label: 'Initial offset',
-                type: 'number',
-                validation: { min: 0 },
-                group: 'pagination',
-            },
-            { key: 'filter', label: 'Filter', type: 'json', group: 'query' },
-            { key: 'sortBy', label: 'Sort field', type: 'string', group: 'query' },
-            {
-                key: 'sortOrder',
-                label: 'Sort order',
-                type: 'select',
-                defaultValue: 'ASC',
-                options: [
-                    { value: 'ASC', label: 'Ascending' },
-                    { value: 'DESC', label: 'Descending' },
-                ],
-                group: 'query',
-            },
-            { key: 'defaultLanguage', label: 'Default language', type: 'string', group: 'query' },
-            {
-                key: 'includeUnpublished',
-                label: 'Include unpublished records returned by Pimcore',
-                type: 'boolean',
-                defaultValue: false,
-                group: 'query',
-            },
-            { key: 'query', label: 'Custom GraphQL query', type: 'string', group: 'advanced' },
-            { key: 'variables', label: 'Custom variables', type: 'json', group: 'advanced' },
-            {
-                key: 'maxRetries',
-                label: 'Maximum attempts',
-                type: 'number',
-                defaultValue: PIMCORE_EXTRACTOR_LIMITS.DEFAULT_MAX_RETRIES,
-                validation: { min: 1, max: PIMCORE_EXTRACTOR_LIMITS.MAX_RETRIES },
-                group: 'advanced',
-            },
-            {
-                key: 'retryDelayMs',
-                label: 'Initial retry delay (ms)',
-                type: 'number',
-                defaultValue: PIMCORE_EXTRACTOR_LIMITS.DEFAULT_RETRY_DELAY_MS,
-                validation: { min: 0, max: PIMCORE_EXTRACTOR_LIMITS.MAX_RETRY_DELAY_MS },
-                group: 'advanced',
-            },
-        ],
-        groups: [
-            { id: 'connection', label: 'Connection' },
-            { id: 'query', label: 'Query' },
-            { id: 'pagination', label: 'Pagination' },
-            { id: 'advanced', label: 'Advanced', collapsed: true },
-        ],
-    },
+    schema: PIMCORE_GRAPHQL_EXTRACTOR_SCHEMA,
 
     async *extract(
         context: ExtractContext,
@@ -215,7 +122,10 @@ export const pimcoreGraphQLExtractor: ExtractorAdapter<PimcoreGraphQLExtractorCo
             throw new Error(`No query for entity type: ${entityType}`);
         }
 
-        const responseField = RESPONSE_FIELDS[entityType];
+        const responseField = validateGraphQLFieldName(
+            config.responseField ?? RESPONSE_FIELDS[entityType],
+            'responseField',
+        );
         let offset = config.after ?? parseCheckpointOffset(context.checkpoint?.cursor);
         validateIntegerOption('Initial offset', offset, 0, Number.MAX_SAFE_INTEGER);
         let pagesFetched = 0;
@@ -225,7 +135,7 @@ export const pimcoreGraphQLExtractor: ExtractorAdapter<PimcoreGraphQLExtractorCo
             pageSize: first,
         });
 
-        while (pagesFetched < maxPages) {
+        while (true) {
             const variables: Record<string, unknown> = {
                 ...config.variables,
                 first,
@@ -269,7 +179,9 @@ export const pimcoreGraphQLExtractor: ExtractorAdapter<PimcoreGraphQLExtractorCo
 
             const listing = response.data[responseField] as PimcoreObjectListing | undefined;
             if (!listing) {
-                throw new Error(`Malformed Pimcore response: missing ${responseField}; custom queries must alias their listing to this field`);
+                throw new Error(
+                    `Malformed Pimcore response: missing ${responseField}; custom queries must return their listing under the configured responseField`,
+                );
             }
             if (!Array.isArray(listing.edges)) {
                 throw new Error(`Malformed Pimcore response: ${responseField}.edges must be an array`);
@@ -277,6 +189,7 @@ export const pimcoreGraphQLExtractor: ExtractorAdapter<PimcoreGraphQLExtractorCo
             if (!Number.isInteger(listing.totalCount) || listing.totalCount < 0) {
                 throw new Error(`Malformed Pimcore response: ${responseField}.totalCount must be a non-negative integer`);
             }
+            const nodes = validateListingNodes(listing, responseField);
 
             pagesFetched++;
 
@@ -285,16 +198,15 @@ export const pimcoreGraphQLExtractor: ExtractorAdapter<PimcoreGraphQLExtractorCo
                 total: listing.totalCount,
             });
 
-            for (const [index, edge] of listing.edges.entries()) {
-                const node = edge.node;
+            for (const [index, node] of nodes.entries()) {
                 if (!includeUnpublished && 'published' in node && !node.published) continue;
 
-                const data = entityType === 'asset'
-                    ? {
-                        ...(node as unknown as JsonObject),
-                        [PIMCORE_SOURCE_ORIGIN_FIELD]: new URL(request.url).origin,
-                    }
-                    : node as unknown as JsonObject;
+                const data = createRecordData(
+                    node,
+                    entityType,
+                    request.url,
+                    config.assetUrlField,
+                );
 
                 yield {
                     data,
@@ -307,15 +219,77 @@ export const pimcoreGraphQLExtractor: ExtractorAdapter<PimcoreGraphQLExtractorCo
             }
 
             const nextOffset = offset + listing.edges.length;
-            if (listing.edges.length === 0 || nextOffset >= listing.totalCount) break;
+            if (listing.edges.length === 0 && offset < listing.totalCount) {
+                throw new Error(
+                    `Malformed Pimcore response: empty page at offset ${offset} before totalCount ${listing.totalCount}`,
+                );
+            }
+            if (listing.edges.length === 0 || nextOffset >= listing.totalCount) {
+                context.setCheckpoint({});
+                context.logger.info('Extraction complete', { pages: pagesFetched });
+                return;
+            }
+            if (pagesFetched >= maxPages) {
+                throw new Error(
+                    `Pimcore extraction truncated at maxPages=${maxPages} after ${nextOffset} of ${listing.totalCount} records; increase maxPages or narrow the source filter`,
+                );
+            }
 
             offset = nextOffset;
             context.setCheckpoint({ cursor: String(offset), page: pagesFetched });
         }
-
-        context.logger.info('Extraction complete', { pages: pagesFetched });
     },
 };
+
+type ValidatedPimcoreNode = Record<string, unknown> & { id: string | number };
+
+function validateListingNodes(
+    listing: PimcoreObjectListing,
+    responseField: string,
+): ValidatedPimcoreNode[] {
+    return listing.edges.map((edge, index) => {
+        if (!edge || typeof edge !== 'object' || Array.isArray(edge)) {
+            throw new Error(
+                `Malformed Pimcore response: ${responseField}.edges[${index}] must be an object`,
+            );
+        }
+        const node: unknown = Reflect.get(edge, 'node');
+        if (!node || typeof node !== 'object' || Array.isArray(node)) {
+            throw new Error(
+                `Malformed Pimcore response: ${responseField}.edges[${index}].node must be an object`,
+            );
+        }
+        const id = Reflect.get(node, 'id');
+        if ((typeof id !== 'string' || !id.trim()) && typeof id !== 'number') {
+            throw new Error(
+                `Malformed Pimcore response: ${responseField}.edges[${index}].node.id must be a string or number`,
+            );
+        }
+        return node as ValidatedPimcoreNode;
+    });
+}
+
+function createRecordData(
+    node: ValidatedPimcoreNode,
+    entityType: PimcoreGraphQLExtractorConfig['entityType'],
+    requestUrl: string,
+    assetUrlField?: string,
+): JsonObject {
+    if (entityType !== 'asset') {
+        return node as JsonObject;
+    }
+
+    const sourceOrigin = new URL(requestUrl).origin;
+    const sourceUrl = resolvePimcoreAssetUrl(
+        getNestedValue(node, assetUrlField ?? 'fullpath'),
+        sourceOrigin,
+    );
+    return {
+        ...(node as JsonObject),
+        [PIMCORE_SOURCE_ORIGIN_FIELD]: sourceOrigin,
+        ...(sourceUrl ? { [PIMCORE_SOURCE_URL_FIELD]: sourceUrl } : {}),
+    };
+}
 
 async function executeWithRetry(
     request: {

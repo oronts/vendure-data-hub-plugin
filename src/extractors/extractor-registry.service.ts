@@ -11,6 +11,10 @@ import { getErrorMessage, toErrorOrUndefined } from '../utils/error.utils';
 import { DataHubLogger, DataHubLoggerFactory } from '../services/logger';
 import { LOGGER_CONTEXTS } from '../constants/index';
 import { EXTRACTOR_HANDLER_REGISTRY } from './extractor-handler-registry';
+import {
+    validateAdapterLifecycleMetadata,
+    validateBatchExtractorPreview,
+} from '../sdk/adapter-metadata';
 
 export type ExtractorRegistrationCallback = (registry: ExtractorRegistryService) => void | Promise<void>;
 
@@ -20,6 +24,8 @@ export interface ExtractorMetadata {
     description?: string;
     category: ExtractorCategory;
     version?: string;
+    deprecated?: boolean;
+    deprecatedMessage?: string;
     icon?: string;
     supportsPagination?: boolean;
     supportsIncremental?: boolean;
@@ -110,6 +116,8 @@ export class ExtractorRegistryService implements OnModuleInit {
         extractor: DataExtractor | BatchDataExtractor,
         registeredBy?: string,
     ): void {
+        validateAdapterLifecycleMetadata(extractor);
+        validateBatchExtractorPreview(extractor);
         const code = extractor.code;
 
         if (this.extractors.has(code)) {
@@ -122,6 +130,8 @@ export class ExtractorRegistryService implements OnModuleInit {
             description: extractor.description,
             category: extractor.category,
             version: extractor.version,
+            deprecated: extractor.deprecated,
+            deprecatedMessage: extractor.deprecatedMessage,
             icon: extractor.icon,
             supportsPagination: extractor.supportsPagination,
             supportsIncremental: extractor.supportsIncremental,

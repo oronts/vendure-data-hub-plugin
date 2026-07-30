@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { GraphQLPaginationType } from '../../constants/enums';
 import {
+    assertGraphqlResponseSucceeded,
     extractGraphqlResponseRecords,
     extractRecords,
     initPaginationState,
@@ -56,5 +57,22 @@ describe('GraphQL extractor response contract', () => {
 
         expect(result.hasMore).toBe(true);
         expect(result.state.cursor).toBe('cursor-2');
+    });
+
+    it('rejects partial data when the GraphQL response contains errors', () => {
+        expect(() => assertGraphqlResponseSucceeded({
+            data: { products: { items: [{ id: 'partial' }] } },
+            errors: [{ message: 'Resolver failed' }],
+        })).toThrow('GraphQL request failed: Resolver failed');
+    });
+
+    it('bounds remote GraphQL error details', () => {
+        const errors = Array.from({ length: 7 }, (_, index) => ({
+            message: `${index}-${'x'.repeat(600)}`,
+        }));
+
+        expect(() => assertGraphqlResponseSucceeded({ errors })).toThrow(
+            /4-x{498}; 2 more errors omitted$/,
+        );
     });
 });

@@ -14,15 +14,7 @@ import {
 import { JsonObject } from '../../../src/types';
 import { getNestedValue } from '../../../shared/utils/object-path';
 import { priceToCents } from '../utils/math.utils';
-
-function isAbsoluteHttpUrl(value: string): boolean {
-    try {
-        const protocol = new URL(value).protocol;
-        return protocol === 'http:' || protocol === 'https:';
-    } catch {
-        return false;
-    }
-}
+import { resolvePimcoreAssetUrl } from '../utils/url.utils';
 
 // ============================================================================
 // Type Guards
@@ -356,10 +348,7 @@ export function transformAsset(
     const mapping_ = { ...DEFAULT_ASSET_MAPPING, ...mapping };
 
     const rawUrl = getNestedValue(pimcoreAsset, mapping_.urlField);
-    let url = typeof rawUrl === 'string' ? rawUrl : undefined;
-    if (url && baseUrl && !isAbsoluteHttpUrl(url)) {
-        url = `${baseUrl.replace(/\/$/, '')}${url.startsWith('/') ? '' : '/'}${url}`;
-    }
+    const url = resolvePimcoreAssetUrl(rawUrl, baseUrl);
 
     const rawAlt = getNestedValue(pimcoreAsset, mapping_.altField);
     const alt = typeof rawAlt === 'string' ? rawAlt : undefined;

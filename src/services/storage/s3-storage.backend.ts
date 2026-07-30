@@ -14,10 +14,11 @@ import {
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { StorageBackend, S3StorageOptions } from './storage-backend.interface';
+import { createPinnedS3RequestHandler } from '../../utils/s3-request-handler.utils';
 
 export class S3StorageBackend implements StorageBackend {
     readonly type = 's3' as const;
-    private client: S3Client;
+    private client: S3Client | undefined;
     private bucket: string;
     private prefix: string;
     private signedUrlExpiry: number;
@@ -43,11 +44,29 @@ export class S3StorageBackend implements StorageBackend {
             clientConfig.forcePathStyle = true;
         }
 
-        this.client = new S3Client(clientConfig);
+        this.clientConfig = clientConfig;
     }
 
+    private readonly clientConfig: ConstructorParameters<typeof S3Client>[0];
+
     async init(): Promise<void> {
-        // S3 doesn't need initialization - bucket should already exist
+        const requestHandler = await createPinnedS3RequestHandler(this.options.endpoint);
+        this.client = new S3Client({
+            ...this.clientConfig,
+            requestHandler,
+        });
+    }
+
+    async close(): Promise<void> {
+        this.client?.destroy();
+        this.client = undefined;
+    }
+
+    private getClient(): S3Client {
+        if (!this.client) {
+            throw new Error('S3 storage backend has not been initialized');
+        }
+        return this.client;
     }
 
     private getFullKey(path: string): string {
@@ -61,7 +80,7 @@ export class S3StorageBackend implements StorageBackend {
             Body: data,
         });
 
-        await this.client.send(command);
+        await this.getClient().send(command);
     }
 
     async read(path: string): Promise<Buffer | null> {
@@ -71,7 +90,7 @@ export class S3StorageBackend implements StorageBackend {
                 Key: this.getFullKey(path),
             });
 
-            const response: GetObjectCommandOutput = await this.client.send(command);
+            const response: GetObjectCommandOutput = await this.getClient().send(command);
 
             if (!response.Body) {
                 return null;
@@ -97,7 +116,7 @@ export class S3StorageBackend implements StorageBackend {
                 Key: this.getFullKey(path),
             });
 
-            await this.client.send(command);
+            await this.getClient().send(command);
             return true;
         } catch {
             // S3 delete failed (object may not exist or access denied) - return false
@@ -112,7 +131,7 @@ export class S3StorageBackend implements StorageBackend {
                 Key: this.getFullKey(path),
             });
 
-            await this.client.send(command);
+            await this.getClient().send(command);
             return true;
         } catch {
             // S3 HeadObject returns 404 for non-existent objects - this is expected behavior
@@ -132,7 +151,7 @@ export class S3StorageBackend implements StorageBackend {
                 ContinuationToken: continuationToken,
             });
 
-            const response = await this.client.send(command);
+            const response = await this.getClient().send(command);
 
             if (response.Contents) {
                 for (const obj of response.Contents) {
@@ -160,7 +179,7 @@ export class S3StorageBackend implements StorageBackend {
                 Key: this.getFullKey(path),
             });
 
-            const url = await getSignedUrl(this.client, command, {
+            const url = await getSignedUrl(this.getClient(), command, {
                 expiresIn: expiresInSeconds || this.signedUrlExpiry,
             });
 

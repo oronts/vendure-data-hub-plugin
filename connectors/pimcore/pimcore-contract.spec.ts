@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createPimcoreProductQuery } from './extractors/query-builder';
 import { createProductSyncPipeline } from './pipelines/product-sync.pipeline';
+import { createAssetSyncPipeline } from './pipelines/asset-sync.pipeline';
 import {
     transformAsset,
     transformVariant,
@@ -30,6 +31,7 @@ describe('Pimcore public mapping contract', () => {
         const transformStep = definition.steps.find(step => step.key === 'transform-variants');
         const loadStep = definition.steps.find(step => step.key === 'upsert-variants');
 
+        expect(definition.capabilities?.writes).toEqual(['CATALOG', 'INVENTORY']);
         expect(transformStep?.config.operators).toEqual(expect.arrayContaining([
             expect.objectContaining({
                 op: 'toNumber',
@@ -44,6 +46,16 @@ describe('Pimcore public mapping contract', () => {
             priceField: 'price',
             stockField: 'stockQuantity',
         });
+    });
+
+    it('does not declare inventory writes when variant synchronization is disabled', () => {
+        const definition = createProductSyncPipeline({
+            connectionCode: 'pimcore-graphql',
+            sync: { includeVariants: false },
+        });
+
+        expect(definition.capabilities?.writes).toEqual(['CATALOG']);
+        expect(definition.steps.some(step => step.key === 'upsert-variants')).toBe(false);
     });
 
     it('uses configured price and stock fields in the transform utility', () => {
@@ -84,5 +96,34 @@ describe('Pimcore public mapping contract', () => {
         }, { urlField: 'url' }, 'https://pimcore.example.com')).toMatchObject({
             url: 'https://pimcore.example.com/http-relative/image.jpg',
         });
+        expect(transformAsset({
+            ...asset,
+            url: 'ftp://files.example.com/image.jpg',
+        }, { urlField: 'url' }, 'https://pimcore.example.com')).toMatchObject({
+            url: '/Products/image.jpg',
+        });
+    });
+
+    it('uses the extractor-normalized asset URL in the generated pipeline', () => {
+        const definition = createAssetSyncPipeline({
+            connectionCode: 'pimcore-graphql',
+            mapping: { asset: { urlField: 'downloadUrl' } },
+        });
+        const extractStep = definition.steps.find(step => step.key === 'fetch-assets');
+        const transformStep = definition.steps.find(step => step.key === 'transform-assets');
+
+        expect(extractStep?.config).toMatchObject({
+            assetUrlField: 'downloadUrl',
+            sortBy: 'id',
+            sortOrder: 'ASC',
+        });
+        expect(transformStep?.config.operators).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                op: 'map',
+                args: expect.objectContaining({
+                    mapping: expect.objectContaining({ sourceUrl: '_pimcoreSourceUrl' }),
+                }),
+            }),
+        ]));
     });
 });

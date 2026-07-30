@@ -12,6 +12,7 @@ import { assertUrlSafe, UrlSecurityConfig } from '../../utils/url-security.utils
 import type { SecureFetchPolicy } from '../../utils/secure-fetch.utils';
 import { applyAuthentication, AuthConfig, createSecretResolver } from '../../utils/auth-helpers';
 import { buildUrlWithConnection } from '../../utils/url-helpers';
+import { getHttpHeaderNameError } from '../../../shared';
 
 /**
  * Minimal config interface for URL building.
@@ -62,22 +63,6 @@ const DEFAULT_HEADERS: Record<string, string> = {
     [HTTP_HEADERS.CONTENT_TYPE]: CONTENT_TYPES.JSON,
 };
 
-const HEADER_NAME_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
-const RESTRICTED_STATIC_HEADER_PATTERN =
-    /authorization|cookie|api[-_]?key|token|secret|signature/i;
-const RESTRICTED_STATIC_HEADERS = new Set([
-    'host',
-    'content-length',
-    'transfer-encoding',
-    'connection',
-    'upgrade',
-    'proxy-authorization',
-    'proxy-authenticate',
-    '__proto__',
-    'constructor',
-    'prototype',
-]);
-
 function getStaticHeaders(value: unknown, source: string): Record<string, string> {
     if (value === undefined) return {};
     if (value === null || typeof value !== 'object' || Array.isArray(value)) {
@@ -88,14 +73,11 @@ function getStaticHeaders(value: unknown, source: string): Record<string, string
         throw new Error(`${source} headers must contain only string values`);
     }
     for (const [name] of entries) {
-        const normalizedName = name.toLowerCase();
-        if (!HEADER_NAME_PATTERN.test(name)) {
+        const nameError = getHttpHeaderNameError(name, 'STATIC');
+        if (nameError === 'INVALID') {
             throw new Error(`${source} header "${name}" is invalid`);
         }
-        if (
-            RESTRICTED_STATIC_HEADERS.has(normalizedName) ||
-            RESTRICTED_STATIC_HEADER_PATTERN.test(normalizedName)
-        ) {
+        if (nameError === 'RESTRICTED') {
             throw new Error(
                 `${source} header "${name}" cannot contain credentials or control request routing; use auth with a Secret Code`,
             );

@@ -82,6 +82,30 @@ export interface PimcoreMappingConfig {
     asset?: PimcoreAssetMappingConfig;
 }
 
+export interface PimcoreObjectQueryConfig {
+    /** Complete query override. It must return the configured responseField. */
+    query?: string;
+    /** Pimcore class name used to derive default listing and fragment names. */
+    className?: string;
+    /** GraphQL listing field exposed by the Data Hub schema. */
+    listingField?: string;
+    /** Response key read by the extractor. Generated queries alias listingField when needed. */
+    responseField?: string;
+    /** GraphQL object type used by generated inline fragments. */
+    fragmentType?: string;
+}
+
+export type PimcoreAssetQueryConfig = Pick<
+    PimcoreObjectQueryConfig,
+    'query' | 'listingField' | 'responseField'
+>;
+
+export interface PimcoreQueryConfig {
+    product?: PimcoreObjectQueryConfig;
+    category?: PimcoreObjectQueryConfig;
+    asset?: PimcoreAssetQueryConfig;
+}
+
 type PimcorePipelineConfig = Pick<ConnectorPipelineConfig, 'enabled' | 'name' | 'schedule'>;
 
 /**
@@ -125,6 +149,8 @@ export interface PimcoreConnectorConfig extends BaseConnectorConfig {
     sync?: PimcoreSyncConfig;
     /** Field mapping settings */
     mapping?: PimcoreMappingConfig;
+    /** Data Hub schema/query overrides for generated pipelines. */
+    queries?: PimcoreQueryConfig;
     /** Pipeline-specific settings */
     pipelines?: PimcorePipelineConfigs;
     /** Vendure channel to sync to (default: '__default_channel__') */

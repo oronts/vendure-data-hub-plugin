@@ -26,6 +26,7 @@ import { CDC_EXTRACTOR_SCHEMA } from './cdc/schema';
 import { DATABASE_EXTRACTOR_SCHEMA } from './database/schema';
 import { FTP_EXTRACTOR_SCHEMA } from './ftp/schema';
 import { S3_EXTRACTOR_SCHEMA } from './s3/schema';
+import { MEMORY_EXTRACTOR } from '../constants/defaults/runtime-defaults';
 
 type ExtractorType = DataExtractor | BatchDataExtractor;
 
@@ -152,7 +153,17 @@ const FORMAT_ONLY_EXTRACTORS: AdapterDefinition[] = [
         wizardHidden: true,
         schema: {
             fields: [
-                { key: 'count', label: 'Record count', type: 'number', required: true, description: 'Number of records to generate' },
+                {
+                    key: 'count',
+                    label: 'Record count',
+                    type: 'number',
+                    required: true,
+                    validation: {
+                        min: 0,
+                        max: MEMORY_EXTRACTOR.MAX_GENERATOR_COUNT,
+                    },
+                    description: 'Number of records to generate',
+                },
                 { key: 'template', label: 'Template (JSON)', type: 'json', description: 'Template object with field generators' },
             ],
         },

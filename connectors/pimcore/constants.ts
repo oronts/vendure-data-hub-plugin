@@ -14,6 +14,7 @@ export const PIMCORE_EXTRACTOR_LIMITS = {
 
 export const PIMCORE_WEBHOOK_KEY_SECRET = 'pimcore-webhook-key';
 export const PIMCORE_SOURCE_ORIGIN_FIELD = '_pimcoreSourceOrigin';
+export const PIMCORE_SOURCE_URL_FIELD = '_pimcoreSourceUrl';
 
 export const PIMCORE_PIPELINE_METADATA = {
     PRODUCT_SYNC: {

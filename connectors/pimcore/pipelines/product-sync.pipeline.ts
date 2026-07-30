@@ -9,7 +9,10 @@ import { PIMCORE_WEBHOOK_KEY_SECRET } from '../constants';
 import { buildSafePathFilter } from '../utils/security.utils';
 import { DEFAULT_CHANNEL_CODE } from '../../../shared/constants';
 import { createPimcoreExtractorConfig } from './extractor-config';
-import { createPimcoreProductQuery } from '../extractors/query-builder';
+import {
+    createPimcoreProductQuery,
+    resolvePimcoreQueryContract,
+} from '../extractors/query-builder';
 
 export function createProductSyncPipeline(config: PimcoreConnectorConfig): PipelineDefinition {
     const {
@@ -26,6 +29,8 @@ export function createProductSyncPipeline(config: PimcoreConnectorConfig): Pipel
     const priceField = mapping?.product?.priceField ?? 'price';
     const stockQuantityField = mapping?.product?.stockQuantityField ?? 'stockQuantity';
     const syncVariants = pipelineConfig.syncVariants !== false && sync?.includeVariants !== false;
+    const queryConfig = config.queries?.product;
+    const queryContract = resolvePimcoreQueryContract('product', queryConfig);
 
     if (pipelineConfig.enabled === false) {
         return createPipeline()
@@ -38,7 +43,10 @@ export function createProductSyncPipeline(config: PimcoreConnectorConfig): Pipel
     const pipeline = createPipeline()
         .name(pipelineConfig.name ?? 'Pimcore Product Sync')
         .description('Sync products from Pimcore to Vendure')
-        .capabilities({ requires: ['UpdateCatalog'] })
+        .capabilities({
+            requires: ['UpdateCatalog'],
+            writes: syncVariants ? ['CATALOG', 'INVENTORY'] : ['CATALOG'],
+        })
         ;
 
     if (pipelineConfig.schedule) {
@@ -58,8 +66,12 @@ export function createProductSyncPipeline(config: PimcoreConnectorConfig): Pipel
     pipeline.extract('fetch-products', {
         ...createPimcoreExtractorConfig(config, 'product', 100),
         adapterCode: pimcoreGraphQLExtractor.code,
-        query: createPimcoreProductQuery(mapping?.product, syncVariants),
+        query: queryConfig?.query
+            ?? createPimcoreProductQuery(mapping?.product, syncVariants, queryConfig),
+        responseField: queryContract.responseField,
         filter: buildSafePathFilter(sync?.pathFilter),
+        sortBy: 'id',
+        sortOrder: 'ASC',
         defaultLanguage,
     });
 

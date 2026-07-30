@@ -1,76 +1,182 @@
-/**
- * Destination Handler Registry
- *
- * Single source of truth for the mapping between DESTINATION_TYPE values and handler functions.
- * The ExportDestinationService references this registry for delivery and test dispatch,
- * eliminating the need to maintain handler maps inline.
- *
- * To add a new destination handler:
- * 1. Create the handler file in this directory (e.g., my-destination.handler.ts)
- * 2. Add the DESTINATION_TYPE entry in shared/constants/enums.ts
- * 3. Add the entry to DESTINATION_DELIVERY_REGISTRY (and optionally DESTINATION_TEST_REGISTRY) below
- * That's it - no changes needed in export-destination.service.ts.
- */
 import type { ConnectionTestResult } from '../../../shared/types';
-import {
-    DestinationConfig,
-    DeliveryResult,
-    DeliveryOptions,
-    S3DestinationConfig,
-    SFTPDestinationConfig,
-    FTPDestinationConfig,
-    HTTPDestinationConfig,
-    LocalDestinationConfig,
-    EmailDestinationConfig,
-    DESTINATION_TYPE,
-} from './destination.types';
-import { deliverToS3 } from './s3.handler';
-import { deliverToHTTP } from './http.handler';
-import { deliverToLocal, testLocalDestination } from './local.handler';
-import { deliverToSFTP, deliverToFTP } from './ftp.handler';
-import { deliverToEmail } from './email.handler';
+import { HTTP } from '../../constants';
+import { secureFetch } from '../../utils/secure-fetch.utils';
 import { assertUrlSafe } from '../../utils/url-security.utils';
-import { HTTP } from '../../constants/index';
+import {
+    DeliveryOptions,
+    DeliveryResult,
+    DESTINATION_TYPE,
+    LocalDestinationConfig,
+    ResolvedDestinationConfig,
+    ResolvedEmailDestinationConfig,
+    ResolvedFTPDestinationConfig,
+    ResolvedHTTPDestinationConfig,
+    ResolvedS3DestinationConfig,
+    ResolvedSFTPDestinationConfig,
+} from './destination.types';
+import { deliverToEmail, testEmailDestination } from './email.handler';
+import {
+    deliverToFTP,
+    deliverToSFTP,
+    testFtpDestination,
+    testSftpDestination,
+} from './ftp.handler';
+import {
+    deliverToHTTP,
+    getHttpDestinationAuthHeaders,
+} from './http.handler';
+import { deliverToLocal, testLocalDestination } from './local.handler';
+import { deliverToS3, testS3Destination } from './s3.handler';
 
-export type DeliverFn = (config: DestinationConfig, buffer: Buffer, filename: string, options?: DeliveryOptions) => Promise<DeliveryResult>;
-export type TestFn = (config: DestinationConfig, start: number) => Promise<ConnectionTestResult>;
+export type DeliverFn = (
+    config: ResolvedDestinationConfig,
+    buffer: Buffer,
+    filename: string,
+    options?: DeliveryOptions,
+) => Promise<DeliveryResult>;
+export type TestFn = (
+    config: ResolvedDestinationConfig,
+    start: number,
+) => Promise<ConnectionTestResult>;
 
-/**
- * Maps each DESTINATION_TYPE to its corresponding delivery handler function.
- * Used by ExportDestinationService for dispatch.
- */
-export const DESTINATION_DELIVERY_REGISTRY: ReadonlyMap<string, DeliverFn> = new Map<string, DeliverFn>([
-    [DESTINATION_TYPE.S3, (cfg, buf, fn, opts) => deliverToS3(cfg as S3DestinationConfig, buf, fn, opts)],
-    [DESTINATION_TYPE.SFTP, (cfg, buf, fn, opts) => deliverToSFTP(cfg as SFTPDestinationConfig, buf, fn, opts)],
-    [DESTINATION_TYPE.FTP, (cfg, buf, fn, opts) => deliverToFTP(cfg as FTPDestinationConfig, buf, fn, opts)],
-    [DESTINATION_TYPE.HTTP, (cfg, buf, fn, opts) => deliverToHTTP(cfg as HTTPDestinationConfig, buf, fn, opts)],
-    [DESTINATION_TYPE.LOCAL, (cfg, buf, fn, opts) => deliverToLocal(cfg as LocalDestinationConfig, buf, fn, opts)],
-    [DESTINATION_TYPE.EMAIL, (cfg, buf, fn, opts) => deliverToEmail(cfg as EmailDestinationConfig, buf, fn, opts)],
-]);
+export const DESTINATION_DELIVERY_REGISTRY: ReadonlyMap<string, DeliverFn> =
+    new Map<string, DeliverFn>([
+        [
+            DESTINATION_TYPE.S3,
+            (config, buffer, filename, options) =>
+                deliverToS3(
+                    config as ResolvedS3DestinationConfig,
+                    buffer,
+                    filename,
+                    options,
+                ),
+        ],
+        [
+            DESTINATION_TYPE.SFTP,
+            (config, buffer, filename, options) =>
+                deliverToSFTP(
+                    config as ResolvedSFTPDestinationConfig,
+                    buffer,
+                    filename,
+                    options,
+                ),
+        ],
+        [
+            DESTINATION_TYPE.FTP,
+            (config, buffer, filename, options) =>
+                deliverToFTP(
+                    config as ResolvedFTPDestinationConfig,
+                    buffer,
+                    filename,
+                    options,
+                ),
+        ],
+        [
+            DESTINATION_TYPE.HTTP,
+            (config, buffer, filename, options) =>
+                deliverToHTTP(
+                    config as ResolvedHTTPDestinationConfig,
+                    buffer,
+                    filename,
+                    options,
+                ),
+        ],
+        [
+            DESTINATION_TYPE.LOCAL,
+            (config, buffer, filename, options) =>
+                deliverToLocal(
+                    config as LocalDestinationConfig,
+                    buffer,
+                    filename,
+                    options,
+                ),
+        ],
+        [
+            DESTINATION_TYPE.EMAIL,
+            (config, buffer, filename, options) =>
+                deliverToEmail(
+                    config as ResolvedEmailDestinationConfig,
+                    buffer,
+                    filename,
+                    options,
+                ),
+        ],
+    ]);
 
-/**
- * Maps each DESTINATION_TYPE to its corresponding test handler function.
- * Used by ExportDestinationService for connection testing.
- * Types without a test handler fall back to a generic "configured" response.
- */
-export const DESTINATION_TEST_REGISTRY: ReadonlyMap<string, TestFn> = new Map<string, TestFn>([
-    [DESTINATION_TYPE.S3, (_cfg, start) =>
-        Promise.resolve({ success: true, message: 'S3 connection configured', latencyMs: Date.now() - start }),
-    ],
-    [DESTINATION_TYPE.HTTP, async (cfg, start) => {
-        const httpConfig = cfg as HTTPDestinationConfig;
-        await assertUrlSafe(httpConfig.url);
-        const response = await fetch(httpConfig.url, { method: 'HEAD', signal: AbortSignal.timeout(HTTP.TIMEOUT_MS) }).catch(() => null);
-        if (response && response.ok) {
-            return { success: true, message: `HTTP endpoint reachable (${response.status})`, latencyMs: Date.now() - start };
-        }
-        if (response) {
-            return { success: false, message: `HTTP endpoint returned ${response.status}`, latencyMs: Date.now() - start };
-        }
-        return { success: false, message: 'HTTP endpoint unreachable' };
-    }],
-    [DESTINATION_TYPE.LOCAL, async (cfg, start) => {
-        const result = await testLocalDestination(cfg as LocalDestinationConfig);
-        return { ...result, latencyMs: Date.now() - start };
-    }],
-]);
+export const DESTINATION_TEST_REGISTRY: ReadonlyMap<string, TestFn> =
+    new Map<string, TestFn>([
+        [
+            DESTINATION_TYPE.S3,
+            (config, start) => testS3Destination(
+                config as ResolvedS3DestinationConfig,
+                start,
+            ),
+        ],
+        [
+            DESTINATION_TYPE.SFTP,
+            (config, start) => testSftpDestination(
+                config as ResolvedSFTPDestinationConfig,
+                start,
+            ),
+        ],
+        [
+            DESTINATION_TYPE.FTP,
+            (config, start) => testFtpDestination(
+                config as ResolvedFTPDestinationConfig,
+                start,
+            ),
+        ],
+        [
+            DESTINATION_TYPE.HTTP,
+            async (config, start) => {
+                const httpConfig = config as ResolvedHTTPDestinationConfig;
+                await assertUrlSafe(httpConfig.url);
+                const response = await secureFetch(
+                    httpConfig.url,
+                    {
+                        method: 'HEAD',
+                        headers: {
+                            ...httpConfig.headers,
+                            ...getHttpDestinationAuthHeaders(httpConfig),
+                        },
+                        signal: AbortSignal.timeout(HTTP.TIMEOUT_MS),
+                    },
+                ).catch(() => null);
+                if (response?.ok) {
+                    return {
+                        success: true,
+                        message: `HTTP endpoint reachable (${response.status})`,
+                        latencyMs: Date.now() - start,
+                    };
+                }
+                if (response) {
+                    return {
+                        success: false,
+                        message: `HTTP endpoint returned ${response.status}`,
+                        latencyMs: Date.now() - start,
+                    };
+                }
+                return {
+                    success: false,
+                    message: 'HTTP endpoint unreachable',
+                    latencyMs: Date.now() - start,
+                };
+            },
+        ],
+        [
+            DESTINATION_TYPE.LOCAL,
+            async (config, start) => {
+                const result = await testLocalDestination(
+                    config as LocalDestinationConfig,
+                );
+                return { ...result, latencyMs: Date.now() - start };
+            },
+        ],
+        [
+            DESTINATION_TYPE.EMAIL,
+            (config, start) => testEmailDestination(
+                config as ResolvedEmailDestinationConfig,
+                start,
+            ),
+        ],
+    ]);

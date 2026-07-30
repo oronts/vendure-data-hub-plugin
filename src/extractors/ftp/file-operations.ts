@@ -12,6 +12,7 @@ import {
     parseFileContent,
     attachMetadataToRecord as sharedAttachMetadataToRecord,
 } from '../shared';
+import { normalizeRemoteHostname } from '../../utils/remote-host-security.utils';
 
 export function matchesPattern(filename: string, pattern: string): boolean {
     return globToRegex(pattern, 'i').test(filename);
@@ -52,13 +53,25 @@ export function filterFiles(
     if (checkpoint?.lastModifiedAt) {
         const lastDate = new Date(checkpoint.lastModifiedAt);
         if (!isNaN(lastDate.getTime())) {
-            filtered = filtered.filter(f => f.modifiedAt > lastDate);
+            const lastPath = checkpoint.lastProcessedFile;
+            filtered = filtered.filter(file => {
+                const timeDifference = file.modifiedAt.getTime() - lastDate.getTime();
+                if (timeDifference !== 0) return timeDifference > 0;
+                return lastPath === undefined || compareRemotePaths(file.path, lastPath) > 0;
+            });
         }
     }
 
-    filtered.sort((a, b) => a.modifiedAt.getTime() - b.modifiedAt.getTime());
+    filtered.sort((a, b) => {
+        const timeDifference = a.modifiedAt.getTime() - b.modifiedAt.getTime();
+        return timeDifference || compareRemotePaths(a.path, b.path);
+    });
 
     return filtered;
+}
+
+function compareRemotePaths(left: string, right: string): number {
+    return left < right ? -1 : left > right ? 1 : 0;
 }
 
 export async function parseFtpContent(
@@ -122,10 +135,12 @@ export function isValidRemotePath(path: string): boolean {
 }
 
 export function isValidHost(host: string): boolean {
-    if (!host || host.length === 0) return false;
-    return /^[a-zA-Z0-9]([a-zA-Z0-9\-.]*[a-zA-Z0-9])?$/.test(host) ||
-           /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host) ||
-           /^\[[\da-fA-F:]+\]$/.test(host);
+    try {
+        normalizeRemoteHostname(host);
+        return true;
+    } catch {
+        return false;
+    }
 }
 
 export function isValidPort(port: number): boolean {

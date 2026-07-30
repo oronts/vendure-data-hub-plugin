@@ -93,9 +93,9 @@ const pimcore = PimcoreConnector({
 
   // Sync options
   sync: {
-    deltaSync: true,           // Only sync changed records
+    deltaSync: true,           // Skip unchanged records before loading into Vendure
     batchSize: 100,            // Records per page
-    maxPages: 100,             // Safety limit
+    maxPages: 100,             // Fail if a run needs more pages
     includeUnpublished: false, // Request and retain unpublished object records
     includeVariants: true,     // Include product variants
     pathFilter: '/Products/B2C/', // Only sync items under this path
@@ -124,6 +124,18 @@ const pimcore = PimcoreConnector({
     asset: {
       urlField: 'fullpath',
       filenameField: 'filename',
+    },
+  },
+
+  // Optional Data Hub schema overrides. Defaults target Product, Category,
+  // and Asset using their standard generated GraphQL names.
+  queries: {
+    product: {
+      className: 'CommerceProduct',
+      listingField: 'getCommerceProducts',
+      responseField: 'products',
+      fragmentType: 'object_CommerceProduct',
+      // query: 'query ...', // Complete query override when field mapping is insufficient
     },
   },
 
@@ -323,54 +335,57 @@ Then create the secret via the Data Hub dashboard:
 
 ## Pimcore DataHub Setup
 
-### 1. Create DataHub Configuration
+1. Create an active **GraphQL** configuration, for example `shop`. The client
+   name becomes the final endpoint segment:
+   `https://pimcore.example/pimcore-graphql-webservices/shop`.
+2. Grant only the required workspaces and read permissions. Enable the Product
+   and Category data-object classes and Asset listing only when their generated
+   pipelines are enabled.
+3. Expose the Pimcore system fields used by the generated pipelines:
+   `id`, `key`, `fullpath`, and `published` for objects, plus `index` for
+   categories. `published` is a system object property, not a custom checkbox
+   field. Expose the class fields named by `mapping` and the asset fields named
+   by `mapping.asset`.
+4. In **Security**, generate an API key of at least 16 characters. Store it as
+   a Data Hub Secret; do not embed it in the endpoint URL or committed config.
+5. Keep introspection enabled while validating a new schema, or disable it and
+   use the representative listing query below when production policy requires
+   introspection to be off.
 
-Open Pimcore's Datahub configuration UI:
+Before starting Vendure, prove that the configured client, workspace, schema,
+and key work together. This request prints no key value:
 
-1. Create new configuration (e.g., "shop")
-2. Set type to "GraphQL"
-3. Configure schema for your product class
-
-### 2. Configure Product Schema
-
-Example Product class fields to expose:
-
-```yaml
-# Pimcore Product Class
-fields:
-  - name: sku
-    type: input
-  - name: name
-    type: localizedInput
-  - name: description
-    type: localizedWysiwyg
-  - name: price
-    type: numeric
-  - name: images
-    type: manyToManyObjectRelation
-  - name: categories
-    type: manyToManyObjectRelation
-  - name: published
-    type: checkbox
+```bash
+test -n "$PIMCORE_API_KEY"
+curl --fail-with-body \
+  --request POST \
+  --header 'Content-Type: application/json' \
+  --header "X-API-Key: $PIMCORE_API_KEY" \
+  --data '{"query":"query Smoke { getProductListing(first: 1, after: 0, sortBy: [\"id\"], sortOrder: [\"ASC\"]) { totalCount edges { node { id key fullpath published } } } }"}' \
+  'https://pimcore.example/pimcore-graphql-webservices/shop'
 ```
 
-### 3. Generate API Key
-
-In DataHub configuration → Security:
-
-1. Generate new API key
-2. Copy key to DataHub secrets
+Replace `getProductListing` and its selected fields when `queries.product` or
+`mapping.product` target a custom schema. A `200` response from the Data Hub
+explorer page is not sufficient; the GraphQL POST itself must return data and
+no GraphQL `errors`.
 
 ## Custom Extractors
 
 The connector provides a custom extractor for Pimcore DataHub GraphQL:
 
 Pagination uses a non-negative numeric offset. `first` is the page size and
-`after` is the initial offset; after each page the extractor advances by the
-number of returned edges and persists that offset as its checkpoint. Custom
-queries must therefore declare `$after: Int`, return `totalCount` and
-`edges`, and alias the listing to `getProductListing`,
-`getCategoryListing`, or `getAssetListing` for the selected entity type.
+`after` is the initial offset. Generated product and asset pipelines sort by
+`id ASC`; category sync sorts by `fullpath ASC`, so page boundaries are
+deterministic. A terminal page clears its offset checkpoint so the next
+completed scheduled run starts from the beginning and can detect changes on
+every page. Reaching `maxPages` before `totalCount` is exhausted fails the run
+explicitly instead of reporting a partial extraction as complete.
+
+Custom queries must declare the variables they use and return `totalCount` and
+`edges { node { id ... } }`. Set `responseField` when their result key differs
+from the default `getProductListing`, `getCategoryListing`, or
+`getAssetListing`.
 
 Generated product and category pipelines depend on `id`, `key`,
 `fullpath`, and `published`. Asset sync depends on the configured URL field
@@ -386,6 +401,9 @@ createPipeline()
     adapterCode: 'pimcoreGraphQL',
     connectionCode: 'pimcore-graphql',
     entityType: 'product',
+    responseField: 'customProducts',
+    sortBy: 'id',
+    sortOrder: 'ASC',
     first: 50,
     maxPages: 100,
     includeUnpublished: false,
@@ -393,7 +411,7 @@ createPipeline()
     // Custom GraphQL query (optional)
     query: `
       query MyCustomQuery($first: Int, $after: Int) {
-        getProductListing: getCustomProductListing(first: $first, after: $after) {
+        customProducts: getCustomProductListing(first: $first, after: $after) {
           totalCount
           edges {
             node {
@@ -449,11 +467,12 @@ In DataHub Dashboard → Pipelines, find:
 
 **1. Authentication Failed**
 ```
-Error: Pimcore API request failed: 401 Unauthorized
+Error: Extraction failed: HTTP 403: ...
 ```
 - Check API key is correct
 - Verify DataHub secret is configured
-- Ensure API key has required permissions
+- Ensure the GraphQL configuration is active and the key has its required workspace permissions
+- A missing client configuration normally returns `404`; an inactive or unauthorized configuration returns `403`
 
 **2. No Products Found**
 ```
@@ -485,9 +504,13 @@ If migrating from a custom Pimcore sync:
 
 1. Run initial full sync with `deltaSync: false`
 2. Verify products in Vendure Admin
-3. Enable `deltaSync: true` for incremental updates
+3. Enable `deltaSync: true` to suppress unchanged Vendure writes
 4. Configure scheduled triggers
 5. Set up webhooks for real-time sync
+
+`deltaSync` hashes records after extraction. Scheduled runs still traverse the
+complete filtered Pimcore listing from offset zero; it is not a
+`modificationDate` cursor or another source-side incremental query.
 
 ## Extending the Connector
 

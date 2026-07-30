@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import {
     JsonObject,
-    ConnectionConfig,
     DataExtractor,
     ExtractorContext,
     ExtractorValidationResult,
@@ -12,157 +11,32 @@ import {
 } from '../../types/index';
 import { getErrorMessage } from '../../utils/error.utils';
 import { DatabaseType, TRANSFORM_LIMITS } from '../../constants/index';
-import { CdcExtractorConfig, CDC_DEFAULTS, CdcOperation } from './types';
+import { CdcExtractorConfig, CdcOperation } from './types';
 import { CDC_EXTRACTOR_SCHEMA } from './schema';
 import {
     createDatabaseClient,
     DatabaseClient,
 } from '../database/connection-pool';
-import { DatabaseExtractorConfig, DATABASE_TEST_QUERIES } from '../database/types';
+import { DATABASE_TEST_QUERIES } from '../database/types';
 import {
     escapeSqlIdentifier,
     escapeSqlTableIdentifier,
-    validateColumnName,
-    validateTableName,
 } from '../../utils/sql-security.utils';
-
-type CdcCursorValue = string | number;
-
-interface CdcCursor {
-    value: CdcCursorValue;
-    primaryKey: CdcCursorValue;
-}
-
-function normalizeCursorValue(value: unknown, column: string): CdcCursorValue {
-    if (typeof value === 'string') return value;
-    if (typeof value === 'number' && Number.isFinite(value)) return value;
-    if (typeof value === 'bigint') return value.toString();
-    if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString();
-    throw new Error(`CDC cursor column "${column}" must contain a non-null string or number`);
-}
-
-function readRowCursor(
-    row: Record<string, unknown>,
-    valueColumn: string,
-    primaryKeyColumn: string,
-): CdcCursor {
-    return {
-        value: normalizeCursorValue(row[valueColumn], valueColumn),
-        primaryKey: normalizeCursorValue(row[primaryKeyColumn], primaryKeyColumn),
-    };
-}
-
-function readCheckpointCursor(
-    data: JsonObject | undefined,
-    valueKey: 'lastTrackingValue' | 'lastDeleteValue',
-    primaryKeyKey: 'lastTrackingPrimaryKey' | 'lastDeletePrimaryKey',
-): CdcCursor | undefined {
-    const value = data?.[valueKey];
-    const primaryKey = data?.[primaryKeyKey];
-    if (value === undefined && primaryKey === undefined) return undefined;
-    if (value === undefined || primaryKey === undefined) {
-        throw new Error(
-            `CDC checkpoint requires both "${valueKey}" and "${primaryKeyKey}"`,
-        );
-    }
-    return {
-        value: normalizeCursorValue(value, valueKey),
-        primaryKey: normalizeCursorValue(primaryKey, primaryKeyKey),
-    };
-}
-
-/**
- * Build a minimal DatabaseExtractorConfig from CDC config + resolved connection,
- * just enough for createDatabaseClient to open a connection.
- */
-function toDatabaseConfig(
-    config: CdcExtractorConfig,
-    connection: ConnectionConfig,
-): DatabaseExtractorConfig {
-    const getString = (key: string): string | undefined => {
-        const value = connection.config[key];
-        if (value === undefined) return undefined;
-        if (typeof value !== 'string') {
-            throw new Error(`Database connection field "${key}" must be a string`);
-        }
-        return value;
-    };
-    const getNumber = (key: string): number | undefined => {
-        const value = connection.config[key];
-        if (value === undefined) return undefined;
-        if (typeof value !== 'number' || !Number.isFinite(value)) {
-            throw new Error(`Database connection field "${key}" must be a finite number`);
-        }
-        return value;
-    };
-    return {
-        adapterCode: 'database',
-        databaseType: config.databaseType as DatabaseType,
-        host: getString('host'),
-        port: getNumber('port'),
-        database: getString('database'),
-        username: getString('username'),
-        passwordSecretCode: getString('passwordSecretCode'),
-        connectionStringSecretCode: getString('connectionStringSecretCode'),
-        query: '',
-    };
-}
-
-/**
- * Validate all identifier names in the CDC config to prevent SQL injection.
- */
-function validateIdentifiers(config: CdcExtractorConfig): void {
-    validateTableName(config.table);
-    validateColumnName(config.primaryKey);
-    validateColumnName(config.trackingColumn);
-    if (config.deleteColumn) {
-        validateColumnName(config.deleteColumn);
-    }
-    if (config.columns) {
-        for (const col of config.columns) {
-            validateColumnName(col);
-        }
-    }
-}
-
-/**
- * Build the column list for the SELECT clause.
- */
-function getIdentifierQuote(databaseType: CdcExtractorConfig['databaseType']): '"' | '`' {
-    return databaseType === 'MYSQL' ? '`' : '"';
-}
-
-function adaptParameterizedQuery(
-    query: string,
-    parameters: unknown[],
-    databaseType: CdcExtractorConfig['databaseType'],
-): { query: string; parameters: unknown[] } {
-    if (databaseType !== 'MYSQL') return { query, parameters };
-
-    const mysqlParameters: unknown[] = [];
-    const mysqlQuery = query.replace(/\$(\d+)/g, (_placeholder, position: string) => {
-        const parameterIndex = Number(position) - 1;
-        if (parameterIndex < 0 || parameterIndex >= parameters.length) {
-            throw new Error(`Missing CDC query parameter $${position}`);
-        }
-        mysqlParameters.push(parameters[parameterIndex]);
-        return '?';
-    });
-    return { query: mysqlQuery, parameters: mysqlParameters };
-}
-
-function buildColumnList(config: CdcExtractorConfig, quote: '"' | '`'): string {
-    if (config.columns && config.columns.length > 0) {
-        const columnSet = new Set(config.columns);
-        columnSet.add(config.primaryKey);
-        columnSet.add(config.trackingColumn);
-        if (config.deleteColumn) columnSet.add(config.deleteColumn);
-        return Array.from(columnSet)
-            .map(column => escapeSqlIdentifier(column, quote))
-            .join(', ');
-    }
-    return '*';
-}
+import {
+    adaptCdcParameterizedQuery,
+    buildCdcColumnList,
+    createCdcCheckpoint,
+    getCdcIdentifierQuote,
+    readCdcCheckpointCursor,
+    readCdcRowCursor,
+    toCdcDatabaseConfig,
+    validateCdcIdentifiers,
+} from './cdc-query';
+import {
+    resolveCdcBatchSize,
+    validateCdcConfig,
+} from './cdc-config.validation';
+import { resolveBoundedLimit } from '../shared/pagination.utils';
 
 @Injectable()
 export class CdcExtractor implements DataExtractor<CdcExtractorConfig> {
@@ -180,7 +54,7 @@ export class CdcExtractor implements DataExtractor<CdcExtractorConfig> {
         context: ExtractorContext,
         config: CdcExtractorConfig,
     ): AsyncGenerator<RecordEnvelope, void, undefined> {
-        const batchSize = config.batchSize ?? CDC_DEFAULTS.batchSize;
+        const batchSize = resolveCdcBatchSize(config);
 
         context.logger.info('Starting CDC extraction', {
             table: config.table,
@@ -188,25 +62,34 @@ export class CdcExtractor implements DataExtractor<CdcExtractorConfig> {
             trackingType: config.trackingType,
         });
 
-        // Validate all identifiers before building any SQL
-        validateIdentifiers(config);
+        validateCdcIdentifiers(config);
+        if (await context.isCancelled()) {
+            context.logger.info('CDC extraction cancelled before connection');
+            return;
+        }
 
-        // Resolve connection
         const connection = await context.connections.getRequired(config.connectionCode);
-        const dbConfig = toDatabaseConfig(config, connection);
+        const dbConfig = toCdcDatabaseConfig(config, connection);
         let client: DatabaseClient | null = null;
 
         try {
             client = await createDatabaseClient(context, dbConfig);
 
-            const lastTrackingCursor = readCheckpointCursor(
+            const lastTrackingCursor = readCdcCheckpointCursor(
                 context.checkpoint?.data,
                 'lastTrackingValue',
                 'lastTrackingPrimaryKey',
             );
+            const lastDeleteCursor = config.includeDeletes && config.deleteColumn
+                ? readCdcCheckpointCursor(
+                    context.checkpoint?.data,
+                    'lastDeleteValue',
+                    'lastDeletePrimaryKey',
+                )
+                : undefined;
 
-            const identifierQuote = getIdentifierQuote(config.databaseType);
-            const columnList = buildColumnList(config, identifierQuote);
+            const identifierQuote = getCdcIdentifierQuote(config.databaseType);
+            const columnList = buildCdcColumnList(config, identifierQuote);
             const escapedTable = escapeSqlTableIdentifier(config.table, identifierQuote);
             const escapedTrackingCol = escapeSqlIdentifier(config.trackingColumn, identifierQuote);
             const escapedPrimaryKey = escapeSqlIdentifier(config.primaryKey, identifierQuote);
@@ -214,7 +97,6 @@ export class CdcExtractor implements DataExtractor<CdcExtractorConfig> {
                 ? escapeSqlIdentifier(config.deleteColumn, identifierQuote)
                 : undefined;
 
-            // Query for INSERT/UPDATE changes
             let changeQuery: string;
             let changeParams: unknown[];
 
@@ -235,7 +117,7 @@ export class CdcExtractor implements DataExtractor<CdcExtractorConfig> {
             ({
                 query: changeQuery,
                 parameters: changeParams,
-            } = adaptParameterizedQuery(changeQuery, changeParams, config.databaseType));
+            } = adaptCdcParameterizedQuery(changeQuery, changeParams, config.databaseType));
 
             context.logger.debug('Executing CDC change query', {
                 hasCheckpoint: lastTrackingCursor !== undefined,
@@ -254,28 +136,25 @@ export class CdcExtractor implements DataExtractor<CdcExtractorConfig> {
             }
 
             let latestTrackingCursor = lastTrackingCursor;
+            let latestDeleteCursor = lastDeleteCursor;
             let totalRecords = 0;
+            let cancelled = false;
 
             for (const row of changeResult.rows) {
                 if (await context.isCancelled()) {
                     context.logger.info('CDC extraction cancelled');
+                    cancelled = true;
                     break;
                 }
 
                 totalRecords++;
 
-                latestTrackingCursor = readRowCursor(
+                latestTrackingCursor = readCdcRowCursor(
                     row,
                     config.trackingColumn,
                     config.primaryKey,
                 );
 
-                // Determine operation type for downstream loaders.
-                // On first run (no checkpoint / no tracking value), we use UPSERT because
-                // the records may already exist in Vendure. We cannot assume they are all new
-                // INSERTs. UPSERT lets the loader decide whether to create or update each record.
-                // On subsequent runs (tracking value present), all rows returned by the
-                // incremental query are known modifications, so UPDATE is appropriate.
                 const operation: CdcOperation = lastTrackingCursor === undefined ? 'UPSERT' : 'UPDATE';
 
                 yield {
@@ -289,16 +168,9 @@ export class CdcExtractor implements DataExtractor<CdcExtractorConfig> {
                 };
             }
 
-            // Query for DELETE changes (soft-deletes)
-            if (config.includeDeletes && config.deleteColumn && escapedDeleteCol) {
+            if (!cancelled && config.includeDeletes && config.deleteColumn && escapedDeleteCol) {
                 let deleteQuery: string;
                 let deleteParams: unknown[];
-
-                const lastDeleteCursor = readCheckpointCursor(
-                    context.checkpoint?.data,
-                    'lastDeleteValue',
-                    'lastDeletePrimaryKey',
-                );
 
                 if (lastDeleteCursor) {
                     deleteQuery = `SELECT ${columnList} FROM ${escapedTable} WHERE (${escapedDeleteCol} > $1 OR (${escapedDeleteCol} = $1 AND ${escapedPrimaryKey} > $2)) ORDER BY ${escapedDeleteCol} ASC, ${escapedPrimaryKey} ASC LIMIT $3`;
@@ -315,7 +187,7 @@ export class CdcExtractor implements DataExtractor<CdcExtractorConfig> {
                 ({
                     query: deleteQuery,
                     parameters: deleteParams,
-                } = adaptParameterizedQuery(deleteQuery, deleteParams, config.databaseType));
+                } = adaptCdcParameterizedQuery(deleteQuery, deleteParams, config.databaseType));
 
                 context.logger.debug('Executing CDC delete query');
 
@@ -331,17 +203,16 @@ export class CdcExtractor implements DataExtractor<CdcExtractorConfig> {
                     throw new Error(`CDC delete query failed for table "${config.table}": ${getErrorMessage(queryError)}`);
                 }
 
-                let latestDeleteCursor = lastDeleteCursor;
-
                 for (const row of deleteResult.rows) {
                     if (await context.isCancelled()) {
                         context.logger.info('CDC extraction cancelled during delete scan');
+                        cancelled = true;
                         break;
                     }
 
                     totalRecords++;
 
-                    latestDeleteCursor = readRowCursor(
+                    latestDeleteCursor = readCdcRowCursor(
                         row,
                         config.deleteColumn,
                         config.primaryKey,
@@ -358,26 +229,13 @@ export class CdcExtractor implements DataExtractor<CdcExtractorConfig> {
                     };
                 }
 
-                if (latestTrackingCursor || latestDeleteCursor) {
-                    const checkpointData: JsonObject = {};
-                    if (latestTrackingCursor) {
-                        checkpointData.lastTrackingValue = latestTrackingCursor.value;
-                        checkpointData.lastTrackingPrimaryKey = latestTrackingCursor.primaryKey;
-                    }
-                    if (latestDeleteCursor) {
-                        checkpointData.lastDeleteValue = latestDeleteCursor.value;
-                        checkpointData.lastDeletePrimaryKey = latestDeleteCursor.primaryKey;
-                    }
-                    context.setCheckpoint(checkpointData);
-                }
-            } else {
-                if (latestTrackingCursor) {
-                    context.setCheckpoint({
-                        lastTrackingValue: latestTrackingCursor.value,
-                        lastTrackingPrimaryKey: latestTrackingCursor.primaryKey,
-                    });
-                }
             }
+
+            const checkpoint = createCdcCheckpoint(
+                latestTrackingCursor,
+                latestDeleteCursor,
+            );
+            if (checkpoint) context.setCheckpoint(checkpoint);
 
             context.logger.info('CDC extraction completed', {
                 totalRecords,
@@ -394,88 +252,7 @@ export class CdcExtractor implements DataExtractor<CdcExtractorConfig> {
         _context: ExtractorContext,
         config: CdcExtractorConfig,
     ): Promise<ExtractorValidationResult> {
-        const errors: Array<{ field: string; message: string; code?: string }> = [];
-        const warnings: Array<{ field?: string; message: string }> = [];
-
-        if (!config.databaseType) {
-            errors.push({ field: 'databaseType', message: 'Database type is required' });
-        } else if (!['POSTGRESQL', 'MYSQL'].includes(config.databaseType)) {
-            errors.push({ field: 'databaseType', message: 'Only POSTGRESQL and MYSQL are supported' });
-        }
-
-        if (!config.connectionCode) {
-            errors.push({ field: 'connectionCode', message: 'Connection code is required' });
-        }
-
-        if (!config.table) {
-            errors.push({ field: 'table', message: 'Table name is required' });
-        } else {
-            try {
-                validateTableName(config.table);
-            } catch {
-                errors.push({ field: 'table', message: 'Invalid table name' });
-            }
-        }
-
-        if (!config.trackingColumn) {
-            errors.push({ field: 'trackingColumn', message: 'Tracking column is required' });
-        } else {
-            try {
-                validateColumnName(config.trackingColumn);
-            } catch {
-                errors.push({ field: 'trackingColumn', message: 'Invalid tracking column name' });
-            }
-        }
-
-        if (!config.trackingType) {
-            errors.push({ field: 'trackingType', message: 'Tracking type is required' });
-        } else if (!['TIMESTAMP', 'VERSION'].includes(config.trackingType)) {
-            errors.push({ field: 'trackingType', message: 'Tracking type must be TIMESTAMP or VERSION' });
-        }
-
-        if (!config.primaryKey) {
-            errors.push({ field: 'primaryKey', message: 'Primary key column is required' });
-        } else {
-            try {
-                validateColumnName(config.primaryKey);
-            } catch {
-                errors.push({ field: 'primaryKey', message: 'Invalid primary key column name' });
-            }
-        }
-
-        if (config.includeDeletes && !config.deleteColumn) {
-            errors.push({ field: 'deleteColumn', message: 'Delete column is required when tracking deletes' });
-        }
-
-        if (config.deleteColumn) {
-            try {
-                validateColumnName(config.deleteColumn);
-            } catch {
-                errors.push({ field: 'deleteColumn', message: 'Invalid delete column name' });
-            }
-        }
-
-        if (config.columns) {
-            for (const col of config.columns) {
-                try {
-                    validateColumnName(col);
-                } catch {
-                    errors.push({ field: 'columns', message: `Invalid column name: "${col}"` });
-                }
-            }
-        }
-
-        if (config.batchSize !== undefined && config.batchSize <= 0) {
-            errors.push({ field: 'batchSize', message: 'Batch size must be positive' });
-        }
-
-        if (config.trackingType === 'VERSION') {
-            warnings.push({
-                message: 'VERSION tracking assumes the column is monotonically increasing. Ensure no gaps or resets occur.',
-            });
-        }
-
-        return { valid: errors.length === 0, errors, warnings };
+        return validateCdcConfig(config);
     }
 
     async testConnection(
@@ -487,7 +264,7 @@ export class CdcExtractor implements DataExtractor<CdcExtractorConfig> {
         let client: Awaited<ReturnType<typeof createDatabaseClient>> | null = null;
         try {
             const connection = await context.connections.getRequired(config.connectionCode);
-            const dbConfig = toDatabaseConfig(config, connection);
+            const dbConfig = toCdcDatabaseConfig(config, connection);
             const testQuery = DATABASE_TEST_QUERIES[config.databaseType as DatabaseType] || 'SELECT 1';
 
             client = await createDatabaseClient(context, dbConfig);
@@ -522,17 +299,21 @@ export class CdcExtractor implements DataExtractor<CdcExtractorConfig> {
         limit: number = 10,
     ): Promise<ExtractorPreviewResult> {
         try {
-            validateIdentifiers(config);
+            validateCdcIdentifiers(config);
 
             const connection = await context.connections.getRequired(config.connectionCode);
-            const dbConfig = toDatabaseConfig(config, connection);
+            const dbConfig = toCdcDatabaseConfig(config, connection);
             const client = await createDatabaseClient(context, dbConfig);
 
             try {
-                const safeLimit = Math.max(1, Math.min(Math.floor(limit), TRANSFORM_LIMITS.MAX_PREVIEW_LIMIT));
+                const safeLimit = resolveBoundedLimit(
+                    limit,
+                    10,
+                    TRANSFORM_LIMITS.MAX_PREVIEW_LIMIT,
+                );
 
-                const identifierQuote = getIdentifierQuote(config.databaseType);
-                const columnList = buildColumnList(config, identifierQuote);
+                const identifierQuote = getCdcIdentifierQuote(config.databaseType);
+                const columnList = buildCdcColumnList(config, identifierQuote);
                 const escapedTable = escapeSqlTableIdentifier(config.table, identifierQuote);
                 const escapedTrackingCol = escapeSqlIdentifier(config.trackingColumn, identifierQuote);
                 const escapedPrimaryKey = escapeSqlIdentifier(config.primaryKey, identifierQuote);
@@ -542,7 +323,7 @@ export class CdcExtractor implements DataExtractor<CdcExtractorConfig> {
                 ({
                     query: previewQuery,
                     parameters: previewParams,
-                } = adaptParameterizedQuery(previewQuery, previewParams, config.databaseType));
+                } = adaptCdcParameterizedQuery(previewQuery, previewParams, config.databaseType));
 
                 const result = await client.query(previewQuery, previewParams);
 
@@ -566,7 +347,6 @@ export class CdcExtractor implements DataExtractor<CdcExtractorConfig> {
                 await client.close();
             }
         } catch (error) {
-            // Error details included in metadata for caller visibility
             return {
                 records: [],
                 totalAvailable: 0,

@@ -4,6 +4,7 @@ import { CdcExtractor } from './cdc.extractor';
 import { createDatabaseClient } from '../database/connection-pool';
 import type { DatabaseClient } from '../database/connection-pool';
 import type { CdcExtractorConfig } from './types';
+import { PAGINATION } from '../../constants';
 
 vi.mock('../database/connection-pool', async importOriginal => {
     const original = await importOriginal<typeof import('../database/connection-pool')>();
@@ -183,6 +184,43 @@ describe('CdcExtractor checkpoints', () => {
         });
     });
 
+    it('does not start a delete scan after cancellation during the change scan', async () => {
+        const rows = [
+            { id: 8, updated_at: TRACKING_VALUE, deleted_at: null },
+            { id: 9, updated_at: TRACKING_VALUE, deleted_at: null },
+        ];
+        const query = vi.fn().mockResolvedValue({ rows, rowCount: rows.length });
+        vi.mocked(createDatabaseClient).mockResolvedValue({
+            query,
+            close: vi.fn().mockResolvedValue(undefined),
+        } as DatabaseClient);
+        const context = createContext({
+            lastTrackingValue: TRACKING_VALUE,
+            lastTrackingPrimaryKey: 7,
+            lastDeleteValue: TRACKING_VALUE,
+            lastDeletePrimaryKey: 7,
+        });
+        vi.mocked(context.isCancelled)
+            .mockResolvedValueOnce(false)
+            .mockResolvedValueOnce(false)
+            .mockResolvedValueOnce(true);
+
+        const records = await collect(new CdcExtractor(), context, {
+            ...baseConfig,
+            includeDeletes: true,
+            deleteColumn: 'deleted_at',
+        });
+
+        expect(records.map(record => record.data.id)).toEqual([8]);
+        expect(query).toHaveBeenCalledOnce();
+        expect(context.setCheckpoint).toHaveBeenCalledWith({
+            lastTrackingValue: TRACKING_VALUE,
+            lastTrackingPrimaryKey: 8,
+            lastDeleteValue: TRACKING_VALUE,
+            lastDeletePrimaryKey: 7,
+        });
+    });
+
     it('fails closed when a checkpoint is missing its primary-key component', async () => {
         const query = vi.fn();
         const close = vi.fn().mockResolvedValue(undefined);
@@ -213,6 +251,21 @@ describe('CdcExtractor checkpoints', () => {
         expect(close).toHaveBeenCalledOnce();
     });
 
+    it.each([0, 1.5, PAGINATION.DATABASE_MAX_PAGE_SIZE + 1])(
+        'rejects unsafe batch size %s',
+        async batchSize => {
+            const result = await new CdcExtractor().validate(createContext(), {
+                ...baseConfig,
+                batchSize,
+            });
+
+            expect(result.errors).toContainEqual({
+                field: 'batchSize',
+                message: `Batch size must be an integer from 1 to ${PAGINATION.DATABASE_MAX_PAGE_SIZE}`,
+            });
+        },
+    );
+
     it('uses dialect-correct composite ordering in previews', async () => {
         const query = vi.fn().mockResolvedValue({ rows: [], rowCount: 0 });
         const close = vi.fn().mockResolvedValue(undefined);
@@ -223,12 +276,12 @@ describe('CdcExtractor checkpoints', () => {
             databaseType: 'MYSQL',
             table: 'catalog.products',
             columns: ['name'],
-        }, 5);
+        }, Number.NaN);
 
         expect(result.records).toEqual([]);
         expect(query).toHaveBeenCalledWith(
             'SELECT `name`, `id`, `updated_at` FROM `catalog`.`products` ORDER BY `updated_at` DESC, `id` DESC LIMIT ?',
-            [5],
+            [10],
         );
         expect(close).toHaveBeenCalledOnce();
     });

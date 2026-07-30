@@ -8,6 +8,7 @@ import { JsonObject } from '../../types/index';
 import { HttpResponse } from './types';
 import { getNestedValue } from '../../operators/helpers';
 import { HTTP_STATUS, OUTBOUND_RESPONSE_LIMITS } from '../../constants/defaults';
+import { TIME_UNITS } from '../../constants/time';
 import { readResponseText } from '../../utils/secure-response-body.utils';
 
 /**
@@ -84,14 +85,14 @@ export function getRetryAfterMs(response: HttpResponse): number | undefined {
     if (!retryAfter) return undefined;
 
     // If it's a number, it's seconds
-    const seconds = parseInt(retryAfter, 10);
-    if (!isNaN(seconds)) {
-        return seconds * 1000;
+    const seconds = Number.parseInt(retryAfter, 10);
+    if (!Number.isNaN(seconds)) {
+        return seconds * TIME_UNITS.SECOND;
     }
 
     // Otherwise it might be a date
     const date = new Date(retryAfter);
-    if (!isNaN(date.getTime())) {
+    if (!Number.isNaN(date.getTime())) {
         return Math.max(0, date.getTime() - Date.now());
     }
 

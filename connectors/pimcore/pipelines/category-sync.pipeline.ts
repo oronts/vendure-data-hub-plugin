@@ -9,7 +9,10 @@ import { PIMCORE_WEBHOOK_KEY_SECRET } from '../constants';
 import { buildSafePathFilter } from '../utils/security.utils';
 import { DEFAULT_CHANNEL_CODE } from '../../../shared/constants';
 import { createPimcoreExtractorConfig } from './extractor-config';
-import { createPimcoreCategoryQuery } from '../extractors/query-builder';
+import {
+    createPimcoreCategoryQuery,
+    resolvePimcoreQueryContract,
+} from '../extractors/query-builder';
 
 export function createCategorySyncPipeline(config: PimcoreConnectorConfig): PipelineDefinition {
     const {
@@ -21,6 +24,8 @@ export function createCategorySyncPipeline(config: PimcoreConnectorConfig): Pipe
     } = config;
 
     const pipelineConfig = pipelines?.categorySync ?? {};
+    const queryConfig = config.queries?.category;
+    const queryContract = resolvePimcoreQueryContract('category', queryConfig);
 
     if (pipelineConfig.enabled === false) {
         return createPipeline()
@@ -33,7 +38,7 @@ export function createCategorySyncPipeline(config: PimcoreConnectorConfig): Pipe
     const pipeline = createPipeline()
         .name(pipelineConfig.name ?? 'Pimcore Category Sync')
         .description('Sync categories from Pimcore to Vendure collections')
-        .capabilities({ requires: ['UpdateCatalog'] })
+        .capabilities({ requires: ['UpdateCatalog'], writes: ['CATALOG'] })
         ;
 
     if (pipelineConfig.schedule) {
@@ -55,7 +60,9 @@ export function createCategorySyncPipeline(config: PimcoreConnectorConfig): Pipe
     pipeline.extract('fetch-categories', {
         ...createPimcoreExtractorConfig(config, 'category', 200),
         adapterCode: pimcoreGraphQLExtractor.code,
-        query: createPimcoreCategoryQuery(mapping?.category),
+        query: queryConfig?.query
+            ?? createPimcoreCategoryQuery(mapping?.category, queryConfig),
+        responseField: queryContract.responseField,
         filter: pathFilter,
         sortBy: 'fullpath',
         sortOrder: 'ASC',

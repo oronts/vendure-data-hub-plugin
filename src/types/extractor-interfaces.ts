@@ -69,6 +69,9 @@ export interface ExtractorContext {
     /** Checkpoint data from previous run */
     readonly checkpoint: ExtractorCheckpoint;
 
+    /** Trigger-provided source references for targeted extraction. */
+    readonly sourceRecords?: readonly JsonObject[];
+
     /** Secret resolver */
     readonly secrets: SecretResolver;
 
@@ -113,6 +116,12 @@ export interface DataExtractor<TConfig extends ExtractorConfig = ExtractorConfig
 
     /** Version */
     readonly version?: string;
+
+    /** Whether new pipeline definitions should avoid this extractor */
+    readonly deprecated?: boolean;
+
+    /** Explanation and migration path for a deprecated extractor */
+    readonly deprecatedMessage?: string;
 
     /** Icon for UI */
     readonly icon?: string;
@@ -172,6 +181,11 @@ export interface DataExtractor<TConfig extends ExtractorConfig = ExtractorConfig
 export interface BatchDataExtractor<TConfig extends ExtractorConfig = ExtractorConfig>
     extends Omit<DataExtractor<TConfig>, 'extract'> {
     extractAll(context: ExtractorContext, config: TConfig): Promise<import('../../shared/types').ExtractorResult>;
+    preview(
+        context: ExtractorContext,
+        config: TConfig,
+        limit: number,
+    ): Promise<ExtractorPreviewResult>;
 }
 
 export function isStreamingExtractor(

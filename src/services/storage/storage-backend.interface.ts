@@ -10,6 +10,9 @@ export interface StorageBackend {
     /** Initialize the backend */
     init(): Promise<void>;
 
+    /** Release backend resources */
+    close?(): Promise<void>;
+
     /** Write data to storage */
     write(path: string, data: Buffer): Promise<void>;
 
