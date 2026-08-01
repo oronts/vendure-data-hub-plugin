@@ -49,6 +49,8 @@ export class FileStorageService implements OnModuleInit, OnModuleDestroy {
     private readonly backend: StorageBackend;
     private readonly fileIndex = new Map<string, StoredFile>();
     private cleanupHandle: ReturnType<typeof setInterval> | null = null;
+    private cleanupOperation: Promise<void> | null = null;
+    private destroying = false;
 
     constructor(loggerFactory: DataHubLoggerFactory) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.FILE_STORAGE_SERVICE);
@@ -69,11 +71,13 @@ export class FileStorageService implements OnModuleInit, OnModuleDestroy {
     }
 
     async onModuleDestroy(): Promise<void> {
+        this.destroying = true;
         if (this.cleanupHandle) {
             clearInterval(this.cleanupHandle);
             this.cleanupHandle = null;
             this.logger.debug('File storage cleanup job stopped');
         }
+        await this.cleanupOperation?.catch(() => undefined);
         await this.backend.close?.();
     }
 
@@ -371,7 +375,19 @@ export class FileStorageService implements OnModuleInit, OnModuleDestroy {
         return file;
     }
 
-    private async cleanupExpiredFiles(): Promise<void> {
+    private cleanupExpiredFiles(): Promise<void> {
+        if (this.destroying) return Promise.resolve();
+        if (this.cleanupOperation) return this.cleanupOperation;
+        const cleanup = this.deleteExpiredFiles();
+        this.cleanupOperation = cleanup;
+        void cleanup.then(
+            () => this.clearCleanupOperation(cleanup),
+            () => this.clearCleanupOperation(cleanup),
+        );
+        return cleanup;
+    }
+
+    private async deleteExpiredFiles(): Promise<void> {
         const now = new Date();
         const expired = Array.from(this.fileIndex.values())
             .filter(file => file.expiresAt && file.expiresAt <= now);
@@ -382,6 +398,12 @@ export class FileStorageService implements OnModuleInit, OnModuleDestroy {
         }
         if (deleted > 0) {
             this.logger.info('Cleaned up expired files', { filesDeleted: deleted });
+        }
+    }
+
+    private clearCleanupOperation(operation: Promise<void>): void {
+        if (this.cleanupOperation === operation) {
+            this.cleanupOperation = null;
         }
     }
 
@@ -425,7 +447,9 @@ export class FileStorageService implements OnModuleInit, OnModuleDestroy {
 
     private startCleanupJob(): void {
         this.cleanupHandle = setInterval(() => {
-            void this.cleanupExpiredFiles();
+            void this.cleanupExpiredFiles().catch(error => {
+                this.logger.error('Scheduled file cleanup failed', ensureError(error));
+            });
         }, SCHEDULER.FILE_CLEANUP_INTERVAL_MS);
         this.cleanupHandle.unref();
     }

@@ -5,6 +5,20 @@ import { RequestContext } from '@vendure/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DataHubLoggerFactory } from '../logger';
 import { FileStorageService } from './file-storage.service';
+import type { StorageBackend } from './storage-backend.interface';
+
+interface FileStorageInternals {
+    readonly backend: StorageBackend;
+    cleanupExpiredFiles(): Promise<void>;
+}
+
+function deferred<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>(resolvePromise => {
+        resolve = resolvePromise;
+    });
+    return { promise, resolve };
+}
 
 function createContext(channelId: string, activeUserId?: string): RequestContext {
     return { channelId, activeUserId } as unknown as RequestContext;
@@ -129,6 +143,48 @@ describe('FileStorageService security boundaries', () => {
         await expect(recoveredService.listFiles(context)).resolves.toMatchObject({ totalItems: 0 });
         const remainingEntries = await fs.promises.readdir(root, { recursive: true });
         expect(remainingEntries.some(entry => String(entry).includes(result.file!.id))).toBe(false);
+    });
+
+    it('drains one active expiry cleanup before closing the backend', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-07-15T10:00:00.000Z'));
+        const service = await createService();
+        const result = await service.storeFile(
+            createContext('channel-a'),
+            Buffer.from('temporary'),
+            'temporary.txt',
+            'text/plain',
+            { expiresInMinutes: 1 },
+        );
+        expect(result.success).toBe(true);
+        vi.setSystemTime(new Date('2026-07-15T10:02:00.000Z'));
+
+        const internals = service as unknown as FileStorageInternals;
+        const deletionStarted = deferred<void>();
+        const deletionResult = deferred<boolean>();
+        const originalDelete = internals.backend.delete.bind(internals.backend);
+        const deleteSpy = vi.spyOn(internals.backend, 'delete')
+            .mockImplementationOnce(async () => {
+                deletionStarted.resolve();
+                return deletionResult.promise;
+            })
+            .mockImplementation(originalDelete);
+        const close = vi.fn(async () => undefined);
+        internals.backend.close = close;
+
+        const firstCleanup = internals.cleanupExpiredFiles();
+        await deletionStarted.promise;
+        const secondCleanup = internals.cleanupExpiredFiles();
+        expect(secondCleanup).toBe(firstCleanup);
+
+        const shutdown = service.onModuleDestroy();
+        await Promise.resolve();
+        expect(close).not.toHaveBeenCalled();
+        deletionResult.resolve(true);
+        await Promise.all([firstCleanup, secondCleanup, shutdown]);
+
+        expect(deleteSpy).toHaveBeenCalledTimes(2);
+        expect(close).toHaveBeenCalledOnce();
     });
 
     it('fails closed when stored content no longer matches its persisted hash', async () => {
