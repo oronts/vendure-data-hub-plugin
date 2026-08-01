@@ -1,6 +1,6 @@
 # User Guide
 
-This guide covers using the Data Hub Admin UI to create and manage data pipelines.
+This guide covers using Data Hub in the Vendure Dashboard to create and manage data pipelines.
 
 <p align="center">
   <img src="../images/08-pipeline-editor-workflow.png" alt="Visual Pipeline Editor" width="700">
@@ -24,7 +24,7 @@ This guide covers using the Data Hub Admin UI to create and manage data pipeline
 
 ## Accessing Data Hub
 
-1. Log in to the Vendure Admin UI
+1. Log in to the Vendure Dashboard
 2. Click **Data Hub** in the left navigation menu
 3. Open **Pipelines** to create, edit, run, and inspect pipelines
 

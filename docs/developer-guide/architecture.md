@@ -6,7 +6,7 @@ Understanding the plugin architecture helps you use it effectively and extend it
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                         Admin UI                                 │
+│                    Vendure Dashboard                             │
 │   ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐  │
 │   │ Pipeline     │  │ Connections  │  │ Runs / Logs /        │  │
 │   │ Builder      │  │ & Secrets    │  │ Analytics            │  │
@@ -70,7 +70,7 @@ Understanding the plugin architecture helps you use it effectively and extend it
 - Database entities
 - Service providers
 - GraphQL schema extensions
-- Admin UI extension
+- Dashboard extension
 - Job queue handlers
 - HTTP controllers
 
@@ -602,7 +602,7 @@ src/plugins/data-hub/
 │   ├── validation/               # Pipeline definition validators
 │   └── vendure-schemas/          # Vendure entity schema definitions
 ├── connectors/                   # External system connectors (e.g. Pimcore)
-├── dashboard/                    # React Admin UI
+├── dashboard/                    # Vendure Dashboard extension
 │   ├── components/               # UI components
 │   ├── constants/                # UI constants
 │   ├── gql/                      # GraphQL queries

@@ -935,7 +935,7 @@ a persistent Vendure job queue and activate `data-hub.event-trigger-outbox` and
 
 ---
 
-## Admin UI Features
+## Dashboard Features
 
 The plugin includes a full-featured admin dashboard:
 

@@ -32,7 +32,7 @@ New to Data Hub? Start here for installation, basic setup, and your first pipeli
 - [Core Concepts](./getting-started/concepts.md)
 
 ### [User Guide](./user-guide/README.md)
-Learn how to use the Data Hub Admin UI to create and manage pipelines.
+Learn how to use Data Hub in the Vendure Dashboard to create and manage pipelines.
 
 - [Creating Pipelines](./user-guide/pipelines.md)
 - [Import/Export Wizards](./user-guide/wizards.md) - Step-by-step wizard guides

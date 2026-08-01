@@ -1087,7 +1087,7 @@ Customers on "web" channel can switch between EUR/USD/GBP if product has all 3 p
 ```
 
 **Solution:**
-If you need to remove channels, use Vendure Admin UI or GraphQL mutation directly:
+If you need to remove channels, use the Vendure Dashboard or a GraphQL mutation directly:
 ```graphql
 mutation {
     removeProductsFromChannel(input: {
@@ -1174,8 +1174,8 @@ Final state: Product in ["default", "web", "b2b"]  ← Still in web!
 ```
 
 **Solution:**
-1. Check existing channel assignments in Vendure Admin
-2. Manually remove from unwanted channels via Admin UI
+1. Check existing channel assignments in the Vendure Dashboard
+2. Manually remove them from unwanted channels in the Dashboard
 3. Then use pipeline to assign to desired channels
 
 ---

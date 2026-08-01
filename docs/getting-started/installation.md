@@ -38,7 +38,7 @@ Production installations must keep TypeORM synchronization disabled. See the
 ## Verify Installation
 
 1. Start your Vendure server
-2. Open the Admin UI
+2. Open the Vendure Dashboard
 3. Look for "Data Hub" in the left navigation menu
 
 Seeing the Data Hub menu confirms that the dashboard extension loaded. Also

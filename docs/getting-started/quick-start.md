@@ -13,7 +13,7 @@ We'll build a pipeline that:
 
 ### Step 1: Create a Pipeline
 
-1. Open the Admin UI
+1. Open the Vendure Dashboard
 2. Navigate to **Data Hub > Pipelines**
 3. Click **Create Pipeline**
 4. Enter:
@@ -120,7 +120,7 @@ export const config: VendureConfig = {
 
 ## Running the Pipeline
 
-### Via Admin UI
+### Via the Dashboard
 
 1. Go to **Data Hub > Pipelines**
 2. Find your pipeline

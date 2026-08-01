@@ -1,6 +1,8 @@
 # GraphQL API
 
-> **Important:** Use GraphQL introspection (`{ __schema { ... } }`) or the Vendure Admin UI's API playground for the definitive, up-to-date API reference. The examples below show common usage patterns but field names and signatures may differ from the current implementation.
+The examples in this guide are validated against the generated plugin schema by
+`npm run verify:docs`. Runtime GraphQL introspection remains the definitive
+contract for the exact plugin version installed by an application.
 
 The Data Hub plugin extends the Vendure Admin API with queries and mutations for pipeline management.
 
@@ -677,46 +679,48 @@ mutation UpdateSettings($input: DataHubSettingsInput!) {
 
 ## TypeScript Client
 
-Using with `@vendure/admin-ui-plugin` or custom clients:
+Inside a Vendure Dashboard extension, use its authenticated `api` client with a
+typed document generated from the host application's Admin API schema:
 
 ```typescript
-import { gql } from 'graphql-tag';
+import { api } from '@vendure/dashboard';
+import { graphql } from '@/gql';
 
-const RUN_PIPELINE = gql`
-    mutation RunPipeline($pipelineId: ID!) {
-        startDataHubPipelineRun(pipelineId: $pipelineId) {
+const runPipelineDocument = graphql(`
+    mutation RunDataHubPipeline($pipelineId: ID!, $expectedRevisionId: ID) {
+        startDataHubPipelineRun(
+            pipelineId: $pipelineId
+            expectedRevisionId: $expectedRevisionId
+        ) {
             id
             status
+            revisionId
         }
     }
-`;
+`);
 
-// Execute
-const result = await adminClient.mutate({
-    mutation: RUN_PIPELINE,
-    variables: { pipelineId: '1' },
+const result = await api.mutate(runPipelineDocument, {
+    pipelineId: '1',
+    expectedRevisionId: null,
 });
+
+const run = result.startDataHubPipelineRun;
 ```
+
+The Dashboard client supplies the active session and channel tokens. External
+clients should send the same operation to Vendure's configured Admin API path
+with an authenticated administrator session and, when applicable, the target
+channel token header.
 
 ## Error Handling
 
 Authorization, lookup, duplicate-code, and create/update validation failures are
-returned through the GraphQL `errors` array. The exact `extensions.code` depends
-on the originating Vendure or resolver error and is not guaranteed for every
-validation path:
-
-```typescript
-try {
-    const result = await adminClient.mutate({ ... });
-} catch (error) {
-    if (error.graphQLErrors) {
-        for (const gqlError of error.graphQLErrors) {
-            console.log(gqlError.message);
-            console.log(gqlError.extensions?.code);
-        }
-    }
-}
-```
+returned through the GraphQL `errors` array. Vendure Dashboard's `api` client
+rejects the request with an `Error` that can also expose `extensions` and
+`fieldErrors`; narrow an `unknown` caught value before reading those properties.
+Do not assume Apollo-specific properties such as `graphQLErrors`. The exact
+`extensions.code` depends on the originating Vendure or resolver error and is
+not guaranteed for every validation path.
 
 Delete mutations use Vendure's `DeletionResponse`; inspect `result` and
 `message` even when the GraphQL request itself succeeds.

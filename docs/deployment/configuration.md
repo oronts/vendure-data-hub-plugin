@@ -750,7 +750,7 @@ pipelines:
 
 ## Runtime Settings
 
-These settings can be changed via Admin UI or GraphQL:
+These settings can be changed via the Vendure Dashboard or GraphQL:
 
 | Setting | Description |
 |---------|-------------|

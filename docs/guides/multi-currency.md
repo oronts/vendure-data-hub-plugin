@@ -827,7 +827,7 @@ skuField: 'variant_sku'
 
 ### Missing Currencies
 
-**Problem**: Some currencies not appearing in Admin UI
+**Problem**: Some currencies not appearing in the Vendure Dashboard
 
 **Cause**: Channel doesn't list currency in `availableCurrencyCodes`
 
