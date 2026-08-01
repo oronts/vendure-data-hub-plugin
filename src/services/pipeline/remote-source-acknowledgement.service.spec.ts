@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RequestContext } from '@vendure/core';
-import { DISTRIBUTED_LOCK } from '../../constants';
+import {
+    DISTRIBUTED_LOCK,
+    REMOTE_SOURCE_ACKNOWLEDGEMENT_RECOVERY,
+} from '../../constants';
 import { RunStatus } from '../../constants/enums';
 import { createS3Client } from '../../extractors/s3/client';
 import { createClient } from '../../extractors/ftp/connection';
@@ -163,6 +166,31 @@ describe('RemoteSourceAcknowledgementService', () => {
             }),
             select: { id: true },
         });
+    });
+
+    it('bounds completed-run lookup for a large single-pipeline backlog', async () => {
+        const runCount = REMOTE_SOURCE_ACKNOWLEDGEMENT_RECOVERY
+            .RUN_ID_QUERY_BATCH_SIZE + 1;
+        const runIds = Array.from(
+            { length: runCount },
+            (_, index) => `pending-run-${index}`,
+        );
+        const fixture = createFixture(
+            pendingCheckpoint(runIds.map(runId => createEntry(runId))),
+            [],
+        );
+
+        await expect(
+            fixture.service.acknowledgeCompletedForPipeline(ctx, 7),
+        ).resolves.toEqual({
+            acknowledged: 0,
+            failed: 0,
+            pending: runCount,
+        });
+
+        expect(fixture.find).toHaveBeenCalledTimes(2);
+        expect(createS3Client).not.toHaveBeenCalled();
+        expect(fixture.checkpointService.updateForPipeline).not.toHaveBeenCalled();
     });
 
     it('acknowledges only runs returned as completed for this channel and pipeline', async () => {

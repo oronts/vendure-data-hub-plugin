@@ -126,6 +126,7 @@ function createFixture(options: {
         find,
         findChannel,
         logger,
+        query,
         getProcessor: () => processor,
     };
 }
@@ -361,6 +362,85 @@ describe('RemoteSourceAcknowledgementRecoveryService', () => {
                 DISTRIBUTED_LOCK.REMOTE_SOURCE_ACKNOWLEDGEMENT_RECOVERY_LOCK_KEY,
                 'recovery-leader',
             );
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('renews leadership while a checkpoint scan is still in flight', async () => {
+        vi.useFakeTimers();
+        try {
+            let finishScan!: (
+                checkpoints: Array<{ id: number; pipelineId: number; data: JsonObject }>,
+            ) => void;
+            const scan = new Promise<
+                Array<{ id: number; pipelineId: number; data: JsonObject }>
+            >(resolve => {
+                finishScan = resolve;
+            });
+            const fixture = createFixture();
+            fixture.query.getMany.mockImplementationOnce(() => scan);
+
+            const initialization = fixture.service.onModuleInit();
+            await vi.waitFor(() => {
+                expect(fixture.query.getMany).toHaveBeenCalledOnce();
+            });
+            await vi.advanceTimersByTimeAsync(
+                REMOTE_SOURCE_ACKNOWLEDGEMENT_RECOVERY.RECONCILE_INTERVAL_MS,
+            );
+
+            expect(fixture.distributedLock.extend).toHaveBeenCalledWith(
+                DISTRIBUTED_LOCK.REMOTE_SOURCE_ACKNOWLEDGEMENT_RECOVERY_LOCK_KEY,
+                'recovery-leader',
+                DISTRIBUTED_LOCK
+                    .REMOTE_SOURCE_ACKNOWLEDGEMENT_RECOVERY_LOCK_TTL_MS,
+            );
+            finishScan([]);
+            await initialization;
+            await fixture.service.onModuleDestroy();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('does not enqueue after leadership is lost during a slow scan', async () => {
+        vi.useFakeTimers();
+        try {
+            const checkpoints = [{
+                id: 1,
+                pipelineId: 7,
+                data: pendingCheckpoint('completed-run'),
+            }];
+            let finishScan!: (value: typeof checkpoints) => void;
+            const scan = new Promise<typeof checkpoints>(resolve => {
+                finishScan = resolve;
+            });
+            const fixture = createFixture({
+                completedRuns: [{
+                    id: 'completed-run',
+                    pipelineId: 7,
+                    channelId: '3',
+                }],
+            });
+            fixture.query.getMany.mockImplementationOnce(() => scan);
+            fixture.distributedLock.extend.mockResolvedValue(false);
+
+            const initialization = fixture.service.onModuleInit();
+            await vi.waitFor(() => {
+                expect(fixture.query.getMany).toHaveBeenCalledOnce();
+            });
+            await vi.advanceTimersByTimeAsync(
+                REMOTE_SOURCE_ACKNOWLEDGEMENT_RECOVERY.RECONCILE_INTERVAL_MS,
+            );
+            finishScan(checkpoints);
+            await initialization;
+
+            expect(fixture.add).not.toHaveBeenCalled();
+            expect(fixture.logger.warn).toHaveBeenCalledWith(
+                'Remote source acknowledgement recovery leadership was lost',
+                { reason: 'lease renewal was rejected' },
+            );
+            await fixture.service.onModuleDestroy();
         } finally {
             vi.useRealTimers();
         }

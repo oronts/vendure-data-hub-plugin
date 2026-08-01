@@ -46,6 +46,8 @@ implements OnModuleInit, OnModuleDestroy {
     private recoveryCursor: ID | null = null;
     private reconciliation: Promise<void> | null = null;
     private leaderToken: string | null = null;
+    private leaderRefreshTimer: NodeJS.Timeout | null = null;
+    private leaderRefresh: Promise<void> | null = null;
     private destroying = false;
 
     constructor(
@@ -78,6 +80,8 @@ implements OnModuleInit, OnModuleDestroy {
         this.destroying = true;
         if (this.recoveryTimer) clearInterval(this.recoveryTimer);
         this.recoveryTimer = null;
+        this.stopLeaderRefresh();
+        await this.leaderRefresh;
         await this.reconciliation?.catch(() => undefined);
         if (this.leaderToken) {
             const token = this.leaderToken;
@@ -108,7 +112,7 @@ implements OnModuleInit, OnModuleDestroy {
             const adminCtx = await this.requestContextService.create({ apiType: 'admin' });
             const checkpoints = await this.findCheckpointBatch(adminCtx);
             const candidates = await this.findRecoveryCandidates(adminCtx, checkpoints);
-            if (this.destroying) return;
+            if (!this.canDispatchRecovery()) return;
             await this.enqueueCandidates(candidates);
         } catch (error) {
             this.logger.error(
@@ -123,18 +127,7 @@ implements OnModuleInit, OnModuleDestroy {
             .REMOTE_SOURCE_ACKNOWLEDGEMENT_RECOVERY_LOCK_KEY;
         const ttlMs = DISTRIBUTED_LOCK
             .REMOTE_SOURCE_ACKNOWLEDGEMENT_RECOVERY_LOCK_TTL_MS;
-        if (this.leaderToken) {
-            const extended = await this.distributedLock.extend(
-                lockKey,
-                this.leaderToken,
-                ttlMs,
-            );
-            if (extended) return true;
-            this.leaderToken = null;
-            this.recoveryCursor = null;
-            this.logger.warn('Remote source acknowledgement recovery leadership was lost');
-            return false;
-        }
+        if (this.leaderToken) return true;
 
         const lock = await this.distributedLock.acquire(lockKey, {
             ttlMs,
@@ -143,7 +136,55 @@ implements OnModuleInit, OnModuleDestroy {
         if (!lock.acquired || !lock.token) return false;
         this.leaderToken = lock.token;
         this.recoveryCursor = null;
+        this.startLeaderRefresh();
         return true;
+    }
+
+    private startLeaderRefresh(): void {
+        if (this.leaderRefreshTimer) return;
+        this.leaderRefreshTimer = setInterval(() => {
+            const token = this.leaderToken;
+            if (!token || this.destroying || this.leaderRefresh) return;
+            const refresh = this.refreshLeadership(token);
+            this.leaderRefresh = refresh;
+            void refresh.finally(() => {
+                if (this.leaderRefresh === refresh) this.leaderRefresh = null;
+            });
+        }, REMOTE_SOURCE_ACKNOWLEDGEMENT_RECOVERY.RECONCILE_INTERVAL_MS);
+        this.leaderRefreshTimer.unref();
+    }
+
+    private stopLeaderRefresh(): void {
+        if (this.leaderRefreshTimer) clearInterval(this.leaderRefreshTimer);
+        this.leaderRefreshTimer = null;
+    }
+
+    private async refreshLeadership(token: string): Promise<void> {
+        try {
+            const extended = await this.distributedLock.extend(
+                DISTRIBUTED_LOCK.REMOTE_SOURCE_ACKNOWLEDGEMENT_RECOVERY_LOCK_KEY,
+                token,
+                DISTRIBUTED_LOCK.REMOTE_SOURCE_ACKNOWLEDGEMENT_RECOVERY_LOCK_TTL_MS,
+            );
+            if (extended) return;
+            this.loseLeadership(token, 'lease renewal was rejected');
+        } catch (error) {
+            this.loseLeadership(token, ensureError(error).message);
+        }
+    }
+
+    private loseLeadership(token: string, reason: string): void {
+        if (this.leaderToken !== token) return;
+        this.leaderToken = null;
+        this.recoveryCursor = null;
+        this.stopLeaderRefresh();
+        this.logger.warn('Remote source acknowledgement recovery leadership was lost', {
+            reason,
+        });
+    }
+
+    private canDispatchRecovery(): boolean {
+        return !this.destroying && this.leaderToken != null;
     }
 
     private async findRecoveryCandidates(
@@ -211,6 +252,7 @@ implements OnModuleInit, OnModuleDestroy {
         candidates: RemoteSourceAcknowledgementCandidate[],
     ): Promise<void> {
         for (const candidate of candidates) {
+            if (!this.canDispatchRecovery()) return;
             const dispatchKey = this.dispatchLockKey(candidate);
             const dispatch = await this.distributedLock.acquire(dispatchKey, {
                 ttlMs: DISTRIBUTED_LOCK
@@ -218,6 +260,10 @@ implements OnModuleInit, OnModuleDestroy {
                 waitForLock: false,
             });
             if (!dispatch.acquired || !dispatch.token) continue;
+            if (!this.canDispatchRecovery()) {
+                await this.distributedLock.release(dispatchKey, dispatch.token);
+                return;
+            }
             try {
                 await this.queue.add({
                     ...candidate,

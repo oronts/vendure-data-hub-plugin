@@ -5,6 +5,7 @@ import { RunStatus } from '../../constants/enums';
 import {
     DISTRIBUTED_LOCK,
     LOGGER_CONTEXTS,
+    REMOTE_SOURCE_ACKNOWLEDGEMENT_RECOVERY,
 } from '../../constants';
 import { PipelineRun } from '../../entities/pipeline';
 import { createClient, FtpClient } from '../../extractors/ftp/connection';
@@ -17,6 +18,7 @@ import {
     removeRemoteSourceAcknowledgements,
 } from '../../extractors/shared/remote-source-acknowledgement';
 import type { ExtractorContext, JsonObject, JsonValue } from '../../types';
+import { chunk } from '../../utils/array.utils';
 import { getErrorMessage } from '../../utils/error.utils';
 import { CheckpointService } from '../data/checkpoint.service';
 import { ConnectionService } from '../config/connection.service';
@@ -221,16 +223,26 @@ export class RemoteSourceAcknowledgementService {
     ): Promise<Set<string>> {
         const uniqueRunIds = [...new Set(runIds)];
         if (uniqueRunIds.length === 0) return new Set();
-        const runs = await this.connection.getRepository(ctx, PipelineRun).find({
-            where: {
-                id: In(uniqueRunIds),
-                pipelineId,
-                status: RunStatus.COMPLETED,
-                channelId: String(ctx.channelId),
-            },
-            select: { id: true },
-        });
-        return new Set(runs.map(run => String(run.id)));
+        const repository = this.connection.getRepository(ctx, PipelineRun);
+        const completedRunIds = new Set<string>();
+        for (const runIdBatch of chunk(
+            uniqueRunIds,
+            REMOTE_SOURCE_ACKNOWLEDGEMENT_RECOVERY.RUN_ID_QUERY_BATCH_SIZE,
+        )) {
+            const runs = await repository.find({
+                where: {
+                    id: In(runIdBatch),
+                    pipelineId,
+                    status: RunStatus.COMPLETED,
+                    channelId: String(ctx.channelId),
+                },
+                select: { id: true },
+            });
+            for (const run of runs) {
+                completedRunIds.add(String(run.id));
+            }
+        }
+        return completedRunIds;
     }
 
     private async acknowledge(
