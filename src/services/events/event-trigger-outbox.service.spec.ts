@@ -31,6 +31,20 @@ interface OutboxJobData {
     dispatchToken: string;
 }
 
+interface OutboxServiceInternals {
+    dispatchPending(): Promise<void>;
+}
+
+type OutboxFindResult = DataHubEventTriggerOutbox[] | Array<{ id: number }>;
+
+function deferred<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>(resolvePromise => {
+        resolve = resolvePromise;
+    });
+    return { promise, resolve };
+}
+
 const definition: PipelineDefinition = {
     version: 1,
     steps: [
@@ -193,7 +207,9 @@ function createWorkerFixture(options?: {
         status: RunStatus.PENDING,
     });
     const outboxRepo = {
-        find: vi.fn(async (findOptions?: { order?: Record<string, unknown> }) => {
+        find: vi.fn(async (
+            findOptions?: { order?: Record<string, unknown> },
+        ): Promise<OutboxFindResult> => {
             if (!findOptions?.order?.leaseExpiresAt) return [];
             return Array.from(
                 { length: options?.expiredLeaseCount ?? 0 },
@@ -258,6 +274,7 @@ function createWorkerFixture(options?: {
         enqueueRun,
         domainEvents,
         logger,
+        outboxQueue,
         getProcessJob: () => {
             if (!processJob) throw new Error('Outbox queue processor was not initialized');
             return processJob;
@@ -275,6 +292,57 @@ function createJob(attempts = 1, retries = 2): Job<OutboxJobData> {
 }
 
 describe('EventTriggerOutboxService delivery', () => {
+    it('waits for an active dispatch scan and stops before enqueueing', async () => {
+        const fixture = createWorkerFixture();
+        await fixture.service.onModuleInit();
+        const pendingDeliveries = deferred<DataHubEventTriggerOutbox[]>();
+        fixture.outboxRepo.find
+            .mockResolvedValueOnce([])
+            .mockReturnValueOnce(pendingDeliveries.promise);
+
+        const dispatch = (fixture.service as unknown as OutboxServiceInternals)
+            .dispatchPending();
+        await vi.waitFor(() => expect(fixture.outboxRepo.find).toHaveBeenCalledTimes(4));
+        const shutdown = fixture.service.onModuleDestroy();
+        pendingDeliveries.resolve([fixture.delivery]);
+        await Promise.all([dispatch, shutdown]);
+
+        expect(fixture.outboxQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('releases a dispatch claim acquired while shutdown begins', async () => {
+        const fixture = createWorkerFixture();
+        await fixture.service.onModuleInit();
+        fixture.delivery.status = EventTriggerOutboxStatus.PENDING;
+        const pendingClaim = deferred<{ affected: number }>();
+        fixture.outboxRepo.find
+            .mockResolvedValueOnce([])
+            .mockResolvedValueOnce([fixture.delivery]);
+        fixture.outboxRepo.update
+            .mockReturnValueOnce(pendingClaim.promise)
+            .mockResolvedValueOnce({ affected: 1 });
+
+        const dispatch = (fixture.service as unknown as OutboxServiceInternals)
+            .dispatchPending();
+        await vi.waitFor(() => expect(fixture.outboxRepo.update).toHaveBeenCalledOnce());
+        const shutdown = fixture.service.onModuleDestroy();
+        pendingClaim.resolve({ affected: 1 });
+        await Promise.all([dispatch, shutdown]);
+
+        expect(fixture.outboxQueue.add).not.toHaveBeenCalled();
+        expect(fixture.outboxRepo.update).toHaveBeenLastCalledWith(
+            expect.objectContaining({
+                id: fixture.delivery.id,
+                status: EventTriggerOutboxStatus.DISPATCHING,
+            }),
+            expect.objectContaining({
+                status: EventTriggerOutboxStatus.PENDING,
+                leaseExpiresAt: null,
+                dispatchToken: null,
+            }),
+        );
+    });
+
     it('does not write when no leases have expired', async () => {
         const fixture = createWorkerFixture();
 

@@ -24,6 +24,7 @@ import {
 } from '../../entities/pipeline';
 import { DataHubRunQueueHandler } from '../../jobs';
 import { ensureError } from '../../utils/error.utils';
+import { SingleFlightTask } from '../../utils/async-operation-tracker';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { DomainEventsService } from './domain-events.service';
@@ -58,7 +59,7 @@ export class EventTriggerOutboxService implements OnModuleInit, OnModuleDestroy 
     private readonly logger: DataHubLogger;
     private queue!: JobQueue<EventTriggerOutboxJobData>;
     private dispatchTimer: NodeJS.Timeout | null = null;
-    private dispatching = false;
+    private readonly dispatchTask = new SingleFlightTask<void>();
     private destroying = false;
 
     constructor(
@@ -80,6 +81,7 @@ export class EventTriggerOutboxService implements OnModuleInit, OnModuleDestroy 
         });
 
         await this.dispatchPending();
+        if (this.destroying) return;
         this.dispatchTimer = setInterval(() => {
             this.dispatchPending().catch(error => {
                 this.logger.error('Event outbox dispatch failed', ensureError(error));
@@ -93,12 +95,13 @@ export class EventTriggerOutboxService implements OnModuleInit, OnModuleDestroy 
         });
     }
 
-    onModuleDestroy(): void {
+    async onModuleDestroy(): Promise<void> {
         this.destroying = true;
         if (this.dispatchTimer) {
             clearInterval(this.dispatchTimer);
             this.dispatchTimer = null;
         }
+        await this.dispatchTask.settle();
     }
 
     async capture(vendureEvent: VendureEvent): Promise<number> {
@@ -126,25 +129,25 @@ export class EventTriggerOutboxService implements OnModuleInit, OnModuleDestroy 
         return deliveries.length;
     }
 
-    private async dispatchPending(): Promise<void> {
-        if (this.destroying || this.dispatching) return;
-        this.dispatching = true;
-        try {
-            const ctx = await this.requestContextService.create({ apiType: 'admin' });
-            await this.recoverExpiredLeases(ctx);
-            const deliveries = await this.connection.getRepository(ctx, DataHubEventTriggerOutbox).find({
-                where: {
-                    status: EventTriggerOutboxStatus.PENDING,
-                    availableAt: LessThanOrEqual(new Date()),
-                },
-                order: { createdAt: 'ASC' },
-                take: EVENT_TRIGGER_OUTBOX.BATCH_SIZE,
-            });
-            for (const delivery of deliveries) {
-                await this.dispatchOne(ctx, delivery);
-            }
-        } finally {
-            this.dispatching = false;
+    private dispatchPending(): Promise<void> {
+        if (this.destroying) return Promise.resolve();
+        return this.dispatchTask.run(() => this.performDispatch());
+    }
+
+    private async performDispatch(): Promise<void> {
+        const ctx = await this.requestContextService.create({ apiType: 'admin' });
+        await this.recoverExpiredLeases(ctx);
+        const deliveries = await this.connection.getRepository(ctx, DataHubEventTriggerOutbox).find({
+            where: {
+                status: EventTriggerOutboxStatus.PENDING,
+                availableAt: LessThanOrEqual(new Date()),
+            },
+            order: { createdAt: 'ASC' },
+            take: EVENT_TRIGGER_OUTBOX.BATCH_SIZE,
+        });
+        for (const delivery of deliveries) {
+            if (this.destroying) return;
+            await this.dispatchOne(ctx, delivery);
         }
     }
 
@@ -197,6 +200,10 @@ export class EventTriggerOutboxService implements OnModuleInit, OnModuleDestroy 
             },
         );
         if (claim.affected !== 1) return;
+        if (this.destroying) {
+            await this.releaseDispatchClaim(ctx, delivery.id, dispatchToken);
+            return;
+        }
 
         try {
             await this.queue.add(
@@ -219,6 +226,26 @@ export class EventTriggerOutboxService implements OnModuleInit, OnModuleDestroy 
                 pipelineCode: delivery.pipelineCode,
             });
         }
+    }
+
+    private async releaseDispatchClaim(
+        ctx: RequestContext,
+        deliveryId: string | number,
+        dispatchToken: string,
+    ): Promise<void> {
+        await this.connection.getRepository(ctx, DataHubEventTriggerOutbox).update(
+            {
+                id: deliveryId,
+                dispatchToken,
+                status: EventTriggerOutboxStatus.DISPATCHING,
+            },
+            {
+                status: EventTriggerOutboxStatus.PENDING,
+                availableAt: new Date(),
+                leaseExpiresAt: null,
+                dispatchToken: null,
+            },
+        );
     }
 
     private async processJob(job: Job<EventTriggerOutboxJobData>): Promise<void> {
