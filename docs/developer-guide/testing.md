@@ -93,11 +93,13 @@ ports bind only to `127.0.0.1` and use per-run ports where the protocol permits.
 The aggregate Redis suite starts independent Node.js processes and checks atomic
 shared counters, webhook quotas, locks, Streams consumers, consumer-process
 crash recovery, fail-closed outage behavior, and reconnect to one Redis server.
-It then starts a primary, replica, and three-Sentinel quorum; performs supported
-controlled promotion; removes the old node; and proves that existing and fresh
-clients retain replicated lock ownership and quota state. It does not prove an
-unplanned primary-loss election, Redis Cluster behavior, persistence recovery,
-or an infrastructure provider's managed failover.
+It then starts a primary, two replicas, and a three-Sentinel quorum. The runner
+waits until lock and quota state has reached both replicas, keeps the application
+client alive, sends `SIGKILL` to the primary from outside that client, and proves
+automatic election, replica reconfiguration, and state continuity through both
+existing and fresh clients. It does not prove Redis Cluster behavior,
+persistence recovery, network-partition or split-brain behavior, or an
+infrastructure provider's managed failover.
 
 The OTLP suite uses a real TLS-enabled OpenTelemetry Collector and verifies
 metrics, traces, trust of its generated certificate authority, rejection by an

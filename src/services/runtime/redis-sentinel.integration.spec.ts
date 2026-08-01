@@ -11,10 +11,18 @@ import {
 } from './redis-configuration';
 
 const primaryHost = process.env.DATAHUB_REDIS_SENTINEL_TEST_PRIMARY_HOST?.trim();
-const replicaHost = process.env.DATAHUB_REDIS_SENTINEL_TEST_REPLICA_HOST?.trim();
+const replicaHosts = process.env.DATAHUB_REDIS_SENTINEL_TEST_REPLICA_HOSTS
+    ?.split(',')
+    .map(host => host.trim())
+    .filter(Boolean) ?? [];
 const sentinelList = process.env.DATAHUB_REDIS_SENTINELS?.trim();
 const masterName = process.env.DATAHUB_REDIS_SENTINEL_NAME?.trim();
-const integrationDescribe = primaryHost && replicaHost && sentinelList && masterName
+const testRunId = process.env.DATAHUB_REDIS_SENTINEL_TEST_RUN_ID?.trim();
+const integrationDescribe = primaryHost
+    && replicaHosts.length >= 2
+    && sentinelList
+    && masterName
+    && testRunId
     ? describe
     : describe.skip;
 
@@ -47,6 +55,36 @@ function createDirectClient(host: string, port: number): Redis {
     });
     client.on('error', () => undefined);
     return client;
+}
+
+async function canReachRedis(host: string, port: number): Promise<boolean> {
+    const probe = createDirectClient(host, port);
+    try {
+        await probe.connect();
+        return await probe.ping() === 'PONG';
+    } catch {
+        return false;
+    } finally {
+        probe.disconnect(false);
+    }
+}
+
+async function readRedisRole(client: Redis): Promise<string> {
+    const role: unknown = await client.call('ROLE');
+    if (!Array.isArray(role) || typeof role[0] !== 'string') {
+        throw new Error('Redis returned an invalid ROLE response');
+    }
+    return role[0];
+}
+
+async function readRedisRoleAt(host: string, port: number): Promise<string> {
+    const probe = createDirectClient(host, port);
+    try {
+        await probe.connect();
+        return await readRedisRole(probe);
+    } finally {
+        probe.disconnect(false);
+    }
 }
 
 async function readSentinelMaster(
@@ -100,13 +138,13 @@ function assertSentinelConfiguration(
 }
 
 integrationDescribe('Redis Sentinel failover integration', () => {
-    it('preserves lock ownership and rate-limit state across controlled promotion and old-node loss', async () => {
+    it('preserves lock ownership and rate-limit state after unplanned primary loss', async () => {
         const connection = getConfiguredRedisConnection();
         assertSentinelConfiguration(connection);
         const sentinelNode: RedisSentinelNode = connection.sentinels[0];
         const sentinel = createDirectClient(sentinelNode.host, sentinelNode.port);
         const primary = createDirectClient(primaryHost!, 6379);
-        const replica = createDirectClient(replicaHost!, 6379);
+        const replicas = replicaHosts.map(host => createDirectClient(host, 6379));
         const logger = createLogger();
         let existingLock: RedisLockBackend | undefined;
         let existingRateLimit: RedisRateLimitBackend | undefined;
@@ -114,7 +152,11 @@ integrationDescribe('Redis Sentinel failover integration', () => {
         let freshRateLimit: RedisRateLimitBackend | undefined;
 
         try {
-            await Promise.all([sentinel.connect(), primary.connect(), replica.connect()]);
+            await Promise.all([
+                sentinel.connect(),
+                primary.connect(),
+                ...replicas.map(replica => replica.connect()),
+            ]);
             existingLock = await RedisLockBackend.create(connection, logger);
             existingRateLimit = await RedisRateLimitBackend.create(connection, logger);
 
@@ -122,6 +164,7 @@ integrationDescribe('Redis Sentinel failover integration', () => {
             const lockOwner = uniqueKey('owner');
             const rateKey = uniqueKey('rate');
             const replicatedRateKey = redisRateLimitKey(rateKey);
+            const readyKey = `datahub:sentinel-test:ready:${testRunId}`;
             const windowMs = 120_000;
 
             await expect(existingLock.acquire(lockKey, lockOwner, 120_000))
@@ -130,32 +173,42 @@ integrationDescribe('Redis Sentinel failover integration', () => {
                 .resolves.toMatchObject({ count: 1 });
 
             await waitFor(
-                async () => Promise.all([
-                    replica.get(`datahub:lock:${lockKey}`),
-                    replica.get(replicatedRateKey),
-                ]),
-                ([owner, count]) => owner === lockOwner && count === '1',
-                'the replica to contain lock and quota state',
+                async () => Promise.all(replicas.map(async replica => ({
+                    owner: await replica.get(`datahub:lock:${lockKey}`),
+                    count: await replica.get(replicatedRateKey),
+                }))),
+                states => states.every(({ owner, count }) => (
+                    owner === lockOwner && count === '1'
+                )),
+                'all replicas to contain lock and quota state',
             );
 
             const originalMaster = await readSentinelMaster(
                 sentinel,
                 connection.masterName,
             );
-            await sentinel.call(
-                'SENTINEL',
-                'failover',
-                connection.masterName,
+            await primary.set(readyKey, 'ready', 'PX', 120_000);
+            await waitFor(
+                () => canReachRedis(primaryHost!, 6379),
+                reachable => !reachable,
+                'the external harness to terminate the original primary',
+                60_000,
             );
 
             const promotedMaster = await waitFor(
                 () => readSentinelMaster(sentinel, connection.masterName),
                 address => address !== originalMaster,
-                'Sentinel to publish a replacement master',
+                'Sentinel to elect and publish a replacement master',
             );
             expect(promotedMaster).not.toBe(originalMaster);
 
-            await primary.shutdown('NOSAVE').catch(() => undefined);
+            const electedRoles = await waitFor(
+                () => Promise.all(replicaHosts.map(host => readRedisRoleAt(host, 6379))),
+                roles => roles.filter(role => role === 'master').length === 1
+                    && roles.filter(role => role === 'slave').length === replicas.length - 1,
+                'one replica to become master and the remaining replica to follow it',
+            );
+            expect(electedRoles.filter(role => role === 'master')).toHaveLength(1);
             await waitFor(
                 () => existingLock!.isLocked(lockKey),
                 status => status.locked && status.owner === lockOwner,
@@ -192,7 +245,9 @@ integrationDescribe('Redis Sentinel failover integration', () => {
             ]);
             sentinel.disconnect(false);
             primary.disconnect(false);
-            replica.disconnect(false);
+            for (const replica of replicas) {
+                replica.disconnect(false);
+            }
         }
-    }, 90_000);
+    }, 120_000);
 });
