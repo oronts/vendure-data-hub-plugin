@@ -122,6 +122,7 @@ import { GateExecutor } from './runtime/executors/gate.executor';
 import { GateStepStrategy } from './runtime/orchestration/step-strategies';
 // Loader Handler Registry (used by LoadExecutor - auto-discovered via LOADER_HANDLER_REGISTRY)
 import { LOADER_HANDLER_PROVIDERS } from './runtime/executors/loaders';
+import { HttpLookupLifecycleService } from './operators/enrichment/http-lookup-lifecycle';
 
 /**
  * Data Hub Plugin - ETL (Extract, Transform, Load) data integration plugin for Vendure.
@@ -202,6 +203,7 @@ import { LOADER_HANDLER_PROVIDERS } from './runtime/executors/loaders';
         // Runtime Executors (for AdapterRuntimeService)
         ExtractExecutor,
         TransformExecutor,
+        HttpLookupLifecycleService,
         LoadExecutor,
         ExportExecutor,
         FeedExecutor,

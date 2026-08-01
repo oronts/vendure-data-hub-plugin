@@ -1,3 +1,4 @@
+import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { INTERNAL_TIMINGS } from '../../constants/defaults';
 import {
     cleanExpiredHttpLookupCache,
@@ -19,18 +20,28 @@ function cleanEnrichmentState(): void {
     cleanStaleRateLimiters(now);
 }
 
-const cleanupInterval = setInterval(
-    cleanEnrichmentState,
-    INTERNAL_TIMINGS.CLEANUP_INTERVAL_MS,
-);
-cleanupInterval.unref?.();
-
 export function resetEnrichmentState(): void {
     clearHttpLookupCache();
     resetAllCircuitBreakers();
     resetAllRateLimiters();
 }
 
-export function destroyEnrichmentCleanup(): void {
-    clearInterval(cleanupInterval);
+@Injectable()
+export class HttpLookupLifecycleService implements OnModuleInit, OnModuleDestroy {
+    private cleanupInterval?: ReturnType<typeof setInterval>;
+
+    onModuleInit(): void {
+        if (this.cleanupInterval) return;
+        this.cleanupInterval = setInterval(
+            cleanEnrichmentState,
+            INTERNAL_TIMINGS.CLEANUP_INTERVAL_MS,
+        );
+        this.cleanupInterval.unref?.();
+    }
+
+    onModuleDestroy(): void {
+        if (this.cleanupInterval) clearInterval(this.cleanupInterval);
+        this.cleanupInterval = undefined;
+        resetEnrichmentState();
+    }
 }

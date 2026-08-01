@@ -15,7 +15,4 @@ export {
     resetCircuitBreaker,
 } from './http-lookup-circuit-breaker';
 export { getRateLimiterStats } from './http-lookup-rate-limiter';
-export {
-    destroyEnrichmentCleanup,
-    resetEnrichmentState,
-} from './http-lookup-lifecycle';
+export { resetEnrichmentState } from './http-lookup-lifecycle';
