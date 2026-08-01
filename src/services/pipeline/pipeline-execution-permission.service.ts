@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import {
     ChannelService,
+    ForbiddenError,
     Permission,
     RequestContext,
     RoleService,
@@ -85,16 +86,12 @@ export class PipelineExecutionPermissionService {
             definition,
         );
         if (missing.length > 0) {
-            throw new Error(
-                `Missing required permissions for this pipeline: ${missing.join(', ')}`,
-            );
+            throw new ForbiddenError();
         }
         const isSuperAdmin = ctx.userHasPermissions(['SuperAdmin' as Permission]);
         const references = getPipelineChannelReferences(definition);
         if (references.hasDynamicChannelAssignment && !isSuperAdmin) {
-            throw new Error(
-                'Dynamic per-record channel assignment requires SuperAdmin permission',
-            );
+            throw new ForbiddenError();
         }
         const targetChannelIds = await this.resolveTargetChannelIds(
             ctx,
@@ -117,9 +114,7 @@ export class PipelineExecutionPermissionService {
             if (!allowed) deniedChannelIds.push(channelId);
         }
         if (deniedChannelIds.length > 0) {
-            throw new Error(
-                `Missing required permissions on pipeline target channels: ${deniedChannelIds.join(', ')}`,
-            );
+            throw new ForbiddenError();
         }
     }
 

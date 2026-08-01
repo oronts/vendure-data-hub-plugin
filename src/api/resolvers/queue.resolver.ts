@@ -1,5 +1,11 @@
 import { Args, Query, Resolver, Mutation } from '@nestjs/graphql';
-import { Allow, RequestContext, Ctx, TransactionalConnection } from '@vendure/core';
+import {
+    Allow,
+    Ctx,
+    ForbiddenError,
+    RequestContext,
+    TransactionalConnection,
+} from '@vendure/core';
 import {
     RunDataHubPipelinePermission,
     ViewDataHubRunsPermission,
@@ -154,6 +160,7 @@ export class DataHubQueueAdminResolver {
             await this.messageConsumer.startConsumerByCode(args.pipelineCode, args.triggerKey, ctx);
             return true;
         } catch (error) {
+            if (error instanceof ForbiddenError) throw error;
             this.logger.debug(`Consumer start failed for pipeline ${args.pipelineCode}`, {
                 error,
                 triggerKey: args.triggerKey,
@@ -174,6 +181,7 @@ export class DataHubQueueAdminResolver {
             await this.messageConsumer.stopConsumerByCode(args.pipelineCode, args.triggerKey, ctx);
             return true;
         } catch (error) {
+            if (error instanceof ForbiddenError) throw error;
             this.logger.debug(`Consumer stop failed for pipeline ${args.pipelineCode}`, {
                 error,
                 triggerKey: args.triggerKey,

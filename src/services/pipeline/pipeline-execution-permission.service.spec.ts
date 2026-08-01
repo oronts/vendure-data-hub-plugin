@@ -1,4 +1,4 @@
-import type { Permission, RequestContext } from '@vendure/core';
+import { ForbiddenError, type Permission, type RequestContext } from '@vendure/core';
 import { describe, expect, it, vi } from 'vitest';
 import { AdapterType, StepType } from '../../constants/enums';
 import type { AdapterDefinition } from '../../sdk/types';
@@ -134,9 +134,7 @@ describe('pipeline execution target permissions', () => {
         await expect(service.assertAllowed(
             createContext('UpdateCatalog'),
             definition,
-        )).rejects.toThrow(
-            'Missing required permissions on pipeline target channels: channel-b',
-        );
+        )).rejects.toBeInstanceOf(ForbiddenError);
         expect(roleService.userHasAllPermissionsOnChannel).toHaveBeenCalledWith(
             expect.anything(),
             'channel-b',
@@ -201,9 +199,7 @@ describe('pipeline execution target permissions', () => {
         await expect(service.assertAllowed(
             createContext(),
             createDefinition({ channel: 'target-token' }),
-        )).rejects.toThrow(
-            'Missing required permissions for this pipeline: UpdateCatalog',
-        );
+        )).rejects.toBeInstanceOf(ForbiddenError);
         expect(channelService.getChannelFromToken).not.toHaveBeenCalled();
         expect(roleService.userHasAllPermissionsOnChannel).not.toHaveBeenCalled();
     });
@@ -230,9 +226,7 @@ describe('pipeline execution target permissions', () => {
         await expect(service.assertAllowed(
             createContext('UpdateCatalog'),
             definition,
-        )).rejects.toThrow(
-            'Dynamic per-record channel assignment requires SuperAdmin permission',
-        );
+        )).rejects.toBeInstanceOf(ForbiddenError);
         expect(channelService.findOne).not.toHaveBeenCalled();
         expect(roleService.userHasAllPermissionsOnChannel).not.toHaveBeenCalled();
     });

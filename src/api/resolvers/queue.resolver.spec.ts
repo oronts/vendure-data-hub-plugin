@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { ForbiddenError } from '@vendure/core';
 import { RunDataHubPipelinePermission } from '../../permissions';
 import type { PipelineDefinition } from '../../types';
 import { DataHubQueueAdminResolver } from './queue.resolver';
@@ -99,15 +100,16 @@ describe('DataHubQueueAdminResolver consumer lifecycle', () => {
     it('does not start a consumer when execution capabilities are denied', async () => {
         const fixture = createFixture();
         fixture.executionPermissions.assertAllowed.mockRejectedValueOnce(
-            new Error('Missing required permissions for this pipeline'),
+            new ForbiddenError(),
         );
 
         await expect(fixture.resolver.startDataHubConsumer(
             {} as never,
             { pipelineCode: 'orders', triggerKey: 'order-events' },
-        )).resolves.toBe(false);
+        )).rejects.toBeInstanceOf(ForbiddenError);
 
         expect(fixture.messageConsumer.startConsumerByCode).not.toHaveBeenCalled();
+        expect(fixture.logger.debug).not.toHaveBeenCalled();
     });
 
     it('hides consumers and rejects lifecycle changes outside the active channel', async () => {
