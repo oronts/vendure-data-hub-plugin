@@ -101,10 +101,7 @@ export class AdapterBootstrapService implements OnModuleInit {
             this.configureScriptSecurity();
 
             // Configure global SSRF protection settings from plugin options
-            const ssrfConfig = this.options.security?.ssrf;
-            if (ssrfConfig) {
-                configureGlobalSsrfProtection(ssrfConfig);
-            }
+            configureGlobalSsrfProtection(this.options.security?.ssrf);
 
             if (this.options.registerBuiltinAdapters !== false) {
                 this.logger.debug('Registering built-in adapter definitions', {

@@ -22,7 +22,8 @@ export interface SecureFetchPolicy {
     readonly allowedOrigins?: readonly string[];
 }
 
-const configuredDispatchers = new WeakMap<UrlSecurityConfig, Agent>();
+let configuredDispatchers = new WeakMap<UrlSecurityConfig, Agent>();
+const activeDispatchers = new Set<Agent>();
 let defaultDispatcher: Agent | undefined;
 
 function createDispatcher(config?: UrlSecurityConfig): Agent {
@@ -50,11 +51,13 @@ function createDispatcher(config?: UrlSecurityConfig): Agent {
         });
     };
 
-    return new Agent({
+    const dispatcher = new Agent({
         connect: {
             lookup,
         },
     });
+    activeDispatchers.add(dispatcher);
+    return dispatcher;
 }
 
 function getDispatcher(config?: UrlSecurityConfig): Agent {
@@ -70,6 +73,21 @@ function getDispatcher(config?: UrlSecurityConfig): Agent {
     const dispatcher = createDispatcher(config);
     configuredDispatchers.set(config, dispatcher);
     return dispatcher;
+}
+
+export async function closeSecureFetchDispatchers(): Promise<void> {
+    const dispatchers = [...activeDispatchers];
+    activeDispatchers.clear();
+    defaultDispatcher = undefined;
+    configuredDispatchers = new WeakMap<UrlSecurityConfig, Agent>();
+
+    const results = await Promise.allSettled(
+        dispatchers.map(dispatcher => Promise.resolve().then(() => dispatcher.close())),
+    );
+    const failureCount = results.filter(result => result.status === 'rejected').length;
+    if (failureCount > 0) {
+        throw new Error(`Failed to close ${failureCount} secure HTTP dispatcher(s)`);
+    }
 }
 
 function prepareRedirect(

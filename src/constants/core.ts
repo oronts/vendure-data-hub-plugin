@@ -57,6 +57,7 @@ export const LOGGER_CONTEXTS = {
     RECORD_ERROR_SERVICE: 'RecordErrorService',
     DOMAIN_EVENTS_SERVICE: 'DomainEventsService',
     HTTP_API_EXTRACTOR: 'HttpApiExtractor',
+    SECURE_FETCH: 'SecureFetch',
     VENDURE_QUERY_EXTRACTOR: 'VendureQueryExtractor',
     FTP_EXTRACTOR: 'FtpExtractor',
     DATABASE_EXTRACTOR: 'DatabaseExtractor',

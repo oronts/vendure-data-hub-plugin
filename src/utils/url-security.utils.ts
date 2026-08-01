@@ -20,7 +20,7 @@ export interface UrlSecurityConfig {
 let globalSsrfConfig: UrlSecurityConfig | undefined;
 
 /** Configure the global default SSRF config (called during plugin bootstrap) */
-export function configureGlobalSsrfProtection(config: UrlSecurityConfig): void {
+export function configureGlobalSsrfProtection(config?: UrlSecurityConfig): void {
     globalSsrfConfig = config;
 }
 

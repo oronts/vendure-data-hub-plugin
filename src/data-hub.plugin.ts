@@ -110,7 +110,12 @@ import { DataHubSchemaAdminResolver } from './api/resolvers/schema-registry.reso
 // Versioning Services
 import { DiffService, RevisionService, ImpactAnalysisService, RiskAssessmentService, SandboxService } from './services/versioning';
 // Runtime Services
-import { RuntimeConfigService, CircuitBreakerService, DistributedLockService } from './services/runtime';
+import {
+    RuntimeConfigService,
+    CircuitBreakerService,
+    DistributedLockService,
+    SecureFetchLifecycleService,
+} from './services/runtime';
 // Runtime Executors
 import { ExtractExecutor } from './runtime/executors/extract.executor';
 import { TransformExecutor } from './runtime/executors/transform.executor';
@@ -150,6 +155,7 @@ import { HttpLookupLifecycleService } from './operators/enrichment/http-lookup-l
         RuntimeConfigService,
         CircuitBreakerService,
         DistributedLockService,
+        SecureFetchLifecycleService,
         // Core Services
         PipelineExecutionPermissionService,
         PipelineRunCreationService,

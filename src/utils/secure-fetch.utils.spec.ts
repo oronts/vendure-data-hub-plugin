@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { secureFetch } from './secure-fetch.utils';
+import { closeSecureFetchDispatchers, secureFetch } from './secure-fetch.utils';
 
 describe('secureFetch', () => {
-    afterEach(() => {
+    afterEach(async () => {
         vi.restoreAllMocks();
+        await closeSecureFetchDispatchers();
     });
 
     it('blocks private destinations before a request is sent', async () => {
@@ -100,5 +101,21 @@ describe('secureFetch', () => {
                 server.close(error => error ? reject(error) : resolve());
             });
         }
+    });
+
+    it('reuses dispatchers until application shutdown and recreates them afterwards', async () => {
+        const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('ok'));
+        const config = { allowedHostnames: ['public.example'] };
+
+        await secureFetch('https://public.example/first', {}, config);
+        await secureFetch('https://public.example/second', {}, config);
+        const firstDispatcher = Reflect.get(fetchSpy.mock.calls[0][1] ?? {}, 'dispatcher');
+        const secondDispatcher = Reflect.get(fetchSpy.mock.calls[1][1] ?? {}, 'dispatcher');
+        expect(secondDispatcher).toBe(firstDispatcher);
+
+        await closeSecureFetchDispatchers();
+        await secureFetch('https://public.example/third', {}, config);
+        const replacementDispatcher = Reflect.get(fetchSpy.mock.calls[2][1] ?? {}, 'dispatcher');
+        expect(replacementDispatcher).not.toBe(firstDispatcher);
     });
 });
