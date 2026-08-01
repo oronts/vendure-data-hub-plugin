@@ -10,6 +10,7 @@ export * from './pipeline-runner.service';
 export * from './pipeline-execution-processor.service';
 export * from './pipeline-run-outcome.service';
 export * from './remote-source-acknowledgement.service';
+export * from './remote-source-acknowledgement-recovery.service';
 export * from './pipeline-run-gate';
 export * from './gate-timeout.service';
 export * from './pipeline-log.service';

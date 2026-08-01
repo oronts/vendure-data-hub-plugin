@@ -70,6 +70,24 @@ export const DISTRIBUTED_LOCK = {
     CHECKPOINT_LOCK_TTL_MS: 30_000,
     /** Maximum time a checkpoint writer waits for another writer. */
     CHECKPOINT_LOCK_WAIT_TIMEOUT_MS: 30_000,
+    /** Namespace for remote source acknowledgement locks. */
+    REMOTE_SOURCE_ACKNOWLEDGEMENT_LOCK_PREFIX: 'data-hub:remote-source-acknowledgement:',
+    /** Maximum lease for one bounded remote acknowledgement pass. */
+    REMOTE_SOURCE_ACKNOWLEDGEMENT_LOCK_TTL_MS: 5 * 60 * 1000,
+    /** Renewal interval for an active remote acknowledgement lease. */
+    REMOTE_SOURCE_ACKNOWLEDGEMENT_LOCK_REFRESH_MS: 100_000,
+    /** Maximum time a duplicate acknowledgement worker waits for the active pass. */
+    REMOTE_SOURCE_ACKNOWLEDGEMENT_LOCK_WAIT_TIMEOUT_MS: 30_000,
+    /** Namespace for bounded remote acknowledgement queue-dispatch leases. */
+    REMOTE_SOURCE_ACKNOWLEDGEMENT_DISPATCH_LOCK_PREFIX:
+        'data-hub:remote-source-acknowledgement-dispatch:',
+    /** Prevents retrying remote systems from amplifying the durable queue. */
+    REMOTE_SOURCE_ACKNOWLEDGEMENT_DISPATCH_LOCK_TTL_MS: 5 * 60 * 1000,
+    /** Single-leader lease for checkpoint reconciliation across replicas. */
+    REMOTE_SOURCE_ACKNOWLEDGEMENT_RECOVERY_LOCK_KEY:
+        'data-hub:remote-source-acknowledgement-recovery',
+    /** Leadership lease spans three reconciliation intervals. */
+    REMOTE_SOURCE_ACKNOWLEDGEMENT_RECOVERY_LOCK_TTL_MS: 90_000,
     /** Global lock key used to serialize database-backed code-first sync. */
     CONFIG_SYNC_LOCK_KEY: 'data-hub:config-sync',
     /** Maximum lease for one bounded configuration sync pass. */

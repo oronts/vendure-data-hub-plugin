@@ -2,7 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { ID, RequestContext, TransactionalConnection } from '@vendure/core';
 import { In } from 'typeorm';
 import { RunStatus } from '../../constants/enums';
-import { LOGGER_CONTEXTS } from '../../constants';
+import {
+    DISTRIBUTED_LOCK,
+    LOGGER_CONTEXTS,
+} from '../../constants';
 import { PipelineRun } from '../../entities/pipeline';
 import { createClient, FtpClient } from '../../extractors/ftp/connection';
 import type { FtpExtractorConfig } from '../../extractors/ftp/types';
@@ -19,6 +22,7 @@ import { CheckpointService } from '../data/checkpoint.service';
 import { ConnectionService } from '../config/connection.service';
 import { SecretService } from '../config/secret.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
+import { DistributedLockService } from '../runtime/distributed-lock.service';
 import {
     createConnectionsAdapter,
     createLoggerAdapter,
@@ -47,14 +51,102 @@ export class RemoteSourceAcknowledgementService {
         private readonly secretService: SecretService,
         private readonly connectionService: ConnectionService,
         loggerFactory: DataHubLoggerFactory,
+        private readonly distributedLock: DistributedLockService,
     ) {
-        this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.PIPELINE_RUNNER);
+        this.logger = loggerFactory.createLogger(
+            LOGGER_CONTEXTS.REMOTE_SOURCE_ACKNOWLEDGEMENT,
+        );
     }
 
     async acknowledgeCompletedForPipeline(
         ctx: RequestContext,
         pipelineId: ID,
     ): Promise<RemoteSourceAcknowledgementResult> {
+        const lockKey = [
+            DISTRIBUTED_LOCK.REMOTE_SOURCE_ACKNOWLEDGEMENT_LOCK_PREFIX,
+            String(pipelineId),
+        ].join('');
+        return this.withRenewedAcknowledgementLock(
+            lockKey,
+            assertLockHeld => this.acknowledgeCompletedForPipelineUnlocked(
+                ctx,
+                pipelineId,
+                assertLockHeld,
+            ),
+        );
+    }
+
+    private async withRenewedAcknowledgementLock<T>(
+        lockKey: string,
+        action: (assertLockHeld: () => void) => Promise<T>,
+    ): Promise<T> {
+        const lock = await this.distributedLock.acquire(lockKey, {
+            ttlMs: DISTRIBUTED_LOCK.REMOTE_SOURCE_ACKNOWLEDGEMENT_LOCK_TTL_MS,
+            waitForLock: true,
+            waitTimeoutMs:
+                DISTRIBUTED_LOCK.REMOTE_SOURCE_ACKNOWLEDGEMENT_LOCK_WAIT_TIMEOUT_MS,
+        });
+        if (!lock.acquired || !lock.token) {
+            throw new Error(`Could not acquire remote acknowledgement lock ${lockKey}`);
+        }
+        const lockToken = lock.token;
+
+        let lockLossError: Error | null = null;
+        let refreshInFlight: Promise<void> | null = null;
+        const refreshTimer = setInterval(() => {
+            if (refreshInFlight || lockLossError) return;
+            refreshInFlight = this.refreshAcknowledgementLock(lockKey, lockToken)
+                .then(error => {
+                    lockLossError = error;
+                })
+                .finally(() => {
+                    refreshInFlight = null;
+                });
+        }, DISTRIBUTED_LOCK.REMOTE_SOURCE_ACKNOWLEDGEMENT_LOCK_REFRESH_MS);
+        refreshTimer.unref();
+        const assertLockHeld = (): void => {
+            if (lockLossError) throw lockLossError;
+        };
+
+        try {
+            const result = await action(assertLockHeld);
+            clearInterval(refreshTimer);
+            await refreshInFlight;
+            assertLockHeld();
+            return result;
+        } finally {
+            clearInterval(refreshTimer);
+            await refreshInFlight;
+            await this.distributedLock.release(lockKey, lockToken);
+        }
+    }
+
+    private async refreshAcknowledgementLock(
+        lockKey: string,
+        token: string,
+    ): Promise<Error | null> {
+        try {
+            const extended = await this.distributedLock.extend(
+                lockKey,
+                token,
+                DISTRIBUTED_LOCK.REMOTE_SOURCE_ACKNOWLEDGEMENT_LOCK_TTL_MS,
+            );
+            return extended
+                ? null
+                : new Error('Remote source acknowledgement lock was lost');
+        } catch (error) {
+            return new Error(
+                `Remote source acknowledgement lock refresh failed: ${getErrorMessage(error)}`,
+            );
+        }
+    }
+
+    private async acknowledgeCompletedForPipelineUnlocked(
+        ctx: RequestContext,
+        pipelineId: ID,
+        assertLockHeld: () => void,
+    ): Promise<RemoteSourceAcknowledgementResult> {
+        assertLockHeld();
         const checkpoint = await this.checkpointService.getByPipeline(ctx, pipelineId);
         const pending = this.collectPending(checkpoint?.data);
         if (pending.length === 0) {
@@ -73,9 +165,9 @@ export class RemoteSourceAcknowledgementService {
         let failed = 0;
 
         for (const item of eligible) {
+            assertLockHeld();
             try {
                 await this.acknowledge(ctx, pipelineId, item);
-                acknowledgedIds.add(item.acknowledgement.id);
             } catch (error) {
                 failed++;
                 this.logger.warn('Remote source acknowledgement remains pending', {
@@ -86,10 +178,14 @@ export class RemoteSourceAcknowledgementService {
                     sourcePath: item.acknowledgement.sourcePath,
                     error: getErrorMessage(error),
                 });
+                continue;
             }
+            assertLockHeld();
+            acknowledgedIds.add(item.acknowledgement.id);
         }
 
         if (acknowledgedIds.size > 0) {
+            assertLockHeld();
             await this.removeAcknowledged(
                 ctx,
                 pipelineId,

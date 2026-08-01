@@ -780,7 +780,13 @@ Configure Vendure's job queue for pipeline execution:
 // vendure-config.ts
 export const config: VendureConfig = {
     jobQueueOptions: {
-        activeQueues: ['default', 'data-hub.event-trigger-outbox', 'data-hub.webhook-retry', 'data-hub.run'],
+        activeQueues: [
+            'default',
+            'data-hub.event-trigger-outbox',
+            'data-hub.webhook-retry',
+            'data-hub.remote-source-acknowledgement',
+            'data-hub.run',
+        ],
         pollInterval: 1000,
     },
 };
@@ -793,6 +799,7 @@ export const config: VendureConfig = {
 | `data-hub.run` | Pipeline execution jobs |
 | `data-hub.event-trigger-outbox` | Durable Vendure event handoff jobs |
 | `data-hub.webhook-retry` | Durable outgoing webhook delivery jobs |
+| `data-hub.remote-source-acknowledgement` | Durable S3 and FTP/SFTP delete-or-move acknowledgement recovery |
 
 Schedule checking uses process timers plus occurrence-scoped distributed
 leases. A cron minute or fixed-interval bucket is claimed once across API

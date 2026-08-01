@@ -23,6 +23,7 @@ describe('runtime constants contract', () => {
             RUN: 'data-hub.run',
             EVENT_TRIGGER_OUTBOX: 'data-hub.event-trigger-outbox',
             WEBHOOK_RETRY: 'data-hub.webhook-retry',
+            REMOTE_SOURCE_ACKNOWLEDGEMENT: 'data-hub.remote-source-acknowledgement',
         });
     });
 

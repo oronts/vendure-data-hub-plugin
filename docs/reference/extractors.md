@@ -438,8 +438,12 @@ Delete and move operations are staged in the durable pipeline checkpoint and
 run only after the associated pipeline run is persisted as `COMPLETED`.
 Failed, cancelled, and paused runs never make their staged operations eligible.
 If the remote operation or checkpoint cleanup fails, it stays pending and is
-retried before the next execution of the same pipeline. There is no independent
-background retry, so a later manual or scheduled execution is required.
+retried by the `data-hub.remote-source-acknowledgement` Vendure queue. Recovery
+resolves the completed run's durable channel ID to the current Vendure Channel
+entity. One renewable distributed leader paginates checkpoint discovery across
+replicas, a bounded dispatch lease suppresses duplicate queued retries, and a
+separately renewed per-pipeline lease serializes remote actions. Production
+workers must consume that queue and use a persistent Vendure job-queue strategy.
 
 ---
 
@@ -507,8 +511,12 @@ Delete and move operations are staged in the durable pipeline checkpoint and
 run only after the associated pipeline run is persisted as `COMPLETED`.
 Failed, cancelled, and paused runs never make their staged operations eligible.
 If the remote operation or checkpoint cleanup fails, it stays pending and is
-retried before the next execution of the same pipeline. There is no independent
-background retry, so a later manual or scheduled execution is required.
+retried by the `data-hub.remote-source-acknowledgement` Vendure queue. Recovery
+resolves the completed run's durable channel ID to the current Vendure Channel
+entity. One renewable distributed leader paginates checkpoint discovery across
+replicas, a bounded dispatch lease suppresses duplicate queued retries, and a
+separately renewed per-pipeline lease serializes remote actions. Production
+workers must consume that queue and use a persistent Vendure job-queue strategy.
 
 ---
 

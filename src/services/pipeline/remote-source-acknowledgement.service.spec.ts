@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RequestContext } from '@vendure/core';
+import { DISTRIBUTED_LOCK } from '../../constants';
 import { RunStatus } from '../../constants/enums';
 import { createS3Client } from '../../extractors/s3/client';
 import { createClient } from '../../extractors/ftp/connection';
@@ -84,17 +85,24 @@ function createFixture(
         error: vi.fn(),
         debug: vi.fn(),
     };
+    const distributedLock = {
+        acquire: vi.fn(async () => ({ acquired: true, token: 'ack-lock' })),
+        extend: vi.fn(async () => true),
+        release: vi.fn(async () => true),
+    };
     const service = new RemoteSourceAcknowledgementService(
         { getRepository: vi.fn(() => ({ find })) } as never,
         checkpointService as never,
         {} as never,
         {} as never,
         { createLogger: vi.fn(() => logger) } as never,
+        distributedLock as never,
     );
     return {
         service,
         find,
         checkpointService,
+        distributedLock,
         logger,
         getData: () => data,
     };
@@ -295,4 +303,52 @@ describe('RemoteSourceAcknowledgementService', () => {
         expect(fixture.checkpointService.updateForPipeline).not.toHaveBeenCalled();
         expect(fixture.logger.warn).toHaveBeenCalledOnce();
     });
+
+    it('keeps acknowledged data pending when the renewable lease is lost', async () => {
+        vi.useFakeTimers();
+        try {
+            const entry = createEntry('completed-run');
+            let resolveDelete!: () => void;
+            const deletePending = new Promise<void>(resolve => {
+                resolveDelete = resolve;
+            });
+            const client = s3Client({
+                deleteObject: vi.fn(() => deletePending),
+            });
+            vi.mocked(createS3Client).mockResolvedValue(client);
+            const fixture = createFixture(
+                pendingCheckpoint([entry]),
+                ['completed-run'],
+            );
+            fixture.distributedLock.extend.mockResolvedValue(false);
+
+            const acknowledgement = fixture.service
+                .acknowledgeCompletedForPipeline(ctx, 7);
+            for (let attempt = 0; attempt < 10; attempt++) {
+                await Promise.resolve();
+                if (client.deleteObject.mock.calls.length > 0) break;
+            }
+            expect(client.deleteObject).toHaveBeenCalledOnce();
+
+            await vi.advanceTimersByTimeAsync(
+                DISTRIBUTED_LOCK.REMOTE_SOURCE_ACKNOWLEDGEMENT_LOCK_REFRESH_MS,
+            );
+            resolveDelete();
+
+            await expect(acknowledgement).rejects.toThrow(
+                'Remote source acknowledgement lock was lost',
+            );
+            expect(fixture.checkpointService.updateForPipeline).not.toHaveBeenCalled();
+            expect(readRemoteSourceAcknowledgements(
+                fixture.getData().extract as JsonObject,
+            )).toEqual([entry]);
+            expect(fixture.distributedLock.release).toHaveBeenCalledWith(
+                'data-hub:remote-source-acknowledgement:7',
+                'ack-lock',
+            );
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
 });

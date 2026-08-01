@@ -96,7 +96,13 @@ For smaller deployments, the default configuration works:
 
 ```typescript
 jobQueueOptions: {
-    activeQueues: ['default', 'data-hub.event-trigger-outbox', 'data-hub.webhook-retry', 'data-hub.run'],
+    activeQueues: [
+        'default',
+        'data-hub.event-trigger-outbox',
+        'data-hub.webhook-retry',
+        'data-hub.remote-source-acknowledgement',
+        'data-hub.run',
+    ],
 }
 ```
 
@@ -115,6 +121,7 @@ jobQueueOptions: {
     activeQueues: [
         'data-hub.event-trigger-outbox',
         'data-hub.webhook-retry',
+        'data-hub.remote-source-acknowledgement',
         'data-hub.run',
     ],
 }
@@ -123,13 +130,24 @@ jobQueueOptions: {
 EVENT and outgoing webhook delivery use database outboxes plus leased Vendure
 jobs. Configure a persistent strategy such as the database-backed
 `DefaultJobQueuePlugin`, and run workers that consume
-`data-hub.event-trigger-outbox`, `data-hub.webhook-retry`, and
-`data-hub.run`. Event and webhook outbox rows recover expired or lost queue
-publications. Pipeline run rows retain a queue request and stale-dispatch claim
-until a worker owns execution, so startup reconciliation recovers a failed
-run-queue handoff. A persistent queue avoids recovery delays and is required
-for normal multi-process worker operation. Every webhook worker also needs the same
-`DATAHUB_MASTER_KEY` and Secret Code providers as the API process.
+`data-hub.event-trigger-outbox`, `data-hub.webhook-retry`,
+`data-hub.remote-source-acknowledgement`, and `data-hub.run`. Event and webhook
+outbox rows recover expired or lost queue publications. Pipeline run rows retain
+a queue request and stale-dispatch claim until a worker owns execution, so
+startup reconciliation recovers a failed run-queue handoff. Completed S3 and
+FTP/SFTP delete-or-move acknowledgements remain in pipeline checkpoints until
+the remote action succeeds; bounded checkpoint reconciliation republishes that
+work to the remote-source queue. Reconciliation has one renewable distributed
+leader across API and worker replicas, while each pipeline's remote operations
+use a separately renewed lease. A bounded token-protected dispatch lease keeps
+repeated scans from amplifying the queue while Vendure retries a failed remote
+system; successful jobs and failed publications release it, and process loss is
+recovered after expiry. Recovery resolves the persisted Vendure channel ID to
+the current Channel entity, so channel-token rotation does not redirect or
+strand queued cleanup. A persistent queue avoids recovery delays and is required
+for normal multi-process worker operation. Every worker that handles webhooks or
+remote acknowledgements needs the same `DATAHUB_MASTER_KEY` and Secret Code
+providers as the API process.
 
 Every API server and worker must also receive identical code-first `pipelines`,
 `connections`, and `configPath` configuration. One API server reconciles those
@@ -157,6 +175,7 @@ bootstrapWorker({
         activeQueues: [
             'data-hub.event-trigger-outbox',
             'data-hub.webhook-retry',
+            'data-hub.remote-source-acknowledgement',
             'data-hub.run',
         ],
         pollInterval: 1000,
@@ -361,7 +380,7 @@ pass/fail result for every configured dependency.
 | Dependency | Repository evidence | Required production evidence |
 | --- | --- | --- |
 | PostgreSQL/MySQL extractor | Disposable mTLS query, active-session proof, untrusted CA/hostname/client-cert rejection, and PostgreSQL new-install migration apply/revert | Target TLS/CA or mTLS, least privilege, query plan, stable failover DNS/proxy, timeout, upgrade from the actual prior schema, and recovery |
-| Redis | Atomic counters, locks, Streams, process crash, outage/reconnect against one server, and controlled Sentinel promotion with old-node loss | Automatic primary-loss election or managed failover in the target topology, persistence policy, split-brain controls, promotion time, and accepted data-loss behavior |
+| Redis | Atomic counters, locks, Streams, process crash, outage/reconnect against one server, and automatic primary-loss election with two replicas and a three-Sentinel quorum | Automatic election or managed failover in the exact target topology, persistence policy, partition and split-brain controls, promotion time, and accepted data-loss behavior |
 | OTLP | Real Collector metrics/traces export and outage recovery | Target collector authentication, TLS, capacity, retention, alert routing, and collector/egress failure |
 | S3 | MinIO object round trip and signed URL | Target AWS/S3-compatible IAM, region, HTTPS/CA, bucket policy, encryption, large-object, and interruption behavior |
 | FTP/FTPS/SFTP | FTP and password-SFTP round trip with SFTP host-key pinning | FTPS certificate validation where used, private-key/passphrase rotation, firewall/passive ports, transfer interruption, and reconnect |
@@ -406,12 +425,13 @@ different valid backend is forced. Redis lock initialization is fail-closed, so
 an unavailable lock backend can prevent application bootstrap. On PostgreSQL,
 set `DATAHUB_LOCK_BACKEND=POSTGRES` to keep locking independent of Redis.
 
-The repository proves a supported controlled Sentinel promotion followed by
-loss of the original node. Before production sign-off, force an unplanned
-primary failure in the actual target topology and record election time,
-application reconnect time, surviving lock/quota state, and the target's
-persistence/data-loss result. Global Sentinel settings do not configure Redis
-Streams; each Streams trigger or sink uses its saved connection.
+The disposable repository topology proves automatic election after an external
+`SIGKILL` of the primary, with two replicas, three Sentinels, and surviving
+lock/quota state through existing and fresh application clients. Production
+sign-off must repeat the failure in the exact target topology and record
+election time, application reconnect time, surviving state, partition behavior,
+and the target's persistence/data-loss result. Global Sentinel settings do not
+configure Redis Streams; each Streams trigger or sink uses its saved connection.
 
 **What's Protected:**
 - **Scheduled Triggers** - Only one instance executes each schedule

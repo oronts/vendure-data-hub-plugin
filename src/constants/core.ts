@@ -18,6 +18,8 @@ export const QUEUE_NAMES = {
     EVENT_TRIGGER_OUTBOX: 'data-hub.event-trigger-outbox',
     /** Queue for durable outgoing webhook delivery */
     WEBHOOK_RETRY: 'data-hub.webhook-retry',
+    /** Queue for durable remote source acknowledgement recovery */
+    REMOTE_SOURCE_ACKNOWLEDGEMENT: 'data-hub.remote-source-acknowledgement',
 } as const;
 
 export type QueueName = typeof QUEUE_NAMES[keyof typeof QUEUE_NAMES];
@@ -41,6 +43,7 @@ export const NAV = {
 export const LOGGER_CONTEXTS = {
     PIPELINE_SERVICE: 'PipelineService',
     PIPELINE_RUNNER: 'PipelineRunner',
+    REMOTE_SOURCE_ACKNOWLEDGEMENT: 'RemoteSourceAcknowledgement',
     CONNECTION_SERVICE: 'ConnectionService',
     SCHEMA_REGISTRY_SERVICE: 'SchemaRegistryService',
     SECRET_SERVICE: 'SecretService',
