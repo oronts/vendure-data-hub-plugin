@@ -95,6 +95,7 @@ export class MessageConsumerService implements OnApplicationBootstrap, OnModuleD
 
     async onApplicationBootstrap(): Promise<void> {
         await this.configSync.ensureSynchronized();
+        if (this.isDestroying) return;
         this.logger.info('Message consumer service initializing');
 
         // Discover and start consumers
@@ -107,6 +108,7 @@ export class MessageConsumerService implements OnApplicationBootstrap, OnModuleD
                 error: getErrorMessage(error),
             });
         }
+        if (this.isDestroying) return;
 
         this.refreshTimer = setInterval(() => {
             this.refreshConsumers().catch(err => {

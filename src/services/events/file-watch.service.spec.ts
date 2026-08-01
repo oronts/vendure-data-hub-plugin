@@ -31,6 +31,7 @@ interface TestWatcher {
 interface FileWatchInternals {
     watchers: Map<string, TestWatcher>;
     refreshWatchers(): Promise<void>;
+    runPoll(config: TestWatcherConfig, lockKey: string): Promise<void>;
     pollForFiles(config: TestWatcherConfig, lockKey: string): Promise<void>;
     reconcilePendingRun(
         ctx: never,
@@ -42,6 +43,14 @@ interface FileWatchInternals {
         config: TestWatcherConfig,
         watcher: TestWatcher,
     ): Promise<void>;
+}
+
+function deferred<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>(resolvePromise => {
+        resolve = resolvePromise;
+    });
+    return { promise, resolve };
 }
 
 function createRefreshFixture(
@@ -339,6 +348,50 @@ describe('FileWatchService watcher reconciliation', () => {
         expect(fixture.pipelineRepository.find).toHaveBeenCalledOnce();
         expect(fixture.internals.watchers.size).toBe(1);
         await fixture.service.onModuleDestroy();
+    });
+
+    it('drains an active refresh before removing all watchers', async () => {
+        const fixture = createRefreshFixture();
+        await fixture.internals.refreshWatchers();
+        const pendingPipelines = deferred<typeof fixture.pipeline[]>();
+        fixture.pipelineRepository.find.mockReturnValueOnce(pendingPipelines.promise);
+
+        const refresh = fixture.internals.refreshWatchers();
+        await vi.waitFor(() => {
+            expect(fixture.pipelineRepository.find).toHaveBeenCalledTimes(2);
+        });
+        let stopped = false;
+        const shutdown = fixture.service.onModuleDestroy().then(() => {
+            stopped = true;
+        });
+        await Promise.resolve();
+        expect(stopped).toBe(false);
+        pendingPipelines.resolve([fixture.pipeline]);
+        await Promise.all([refresh, shutdown]);
+
+        expect(stopped).toBe(true);
+        expect(fixture.internals.watchers.size).toBe(0);
+    });
+
+    it('waits for an active poll before removing its watcher', async () => {
+        const fixture = createRefreshFixture();
+        await fixture.internals.refreshWatchers();
+        const pendingPoll = deferred<void>();
+        vi.mocked(fixture.internals.pollForFiles).mockReturnValueOnce(pendingPoll.promise);
+
+        const poll = fixture.internals.runPoll(config, 'file-watch:catalog-import');
+        let stopped = false;
+        const shutdown = fixture.service.onModuleDestroy().then(() => {
+            stopped = true;
+        });
+        await Promise.resolve();
+        expect(stopped).toBe(false);
+        expect(fixture.internals.watchers.size).toBe(1);
+        pendingPoll.resolve();
+        await Promise.all([poll, shutdown]);
+
+        expect(stopped).toBe(true);
+        expect(fixture.internals.watchers.size).toBe(0);
     });
 
     it('keeps healthy watchers when configuration discovery fails', async () => {

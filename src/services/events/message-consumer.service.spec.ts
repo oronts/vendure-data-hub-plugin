@@ -59,6 +59,7 @@ type ServiceInternals = {
     processing: MessageProcessing;
     logger: DataHubLogger;
     settings: DataHubSettingsService;
+    refreshTimer?: NodeJS.Timeout;
     refreshConsumers(): Promise<void>;
 };
 
@@ -104,6 +105,31 @@ describe('MessageConsumerService refresh', () => {
             .mockReturnValue([]);
         try {
             await service.onModuleDestroy();
+        } finally {
+            registrySpy.mockRestore();
+        }
+    });
+
+    it('does not install a refresh timer when synchronization finishes after shutdown', async () => {
+        let resolveSync: (() => void) | undefined;
+        const service = createService(() => new Promise(resolve => {
+            resolveSync = resolve;
+        }));
+        const internals = service as unknown as ServiceInternals;
+        const discover = vi.spyOn(internals.discovery, 'discoverConfigs')
+            .mockResolvedValue(new Map());
+        const registrySpy = vi.spyOn(queueAdapterRegistry, 'getAll')
+            .mockReturnValue([]);
+
+        try {
+            const startup = service.onApplicationBootstrap();
+            await Promise.resolve();
+            await service.onModuleDestroy();
+            resolveSync?.();
+            await startup;
+
+            expect(discover).not.toHaveBeenCalled();
+            expect(internals.refreshTimer).toBeUndefined();
         } finally {
             registrySpy.mockRestore();
         }

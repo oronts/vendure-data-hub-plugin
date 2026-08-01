@@ -6,7 +6,8 @@ import { DistributedLockService } from '../runtime/distributed-lock.service';
 import { LOGGER_CONTEXTS, SCHEDULER, DISTRIBUTED_LOCK } from '../../constants/index';
 import { FILE_WATCH } from '../../constants/defaults';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
-import { getErrorMessage, toErrorOrUndefined, ensureError } from '../../utils/error.utils';
+import { getErrorMessage, ensureError } from '../../utils/error.utils';
+import { ActiveTaskSet, SingleFlightTask } from '../../utils/async-operation-tracker';
 import { DomainEventsService } from './domain-events.service';
 import { PipelineDefinition } from '../../types/index';
 import { RunStatus } from '../../constants/enums';
@@ -45,8 +46,10 @@ interface ActiveWatcher {
 export class FileWatchService implements OnApplicationBootstrap, OnModuleDestroy {
     private readonly logger: DataHubLogger;
     private readonly watchers = new Map<string, ActiveWatcher>();
+    private readonly pollTasks = new ActiveTaskSet();
     private isDestroying = false;
     private refreshTimer?: NodeJS.Timeout;
+    private readonly refreshTask = new SingleFlightTask<void>();
 
     constructor(
         private connection: TransactionalConnection,
@@ -64,14 +67,16 @@ export class FileWatchService implements OnApplicationBootstrap, OnModuleDestroy
 
     async onApplicationBootstrap(): Promise<void> {
         await this.configSync.ensureSynchronized();
+        if (this.isDestroying) return;
         this.logger.info('File watch service initializing');
         try {
-            await this.discoverAndStartWatchers();
+            await this.refreshWatchers();
         } catch (error) {
             this.logger.warn('Failed to initialize file watchers on startup, will retry on refresh', {
                 error: getErrorMessage(error),
             });
         }
+        if (this.isDestroying) return;
         this.refreshTimer = setInterval(() => {
             this.refreshWatchers().catch(err => {
                 this.logger.error('Failed to refresh file watchers', ensureError(err));
@@ -91,30 +96,10 @@ export class FileWatchService implements OnApplicationBootstrap, OnModuleDestroy
             this.refreshTimer = undefined;
         }
 
+        await this.refreshTask.settle();
+        await this.pollTasks.settle();
         await this.stopAllWatchers();
         this.logger.info('File watch service cleanup complete');
-    }
-
-    private async discoverAndStartWatchers(): Promise<void> {
-        const activeConfigs = await this.discoverActiveConfigs();
-        let startedCount = 0;
-
-        for (const [, config] of activeConfigs) {
-            try {
-                await this.startWatcher(config);
-                startedCount++;
-            } catch (error) {
-                this.logger.error(`Failed to start watcher for pipeline ${config.pipelineCode}`,
-                    toErrorOrUndefined(error), {
-                        pipelineCode: config.pipelineCode,
-                        triggerKey: config.triggerKey,
-                    });
-            }
-        }
-
-        if (startedCount > 0) {
-            this.logger.info(`Started ${startedCount} file watchers`);
-        }
     }
 
     private async discoverActiveConfigs(): Promise<Map<string, FileWatcherConfig>> {
@@ -161,6 +146,7 @@ export class FileWatchService implements OnApplicationBootstrap, OnModuleDestroy
     }
 
     private async startWatcher(config: FileWatcherConfig): Promise<void> {
+        if (this.isDestroying) return;
         const key = getFileWatcherKey(config.pipelineCode, config.triggerKey);
 
         if (this.watchers.has(key)) {
@@ -190,6 +176,7 @@ export class FileWatchService implements OnApplicationBootstrap, OnModuleDestroy
             this.logger.error(`Failed to load file-watch checkpoint for ${key}`, ensureError(error));
             throw error;
         }
+        if (this.isDestroying) return;
 
         const timer = setInterval(() => {
             if (this.isDestroying) return;
@@ -197,7 +184,7 @@ export class FileWatchService implements OnApplicationBootstrap, OnModuleDestroy
             const watcher = this.watchers.get(key);
             if (!watcher || watcher.isProcessing) return;
 
-            this.pollForFiles(config, lockKey).catch(err => {
+            this.runPoll(config, lockKey).catch(err => {
                 this.logger.error(`Poll error for ${key}`, ensureError(err));
             });
         }, config.pollIntervalMs);
@@ -214,13 +201,18 @@ export class FileWatchService implements OnApplicationBootstrap, OnModuleDestroy
             lockKey,
         });
 
-        await this.pollForFiles(config, lockKey);
+        await this.runPoll(config, lockKey);
 
         this.logger.info(`Started file watcher for ${key}`, {
             path: config.path,
             pattern: config.pattern,
             pollIntervalMs: config.pollIntervalMs,
         });
+    }
+
+    private runPoll(config: FileWatcherConfig, lockKey: string): Promise<void> {
+        if (this.isDestroying) return Promise.resolve();
+        return this.pollTasks.run(() => this.pollForFiles(config, lockKey));
     }
 
     private async pollForFiles(config: FileWatcherConfig, lockKey: string): Promise<void> {
@@ -371,7 +363,7 @@ export class FileWatchService implements OnApplicationBootstrap, OnModuleDestroy
                 this.scheduleStatusPoll(config, watcher);
                 return;
             }
-            this.pollForFiles(config, watcher.lockKey).catch(error => {
+            this.runPoll(config, watcher.lockKey).catch(error => {
                 this.logger.error(
                     `Run status poll failed for ${config.pipelineCode}:${config.triggerKey}`,
                     ensureError(error),
@@ -455,16 +447,21 @@ export class FileWatchService implements OnApplicationBootstrap, OnModuleDestroy
         }
     }
 
-    private async refreshWatchers(): Promise<void> {
-        if (this.isDestroying) return;
+    private refreshWatchers(): Promise<void> {
+        if (this.isDestroying) return Promise.resolve();
+        return this.refreshTask.run(() => this.reconcileWatchers());
+    }
 
+    private async reconcileWatchers(): Promise<void> {
         const activeConfigs = await this.discoverActiveConfigs();
+        if (this.isDestroying) return;
         for (const key of Array.from(this.watchers.keys())) {
             if (!activeConfigs.has(key)) {
                 await this.stopWatcher(key);
             }
         }
         for (const [key, config] of activeConfigs) {
+            if (this.isDestroying) return;
             const watcher = this.watchers.get(key);
             if (!watcher) {
                 await this.startWatcher(config);
