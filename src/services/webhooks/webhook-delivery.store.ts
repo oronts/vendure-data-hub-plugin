@@ -203,6 +203,18 @@ export class WebhookDeliveryStore {
         );
     }
 
+    async releaseClaim(
+        ctx: RequestContext,
+        deliveryId: string | number,
+        dispatchToken: string,
+    ): Promise<boolean> {
+        const result = await this.repo(ctx).update(
+            { id: deliveryId, dispatchToken },
+            { dispatchToken: null, leaseExpiresAt: null },
+        );
+        return result.affected === 1;
+    }
+
     findClaimed(
         ctx: RequestContext,
         deliveryId: string,

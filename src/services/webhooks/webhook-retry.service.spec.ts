@@ -3,6 +3,7 @@ import type { Job, RequestContext } from '@vendure/core';
 import { DataHubWebhookDelivery } from '../../entities/pipeline/webhook-delivery.entity';
 import { calculateWebhookStats } from './webhook.helpers';
 import { decryptWebhookReplayEnvelope } from './webhook-replay-envelope';
+import type { WebhookDeliveryStore } from './webhook-delivery.store';
 import { WebhookRetryService } from './webhook-retry.service';
 import { WebhookDeliveryStatus } from './webhook.types';
 
@@ -10,6 +11,32 @@ interface FindOptions {
     where?: Record<string, unknown>;
     order?: Record<string, unknown>;
     take?: number;
+}
+
+interface WebhookServiceInternals {
+    readonly store: WebhookDeliveryStore;
+    dispatchPending(): Promise<void>;
+    maintainHistory(): Promise<void>;
+}
+
+function deferred<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>(resolvePromise => {
+        resolve = resolvePromise;
+    });
+    return { promise, resolve };
+}
+
+function createPendingDelivery(): DataHubWebhookDelivery {
+    return Object.assign(new DataHubWebhookDelivery(), {
+        id: 42,
+        deliveryKey: 'delivery-42',
+        webhookId: 'orders',
+        status: WebhookDeliveryStatus.PENDING,
+        availableAt: new Date(),
+        dispatchToken: null,
+        leaseExpiresAt: null,
+    });
 }
 
 class InMemoryDeliveryRepository {
@@ -129,6 +156,71 @@ describe('WebhookRetryService durable delivery', () => {
     afterEach(() => {
         vi.unstubAllEnvs();
         vi.unstubAllGlobals();
+    });
+
+    it('waits for an active dispatch scan and stops before enqueueing', async () => {
+        const fixture = createFixture();
+        await fixture.service.onModuleInit();
+        const internals = fixture.service as unknown as WebhookServiceInternals;
+        const pendingDeliveries = deferred<DataHubWebhookDelivery[]>();
+        vi.spyOn(internals.store, 'recoverExpiredLeases').mockResolvedValue(0);
+        vi.spyOn(internals.store, 'findDue').mockReturnValue(pendingDeliveries.promise);
+
+        const dispatch = internals.dispatchPending();
+        await vi.waitFor(() => expect(internals.store.findDue).toHaveBeenCalledOnce());
+        const shutdown = fixture.service.onModuleDestroy();
+        pendingDeliveries.resolve([createPendingDelivery()]);
+        await Promise.all([dispatch, shutdown]);
+
+        expect(fixture.add).not.toHaveBeenCalled();
+    });
+
+    it('releases a dispatch claim acquired while shutdown begins', async () => {
+        const fixture = createFixture();
+        await fixture.service.onModuleInit();
+        const internals = fixture.service as unknown as WebhookServiceInternals;
+        const delivery = createPendingDelivery();
+        const pendingClaim = deferred<boolean>();
+        vi.spyOn(internals.store, 'recoverExpiredLeases').mockResolvedValue(0);
+        vi.spyOn(internals.store, 'findDue').mockResolvedValue([delivery]);
+        vi.spyOn(internals.store, 'claim').mockReturnValue(pendingClaim.promise);
+        const releaseClaim = vi.spyOn(internals.store, 'releaseClaim').mockResolvedValue(true);
+
+        const dispatch = internals.dispatchPending();
+        await vi.waitFor(() => expect(internals.store.claim).toHaveBeenCalledOnce());
+        const shutdown = fixture.service.onModuleDestroy();
+        pendingClaim.resolve(true);
+        await Promise.all([dispatch, shutdown]);
+
+        expect(fixture.add).not.toHaveBeenCalled();
+        expect(releaseClaim).toHaveBeenCalledWith(
+            expect.anything(),
+            delivery.id,
+            expect.stringMatching(/^[a-f0-9]{32}$/),
+        );
+    });
+
+    it('waits for active history maintenance during shutdown', async () => {
+        const fixture = createFixture();
+        await fixture.service.onModuleInit();
+        const internals = fixture.service as unknown as WebhookServiceInternals;
+        const pendingCleanup = deferred<{ delivered: number; deadLetters: number }>();
+        vi.spyOn(internals.store, 'deleteExpiredHistory')
+            .mockReturnValue(pendingCleanup.promise);
+
+        const maintenance = internals.maintainHistory();
+        await vi.waitFor(() => {
+            expect(internals.store.deleteExpiredHistory).toHaveBeenCalledOnce();
+        });
+        let stopped = false;
+        const shutdown = fixture.service.onModuleDestroy().then(() => {
+            stopped = true;
+        });
+        await Promise.resolve();
+        expect(stopped).toBe(false);
+        pendingCleanup.resolve({ delivered: 0, deadLetters: 0 });
+        await Promise.all([maintenance, shutdown]);
+        expect(stopped).toBe(true);
     });
 
     it('persists encrypted replay data and keeps identical idempotent sends single-shot', async () => {

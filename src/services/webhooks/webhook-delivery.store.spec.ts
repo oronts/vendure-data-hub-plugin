@@ -21,6 +21,20 @@ function createFixture() {
 }
 
 describe('WebhookDeliveryStore maintenance', () => {
+    it('releases only the matching dispatch claim', async () => {
+        const fixture = createFixture();
+        fixture.repository.update.mockResolvedValueOnce({ affected: 1 });
+
+        await expect(
+            fixture.store.releaseClaim(fixture.ctx, 42, 'dispatch-token'),
+        ).resolves.toBe(true);
+
+        expect(fixture.repository.update).toHaveBeenCalledWith(
+            { id: 42, dispatchToken: 'dispatch-token' },
+            { dispatchToken: null, leaseExpiresAt: null },
+        );
+    });
+
     it('recovers only one ordered lease batch with a guarded update', async () => {
         const fixture = createFixture();
         const expired = Array.from(

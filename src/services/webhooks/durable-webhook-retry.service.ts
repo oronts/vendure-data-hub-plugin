@@ -20,6 +20,7 @@ import {
     WEBHOOK_QUEUE,
 } from '../../constants';
 import { getErrorMessage, isDuplicateEntryError } from '../../utils/error.utils';
+import { SingleFlightTask } from '../../utils/async-operation-tracker';
 import { DEFAULT_RETRY_CONFIG, createRetryConfig } from '../../utils/retry.utils';
 import { secureFetch } from '../../utils/secure-fetch.utils';
 import { assertUrlSafe, UrlSecurityConfig } from '../../utils/url-security.utils';
@@ -36,7 +37,7 @@ import {
 } from './webhook.helpers';
 import { decryptWebhookReplayEnvelope } from './webhook-replay-envelope';
 import { createWebhookAttemptHeaders } from './webhook-attempt-headers';
-import { WebhookDeliveryStore } from './webhook-delivery.store';
+import { DeliveryFilter, WebhookDeliveryStore } from './webhook-delivery.store';
 import {
     normalizeWebhookDeliveryConfig,
     preparePendingWebhookDelivery,
@@ -56,12 +57,6 @@ interface WebhookJobData extends WebhookRetryJobData {
     dispatchToken: string;
 }
 
-interface DeliveryFilter {
-    status?: WebhookDeliveryStatus;
-    webhookId?: string;
-    limit?: number;
-}
-
 @Injectable()
 export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
     private readonly logger: DataHubLogger;
@@ -69,8 +64,8 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
     private queue!: JobQueue<WebhookJobData>;
     private dispatchTimer: NodeJS.Timeout | null = null;
     private maintenanceTimer: NodeJS.Timeout | null = null;
-    private dispatching = false;
-    private maintainingHistory = false;
+    private readonly dispatchTask = new SingleFlightTask<void>();
+    private readonly maintenanceTask = new SingleFlightTask<void>();
     private destroying = false;
     private ssrfConfig?: UrlSecurityConfig;
 
@@ -96,7 +91,9 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
             process: job => this.processJob(job),
         });
         await this.dispatchPending();
+        if (this.destroying) return;
         await this.maintainHistory();
+        if (this.destroying) return;
         this.dispatchTimer = setInterval(() => {
             this.dispatchPending().catch(() => {
                 this.logger.error('Webhook delivery dispatch failed');
@@ -116,7 +113,7 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
         });
     }
 
-    onModuleDestroy(): void {
+    async onModuleDestroy(): Promise<void> {
         this.destroying = true;
         if (this.dispatchTimer) {
             clearInterval(this.dispatchTimer);
@@ -126,6 +123,10 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
             clearInterval(this.maintenanceTimer);
             this.maintenanceTimer = null;
         }
+        await Promise.all([
+            this.dispatchTask.settle(),
+            this.maintenanceTask.settle(),
+        ]);
     }
 
     async sendWebhook(
@@ -175,7 +176,7 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
         return toWebhookDelivery(saved);
     }
 
-    async getDeliveries(ctx: RequestContext, options?: DeliveryFilter): Promise<WebhookDelivery[]> {
+    async getDeliveries(ctx: RequestContext, options?: Partial<DeliveryFilter>): Promise<WebhookDelivery[]> {
         const limit = Math.min(
             Math.max(1, options?.limit ?? PAGINATION.PAGE_SIZE),
             PAGINATION.MAX_QUERY_LIMIT,
@@ -244,33 +245,33 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
     }
 
 
-    private async dispatchPending(): Promise<void> {
-        if (this.destroying || this.dispatching) return;
-        this.dispatching = true;
-        try {
-            const ctx = await this.requestContextService.create({ apiType: 'admin' });
-            const now = new Date();
-            await this.store.recoverExpiredLeases(ctx, now);
-            const due = await this.store.findDue(ctx, now);
-            for (const delivery of due) {
-                await this.dispatchOne(ctx, delivery);
-            }
-        } finally {
-            this.dispatching = false;
+    private dispatchPending(): Promise<void> {
+        if (this.destroying) return Promise.resolve();
+        return this.dispatchTask.run(() => this.performDispatch());
+    }
+
+    private async performDispatch(): Promise<void> {
+        const ctx = await this.requestContextService.create({ apiType: 'admin' });
+        const now = new Date();
+        await this.store.recoverExpiredLeases(ctx, now);
+        if (this.destroying) return;
+        const due = await this.store.findDue(ctx, now);
+        for (const delivery of due) {
+            if (this.destroying) return;
+            await this.dispatchOne(ctx, delivery);
         }
     }
 
-    private async maintainHistory(): Promise<void> {
-        if (this.destroying || this.maintainingHistory) return;
-        this.maintainingHistory = true;
-        try {
-            const ctx = await this.requestContextService.create({ apiType: 'admin' });
-            const result = await this.store.deleteExpiredHistory(ctx, new Date());
-            if (result.delivered > 0 || result.deadLetters > 0) {
-                this.logger.info('Webhook delivery history cleanup completed', result);
-            }
-        } finally {
-            this.maintainingHistory = false;
+    private maintainHistory(): Promise<void> {
+        if (this.destroying) return Promise.resolve();
+        return this.maintenanceTask.run(() => this.performHistoryMaintenance());
+    }
+
+    private async performHistoryMaintenance(): Promise<void> {
+        const ctx = await this.requestContextService.create({ apiType: 'admin' });
+        const result = await this.store.deleteExpiredHistory(ctx, new Date());
+        if (result.delivered > 0 || result.deadLetters > 0) {
+            this.logger.info('Webhook delivery history cleanup completed', result);
         }
     }
 
@@ -281,6 +282,10 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
         const dispatchToken = randomUUID().replace(/-/g, '');
         const claimed = await this.store.claim(ctx, delivery.id, dispatchToken, new Date());
         if (!claimed) return;
+        if (this.destroying) {
+            await this.store.releaseClaim(ctx, delivery.id, dispatchToken);
+            return;
+        }
         try {
             await this.queue.add(
                 { deliveryId: String(delivery.id), dispatchToken },
