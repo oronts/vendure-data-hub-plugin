@@ -2,7 +2,13 @@ import { Injectable, OnModuleDestroy, Optional } from '@nestjs/common';
 import { EventBus, RequestContext } from '@vendure/core';
 import { Subject, Observable, Subscription } from 'rxjs';
 import { filter, share } from 'rxjs/operators';
-import { DOMAIN_EVENTS } from '../../constants/index';
+import { DOMAIN_EVENTS, LOGGER_CONTEXTS } from '../../constants/index';
+import { ActiveTaskSet } from '../../utils/async-operation-tracker';
+import { toErrorOrUndefined } from '../../utils/error.utils';
+import {
+    DataHubLoggerFactory,
+} from '../logger';
+import type { DataHubLogger } from '../logger';
 
 export type DomainEventPayload = Record<string, unknown>;
 
@@ -33,10 +39,19 @@ export class DomainEventsService implements OnModuleDestroy {
     private buffer: BufferedEvent[] = [];
     private readonly max = DOMAIN_EVENTS.MAX_EVENTS;
     private eventSubject = new Subject<DataHubEvent>();
+    private readonly publications = new ActiveTaskSet();
+    private readonly logger: DataHubLogger;
     private deferredSubscription?: Subscription;
+    private destroying = false;
     readonly events$: Observable<DataHubEvent> = this.eventSubject.asObservable().pipe(share());
 
-    constructor(@Optional() private eventBus?: EventBus) {
+    constructor(
+        @Optional() private eventBus?: EventBus,
+        @Optional() loggerFactory?: DataHubLoggerFactory,
+    ) {
+        this.logger = loggerFactory
+            ? loggerFactory.createLogger(LOGGER_CONTEXTS.DOMAIN_EVENTS_SERVICE)
+            : DataHubLoggerFactory.create(LOGGER_CONTEXTS.DOMAIN_EVENTS_SERVICE);
         if (this.eventBus && typeof this.eventBus.ofType === 'function') {
             this.deferredSubscription = this.eventBus
                 .ofType<DataHubDomainEvent>(DataHubDomainEvent)
@@ -47,23 +62,24 @@ export class DomainEventsService implements OnModuleDestroy {
         }
     }
 
-    onModuleDestroy(): void {
+    async onModuleDestroy(): Promise<void> {
+        this.destroying = true;
+        await this.publications.settle();
         this.deferredSubscription?.unsubscribe();
         this.eventSubject.complete();
     }
 
     publish<T extends DomainEventPayload = DomainEventPayload>(name: string, payload?: T): void {
+        if (this.destroying) return;
         try {
             const event = new DataHubDomainEvent<T>(name, payload);
 
             if (this.eventBus) {
-                void this.eventBus
-                    .publish(event)
-                    .catch(() => undefined);
+                this.publishToVendure(event);
             }
             this.deliverLocal(name, payload, event.createdAt);
-        } catch {
-            return;
+        } catch (error) {
+            this.reportPublicationFailure(name, error);
         }
     }
 
@@ -72,12 +88,34 @@ export class DomainEventsService implements OnModuleDestroy {
         name: string,
         payload: T,
     ): void {
+        if (this.destroying) return;
         const event = new DataHubDomainEvent(name, payload, ctx, true);
         if (this.eventBus && this.deferredSubscription) {
-            void this.eventBus.publish(event).catch(() => undefined);
+            this.publishToVendure(event);
             return;
         }
         this.deliverLocal(name, payload, event.createdAt);
+    }
+
+    private publishToVendure(event: DataHubDomainEvent): void {
+        const eventBus = this.eventBus;
+        if (!eventBus || this.destroying) return;
+        try {
+            const publication = this.publications.run(() => eventBus.publish(event));
+            void publication.catch(error => {
+                this.reportPublicationFailure(event.name, error);
+            });
+        } catch (error) {
+            this.reportPublicationFailure(event.name, error);
+        }
+    }
+
+    private reportPublicationFailure(eventName: string, error: unknown): void {
+        this.logger.error(
+            'Vendure event publication failed',
+            toErrorOrUndefined(error),
+            { eventName },
+        );
     }
 
     private deliverLocal<T extends DomainEventPayload>(
