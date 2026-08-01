@@ -20,6 +20,7 @@ import { DataHubRecordError } from '../../entities/data';
 import { DataHubSettingsService } from '../config/settings.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
 import { getErrorMessage, ensureError } from '../../utils/error.utils';
+import { SingleFlightTask } from '../../utils/async-operation-tracker';
 import { DistributedLockService } from '../runtime/distributed-lock.service';
 import { normalizeRetentionDays } from './retention-policy';
 
@@ -42,7 +43,8 @@ interface RetentionDeleteOptions {
 export class DataHubRetentionService implements OnModuleInit, OnModuleDestroy {
     private readonly logger: DataHubLogger;
     private handle: ReturnType<typeof setInterval> | null = null;
-    private purgeInProgress = false;
+    private readonly purgeTask = new SingleFlightTask<void>();
+    private destroying = false;
 
     constructor(
         private connection: TransactionalConnection,
@@ -85,20 +87,25 @@ export class DataHubRetentionService implements OnModuleInit, OnModuleDestroy {
     }
 
     async onModuleDestroy(): Promise<void> {
+        this.destroying = true;
         if (this.handle) {
             clearInterval(this.handle);
             this.handle = null;
             this.logger.debug('Retention service interval cleared');
         }
+        await this.purgeTask.settle();
     }
 
-    private async runPurgeCycle(): Promise<void> {
-        if (this.purgeInProgress) {
+    private runPurgeCycle(): Promise<void> {
+        if (this.destroying) return Promise.resolve();
+        if (this.purgeTask.running) {
             this.logger.debug('Skipping overlapping retention purge');
-            return;
         }
 
-        this.purgeInProgress = true;
+        return this.purgeTask.run(() => this.performPurgeCycle());
+    }
+
+    private async performPurgeCycle(): Promise<void> {
         let lockToken: string | undefined;
         try {
             const lock = await this.distributedLock.acquire(RETENTION.PURGE_LOCK_KEY, {
@@ -117,7 +124,6 @@ export class DataHubRetentionService implements OnModuleInit, OnModuleDestroy {
                         error: getErrorMessage(error),
                     }));
             }
-            this.purgeInProgress = false;
         }
     }
 

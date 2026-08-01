@@ -17,6 +17,7 @@ import { PipelineRevisionMismatchError } from '../../services/pipeline/pipeline-
 import { DistributedLockService } from '../../services/runtime/distributed-lock.service';
 import { RuntimeConfigService } from '../../services/runtime/runtime-config.service';
 import { toErrorOrUndefined } from '../../utils/error.utils';
+import { ActiveTaskSet } from '../../utils/async-operation-tracker';
 import type { ScheduleOccurrence } from './schedule-trigger';
 
 export interface ScheduleExecutionCallbacks {
@@ -30,6 +31,7 @@ export class ScheduledPipelineExecutionService {
     private readonly logger: DataHubLogger;
     private readonly maxConsecutiveFailures: number;
     private readonly maxTrackingEntries: number;
+    private readonly activeTasks = new ActiveTaskSet();
     private isDestroying = false;
 
     constructor(
@@ -47,8 +49,9 @@ export class ScheduledPipelineExecutionService {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.SCHEDULE_HANDLER);
     }
 
-    destroy(): void {
+    async destroy(): Promise<void> {
         this.isDestroying = true;
+        await this.activeTasks.settle();
         this.failureCountByPipeline.clear();
     }
 
@@ -84,7 +87,7 @@ export class ScheduledPipelineExecutionService {
         return staleCodes.length;
     }
 
-    async triggerPipeline(
+    triggerPipeline(
         pipeline: ActivePipelineDefinition,
         triggerType: Exclude<TimerType, typeof TIMER_TYPE.REFRESH>,
         triggerKey: string | undefined,
@@ -95,9 +98,25 @@ export class ScheduledPipelineExecutionService {
             this.logger.debug('Skipping pipeline trigger - module is being destroyed', {
                 pipelineCode: pipeline.code,
             });
-            return;
+            return Promise.resolve();
         }
 
+        return this.activeTasks.run(() => this.performTrigger(
+            pipeline,
+            triggerType,
+            triggerKey,
+            occurrence,
+            callbacks,
+        ));
+    }
+
+    private async performTrigger(
+        pipeline: ActivePipelineDefinition,
+        triggerType: Exclude<TimerType, typeof TIMER_TYPE.REFRESH>,
+        triggerKey: string | undefined,
+        occurrence: ScheduleOccurrence,
+        callbacks: ScheduleExecutionCallbacks,
+    ): Promise<void> {
         const lockKey = [
             'schedule-trigger',
             pipeline.id,

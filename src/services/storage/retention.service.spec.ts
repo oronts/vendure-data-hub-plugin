@@ -8,6 +8,18 @@ import {
 import { DataHubRecordError } from '../../entities/data';
 import { DataHubRetentionService } from './retention.service';
 
+interface RetentionServiceInternals {
+    runPurgeCycle(): Promise<void>;
+}
+
+function deferred<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>(resolvePromise => {
+        resolve = resolvePromise;
+    });
+    return { promise, resolve };
+}
+
 interface FixtureOptions {
     retentionDaysRuns?: number | null;
     retentionDaysLogs?: number | null;
@@ -149,6 +161,41 @@ async function purge(service: DataHubRetentionService): Promise<void> {
 describe('DataHubRetentionService', () => {
     afterEach(() => {
         vi.useRealTimers();
+    });
+
+    it('waits for an active purge and releases its lease during shutdown', async () => {
+        const fixture = createFixture();
+        const pendingSettings = deferred<{
+            retentionDaysRuns: null;
+            retentionDaysErrors: null;
+            retentionDaysLogs: null;
+            logPersistenceLevel: null;
+        }>();
+        fixture.settings.get.mockReturnValueOnce(pendingSettings.promise);
+
+        const purgeCycle = (fixture.service as unknown as RetentionServiceInternals)
+            .runPurgeCycle();
+        await vi.waitFor(() => expect(fixture.settings.get).toHaveBeenCalledOnce());
+        let stopped = false;
+        const shutdown = fixture.service.onModuleDestroy().then(() => {
+            stopped = true;
+        });
+        await Promise.resolve();
+        expect(stopped).toBe(false);
+        expect(fixture.distributedLock.release).not.toHaveBeenCalled();
+        pendingSettings.resolve({
+            retentionDaysRuns: null,
+            retentionDaysErrors: null,
+            retentionDaysLogs: null,
+            logPersistenceLevel: null,
+        });
+        await Promise.all([purgeCycle, shutdown]);
+
+        expect(stopped).toBe(true);
+        expect(fixture.distributedLock.release).toHaveBeenCalledWith(
+            RETENTION.PURGE_LOCK_KEY,
+            'retention-token',
+        );
     });
 
     it('purges pipeline logs older than the configured retention period', async () => {

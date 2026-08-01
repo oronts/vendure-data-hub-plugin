@@ -7,6 +7,14 @@ import { ScheduledPipelineExecutionService } from './schedule-execution.service'
 import { DataHubScheduleHandler } from './schedule.handler';
 import { ScheduleTimerService } from './schedule-timer.service';
 
+function deferred<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>(resolvePromise => {
+        resolve = resolvePromise;
+    });
+    return { promise, resolve };
+}
+
 function createScheduledPipeline(
     intervalSec = 300,
     code = 'catalog-sync',
@@ -355,6 +363,29 @@ describe('DataHubScheduleHandler refresh reconciliation', () => {
         expect(fixture.handler.getActiveScheduleCount()).toBe(1);
         await fixture.handler.onModuleDestroy();
     });
+
+    it('drains an active refresh before clearing every recreated timer', async () => {
+        const fixture = createFixture();
+        await fixture.handler.onApplicationBootstrap();
+        const pendingPipelines = deferred<Pipeline[]>();
+        fixture.pipelineRepository.find.mockReturnValueOnce(pendingPipelines.promise);
+
+        const refresh = fixture.handler.forceRefresh();
+        await vi.waitFor(() => {
+            expect(fixture.pipelineRepository.find).toHaveBeenCalledTimes(2);
+        });
+        let stopped = false;
+        const shutdown = fixture.handler.onModuleDestroy().then(() => {
+            stopped = true;
+        });
+        await Promise.resolve();
+        expect(stopped).toBe(false);
+        pendingPipelines.resolve([fixture.pipeline]);
+        await Promise.all([refresh, shutdown]);
+
+        expect(stopped).toBe(true);
+        expect(fixture.handler.getActiveScheduleCount()).toBe(0);
+    });
 });
 
 describe('DataHubScheduleHandler distributed occurrence claims', () => {
@@ -398,10 +429,9 @@ describe('DataHubScheduleHandler distributed occurrence claims', () => {
         await Promise.resolve();
         expect(distributedLock.acquire).toHaveBeenCalledOnce();
 
-        await fixture.handler.onModuleDestroy();
+        const shutdown = fixture.handler.onModuleDestroy();
         resolveClaim?.({ acquired: true, token: 'claim-token' });
-        await Promise.resolve();
-        await Promise.resolve();
+        await shutdown;
 
         expect(fixture.pipelineService.startRun).not.toHaveBeenCalled();
         expect(fixture.handler.getCircuitBreakerStatus().size).toBe(0);

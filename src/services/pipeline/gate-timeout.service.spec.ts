@@ -2,6 +2,18 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { GATE_TIMEOUT_MAINTENANCE } from '../../constants';
 import { GateTimeoutService } from './gate-timeout.service';
 
+interface GateTimeoutInternals {
+    runMaintenanceCycle(): Promise<void>;
+}
+
+function deferred<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>(resolvePromise => {
+        resolve = resolvePromise;
+    });
+    return { promise, resolve };
+}
+
 interface Candidate {
     id: string;
     gateStepKey: string | null;
@@ -101,6 +113,29 @@ function createFixture(options: FixtureOptions = {}) {
 describe('GateTimeoutService', () => {
     afterEach(() => {
         vi.useRealTimers();
+    });
+
+    it('waits for active timeout maintenance during shutdown', async () => {
+        const fixture = createFixture();
+        const pendingCandidates = deferred<Candidate[]>();
+        fixture.selectBuilder.getRawMany.mockReturnValueOnce(pendingCandidates.promise);
+
+        const maintenance = (fixture.service as unknown as GateTimeoutInternals)
+            .runMaintenanceCycle();
+        await vi.waitFor(() => {
+            expect(fixture.selectBuilder.getRawMany).toHaveBeenCalledOnce();
+        });
+        let stopped = false;
+        const shutdown = fixture.service.onModuleDestroy().then(() => {
+            stopped = true;
+        });
+        await Promise.resolve();
+        expect(stopped).toBe(false);
+        pendingCandidates.resolve([]);
+        await Promise.all([maintenance, shutdown]);
+
+        expect(stopped).toBe(true);
+        expect(fixture.approveGate).not.toHaveBeenCalled();
     });
 
     it('does not run timeout maintenance in a worker process', async () => {

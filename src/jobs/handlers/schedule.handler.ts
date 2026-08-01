@@ -10,6 +10,7 @@ import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { DomainEventsService } from '../../services/events/domain-events.service';
 import { LOGGER_CONTEXTS } from '../../constants/index';
 import { getErrorMessage, toErrorOrUndefined } from '../../utils/error.utils';
+import { SingleFlightTask } from '../../utils/async-operation-tracker';
 import { PipelineDefinition } from '../../types/index';
 import { TriggerType, TIMER_TYPE } from '../../constants/enums';
 import { findEnabledTriggersByType } from '../../utils';
@@ -38,8 +39,7 @@ interface LogMetadata {
 export class DataHubScheduleHandler implements OnApplicationBootstrap, OnModuleDestroy {
     private readonly logger: DataHubLogger;
     private readonly schedulerConfig: Required<SchedulerConfig>;
-    /** Mutex flag to prevent concurrent refresh operations */
-    private isRefreshing = false;
+    private readonly refreshTask = new SingleFlightTask<void>();
     /** Flag to track if module is being destroyed */
     private isDestroying = false;
     private readonly executionCallbacks = {
@@ -75,6 +75,7 @@ export class DataHubScheduleHandler implements OnApplicationBootstrap, OnModuleD
             return;
         }
         await this.configSync.ensureSynchronized();
+        if (this.isDestroying) return;
         const initMetadata: LogMetadata = {
             checkIntervalMs: this.schedulerConfig.checkIntervalMs,
             refreshIntervalMs: this.schedulerConfig.refreshIntervalMs,
@@ -92,6 +93,7 @@ export class DataHubScheduleHandler implements OnApplicationBootstrap, OnModuleD
             };
             this.logger.warn('Failed to initialize schedules on startup, will retry on next refresh', errorMetadata);
         }
+        if (this.isDestroying) return;
 
         const refreshHandle = setInterval(
             () => this.refresh().catch(err => {
@@ -113,25 +115,28 @@ export class DataHubScheduleHandler implements OnApplicationBootstrap, OnModuleD
         };
         this.logger.info('Destroying schedule handler', destroyMetadata);
 
-        this.scheduleExecution.destroy();
+        await this.refreshTask.settle();
+        await this.scheduleExecution.destroy();
         this.scheduleTimers.destroy();
 
         this.logger.debug('Schedule handler cleanup complete');
     }
 
     /** Uses a mutex to prevent concurrent refresh operations */
-    private async refresh(): Promise<void> {
+    private refresh(): Promise<void> {
         if (this.isDestroying) {
             this.logger.debug('Skipping refresh - module is being destroyed');
-            return;
+            return Promise.resolve();
         }
 
-        if (this.isRefreshing) {
+        if (this.refreshTask.running) {
             this.logger.debug('Skipping refresh - another refresh is already in progress');
-            return;
         }
 
-        this.isRefreshing = true;
+        return this.refreshTask.run(() => this.performRefresh());
+    }
+
+    private async performRefresh(): Promise<void> {
         const refreshStartTime = Date.now();
 
         try {
@@ -323,8 +328,6 @@ export class DataHubScheduleHandler implements OnApplicationBootstrap, OnModuleD
                 refreshDurationMs: Date.now() - refreshStartTime,
             });
             throw error;
-        } finally {
-            this.isRefreshing = false;
         }
     }
 
@@ -373,7 +376,7 @@ export class DataHubScheduleHandler implements OnApplicationBootstrap, OnModuleD
             cronKeyCount: this.scheduleTimers.getCronKeyCount(),
             trackedFailures: this.scheduleExecution.getTrackedFailureCount(),
             pausedPipelines: this.scheduleExecution.getPausedPipelineCount(),
-            isRefreshing: this.isRefreshing,
+            isRefreshing: this.refreshTask.running,
             isDestroying: this.isDestroying,
         };
     }

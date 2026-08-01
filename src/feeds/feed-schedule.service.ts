@@ -7,6 +7,7 @@ import { DataHubLogger, DataHubLoggerFactory } from '../services/logger';
 import { DistributedLockService } from '../services/runtime/distributed-lock.service';
 import { RuntimeConfigService } from '../services/runtime/runtime-config.service';
 import { getErrorMessage, toErrorOrUndefined } from '../utils/error.utils';
+import { SingleFlightTask } from '../utils/async-operation-tracker';
 import { FeedGeneratorService } from './feed-generator.service';
 
 function minuteStart(value: Date): Date {
@@ -24,7 +25,7 @@ export class FeedScheduleService implements OnApplicationBootstrap, OnModuleDest
     private readonly logger: DataHubLogger;
     private readonly checkIntervalMs: number;
     private checkHandle: ReturnType<typeof setInterval> | null = null;
-    private processing = false;
+    private readonly processingTask = new SingleFlightTask<number>();
     private destroying = false;
 
     constructor(
@@ -51,41 +52,41 @@ export class FeedScheduleService implements OnApplicationBootstrap, OnModuleDest
         this.checkHandle.unref();
     }
 
-    onModuleDestroy(): void {
+    async onModuleDestroy(): Promise<void> {
         this.destroying = true;
         if (this.checkHandle) {
             clearInterval(this.checkHandle);
             this.checkHandle = null;
         }
+        await this.processingTask.settle();
     }
 
-    async processDueFeeds(now = new Date()): Promise<number> {
-        if (this.destroying || this.processing) return 0;
-        this.processing = true;
-        try {
-            const adminCtx = await this.requestContextService.create({ apiType: 'admin' });
-            const feeds = await this.connection.getRepository(adminCtx, DataHubFeed).find({
-                where: { scheduleEnabled: true },
-                order: { id: 'ASC' },
-                take: SCHEDULER.MAX_PIPELINE_DISCOVERY,
-            });
-            let generatedCount = 0;
-            for (const feed of feeds) {
-                if (!feed.scheduleCron || !cronMatches(
-                    now,
-                    feed.scheduleCron,
-                    feed.scheduleTimezone ?? undefined,
-                )) {
-                    continue;
-                }
-                if (await this.claimAndGenerate(feed, now)) {
-                    generatedCount++;
-                }
+    processDueFeeds(now = new Date()): Promise<number> {
+        if (this.destroying || this.processingTask.running) return Promise.resolve(0);
+        return this.processingTask.run(() => this.generateDueFeeds(now));
+    }
+
+    private async generateDueFeeds(now: Date): Promise<number> {
+        const adminCtx = await this.requestContextService.create({ apiType: 'admin' });
+        const feeds = await this.connection.getRepository(adminCtx, DataHubFeed).find({
+            where: { scheduleEnabled: true },
+            order: { id: 'ASC' },
+            take: SCHEDULER.MAX_PIPELINE_DISCOVERY,
+        });
+        let generatedCount = 0;
+        for (const feed of feeds) {
+            if (!feed.scheduleCron || !cronMatches(
+                now,
+                feed.scheduleCron,
+                feed.scheduleTimezone ?? undefined,
+            )) {
+                continue;
             }
-            return generatedCount;
-        } finally {
-            this.processing = false;
+            if (await this.claimAndGenerate(feed, now)) {
+                generatedCount++;
+            }
         }
+        return generatedCount;
     }
 
     private async claimAndGenerate(feed: DataHubFeed, now: Date): Promise<boolean> {

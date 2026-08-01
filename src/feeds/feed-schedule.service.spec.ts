@@ -2,6 +2,14 @@ import { describe, expect, it, vi } from 'vitest';
 import { DataHubFeed } from '../entities/config';
 import { FeedScheduleService } from './feed-schedule.service';
 
+function deferred<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>(resolvePromise => {
+        resolve = resolvePromise;
+    });
+    return { promise, resolve };
+}
+
 function createFeed(): DataHubFeed {
     return Object.assign(new DataHubFeed(), {
         id: 'feed-1',
@@ -64,6 +72,26 @@ function createFixture(channelId = 'channel-1') {
 }
 
 describe('FeedScheduleService', () => {
+    it('waits for an active schedule scan during shutdown', async () => {
+        const fixture = createFixture();
+        const pendingFeeds = deferred<DataHubFeed[]>();
+        fixture.repository.find.mockReturnValueOnce(pendingFeeds.promise);
+
+        const processing = fixture.service.processDueFeeds();
+        await vi.waitFor(() => expect(fixture.repository.find).toHaveBeenCalledOnce());
+        let stopped = false;
+        const shutdown = fixture.service.onModuleDestroy().then(() => {
+            stopped = true;
+        });
+        await Promise.resolve();
+        expect(stopped).toBe(false);
+        pendingFeeds.resolve([]);
+        await Promise.all([processing, shutdown]);
+
+        expect(stopped).toBe(true);
+        await expect(fixture.service.processDueFeeds()).resolves.toBe(0);
+    });
+
     it('claims a due schedule once per minute and uses the persisted channel', async () => {
         const fixture = createFixture();
         const now = new Date('2026-07-16T12:00:30.000Z');

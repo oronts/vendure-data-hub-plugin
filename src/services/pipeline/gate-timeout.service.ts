@@ -12,6 +12,7 @@ import { GATE_TIMEOUT_MAINTENANCE, LOGGER_CONTEXTS } from '../../constants';
 import { RunStatus } from '../../constants/enums';
 import { PipelineRun } from '../../entities/pipeline';
 import { getErrorMessage } from '../../utils/error.utils';
+import { SingleFlightTask } from '../../utils/async-operation-tracker';
 import { DomainEventsService } from '../events/domain-events.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
 import { PipelineService } from './pipeline.service';
@@ -28,7 +29,8 @@ const DATABASE_DATETIME_PATTERN = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)
 export class GateTimeoutService implements OnModuleInit, OnModuleDestroy {
     private readonly logger: DataHubLogger;
     private handle: ReturnType<typeof setInterval> | null = null;
-    private checkInProgress = false;
+    private readonly maintenanceTask = new SingleFlightTask<void>();
+    private destroying = false;
     private pipelineService: PipelineService | null = null;
 
     constructor(
@@ -63,28 +65,25 @@ export class GateTimeoutService implements OnModuleInit, OnModuleDestroy {
         });
     }
 
-    onModuleDestroy(): void {
+    async onModuleDestroy(): Promise<void> {
+        this.destroying = true;
         if (this.handle) {
             clearInterval(this.handle);
             this.handle = null;
         }
+        await this.maintenanceTask.settle();
     }
 
-    private async runMaintenanceCycle(): Promise<void> {
-        if (this.checkInProgress) {
+    private runMaintenanceCycle(): Promise<void> {
+        if (this.destroying) return Promise.resolve();
+        if (this.maintenanceTask.running) {
             this.logger.debug('Skipping overlapping gate timeout maintenance');
-            return;
         }
 
         const pipelineService = this.getPipelineService();
-        if (!pipelineService) return;
+        if (!pipelineService) return Promise.resolve();
 
-        this.checkInProgress = true;
-        try {
-            await this.processExpiredGates(pipelineService);
-        } finally {
-            this.checkInProgress = false;
-        }
+        return this.maintenanceTask.run(() => this.processExpiredGates(pipelineService));
     }
 
     private getPipelineService(): PipelineService | null {
