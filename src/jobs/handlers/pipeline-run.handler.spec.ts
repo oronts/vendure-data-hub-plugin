@@ -4,6 +4,18 @@ import type { Job } from '@vendure/core';
 import type { PipelineRunJobData } from '../types';
 import { DataHubRunQueueHandler } from './pipeline-run.handler';
 
+interface HandlerInternals {
+    runReconciliation(): Promise<void>;
+}
+
+function deferred<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>(resolvePromise => {
+        resolve = resolvePromise;
+    });
+    return { promise, resolve };
+}
+
 describe('DataHubRunQueueHandler', () => {
     it('passes Vendure attempt metadata to the pipeline runner', async () => {
         let processJob: ((job: Job<PipelineRunJobData>) => Promise<void>) | undefined;
@@ -50,7 +62,7 @@ describe('DataHubRunQueueHandler', () => {
             attempt: 2,
             maxAttempts: 5,
         });
-        handler.onModuleDestroy();
+        await handler.onModuleDestroy();
     });
 
     it('claims a run once before adding it to the queue', async () => {
@@ -90,7 +102,7 @@ describe('DataHubRunQueueHandler', () => {
             { runId: 42 },
             { retries: 3 },
         );
-        handler.onModuleDestroy();
+        await handler.onModuleDestroy();
     });
 
     it('releases the dispatch claim when queue insertion fails', async () => {
@@ -128,7 +140,7 @@ describe('DataHubRunQueueHandler', () => {
             expect.objectContaining({ id: 42 }),
             { queueDispatchedAt: null },
         );
-        handler.onModuleDestroy();
+        await handler.onModuleDestroy();
     });
 
     it('recovers a stale durable queue request during initialization', async () => {
@@ -165,6 +177,101 @@ describe('DataHubRunQueueHandler', () => {
             { runId: 42 },
             { retries: 3 },
         );
-        handler.onModuleDestroy();
+        await handler.onModuleDestroy();
+    });
+
+    it('runs only one reconciliation pass at a time', async () => {
+        const pendingFind = deferred<Array<{ id: number }>>();
+        const runRepository = {
+            find: vi.fn()
+                .mockResolvedValueOnce([])
+                .mockReturnValueOnce(pendingFind.promise),
+        };
+        const handler = new DataHubRunQueueHandler(
+            { createQueue: vi.fn(async () => ({ add: vi.fn() })) } as never,
+            { ofType: vi.fn(() => EMPTY) } as never,
+            { getRepository: vi.fn(() => runRepository) } as never,
+            { execute: vi.fn() } as never,
+            { createLogger: vi.fn(() => ({
+                debug: vi.fn(),
+                info: vi.fn(),
+                error: vi.fn(),
+            })) } as never,
+        );
+        await handler.onModuleInit();
+
+        const internals = handler as unknown as HandlerInternals;
+        const first = internals.runReconciliation();
+        const second = internals.runReconciliation();
+
+        expect(runRepository.find).toHaveBeenCalledTimes(2);
+        await second;
+        pendingFind.resolve([]);
+        await first;
+        await handler.onModuleDestroy();
+    });
+
+    it('does not dispatch rows returned after shutdown starts', async () => {
+        const pendingFind = deferred<Array<{ id: number }>>();
+        const queue = { add: vi.fn(async () => undefined) };
+        const runRepository = {
+            find: vi.fn(() => pendingFind.promise),
+            update: vi.fn(async () => ({ affected: 1 })),
+        };
+        const handler = new DataHubRunQueueHandler(
+            { createQueue: vi.fn(async () => queue) } as never,
+            { ofType: vi.fn(() => EMPTY) } as never,
+            { getRepository: vi.fn(() => runRepository) } as never,
+            { execute: vi.fn() } as never,
+            { createLogger: vi.fn(() => ({
+                debug: vi.fn(),
+                info: vi.fn(),
+                error: vi.fn(),
+            })) } as never,
+        );
+
+        const initialization = handler.onModuleInit();
+        await vi.waitFor(() => expect(runRepository.find).toHaveBeenCalledOnce());
+        const shutdown = handler.onModuleDestroy();
+        pendingFind.resolve([{ id: 42 }]);
+        await Promise.all([initialization, shutdown]);
+
+        expect(queue.add).not.toHaveBeenCalled();
+        expect(runRepository.update).not.toHaveBeenCalled();
+    });
+
+    it('releases a claim acquired while shutdown begins', async () => {
+        const pendingClaim = deferred<{ affected: number }>();
+        const queue = { add: vi.fn(async () => undefined) };
+        const runRepository = {
+            find: vi.fn(async () => []),
+            update: vi.fn()
+                .mockReturnValueOnce(pendingClaim.promise)
+                .mockResolvedValueOnce({ affected: 1 }),
+        };
+        const handler = new DataHubRunQueueHandler(
+            { createQueue: vi.fn(async () => queue) } as never,
+            { ofType: vi.fn(() => EMPTY) } as never,
+            { getRepository: vi.fn(() => runRepository) } as never,
+            { execute: vi.fn() } as never,
+            { createLogger: vi.fn(() => ({
+                debug: vi.fn(),
+                info: vi.fn(),
+                error: vi.fn(),
+            })) } as never,
+        );
+        await handler.onModuleInit();
+
+        const dispatch = handler.enqueueRun(42);
+        await vi.waitFor(() => expect(runRepository.update).toHaveBeenCalledOnce());
+        const shutdown = handler.onModuleDestroy();
+        pendingClaim.resolve({ affected: 1 });
+        await Promise.all([dispatch, shutdown]);
+
+        expect(queue.add).not.toHaveBeenCalled();
+        expect(runRepository.update).toHaveBeenLastCalledWith(
+            expect.objectContaining({ id: 42 }),
+            { queueDispatchedAt: null },
+        );
     });
 });

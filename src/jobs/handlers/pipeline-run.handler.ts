@@ -51,6 +51,9 @@ export class DataHubRunQueueHandler implements OnModuleInit, OnModuleDestroy {
     private readonly logger: DataHubLogger;
     private eventSubscription?: Subscription;
     private reconcileHandle?: NodeJS.Timeout;
+    private reconciliation: Promise<void> | null = null;
+    private readonly activeDispatches = new Set<Promise<void>>();
+    private destroying = false;
 
     constructor(
         private jobQueueService: JobQueueService,
@@ -118,6 +121,7 @@ export class DataHubRunQueueHandler implements OnModuleInit, OnModuleDestroy {
         // Subscribe to PipelineQueueRequestEvent to handle queue requests
         // This breaks the circular dependency: PipelineService -> EventBus -> DataHubRunQueueHandler
         this.eventSubscription = this.eventBus.ofType(PipelineQueueRequestEvent).subscribe(event => {
+            if (this.destroying) return;
             this.logger.debug('Received PipelineQueueRequestEvent', {
                 runId: event.runId,
                 pipelineId: event.pipelineId,
@@ -132,9 +136,10 @@ export class DataHubRunQueueHandler implements OnModuleInit, OnModuleDestroy {
             });
         });
 
-        await this.reconcilePendingRuns();
+        await this.runReconciliation();
+        if (this.destroying) return;
         this.reconcileHandle = setInterval(() => {
-            this.reconcilePendingRuns().catch(error => {
+            this.runReconciliation().catch(error => {
                 this.logger.error(
                     'Failed to reconcile pending pipeline runs',
                     ensureError(error),
@@ -147,14 +152,18 @@ export class DataHubRunQueueHandler implements OnModuleInit, OnModuleDestroy {
     /**
      * Cleanup event subscription on module destroy
      */
-    onModuleDestroy(): void {
+    async onModuleDestroy(): Promise<void> {
+        this.destroying = true;
         if (this.eventSubscription) {
             this.eventSubscription.unsubscribe();
+            this.eventSubscription = undefined;
         }
         if (this.reconcileHandle) {
             clearInterval(this.reconcileHandle);
             this.reconcileHandle = undefined;
         }
+        await this.reconciliation?.catch(() => undefined);
+        await Promise.allSettled([...this.activeDispatches]);
     }
 
     /**
@@ -172,6 +181,21 @@ export class DataHubRunQueueHandler implements OnModuleInit, OnModuleDestroy {
         runId: ID,
         options?: JobOptions,
     ): Promise<void> {
+        if (this.destroying) return;
+        const dispatch = this.performDispatch(ctx, runId, options);
+        this.activeDispatches.add(dispatch);
+        void dispatch.then(
+            () => this.activeDispatches.delete(dispatch),
+            () => this.activeDispatches.delete(dispatch),
+        );
+        return dispatch;
+    }
+
+    private async performDispatch(
+        ctx: RequestContext,
+        runId: ID,
+        options?: JobOptions,
+    ): Promise<void> {
         if (!runId) {
             throw new Error('runId is required to enqueue a pipeline run');
         }
@@ -181,6 +205,10 @@ export class DataHubRunQueueHandler implements OnModuleInit, OnModuleDestroy {
             this.logger.debug('Pipeline run queue request already dispatched', {
                 runId,
             });
+            return;
+        }
+        if (this.destroying) {
+            await this.releaseDispatchClaim(ctx, runId, dispatchedAt);
             return;
         }
 
@@ -268,6 +296,7 @@ export class DataHubRunQueueHandler implements OnModuleInit, OnModuleDestroy {
             take: RUN_QUEUE_RECOVERY.BATCH_SIZE,
         });
         for (const run of runs) {
+            if (this.destroying) return;
             try {
                 await this.dispatchRun(ctx, run.id);
             } catch (error) {
@@ -278,6 +307,17 @@ export class DataHubRunQueueHandler implements OnModuleInit, OnModuleDestroy {
                 );
             }
         }
+    }
+
+    private async runReconciliation(): Promise<void> {
+        if (this.destroying || this.reconciliation) return;
+        const reconciliation = this.reconcilePendingRuns();
+        this.reconciliation = reconciliation;
+        await reconciliation.finally(() => {
+            if (this.reconciliation === reconciliation) {
+                this.reconciliation = null;
+            }
+        });
     }
 
     /**
