@@ -10,6 +10,7 @@ export {
     getIdValue,
     getNumberValue,
     getObjectValue,
+    getRecordValue,
     getStringValue,
     shouldUpdateField,
 } from './shared-record-helpers';
@@ -18,6 +19,7 @@ export type {
     ConfigurableOperationInput,
 } from './shared-record-helpers';
 export {
+    assertVendureMutationSucceeded,
     handleAssets,
     handleFacetValues,
     handleFeaturedAsset,

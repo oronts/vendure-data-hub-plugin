@@ -61,6 +61,22 @@ describe('promotion handler input', () => {
         )).toThrow('must be a non-negative integer');
     });
 
+    it('rejects non-string names and descriptions instead of coercing objects', () => {
+        const ctx = { languageCode: 'en' } as RequestContext;
+        expect(() => buildUpdatePromotionInput(
+            ctx,
+            { code: 'SAVE10', name: { nested: true } },
+            getPromotionConfig({ adapterCode: 'promotionUpsert' }),
+            existing,
+        )).toThrow('Promotion field "name" must be a string');
+        expect(() => buildUpdatePromotionInput(
+            ctx,
+            { code: 'SAVE10', description: ['invalid'] },
+            getPromotionConfig({ adapterCode: 'promotionUpsert' }),
+            existing,
+        )).toThrow('Promotion field "description" must be a string');
+    });
+
     it('rejects unknown update modes instead of silently replacing operations', () => {
         expect(() => getPromotionConfig({
             adapterCode: 'promotionUpsert',

@@ -21,7 +21,12 @@ import { assertCreateDuplicateCanBeSkipped, CreateDuplicateHandlingConfig } from
 import { LoadStrategy } from '../../../constants/enums';
 import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
 import { getStringValue, getObjectValue } from '../../../loaders/shared-helpers';
-import { parseTranslationsInput, resolveChannelIds, toConfigurableOperation } from './shared-lookups';
+import {
+    getTranslationString,
+    parseTranslationsInput,
+    resolveChannelIds,
+    toConfigurableOperation,
+} from './shared-lookups';
 import { LOGGER_CONTEXTS } from '../../../constants/core';
 import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger/datahub-logger';
 
@@ -94,8 +99,8 @@ export class ShippingMethodHandler implements LoaderHandler {
                     const raw = rec[cfg.translationsField];
                     if (raw) {
                         const parsed = parseTranslationsInput(raw);
-                        if (parsed.length > 0 && parsed[0].name) {
-                            name = String(parsed[0].name);
+                        if (parsed[0]) {
+                            name = getTranslationString(parsed[0], 'name');
                         }
                     }
                 }
@@ -241,9 +246,9 @@ export class ShippingMethodHandler implements LoaderHandler {
                 const parsed = parseTranslationsInput(raw);
                 if (parsed.length > 0) {
                     return parsed.map(t => ({
-                        languageCode: String(t.languageCode) as LanguageCode,
-                        name: String(t.name ?? name),
-                        description: t.description != null ? String(t.description) : '',
+                        languageCode: t.languageCode as LanguageCode,
+                        name: getTranslationString(t, 'name', name),
+                        description: getTranslationString(t, 'description', ''),
                     }));
                 }
             }

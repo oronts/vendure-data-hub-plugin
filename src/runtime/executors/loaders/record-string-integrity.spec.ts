@@ -82,13 +82,39 @@ describe('loader string field integrity', () => {
 
         await expect(handler.execute(
             {} as never,
-            step('assetAttach', { entity: 'product' }),
+            step('assetAttach', { entity: 'PRODUCT' }),
             [{ slug: { value: 'product' }, assetId: ['1'] }],
             onRecordError,
         )).resolves.toEqual({ ok: 0, fail: 1, skipped: 0 });
         expect(productService.findAll).not.toHaveBeenCalled();
         expect(collectionService.findOneBySlug).not.toHaveBeenCalled();
         expect(assetService.updateFeaturedAsset).not.toHaveBeenCalled();
+    });
+
+    it('accepts the public PRODUCT asset-attachment entity value', async () => {
+        const product = { id: 'product-1' };
+        const productService = {
+            findAll: vi.fn().mockResolvedValue({ items: [product], totalItems: 1 }),
+        };
+        const assetService = { updateFeaturedAsset: vi.fn() };
+        const handler = new AssetAttachHandler(
+            productService as never,
+            {} as never,
+            assetService as never,
+            {} as never,
+            {} as never,
+        );
+
+        await expect(handler.execute(
+            {} as never,
+            step('assetAttach', { entity: 'PRODUCT' }),
+            [{ slug: 'product', assetId: 'asset-1' }],
+        )).resolves.toEqual({ ok: 1, fail: 0, skipped: 0 });
+        expect(assetService.updateFeaturedAsset).toHaveBeenCalledWith(
+            expect.anything(),
+            product,
+            { featuredAssetId: 'asset-1' },
+        );
     });
 
     it('rejects structured facet and facet-value identifiers', async () => {

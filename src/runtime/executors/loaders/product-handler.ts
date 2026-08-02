@@ -34,6 +34,7 @@ import { LoaderHandler, CoercedProductFields, LoaderSimulationResult } from './t
 import { assertCreateDuplicateCanBeSkipped } from './duplicate-handling';
 import {
     findVariantBySku,
+    getTranslationString,
     resolveChannelIds,
     parseTranslationsInput,
 } from './shared-lookups';
@@ -308,12 +309,12 @@ export class ProductHandler implements LoaderHandler {
                 const parsed = parseTranslationsInput(raw);
                 if (parsed.length > 0) {
                     return parsed.map(t => {
-                        const tName = String(t.name ?? fields.name!);
+                        const tName = getTranslationString(t, 'name', fields.name!);
                         return {
                             languageCode: t.languageCode as LanguageCode,
                             name: tName,
-                            slug: t.slug != null ? String(t.slug) : slugify(tName),
-                            description: t.description != null ? String(t.description) : '',
+                            slug: getTranslationString(t, 'slug') ?? slugify(tName),
+                            description: getTranslationString(t, 'description', ''),
                         };
                     });
                 }
@@ -478,10 +479,10 @@ export class ProductHandler implements LoaderHandler {
         if (!raw) return;
         const first = parseTranslationsInput(raw)[0];
         if (!first) return;
-        const firstName = first.name != null ? String(first.name) : undefined;
+        const firstName = getTranslationString(first, 'name');
         if (!fields.name && firstName) fields.name = firstName;
         if (!fields.slug && firstName) {
-            fields.slug = first.slug != null ? String(first.slug) : slugify(firstName);
+            fields.slug = getTranslationString(first, 'slug') ?? slugify(firstName);
         }
     }
 

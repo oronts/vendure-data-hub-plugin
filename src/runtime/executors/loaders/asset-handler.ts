@@ -18,12 +18,13 @@ import { RecordObject, OnRecordErrorCallback, LoaderExecutionResult } from '../.
 import { LoaderHandler } from './types';
 import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
 import { getStringValue } from '../../../loaders/shared-helpers';
+import { VendureEntityType } from '../../../constants/enums';
 
 /**
  * Configuration for asset attachment step
  */
 interface AssetAttachConfig {
-    entity?: string;
+    entity?: VendureEntityType.PRODUCT | VendureEntityType.COLLECTION;
     slugField?: string;
     assetIdField?: string;
     channel?: string;
@@ -74,7 +75,7 @@ export class AssetAttachHandler implements LoaderHandler {
                     );
                 }
 
-                if (entity === 'product') {
+                if (entity === VendureEntityType.PRODUCT) {
                     const list = await this.productService.findAll(opCtx, { filter: { slug: { eq: slug } }, take: 1 });
                     const product = list.items[0];
                     if (!product) {
@@ -83,7 +84,7 @@ export class AssetAttachHandler implements LoaderHandler {
                         continue;
                     }
                     await this.assetService.updateFeaturedAsset(opCtx, product as unknown as EntityWithAssets, { featuredAssetId: assetId });
-                } else if (entity === 'collection') {
+                } else if (entity === VendureEntityType.COLLECTION) {
                     const existing = await this.collectionService.findOneBySlug(opCtx, slug);
                     if (!existing) {
                         if (onRecordError) await onRecordError(step.key, `Collection not found: ${slug}`, rec as JsonObject);

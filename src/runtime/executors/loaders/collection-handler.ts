@@ -29,7 +29,11 @@ import {
     getStringValue,
     slugify,
 } from '../../../loaders/shared-helpers';
-import { parseTranslationsInput, resolveChannelIds } from './shared-lookups';
+import {
+    getTranslationString,
+    parseTranslationsInput,
+    resolveChannelIds,
+} from './shared-lookups';
 import { LOGGER_CONTEXTS } from '../../../constants/core';
 import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger/datahub-logger';
 import {
@@ -114,10 +118,10 @@ function applyCollectionTranslationIdentityFallback(
     if (!raw) return;
     const first = parseTranslationsInput(raw)[0];
     if (!first) return;
-    const firstName = first.name != null ? String(first.name) : undefined;
+    const firstName = getTranslationString(first, 'name');
     if (!fields.name && firstName) fields.name = firstName;
     if (!fields.slug && firstName) {
-        fields.slug = first.slug != null ? String(first.slug) : slugify(firstName);
+        fields.slug = getTranslationString(first, 'slug') ?? slugify(firstName);
     }
 }
 
@@ -251,12 +255,16 @@ export class CollectionHandler implements LoaderHandler {
             if (raw) {
                 const parsed = parseTranslationsInput(raw);
                 if (parsed.length > 0) {
-                    return parsed.map(t => ({
-                        languageCode: String(t.languageCode) as LanguageCode,
-                        name: String(t.name ?? name),
-                        slug: t.slug != null ? String(t.slug) : slugify(String(t.name ?? name)),
-                        description: t.description != null ? String(t.description) : '',
-                    }));
+                    return parsed.map(translation => {
+                        const translatedName = getTranslationString(translation, 'name', name);
+                        return {
+                            languageCode: translation.languageCode as LanguageCode,
+                            name: translatedName,
+                            slug: getTranslationString(translation, 'slug')
+                                ?? slugify(translatedName),
+                            description: getTranslationString(translation, 'description', ''),
+                        };
+                    });
                 }
             }
         }

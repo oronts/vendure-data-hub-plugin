@@ -184,7 +184,10 @@ export class VariantHandler implements LoaderHandler {
             ? await this.updateExistingVariant(
                 channelPlan.source,
                 existing,
+                record,
                 sourceValues,
+                settings,
+                caches.optionGroups,
             )
             : await this.createNewVariant(
                 channelPlan.source,
@@ -292,9 +295,20 @@ export class VariantHandler implements LoaderHandler {
     private async updateExistingVariant(
         ctx: RequestContext,
         existing: ProductVariant,
+        record: RecordObject,
         values: VariantWriteValues,
+        settings: VariantHandlerSettings,
+        optionCache: OptionGroupCache,
     ): Promise<ID> {
-        await updateVariant(this.persistenceServices, ctx, existing, values);
+        const optionIds = await resolveAllVariantOptionIds(
+            this.optionServices,
+            ctx,
+            record,
+            existing.productId,
+            settings.config,
+            optionCache,
+        );
+        await updateVariant(this.persistenceServices, ctx, existing, values, optionIds);
         return existing.id;
     }
 
@@ -319,7 +333,6 @@ export class VariantHandler implements LoaderHandler {
             productId,
             settings.config,
             optionCache,
-            this.logger,
         );
         return createVariant(
             this.persistenceServices,

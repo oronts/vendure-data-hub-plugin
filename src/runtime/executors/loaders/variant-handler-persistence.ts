@@ -39,9 +39,10 @@ export async function updateVariant(
     ctx: RequestContext,
     existingVariant: ProductVariant,
     values: VariantWriteValues,
+    optionIds?: ID[],
 ): Promise<void> {
     await services.productVariantService.update(ctx, [
-        buildUpdateInput(existingVariant, values),
+        buildUpdateInput(existingVariant, values, optionIds),
     ]);
 }
 
@@ -104,6 +105,7 @@ export async function persistVariantContextPrice(
 function buildUpdateInput(
     existingVariant: ProductVariant,
     values: VariantWriteValues,
+    optionIds?: ID[],
 ): UpdateProductVariantInput {
     const input: UpdateProductVariantInput = {
         id: existingVariant.id,
@@ -112,6 +114,7 @@ function buildUpdateInput(
         ...(typeof values.enabled === 'boolean' ? { enabled: values.enabled } : {}),
     };
     applyVariantWriteValues(input, values);
+    if (optionIds && optionIds.length > 0) input.optionIds = optionIds;
     return input;
 }
 

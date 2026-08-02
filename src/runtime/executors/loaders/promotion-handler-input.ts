@@ -22,7 +22,7 @@ import {
     type ParsedPromotionOperations,
     requirePromotionActions,
 } from './promotion-operation-input';
-import { parseTranslationsInput } from './shared-lookups';
+import { getTranslationString, parseTranslationsInput } from './shared-lookups';
 import {
     parseOptionalBoolean,
     parseUpsertStrategy,
@@ -229,12 +229,13 @@ function buildTranslations(
         : { present: false, value: undefined };
     const nameField = readField(record, config.nameField);
     const descriptionField = readField(record, config.descriptionField);
-    const name = nameField.present && nameField.value != null
-        ? String(nameField.value)
-        : fallbackName;
-    const description = descriptionField.present
-        ? String(descriptionField.value ?? '')
-        : fallbackDescription;
+    const name = parseTextField(nameField, config.nameField, fallbackName);
+    const description = parseTextField(
+        descriptionField,
+        config.descriptionField,
+        fallbackDescription,
+        '',
+    );
 
     if (translationField.present) {
         const parsed = parseTranslationsInput(translationField.value);
@@ -242,9 +243,9 @@ function buildTranslations(
             throw new Error('Promotion translations must contain at least one language entry');
         }
         return parsed.map(translation => ({
-            languageCode: String(translation.languageCode) as LanguageCode,
-            name: String(translation.name ?? name),
-            description: String(translation.description ?? ''),
+            languageCode: translation.languageCode as LanguageCode,
+            name: getTranslationString(translation, 'name', name),
+            description: getTranslationString(translation, 'description', ''),
         }));
     }
     if (!required && !nameField.present && !descriptionField.present) {
@@ -255,6 +256,20 @@ function buildTranslations(
         name,
         description,
     }];
+}
+
+function parseTextField(
+    field: FieldValue,
+    fieldName: string,
+    omittedFallback: string,
+    nullFallback: string = omittedFallback,
+): string {
+    if (!field.present) return omittedFallback;
+    if (field.value == null) return nullFallback;
+    if (typeof field.value !== 'string') {
+        throw new Error(`Promotion field "${fieldName}" must be a string`);
+    }
+    return field.value;
 }
 
 function parseBooleanField(record: RecordObject, fieldName: string): boolean | undefined {

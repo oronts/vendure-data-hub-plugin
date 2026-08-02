@@ -23,6 +23,13 @@ function createHandler(
         update: vi.fn(),
         assignProductVariantsToChannel: vi.fn().mockResolvedValue([]),
     };
+    const productOptionGroupService = {
+        getOptionGroupsByProductId: vi.fn().mockResolvedValue([]),
+    };
+    const productOptionService = {
+        findAll: vi.fn().mockResolvedValue({ items: [], totalItems: 0 }),
+        create: vi.fn(),
+    };
     const configService = {
         entityOptions: {
             moneyStrategy: { precision },
@@ -100,8 +107,8 @@ function createHandler(
         handler: new VariantHandler(
             productService as never,
             productVariantService as never,
-            {} as never,
-            {} as never,
+            productOptionGroupService as never,
+            productOptionService as never,
             requestContextService as never,
             taxCategoryService as never,
             channelService as never,
@@ -114,6 +121,8 @@ function createHandler(
         channelService,
         requestContextService,
         productService,
+        productOptionGroupService,
+        productOptionService,
         taxCategoryService,
     };
 }
@@ -394,6 +403,119 @@ describe('VariantHandler prices', () => {
         expect(productVariantService.update).toHaveBeenCalledWith(
             expect.objectContaining({ channel: expect.objectContaining({ code: 'default-channel' }) }),
             [expect.objectContaining({ id: 'variant-existing' })],
+        );
+    });
+
+    it('updates option assignments on an existing variant', async () => {
+        const existing = {
+            id: 'variant-existing',
+            productId: 'product-1',
+            sku: 'SKU-OPTIONS',
+        };
+        const { handler, productVariantService } = createHandler(2, {
+            'default-channel': [existing],
+        });
+
+        const result = await handler.execute(
+            createContext(),
+            createStep({ optionIdsField: 'optionIds' }),
+            [{
+                sku: 'SKU-OPTIONS',
+                name: 'Existing Variant',
+                price: 10,
+                optionIds: ['option-blue', 42],
+            }],
+        );
+
+        expect(result).toEqual({ ok: 1, fail: 0, skipped: 0 });
+        expect(productVariantService.update).toHaveBeenCalledWith(
+            expect.anything(),
+            [expect.objectContaining({
+                id: 'variant-existing',
+                optionIds: ['option-blue', 42],
+            })],
+        );
+    });
+
+    it('rejects malformed option IDs before calling Vendure', async () => {
+        const existing = {
+            id: 'variant-existing',
+            productId: 'product-1',
+            sku: 'SKU-BAD-OPTIONS',
+        };
+        const { handler, productVariantService } = createHandler(2, {
+            'default-channel': [existing],
+        });
+        const onRecordError = vi.fn();
+        const record = {
+            sku: 'SKU-BAD-OPTIONS',
+            name: 'Existing Variant',
+            price: 10,
+            optionIds: [{ id: 'option-blue' }],
+        };
+
+        await expect(handler.execute(
+            createContext(),
+            createStep({ optionIdsField: 'optionIds' }),
+            [record],
+            onRecordError,
+        )).resolves.toEqual({ ok: 0, fail: 1, skipped: 0 });
+        expect(productVariantService.update).not.toHaveBeenCalled();
+        expect(onRecordError).toHaveBeenCalledWith(
+            'load-variants',
+            'Variant option ID at index 0 must be a non-empty string or finite number',
+            record,
+            expect.any(String),
+        );
+    });
+
+    it('rejects malformed option collections before calling Vendure', async () => {
+        const existing = {
+            id: 'variant-existing',
+            productId: 'product-1',
+            sku: 'SKU-BAD-OPTION-COLLECTIONS',
+        };
+        const { handler, productVariantService } = createHandler(2, {
+            'default-channel': [existing],
+        });
+        const onRecordError = vi.fn();
+
+        await expect(handler.execute(
+            createContext(),
+            createStep({ optionGroupsField: 'options' }),
+            [{
+                sku: 'SKU-BAD-OPTION-COLLECTIONS',
+                name: 'Existing Variant',
+                price: 10,
+                options: { color: { name: 'Blue' } },
+            }],
+            onRecordError,
+        )).resolves.toEqual({ ok: 0, fail: 1, skipped: 0 });
+        expect(productVariantService.update).not.toHaveBeenCalled();
+        expect(onRecordError).toHaveBeenCalledWith(
+            'load-variants',
+            'Variant option groups must map non-empty group names to non-empty string values',
+            expect.anything(),
+            expect.any(String),
+        );
+
+        onRecordError.mockClear();
+        await expect(handler.execute(
+            createContext(),
+            createStep({ optionCodesField: 'optionCodes' }),
+            [{
+                sku: 'SKU-BAD-OPTION-COLLECTIONS',
+                name: 'Existing Variant',
+                price: 10,
+                optionCodes: 'blue',
+            }],
+            onRecordError,
+        )).resolves.toEqual({ ok: 0, fail: 1, skipped: 0 });
+        expect(onRecordError).toHaveBeenCalledWith(
+            'load-variants',
+            'Variant field "optionCodes" must be an array of option codes',
+            expect.anything(),
+            expect.any(String),
         );
     });
 

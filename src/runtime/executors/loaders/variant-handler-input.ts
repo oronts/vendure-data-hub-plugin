@@ -10,7 +10,7 @@ import { RecordObject } from '../../executor-types';
 import { getStringValue } from '../../../loaders/shared-helpers';
 import { getNestedValue } from '../../../utils/object-path.utils';
 import { majorToMinorUnits, resolveMoneyPrecision } from '../../../utils/money.utils';
-import { parseTranslationsInput } from './shared-lookups';
+import { getTranslationString, parseTranslationsInput } from './shared-lookups';
 import { CreateDuplicateHandlingConfig } from './duplicate-handling';
 
 export interface VariantHandlerConfig extends CreateDuplicateHandlingConfig {
@@ -93,7 +93,7 @@ export function getVariantName(
     const raw = record[config.translationsField];
     if (!raw) return undefined;
     const first = parseTranslationsInput(raw)[0];
-    return first?.name ? String(first.name) : undefined;
+    return first ? getTranslationString(first, 'name') : undefined;
 }
 
 export function buildVariantTranslations(
@@ -108,8 +108,8 @@ export function buildVariantTranslations(
             const parsed = parseTranslationsInput(raw);
             if (parsed.length > 0) {
                 return parsed.map(translation => ({
-                    languageCode: String(translation.languageCode) as LanguageCode,
-                    name: String(translation.name ?? name),
+                    languageCode: translation.languageCode as LanguageCode,
+                    name: getTranslationString(translation, 'name', name),
                 }));
             }
         }

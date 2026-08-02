@@ -35,7 +35,7 @@ type AssetOwnerService = ProductService | ProductVariantService | CollectionServ
 const REMOTE_ASSET_NAME_PREFIX = 'data-hub-remote';
 const REMOTE_ASSET_HASH_LENGTH = 24;
 
-function assertVendureMutationSucceeded(action: string, result: unknown): void {
+export function assertVendureMutationSucceeded(action: string, result: unknown): void {
     const values = Array.isArray(result) ? result : [result];
     for (const value of values) {
         if (!value || typeof value !== 'object' || !('errorCode' in value)) {

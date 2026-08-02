@@ -24,7 +24,11 @@ import {
     getObjectValue,
     getStringValue,
 } from '../../../loaders/shared-helpers';
-import { parseTranslationsInput, resolveChannelIds } from './shared-lookups';
+import {
+    getTranslationString,
+    parseTranslationsInput,
+    resolveChannelIds,
+} from './shared-lookups';
 import { LOGGER_CONTEXTS } from '../../../constants/core';
 import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger/datahub-logger';
 
@@ -91,8 +95,8 @@ export class FacetHandler implements LoaderHandler {
                     const raw = rec[cfg.translationsField];
                     if (raw) {
                         const parsed = parseTranslationsInput(raw);
-                        if (parsed.length > 0 && parsed[0].name) {
-                            name = String(parsed[0].name);
+                        if (parsed[0]) {
+                            name = getTranslationString(parsed[0], 'name') ?? name;
                         }
                     }
                 }
@@ -201,8 +205,8 @@ export class FacetHandler implements LoaderHandler {
                 const parsed = parseTranslationsInput(raw);
                 if (parsed.length > 0) {
                     return parsed.map(t => ({
-                        languageCode: String(t.languageCode) as LanguageCode,
-                        name: String(t.name ?? name),
+                        languageCode: t.languageCode as LanguageCode,
+                        name: getTranslationString(t, 'name', name),
                     }));
                 }
             }
@@ -253,8 +257,8 @@ export class FacetValueHandler implements LoaderHandler {
                     const raw = rec[cfg.translationsField];
                     if (raw) {
                         const parsed = parseTranslationsInput(raw);
-                        if (parsed.length > 0 && parsed[0].name) {
-                            name = String(parsed[0].name);
+                        if (parsed[0]) {
+                            name = getTranslationString(parsed[0], 'name') ?? name;
                         }
                     }
                 }
@@ -370,8 +374,8 @@ export class FacetValueHandler implements LoaderHandler {
                 const parsed = parseTranslationsInput(raw);
                 if (parsed.length > 0) {
                     return parsed.map(t => ({
-                        languageCode: String(t.languageCode) as LanguageCode,
-                        name: String(t.name ?? name),
+                        languageCode: t.languageCode as LanguageCode,
+                        name: getTranslationString(t, 'name', name),
                     }));
                 }
             }

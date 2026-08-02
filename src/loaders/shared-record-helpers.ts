@@ -4,7 +4,7 @@ import type { RecordObject } from '../runtime/executor-types';
 import type { JsonValue } from '../types';
 import { getNestedValue } from '../utils/object-path.utils';
 
-function getRecordValue(record: RecordObject, key: string): unknown {
+export function getRecordValue(record: RecordObject, key: string): unknown {
     return key.includes('.')
         ? getNestedValue(record as Record<string, unknown>, key)
         : record[key];
