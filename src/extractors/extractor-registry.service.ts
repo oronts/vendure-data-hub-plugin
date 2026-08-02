@@ -59,14 +59,7 @@ export class ExtractorRegistryService implements OnModuleInit {
             await this.registerBuiltInExtractors();
 
             for (const callback of this.customCallbacks) {
-                try {
-                    await callback(this);
-                } catch (error) {
-                    this.logger.error(
-                        'Extractor registration callback failed',
-                        toErrorOrUndefined(error),
-                    );
-                }
+                await callback(this);
             }
 
             this.logger.info(`Extractor registry initialized`, {
@@ -84,6 +77,7 @@ export class ExtractorRegistryService implements OnModuleInit {
                 'Failed to initialize extractor registry',
                 toErrorOrUndefined(error),
             );
+            throw error;
         }
     }
 
@@ -96,10 +90,9 @@ export class ExtractorRegistryService implements OnModuleInit {
                 this.register(extractor, 'built-in');
                 registered++;
             } catch (error) {
-                this.logger.warn(`Failed to register built-in extractor`, {
-                    adapterCode: code,
-                    error: getErrorMessage(error),
-                });
+                throw new Error(
+                    `Failed to register built-in extractor "${code}": ${getErrorMessage(error)}`,
+                );
             }
         }
 

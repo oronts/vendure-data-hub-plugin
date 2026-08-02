@@ -108,15 +108,8 @@ export class AdapterBootstrapService implements OnModuleInit {
                     adapterCount: BUILTIN_ADAPTERS.length,
                 });
                 for (const adapter of BUILTIN_ADAPTERS) {
-                    try {
-                        this.registry.register(adapter, { builtIn: true });
-                        builtinAdaptersRegistered++;
-                    } catch (err) {
-                        // Ignore duplicates between reloads
-                        this.logger.debug('Skipped adapter registration (likely duplicate)', {
-                            adapterCode: adapter.code,
-                        });
-                    }
+                    this.registry.register(adapter, { builtIn: true });
+                    builtinAdaptersRegistered++;
                 }
             }
 
@@ -126,15 +119,8 @@ export class AdapterBootstrapService implements OnModuleInit {
                     operatorCount: operatorRuntimes.length,
                 });
                 for (const operatorRuntime of operatorRuntimes) {
-                    try {
-                        this.registry.registerRuntime(operatorRuntime, { builtIn: true });
-                        builtinOperatorRuntimesRegistered++;
-                    } catch (err) {
-                        // Ignore duplicates between reloads
-                        this.logger.debug('Skipped operator runtime registration (likely duplicate)', {
-                            operatorCode: operatorRuntime.code,
-                        });
-                    }
+                    this.registry.registerRuntime(operatorRuntime, { builtIn: true });
+                    builtinOperatorRuntimesRegistered++;
                 }
 
                 // Register built-in enricher runtimes
@@ -142,13 +128,7 @@ export class AdapterBootstrapService implements OnModuleInit {
                     enricherCount: BUILT_IN_ENRICHERS.length,
                 });
                 for (const enricher of BUILT_IN_ENRICHERS) {
-                    try {
-                        this.registry.registerRuntime(enricher, { builtIn: true });
-                    } catch (err) {
-                        this.logger.debug('Skipped enricher runtime registration (likely duplicate)', {
-                            enricherCode: enricher.code,
-                        });
-                    }
+                    this.registry.registerRuntime(enricher, { builtIn: true });
                 }
             }
 

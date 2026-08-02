@@ -14,6 +14,29 @@ afterEach(() => {
 });
 
 describe('AdapterBootstrapService module registry bridge', () => {
+    it('fails startup when a built-in definition cannot be registered', async () => {
+        const failure = new Error('registry capacity reached');
+        const logger = {
+            debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(),
+        };
+        const service = new AdapterBootstrapService(
+            {} as never,
+            { register: vi.fn(() => { throw failure; }) } as never,
+            { registerCustomGenerator: vi.fn() } as never,
+            { registerScript: vi.fn() } as never,
+            { assertNonterminalRunsCompatible: vi.fn() } as never,
+            { get: vi.fn() } as never,
+            { createLogger: vi.fn(() => logger) } as never,
+        );
+
+        await expect(service.onModuleInit()).rejects.toBe(failure);
+        expect(logger.error).toHaveBeenCalledWith(
+            'DataHub plugin bootstrap failed',
+            failure,
+            expect.objectContaining({ builtinAdaptersRegistered: 0 }),
+        );
+    });
+
     it('bridges every executable adapter type as a runtime', async () => {
         const loader = {
             type: 'LOADER',

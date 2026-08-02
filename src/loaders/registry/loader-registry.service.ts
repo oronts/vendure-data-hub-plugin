@@ -51,14 +51,7 @@ export class LoaderRegistryService implements LoaderRegistry, OnModuleInit {
             }
 
             for (const callback of this.customCallbacks) {
-                try {
-                    await callback(this);
-                } catch (error) {
-                    this.logger.error(
-                        'Loader registration callback failed',
-                        toErrorOrUndefined(error),
-                    );
-                }
+                await callback(this);
             }
 
             this.logger.info(`Loader registry initialized`, {
@@ -69,6 +62,7 @@ export class LoaderRegistryService implements LoaderRegistry, OnModuleInit {
                 'Failed to register loaders',
                 toErrorOrUndefined(error),
             );
+            throw error;
         }
     }
 
