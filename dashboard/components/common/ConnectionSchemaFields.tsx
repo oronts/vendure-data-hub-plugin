@@ -116,6 +116,7 @@ function ConfigField({
                     onChange={onChange}
                     placeholder={field.placeholder}
                     disabled={disabled}
+                    aria-required={field.required}
                 />
             );
         case 'boolean':

@@ -47,6 +47,7 @@ export interface SearchableReferenceSelectorProps {
     'aria-label'?: string;
     'aria-labelledby'?: string;
     'aria-describedby'?: string;
+    'aria-required'?: boolean;
 }
 
 export function SearchableReferenceSelector({
@@ -78,6 +79,7 @@ export function SearchableReferenceSelector({
     'aria-label': ariaLabel,
     'aria-labelledby': ariaLabelledBy,
     'aria-describedby': ariaDescribedBy,
+    'aria-required': ariaRequired,
 }: SearchableReferenceSelectorProps) {
     return (
         <Popover open={open} onOpenChange={onOpenChange}>
@@ -91,6 +93,7 @@ export function SearchableReferenceSelector({
                     aria-label={ariaLabel}
                     aria-labelledby={ariaLabelledBy}
                     aria-describedby={ariaDescribedBy}
+                    aria-required={ariaRequired}
                     disabled={disabled}
                     data-testid={testId}
                     className={`w-full justify-between font-normal ${compact ? 'h-8 text-sm' : ''} ${className ?? ''}`}

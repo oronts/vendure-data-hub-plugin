@@ -25,6 +25,7 @@ export interface ResourceReferenceSelectorProps {
     'aria-label'?: string;
     'aria-labelledby'?: string;
     'aria-describedby'?: string;
+    'aria-required'?: boolean;
 }
 
 export function ResourceReferenceSelector({
@@ -40,6 +41,7 @@ export function ResourceReferenceSelector({
     'aria-label': ariaLabel,
     'aria-labelledby': ariaLabelledBy,
     'aria-describedby': ariaDescribedBy,
+    'aria-required': ariaRequired,
 }: ResourceReferenceSelectorProps) {
     const { t } = useLingui();
     const [open, setOpen] = React.useState(false);
@@ -134,6 +136,7 @@ export function ResourceReferenceSelector({
             aria-label={ariaLabel}
             aria-labelledby={ariaLabelledBy}
             aria-describedby={ariaDescribedBy}
+            aria-required={ariaRequired}
         />
     );
 }

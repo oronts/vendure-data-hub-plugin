@@ -10,6 +10,7 @@ interface SecretReferenceInputProps {
     'aria-label'?: string;
     'aria-labelledby'?: string;
     'aria-describedby'?: string;
+    'aria-required'?: boolean;
 }
 
 export function SecretReferenceInput({
@@ -21,6 +22,7 @@ export function SecretReferenceInput({
     'aria-label': ariaLabel,
     'aria-labelledby': ariaLabelledBy,
     'aria-describedby': ariaDescribedBy,
+    'aria-required': ariaRequired,
 }: SecretReferenceInputProps) {
     return (
         <div className="space-y-1">
@@ -35,6 +37,7 @@ export function SecretReferenceInput({
                 aria-label={ariaLabel}
                 aria-labelledby={ariaLabelledBy}
                 aria-describedby={ariaDescribedBy}
+                aria-required={ariaRequired}
             />
             <p className="text-xs text-muted-foreground">
                 <Trans>Choose an existing secret or type a new reference code.</Trans>

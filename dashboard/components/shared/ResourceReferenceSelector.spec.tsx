@@ -87,6 +87,7 @@ describe('ResourceReferenceSelector', () => {
                 id="connection-code"
                 aria-labelledby="connection-code-label"
                 aria-describedby="connection-code-help"
+                aria-required
                 resource="connection"
                 value="warehouse-db"
                 onValueChange={vi.fn()}
@@ -98,6 +99,7 @@ describe('ResourceReferenceSelector', () => {
                 id: 'connection-code',
                 'aria-labelledby': 'connection-code-label',
                 'aria-describedby': 'connection-code-help',
+                'aria-required': true,
             }),
         );
     });
