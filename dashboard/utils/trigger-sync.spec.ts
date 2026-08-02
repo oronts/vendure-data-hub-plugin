@@ -69,4 +69,19 @@ describe('trigger synchronization', () => {
         expect(result.edges).toContainEqual({ from: 'manual', to: 'load', branch: 'manual-route' });
         expect(result.edges).toContainEqual({ from: webhookStep?.key, to: 'extract' });
     });
+
+    it('assigns unique keys when multiple keyless triggers are added together', () => {
+        const original = definition();
+        const result = updateDefinitionWithTriggers(original, [
+            ...getCombinedTriggers(original),
+            { type: 'WEBHOOK', enabled: true },
+            { type: 'FILE', enabled: true },
+        ]);
+        const generatedKeys = result.steps
+            .filter(step => step.config.type === 'WEBHOOK' || step.config.type === 'FILE')
+            .map(step => step.key);
+
+        expect(generatedKeys).toHaveLength(2);
+        expect(new Set(generatedKeys).size).toBe(2);
+    });
 });

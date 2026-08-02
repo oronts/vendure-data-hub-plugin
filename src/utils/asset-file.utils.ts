@@ -1,13 +1,24 @@
+import { createHash } from 'node:crypto';
 import * as path from 'node:path';
 import { Readable } from 'node:stream';
 import { CONTENT_TYPES, EXTENSION_MIME_MAP } from '../constants/services';
 
+const ASSET_FALLBACK_HASH_LENGTH = 16;
+
+function fallbackAssetFilename(url: string): string {
+    const identity = createHash('sha256')
+        .update(url)
+        .digest('hex')
+        .slice(0, ASSET_FALLBACK_HASH_LENGTH);
+    return `asset-${identity}`;
+}
+
 export function extractFilenameFromUrl(url: string): string {
     try {
         const filename = path.basename(new URL(url).pathname);
-        return filename || `asset-${Date.now()}`;
+        return filename || fallbackAssetFilename(url);
     } catch {
-        return `asset-${Date.now()}`;
+        return fallbackAssetFilename(url);
     }
 }
 

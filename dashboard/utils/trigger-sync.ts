@@ -113,7 +113,7 @@ function triggerToStep(
     const stepKey = getTriggerStepKey(trigger);
 
     return {
-        key: existingKey ?? stepKey ?? `trigger-${Date.now()}`,
+        key: existingKey ?? stepKey ?? `trigger-${globalThis.crypto.randomUUID()}`,
         type: TRIGGER_STEP_TYPE,
         config: triggerConfig(trigger),
     };

@@ -13,4 +13,15 @@ describe('asset file URL helpers', () => {
         expect(getAssetMimeType('not a URL')).toBe('application/octet-stream');
         expect(getAssetMimeType('https://cdn.example.com/download')).toBe('application/octet-stream');
     });
+
+    it('creates stable collision-resistant fallback names without exposing the URL', () => {
+        const firstUrl = 'https://cdn.example.com/?signature=secret-one';
+        const secondUrl = 'https://cdn.example.com/?signature=secret-two';
+        const firstName = extractFilenameFromUrl(firstUrl);
+
+        expect(firstName).toMatch(/^asset-[a-f0-9]{16}$/);
+        expect(extractFilenameFromUrl(firstUrl)).toBe(firstName);
+        expect(extractFilenameFromUrl(secondUrl)).not.toBe(firstName);
+        expect(firstName).not.toContain('secret');
+    });
 });
