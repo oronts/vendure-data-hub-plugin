@@ -80,6 +80,9 @@ async function main() {
     if (input.mode.startsWith('stream-')) {
         const { AckMode } = require('./src/constants/enums.ts');
         const { RedisStreamsAdapter } = require('./src/sdk/adapters/queue/redis-streams.adapter.ts');
+        const { configureGlobalSsrfProtection } = require('./src/utils/url-security.utils.ts');
+        const trustedHost = new URL(input.url).hostname;
+        configureGlobalSsrfProtection({ allowedHostnames: [trustedHost] });
         const adapter = new RedisStreamsAdapter();
         const config = streamConfig(
             input.url,
@@ -124,6 +127,7 @@ async function main() {
             process.stdout.write(JSON.stringify(results));
         } finally {
             await adapter.destroy();
+            configureGlobalSsrfProtection(undefined);
         }
         return;
     }

@@ -1,8 +1,17 @@
 import { INTERNAL_TIMINGS } from '../../../constants/defaults/core-defaults';
 import { QUEUE } from '../../../constants/defaults/runtime-defaults';
+import { LOGGER_CONTEXTS } from '../../../constants/core';
+import { DataHubLoggerFactory } from '../../../services/logger/datahub-logger';
+import {
+    createPinnedAwsRequestHandler,
+    type AwsRequestHandlerFactory,
+} from '../../../utils/aws-request-handler.utils';
+import { getErrorMessage } from '../../../utils/error.utils';
 import { isBlockedHostname } from '../../../utils/url-security.utils';
 import type { QueueConnectionConfig } from './queue-adapter.interface';
 import { createQueueConnectionIdentity } from './connection-identity';
+
+const logger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.SQS_ADAPTER);
 
 export interface SqsConnectionConfig extends QueueConnectionConfig {
     region?: string;
@@ -125,7 +134,11 @@ export class SqsClientPool {
     private readonly pendingClients = new Map<string, Promise<SqsClient>>();
     private generation = 0;
 
-    constructor(private readonly moduleLoader: typeof loadSqsModule) {}
+    constructor(
+        private readonly moduleLoader: typeof loadSqsModule,
+        private readonly requestHandlerFactory: AwsRequestHandlerFactory =
+            createPinnedAwsRequestHandler,
+    ) {}
 
     async get(config: SqsConnectionConfig): Promise<SqsClient> {
         const key = sqsConnectionIdentity(config);
@@ -153,7 +166,7 @@ export class SqsClientPool {
         key: string,
         generation: number,
     ): Promise<SqsClient> {
-        const module = await this.moduleLoader();
+        const customEndpoint = resolveCustomSqsEndpoint(config);
         const clientConfig: Record<string, unknown> = {
             region: config.region ?? 'us-east-1',
         };
@@ -175,19 +188,32 @@ export class SqsClientPool {
             clientConfig.endpoint = validateSqsUrl(config.endpoint, 'endpoint');
         }
 
-        const client = new module.SQSClient(clientConfig) as unknown as SqsClient;
-        if (generation !== this.generation) {
-            this.close(client);
-            throw new Error('SQS client pool was destroyed during connection setup');
+        const requestHandler = await this.requestHandlerFactory(customEndpoint);
+        let client: SqsClient | undefined;
+        try {
+            const module = await this.moduleLoader();
+            if (requestHandler) {
+                clientConfig.requestHandler = requestHandler;
+            }
+            client = new module.SQSClient(clientConfig) as unknown as SqsClient;
+            if (generation !== this.generation) {
+                throw new Error('SQS client pool was destroyed during connection setup');
+            }
+            if (this.clients.size >= QUEUE.MAX_CONSUMERS) {
+                throw new Error(
+                    `SQS client pool capacity of ${QUEUE.MAX_CONSUMERS} was reached`,
+                );
+            }
+            this.clients.set(key, { client, lastUsed: Date.now() });
+            return client;
+        } catch (error) {
+            if (client) {
+                this.close(client);
+            } else {
+                closeRequestHandler(requestHandler);
+            }
+            throw error;
         }
-        if (this.clients.size >= QUEUE.MAX_CONSUMERS) {
-            this.close(client);
-            throw new Error(
-                `SQS client pool capacity of ${QUEUE.MAX_CONSUMERS} was reached`,
-            );
-        }
-        this.clients.set(key, { client, lastUsed: Date.now() });
-        return client;
     }
 
     cleanupIdle(now = Date.now()): void {
@@ -210,9 +236,23 @@ export class SqsClientPool {
     private close(client: SqsClient): void {
         try {
             client.destroy();
-        } catch {
-            // Connection shutdown is best-effort.
+        } catch (error) {
+            logger.warn('Failed to close SQS client', {
+                error: getErrorMessage(error),
+            });
         }
+    }
+}
+
+function closeRequestHandler(
+    requestHandler: Awaited<ReturnType<AwsRequestHandlerFactory>>,
+): void {
+    try {
+        requestHandler?.destroy();
+    } catch (error) {
+        logger.warn('Failed to close SQS request handler', {
+            error: getErrorMessage(error),
+        });
     }
 }
 
@@ -227,10 +267,26 @@ function validateSqsUrl(value: string, field: 'endpoint' | 'queueUrl'): string {
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
         throw new Error(`SQS ${field} must use http or https`);
     }
+    if (parsed.username || parsed.password) {
+        throw new Error(`SQS ${field} must not contain URL credentials`);
+    }
     if (isBlockedHostname(parsed.hostname)) {
         throw new Error(
             `SSRF protection: ${field} hostname '${parsed.hostname}' is blocked for security reasons`,
         );
     }
     return normalizedValue;
+}
+
+function resolveCustomSqsEndpoint(config: SqsConnectionConfig): string | undefined {
+    if (config.endpoint?.trim()) {
+        return validateSqsUrl(config.endpoint, 'endpoint');
+    }
+    if (!config.queueUrl?.trim()) return undefined;
+
+    const queueUrl = validateSqsUrl(config.queueUrl, 'queueUrl');
+    const parsed = new URL(queueUrl);
+    const isAwsEndpoint = parsed.hostname.endsWith('.amazonaws.com') ||
+        parsed.hostname.endsWith('.amazonaws.com.cn');
+    return isAwsEndpoint ? undefined : parsed.origin;
 }

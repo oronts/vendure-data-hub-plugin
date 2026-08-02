@@ -109,6 +109,8 @@ export const LOGGER_CONTEXTS = {
     FTP_HANDLER: 'FtpHandler',
     EMAIL_HANDLER: 'EmailHandler',
     RABBITMQ_ADAPTER: 'RabbitMQAdapter',
+    REDIS_STREAMS_ADAPTER: 'RedisStreamsAdapter',
+    SQS_ADAPTER: 'SqsAdapter',
     ERROR_RESOLVER: 'ErrorResolver',
     QUEUE_RESOLVER: 'QueueResolver',
     FEED_RESOLVER: 'FeedResolver',

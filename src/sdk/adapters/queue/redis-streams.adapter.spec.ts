@@ -1,7 +1,21 @@
+import { Logger } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 import { AckMode, QUEUE } from '../../../constants';
+import { HTTP } from '../../../constants/defaults/http-defaults';
+import { resolveSafeRemoteAddresses } from '../../../utils/remote-host-security.utils';
 import type { QueueConnectionConfig } from './queue-adapter.interface';
 import { RedisStreamsAdapter } from './redis-streams.adapter';
+
+vi.mock('../../../utils/remote-host-security.utils', async importOriginal => ({
+    ...await importOriginal<
+        typeof import('../../../utils/remote-host-security.utils')
+    >(),
+    resolveSafeRemoteAddresses: vi.fn(async (hostname: string) => [{
+        hostname,
+        address: '203.0.113.20',
+        family: 4,
+    }]),
+}));
 
 function createRedisModule(entries: Array<[string, string[]]> = []) {
     const clients: FakeRedis[] = [];
@@ -35,6 +49,7 @@ function createRedisModule(entries: Array<[string, string[]]> = []) {
         xtrim(): Promise<number> { return Promise.resolve(0); }
         ping(): Promise<string> { return Promise.resolve('PONG'); }
         readonly quit = vi.fn().mockResolvedValue('OK');
+        readonly on = vi.fn();
         duplicate(): FakeRedis { return this; }
     }
 
@@ -72,7 +87,19 @@ describe('RedisStreamsAdapter connection security', () => {
             } as QueueConnectionConfig)).resolves.toBe(true);
 
             expect(fake.clients).toHaveLength(3);
-            expect(fake.clients[0]?.options.tls).toEqual({});
+            expect(resolveSafeRemoteAddresses).toHaveBeenCalledWith(
+                'redis.example.com',
+            );
+            expect(fake.clients[0]?.options).toMatchObject({
+                host: '203.0.113.20',
+                family: 4,
+                connectTimeout: HTTP.CONNECTION_TEST_TIMEOUT_MS,
+                tls: { servername: 'redis.example.com' },
+            });
+            expect(fake.clients[0]?.on).toHaveBeenCalledWith(
+                'error',
+                expect.any(Function),
+            );
             expect(fake.clients[2]?.options.tls).toBeUndefined();
         } finally {
             await adapter.destroy();
@@ -424,6 +451,51 @@ describe('RedisStreamsAdapter connection security', () => {
             expect(fake.clients).toHaveLength(0);
         } finally {
             await adapter.destroy();
+        }
+    });
+
+    it('rejects missing hosts and invalid ports or database numbers before connecting', async () => {
+        const fake = createRedisModule();
+        const adapter = new RedisStreamsAdapter(async () => fake.module as never);
+
+        try {
+            await expect(adapter.publish({
+                host: '',
+            } as QueueConnectionConfig, 'orders', []))
+                .rejects.toThrow('Redis host is required');
+            await expect(adapter.publish({
+                host: 'redis.example.com',
+                port: 1.5,
+            } as QueueConnectionConfig, 'orders', []))
+                .rejects.toThrow('Redis port must be an integer between 1 and 65535');
+            await expect(adapter.publish({
+                host: 'redis.example.com',
+                db: -1,
+            } as QueueConnectionConfig, 'orders', []))
+                .rejects.toThrow('Redis database must be a non-negative safe integer');
+        } finally {
+            await adapter.destroy();
+        }
+
+        expect(fake.clients).toHaveLength(0);
+    });
+
+    it('reports a client close failure without failing shutdown', async () => {
+        const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+        const fake = createRedisModule();
+        const adapter = new RedisStreamsAdapter(async () => fake.module as never);
+
+        try {
+            await expect(adapter.testConnection({
+                host: 'redis.example.com',
+            } as QueueConnectionConfig)).resolves.toBe(true);
+            fake.clients[0]?.quit.mockRejectedValueOnce(new Error('close failed'));
+            await expect(adapter.destroy()).resolves.toBeUndefined();
+            expect(warn).toHaveBeenCalledWith(
+                expect.stringContaining('Failed to close Redis Streams client'),
+            );
+        } finally {
+            warn.mockRestore();
         }
     });
 

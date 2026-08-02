@@ -174,7 +174,7 @@ export const CONNECTION_SCHEMAS: ConnectionSchema[] = [
             { key: 'host', label: 'Host', type: 'text', placeholder: DEFAULT_HOSTS.LOCALHOST, required: true },
             { key: 'port', label: 'Port', type: 'number', placeholder: String(PORTS.REDIS), defaultValue: PORTS.REDIS, required: true, min: PORTS.MIN, max: PORTS.MAX },
             { key: 'passwordSecretCode', label: 'Password Secret Code', type: 'secret', description: 'Reference a secret by code' },
-            { key: 'db', label: 'Database Number', type: 'number', placeholder: '0', defaultValue: 0, description: 'Redis database index (0-15)', min: 0, max: 15 },
+            { key: 'db', label: 'Database Number', type: 'number', placeholder: '0', defaultValue: 0, description: 'Non-negative Redis database index supported by the server', min: 0 },
             { key: 'ssl', label: 'SSL', type: 'boolean' },
         ],
     },

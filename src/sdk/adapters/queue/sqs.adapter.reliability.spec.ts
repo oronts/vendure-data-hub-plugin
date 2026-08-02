@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 import { AckMode, QUEUE } from '../../../constants';
 import type { QueueConnectionConfig } from './queue-adapter.interface';
@@ -238,6 +239,49 @@ describe('SqsAdapter reliability', () => {
         await expect(connection).resolves.toBe(false);
         await destroyed;
         expect(destroy).toHaveBeenCalledTimes(1);
+    });
+
+    it('destroys a pinned handler when client module loading fails', async () => {
+        const destroyHandler = vi.fn();
+        const adapter = new SqsAdapter(
+            async () => {
+                throw new Error('module load failed');
+            },
+            async () => ({ destroy: destroyHandler }) as never,
+        );
+
+        try {
+            await expect(adapter.publish({
+                host: 'queue.partner.example',
+                endpoint: 'https://queue.partner.example',
+                accountId: '123456789012',
+            } as QueueConnectionConfig, 'orders', []))
+                .rejects.toThrow('module load failed');
+            expect(destroyHandler).toHaveBeenCalledTimes(1);
+        } finally {
+            await adapter.destroy();
+        }
+    });
+
+    it('reports a client close failure without failing shutdown', async () => {
+        const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+        class ThrowingDestroyClient {
+            send(): Promise<unknown> { return Promise.resolve({}); }
+            destroy(): void { throw new Error('close failed'); }
+        }
+        const adapter = new SqsAdapter(
+            async () => createModule(ThrowingDestroyClient) as never,
+        );
+
+        try {
+            await expect(adapter.testConnection(connectionConfig)).resolves.toBe(true);
+            await expect(adapter.destroy()).resolves.toBeUndefined();
+            expect(warn).toHaveBeenCalledWith(
+                expect.stringContaining('Failed to close SQS client'),
+            );
+        } finally {
+            warn.mockRestore();
+        }
     });
 
     it('keeps settlement and client ownership isolated between instances', async () => {

@@ -203,6 +203,8 @@ describe('SqsAdapter AUTO acknowledgment', () => {
 
     it('constructs queue URLs from a custom endpoint only when accountId is available', async () => {
         const commands: unknown[] = [];
+        const requestHandler = { destroy: vi.fn() };
+        const requestHandlerFactory = vi.fn(async () => requestHandler as never);
         class FakeSqsClient {
             send(command: unknown): Promise<unknown> {
                 commands.push(command);
@@ -218,7 +220,10 @@ describe('SqsAdapter AUTO acknowledgment', () => {
             ChangeMessageVisibilityCommand: OtherCommand,
             GetQueueUrlCommand: OtherCommand,
         };
-        const adapter = new SqsAdapter(async () => module as never);
+        const adapter = new SqsAdapter(
+            async () => module as never,
+            requestHandlerFactory,
+        );
 
         try {
             await adapter.publish({
@@ -248,6 +253,79 @@ describe('SqsAdapter AUTO acknowledgment', () => {
         expect(publish.input.QueueUrl).toBe(
             'https://sqs-compatible.example.com/root/123456789012/orders.fifo',
         );
+        expect(requestHandlerFactory).toHaveBeenCalledWith(
+            'https://sqs-compatible.example.com/root/',
+        );
+    });
+
+    it('pins a custom direct queue URL origin', async () => {
+        const requestHandlerFactory = vi.fn(async () => ({ destroy: vi.fn() }) as never);
+        class FakeSqsClient {
+            send(command: unknown): Promise<unknown> {
+                return Promise.resolve(
+                    command instanceof SendMessageBatchCommand
+                        ? { Successful: [{ Id: '0' }] }
+                        : {},
+                );
+            }
+            destroy(): void {}
+        }
+        const module = {
+            SQSClient: FakeSqsClient,
+            ReceiveMessageCommand,
+            DeleteMessageCommand,
+            SendMessageBatchCommand,
+            ChangeMessageVisibilityCommand: OtherCommand,
+            GetQueueUrlCommand: OtherCommand,
+        };
+        const adapter = new SqsAdapter(
+            async () => module as never,
+            requestHandlerFactory,
+        );
+
+        try {
+            await expect(adapter.publish({
+                host: 'queue.partner.example',
+                region: 'eu-central-1',
+                queueUrl: 'https://queue.partner.example/root/orders',
+            } as QueueConnectionConfig, 'orders', [{
+                id: 'message-1',
+                payload: { orderId: 'order-1' },
+            }])).resolves.toEqual([{ success: true, messageId: 'message-1' }]);
+        } finally {
+            await adapter.destroy();
+        }
+
+        expect(requestHandlerFactory).toHaveBeenCalledWith(
+            'https://queue.partner.example',
+        );
+    });
+
+    it('rejects credentials embedded in a queue URL', async () => {
+        class FakeSqsClient {
+            send(): Promise<unknown> { return Promise.resolve({}); }
+            destroy(): void {}
+        }
+        const adapter = new SqsAdapter(async () => ({
+            SQSClient: FakeSqsClient,
+            ReceiveMessageCommand,
+            DeleteMessageCommand,
+            SendMessageBatchCommand,
+            ChangeMessageVisibilityCommand: OtherCommand,
+            GetQueueUrlCommand: OtherCommand,
+        }) as never);
+
+        try {
+            await expect(adapter.publish({
+                host: 'sqs.eu-central-1.amazonaws.com',
+                region: 'eu-central-1',
+                queueUrl:
+                    'https://access-key:secret@sqs.eu-central-1.amazonaws.com/123456789012/orders',
+            } as QueueConnectionConfig, 'orders', []))
+                .rejects.toThrow('SQS queueUrl must not contain URL credentials');
+        } finally {
+            await adapter.destroy();
+        }
     });
 
     it('does not reuse clients across different credentials', async () => {

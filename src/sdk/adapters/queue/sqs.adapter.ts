@@ -3,6 +3,7 @@ import { AckMode } from '../../../constants/enums';
 import { INTERNAL_TIMINGS } from '../../../constants/defaults/core-defaults';
 import { QUEUE } from '../../../constants/defaults/runtime-defaults';
 import { TIME } from '../../../constants/time';
+import type { AwsRequestHandlerFactory } from '../../../utils/aws-request-handler.utils';
 import { getErrorMessage } from '../../../utils/error.utils';
 import type {
     ConsumeResult,
@@ -148,8 +149,9 @@ export class SqsAdapter implements QueueAdapter {
 
     constructor(
         private readonly moduleLoader: typeof loadSqsModule = loadSqsModule,
+        requestHandlerFactory?: AwsRequestHandlerFactory,
     ) {
-        this.clientPool = new SqsClientPool(moduleLoader);
+        this.clientPool = new SqsClientPool(moduleLoader, requestHandlerFactory);
     }
 
     startCleanup(): void {
