@@ -14,7 +14,7 @@ import {
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { StorageBackend, S3StorageOptions } from './storage-backend.interface';
-import { createPinnedS3RequestHandler } from '../../utils/s3-request-handler.utils';
+import { createPinnedAwsRequestHandler } from '../../utils/aws-request-handler.utils';
 
 export class S3StorageBackend implements StorageBackend {
     readonly type = 's3' as const;
@@ -50,7 +50,7 @@ export class S3StorageBackend implements StorageBackend {
     private readonly clientConfig: ConstructorParameters<typeof S3Client>[0];
 
     async init(): Promise<void> {
-        const requestHandler = await createPinnedS3RequestHandler(this.options.endpoint);
+        const requestHandler = await createPinnedAwsRequestHandler(this.options.endpoint);
         this.client = new S3Client({
             ...this.clientConfig,
             requestHandler,

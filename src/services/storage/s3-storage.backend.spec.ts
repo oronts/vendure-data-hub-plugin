@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PutObjectCommand } from '@aws-sdk/client-s3';
-import { createPinnedS3RequestHandler } from '../../utils/s3-request-handler.utils';
+import { createPinnedAwsRequestHandler } from '../../utils/aws-request-handler.utils';
 import { S3StorageBackend } from './s3-storage.backend';
 
 const send = vi.fn();
@@ -33,8 +33,8 @@ vi.mock('@aws-sdk/s3-request-presigner', () => ({
     getSignedUrl: vi.fn(),
 }));
 
-vi.mock('../../utils/s3-request-handler.utils', () => ({
-    createPinnedS3RequestHandler: vi.fn(async () => requestHandler),
+vi.mock('../../utils/aws-request-handler.utils', () => ({
+    createPinnedAwsRequestHandler: vi.fn(async () => requestHandler),
 }));
 
 describe('S3StorageBackend lifecycle', () => {
@@ -58,7 +58,7 @@ describe('S3StorageBackend lifecycle', () => {
         await backend.init();
         await backend.write('file.txt', Buffer.from('content'));
 
-        expect(createPinnedS3RequestHandler).toHaveBeenCalledWith(
+        expect(createPinnedAwsRequestHandler).toHaveBeenCalledWith(
             'https://objects.example.com/storage/v1',
         );
         expect(clientOptions).toEqual([expect.objectContaining({

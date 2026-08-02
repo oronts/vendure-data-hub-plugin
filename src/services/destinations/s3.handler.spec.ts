@@ -32,8 +32,8 @@ vi.mock('@aws-sdk/client-s3', () => {
     };
 });
 
-vi.mock('../../utils/s3-request-handler.utils', () => ({
-    createPinnedS3RequestHandler: vi.fn(async () => requestHandler),
+vi.mock('../../utils/aws-request-handler.utils', () => ({
+    createPinnedAwsRequestHandler: vi.fn(async () => requestHandler),
 }));
 
 const config: ResolvedS3DestinationConfig = {

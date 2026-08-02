@@ -12,7 +12,7 @@ import {
 import type { ConnectionTestResult } from '../../../shared/types';
 import { CONTENT_TYPES } from '../../constants/services';
 import { getErrorMessage } from '../../utils/error.utils';
-import { createPinnedS3RequestHandler } from '../../utils/s3-request-handler.utils';
+import { createPinnedAwsRequestHandler } from '../../utils/aws-request-handler.utils';
 import { createFailureResult, createSuccessResult } from './delivery-utils';
 import {
     DeliveryOptions,
@@ -22,7 +22,7 @@ import {
 } from './destination.types';
 
 async function createS3Client(config: ResolvedS3DestinationConfig): Promise<S3Client> {
-    const requestHandler = await createPinnedS3RequestHandler(config.endpoint);
+    const requestHandler = await createPinnedAwsRequestHandler(config.endpoint);
     return new S3Client({
         region: config.region,
         credentials: {

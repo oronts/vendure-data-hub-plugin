@@ -15,7 +15,7 @@ import {
 import { ExtractorContext } from '../../types/index';
 import { getErrorMessage } from '../../utils/error.utils';
 import { validateUrlSafetySync } from '../../utils/url-security.utils';
-import { createPinnedS3RequestHandler } from '../../utils/s3-request-handler.utils';
+import { createPinnedAwsRequestHandler } from '../../utils/aws-request-handler.utils';
 import { assertRemoteFileSize, collectRemoteFileBody } from '../shared/remote-file-content';
 import { S3ExtractorConfig, S3ObjectInfo, S3_DEFAULTS } from './types';
 
@@ -105,7 +105,7 @@ export async function createS3Client(
     config: S3ExtractorConfig,
 ): Promise<S3Client> {
     const clientConfig = await buildS3ClientConfig(context, config);
-    const requestHandler = await createPinnedS3RequestHandler(clientConfig.endpoint);
+    const requestHandler = await createPinnedAwsRequestHandler(clientConfig.endpoint);
 
     const s3 = new AwsS3Client({
         region: clientConfig.region,
