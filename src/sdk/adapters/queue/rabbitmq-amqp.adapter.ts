@@ -21,285 +21,27 @@ import { JsonObject } from '../../../types/index';
 import { AckMode } from '../../../constants/enums';
 import { INTERNAL_TIMINGS } from '../../../constants/defaults/core-defaults';
 import { QUEUE } from '../../../constants/defaults/runtime-defaults';
-import { HTTP } from '../../../constants/defaults/http-defaults';
 import { LOGGER_CONTEXTS } from '../../../constants/core';
 import { CONTENT_TYPES } from '../../../constants/services';
 import { DataHubLoggerFactory } from '../../../services/logger/datahub-logger';
 import { getErrorMessage } from '../../../utils/error.utils';
 import {
-    createPinnedAddressLookup,
-    resolveSafeRemoteAddresses,
-} from '../../../utils/remote-host-security.utils';
-import { createQueueConnectionIdentity } from './connection-identity';
-import {
-    resolveRabbitMqConnection,
-    type ResolvedRabbitMqConnection,
-} from './rabbitmq-connection';
+    closeAmqpResources,
+    closeRabbitMqConnection,
+    getRabbitMqConnection,
+    getRabbitMqConnectionKey,
+} from './rabbitmq-amqp.connection';
+import { RabbitMqAdapterState } from './rabbitmq-amqp.state';
 
 const logger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.RABBITMQ_ADAPTER);
-
-// Minimal structural interfaces isolate the adapter from amqplib version-specific types.
-type AmqpConnection = {
-    createConfirmChannel(): Promise<AmqpChannel>;
-    close(): Promise<void>;
-    on(event: string, listener: (...args: unknown[]) => void): void;
-};
-
-type AmqpChannel = {
-    assertQueue(queue: string, options?: Record<string, unknown>): Promise<unknown>;
-    publish(exchange: string, routingKey: string, content: Buffer, options?: Record<string, unknown>, callback?: (err: Error | null) => void): boolean;
-    get(queue: string, options?: { noAck?: boolean }): Promise<AmqpMessage | false>;
-    ack(message: { fields: { deliveryTag: number } }): void;
-    nack(message: { fields: { deliveryTag: number } }, allUpTo?: boolean, requeue?: boolean): void;
-    prefetch(count: number): Promise<void>;
-    close(): Promise<void>;
-    on(event: string, listener: (...args: unknown[]) => void): void;
-};
-
-type AmqpMessage = {
-    content: Buffer;
-    fields: {
-        deliveryTag: number;
-        redelivered: boolean;
-    };
-    properties: {
-        messageId?: string;
-        headers?: Record<string, unknown>;
-    };
-};
-
-/**
- * Connection pool entry
- */
-interface ConnectionEntry {
-    connection: AmqpConnection;
-    channel: AmqpChannel;
-    lastUsed: number;
-}
-
-/**
- * Connection pool for RabbitMQ connections
- */
-const connectionPool = new Map<string, ConnectionEntry>();
-const connectingPromises = new Map<string, Promise<{ connection: AmqpConnection; channel: AmqpChannel }>>();
-
-async function closeAmqpResources(
-    resources: Partial<ConnectionEntry>,
-    phase: string,
-): Promise<void> {
-    const closeOperations = [
-        resources.channel && {
-            label: 'channel',
-            close: () => resources.channel!.close(),
-        },
-        resources.connection && {
-            label: 'connection',
-            close: () => resources.connection!.close(),
-        },
-    ].filter((resource): resource is { label: string; close: () => Promise<void> } => Boolean(resource));
-    const results = await Promise.allSettled(
-        closeOperations.map(resource => resource.close()),
-    );
-    results.forEach((result, index) => {
-        if (result.status === 'rejected') {
-            logger.warn(
-                `RabbitMQ: Failed to close ${closeOperations[index].label} during ${phase}`,
-                { error: getErrorMessage(result.reason) },
-            );
-        }
-    });
-}
-
-/**
- * Generate a unique key for a connection configuration
- */
-function getConnectionKey(config: QueueConnectionConfig): string {
-    return createQueueConnectionIdentity('rabbitmq-amqp', config);
-}
-
-/**
- * Build AMQP URL from configuration
- */
-function buildAmqpUrl(config: ResolvedRabbitMqConnection): string {
-    const protocol = config.useTls ? 'amqps' : 'amqp';
-    const username = encodeURIComponent(config.username);
-    const password = encodeURIComponent(config.password);
-    const vhost = encodeURIComponent(config.vhost);
-
-    return `${protocol}://${username}:${password}@${config.host}:${config.port}/${vhost}`;
-}
-
-/**
- * Get or create a connection from the pool
- */
-async function getConnection(config: QueueConnectionConfig): Promise<{
-    connection: AmqpConnection;
-    channel: AmqpChannel;
-}> {
-    const key = getConnectionKey(config);
-    const existing = connectionPool.get(key);
-
-    // Return existing valid connection
-    if (existing) {
-        existing.lastUsed = Date.now();
-        return { connection: existing.connection, channel: existing.channel };
-    }
-
-    // If another caller is already connecting, await the same promise
-    const pending = connectingPromises.get(key);
-    if (pending) {
-        return pending;
-    }
-
-    // Create connection promise that concurrent callers can share
-    const connectPromise = (async () => {
-        let connection: AmqpConnection | undefined;
-        let channel: AmqpChannel | undefined;
-        try {
-            const amqplib = await import('amqplib');
-            const resolvedConfig = resolveRabbitMqConnection(config, 'AMQP');
-            const url = buildAmqpUrl(resolvedConfig);
-            const remotes = await resolveSafeRemoteAddresses(
-                resolvedConfig.host,
-            );
-            connection = await amqplib.connect(
-                url,
-                {
-                    timeout: HTTP.TIMEOUT_MS,
-                    lookup: createPinnedAddressLookup(remotes),
-                },
-            ) as unknown as AmqpConnection;
-            channel = await connection.createConfirmChannel();
-            const activeConnection = connection;
-            const activeChannel = channel;
-
-            const cleanupConnection = () => {
-                const current = connectionPool.get(key);
-                if (current?.connection === activeConnection) {
-                    connectionPool.delete(key);
-                }
-                removePendingMessagesForChannel(activeChannel);
-            };
-
-            activeConnection.on('error', error => {
-                logger.warn('RabbitMQ: Connection failed', {
-                    error: getErrorMessage(error),
-                });
-                cleanupConnection();
-            });
-            activeConnection.on('close', cleanupConnection);
-
-            await activeChannel.prefetch(QUEUE.DEFAULT_MESSAGE_BATCH_SIZE);
-
-            activeChannel.on('error', error => {
-                logger.warn('RabbitMQ: Channel failed', {
-                    error: getErrorMessage(error),
-                });
-                const current = connectionPool.get(key);
-                if (current?.channel === activeChannel) {
-                    connectionPool.delete(key);
-                }
-                removePendingMessagesForChannel(activeChannel);
-            });
-
-            const entry: ConnectionEntry = {
-                connection: activeConnection,
-                channel: activeChannel,
-                lastUsed: Date.now(),
-            };
-
-            // Evict oldest connection if pool is at capacity
-            if (connectionPool.size >= QUEUE.RABBITMQ_MAX_CONNECTIONS) {
-                let oldestKey: string | null = null;
-                let oldestTime = Infinity;
-                for (const [k, e] of connectionPool.entries()) {
-                    if (
-                        !hasPendingMessagesForConnection(k) &&
-                        e.lastUsed < oldestTime
-                    ) {
-                        oldestTime = e.lastUsed;
-                        oldestKey = k;
-                    }
-                }
-                if (!oldestKey) {
-                    throw new Error(
-                        'RabbitMQ connection pool is at capacity with active deliveries',
-                    );
-                }
-                const stale = connectionPool.get(oldestKey);
-                if (stale) {
-                    connectionPool.delete(oldestKey);
-                    removePendingMessagesForChannel(stale.channel);
-                    await closeAmqpResources(stale, 'pool eviction');
-                }
-            }
-
-            connectionPool.set(key, entry);
-            return { connection: activeConnection, channel: activeChannel };
-        } catch (error) {
-            await closeAmqpResources({ connection, channel }, 'connection setup');
-            throw error;
-        } finally {
-            connectingPromises.delete(key);
-        }
-    })();
-
-    connectingPromises.set(key, connectPromise);
-    return connectPromise;
-}
-
-/**
- * Close a connection and remove from pool
- */
-async function closeConnection(config: QueueConnectionConfig): Promise<void> {
-    const key = getConnectionKey(config);
-    const entry = connectionPool.get(key);
-
-    if (entry) {
-        removePendingMessagesForChannel(entry.channel);
-        connectionPool.delete(key);
-        await closeAmqpResources(entry, 'explicit close');
-    }
-}
-
-/**
- * Pending acks/nacks storage for manual acknowledgment.
- */
-interface PendingMessage {
-    channel: AmqpChannel;
-    deliveryTag: number;
-    connectionIdentity: string;
-}
-const pendingMessages = new Map<string, PendingMessage>();
-
-function hasPendingMessagesForConnection(connectionIdentity: string): boolean {
-    return [...pendingMessages.values()].some(
-        pending => pending.connectionIdentity === connectionIdentity,
-    );
-}
-
-function removePendingMessagesForChannel(channel: AmqpChannel): void {
-    for (const [deliveryTag, pending] of pendingMessages.entries()) {
-        if (pending.channel === channel) {
-            pendingMessages.delete(deliveryTag);
-        }
-    }
-}
 
 export class RabbitMQAmqpAdapter implements QueueAdapter {
     readonly code = 'rabbitmq-amqp';
     readonly name = 'RabbitMQ (AMQP)';
     readonly description = 'RabbitMQ message broker using native AMQP 0-9-1 protocol';
 
+    private readonly state = new RabbitMqAdapterState();
     private connectionCleanupHandle?: ReturnType<typeof setInterval>;
-    private readonly cleanupOperations = new Set<Promise<void>>();
-
-    private trackCleanup(operation: Promise<void>): void {
-        this.cleanupOperations.add(operation);
-        void operation.finally(() => {
-            this.cleanupOperations.delete(operation);
-        });
-    }
 
     /**
      * Start the periodic cleanup intervals for idle connections and stale pending messages.
@@ -309,16 +51,33 @@ export class RabbitMQAmqpAdapter implements QueueAdapter {
         if (!this.connectionCleanupHandle) {
             this.connectionCleanupHandle = setInterval(() => {
                 const now = Date.now();
+                for (const pending of this.state.takeExpiredPendingMessages(
+                    now,
+                    INTERNAL_TIMINGS.PENDING_MESSAGES_MAX_AGE_MS,
+                )) {
+                    try {
+                        pending.channel.nack(
+                            { fields: { deliveryTag: pending.deliveryTag } },
+                            false,
+                            true,
+                        );
+                    } catch (error) {
+                        logger.warn('RabbitMQ: Failed to requeue stale delivery', {
+                            error: getErrorMessage(error),
+                        });
+                    }
+                }
                 const activeConnections = new Set(
-                    [...pendingMessages.values()].map(entry => entry.connectionIdentity),
+                    [...this.state.pendingMessages.values()]
+                        .map(entry => entry.connectionIdentity),
                 );
-                for (const [key, entry] of connectionPool.entries()) {
+                for (const [key, entry] of this.state.connectionPool.entries()) {
                     if (
                         !activeConnections.has(key) &&
                         now - entry.lastUsed > INTERNAL_TIMINGS.CONNECTION_MAX_IDLE_MS
                     ) {
-                        connectionPool.delete(key);
-                        this.trackCleanup(
+                        this.state.connectionPool.delete(key);
+                        this.state.trackCleanup(
                             closeAmqpResources(entry, 'idle cleanup'),
                         );
                     }
@@ -329,7 +88,6 @@ export class RabbitMQAmqpAdapter implements QueueAdapter {
                 this.connectionCleanupHandle.unref();
             }
         }
-
     }
 
     /**
@@ -341,16 +99,16 @@ export class RabbitMQAmqpAdapter implements QueueAdapter {
             clearInterval(this.connectionCleanupHandle);
             this.connectionCleanupHandle = undefined;
         }
-        await Promise.allSettled(connectingPromises.values());
-        const pooledConnections = [...connectionPool.values()];
-        connectionPool.clear();
+        await Promise.allSettled(this.state.connectingPromises.values());
+        const pooledConnections = [...this.state.connectionPool.values()];
+        this.state.connectionPool.clear();
         await Promise.all([
-            ...this.cleanupOperations,
+            ...this.state.cleanupOperations,
             ...pooledConnections.map(entry =>
                 closeAmqpResources(entry, 'adapter shutdown'),
             ),
         ]);
-        pendingMessages.clear();
+        this.state.pendingMessages.clear();
     }
 
     async publish(
@@ -359,7 +117,10 @@ export class RabbitMQAmqpAdapter implements QueueAdapter {
         messages: QueueMessage[],
     ): Promise<PublishResult[]> {
         this.startCleanup();
-        const { channel } = await getConnection(connectionConfig);
+        const { channel } = await getRabbitMqConnection(
+            this.state,
+            connectionConfig,
+        );
         const results: PublishResult[] = [];
 
         await channel.assertQueue(queueName, {
@@ -425,7 +186,10 @@ export class RabbitMQAmqpAdapter implements QueueAdapter {
         },
     ): Promise<ConsumeResult[]> {
         this.startCleanup();
-        const { channel } = await getConnection(connectionConfig);
+        const { channel } = await getRabbitMqConnection(
+            this.state,
+            connectionConfig,
+        );
         const results: ConsumeResult[] = [];
 
         // Set prefetch if specified
@@ -454,11 +218,12 @@ export class RabbitMQAmqpAdapter implements QueueAdapter {
             }
 
             const messageId = msg.properties.messageId || crypto.randomUUID();
-            const deliveryTag = `${getConnectionKey(connectionConfig)}:${msg.fields.deliveryTag}`;
+            const connectionIdentity = getRabbitMqConnectionKey(connectionConfig);
+            const deliveryTag = `${connectionIdentity}:${msg.fields.deliveryTag}`;
 
             // Store for manual ack/nack with timestamp for cleanup
             if (options.ackMode === AckMode.MANUAL) {
-                if (pendingMessages.size >= QUEUE.MAX_PENDING_MESSAGES) {
+                if (this.state.pendingMessages.size >= QUEUE.MAX_PENDING_MESSAGES) {
                     channel.nack(
                         { fields: { deliveryTag: msg.fields.deliveryTag } },
                         false,
@@ -466,15 +231,16 @@ export class RabbitMQAmqpAdapter implements QueueAdapter {
                     );
                     logger.warn('Pending message capacity reached; delivery was requeued', {
                         maxPending: QUEUE.MAX_PENDING_MESSAGES,
-                        currentSize: pendingMessages.size,
+                        currentSize: this.state.pendingMessages.size,
                     });
                     continue;
                 }
 
-                pendingMessages.set(deliveryTag, {
+                this.state.pendingMessages.set(deliveryTag, {
                     channel,
                     deliveryTag: msg.fields.deliveryTag,
-                    connectionIdentity: getConnectionKey(connectionConfig),
+                    connectionIdentity,
+                    createdAt: Date.now(),
                 });
             }
 
@@ -494,16 +260,16 @@ export class RabbitMQAmqpAdapter implements QueueAdapter {
         connectionConfig: QueueConnectionConfig,
         deliveryTag: string,
     ): Promise<void> {
-        const pending = pendingMessages.get(deliveryTag);
+        const pending = this.state.pendingMessages.get(deliveryTag);
         if (!pending) {
             throw new Error(`No pending message found for delivery tag: ${deliveryTag}`);
         }
-        if (pending.connectionIdentity !== getConnectionKey(connectionConfig)) {
+        if (pending.connectionIdentity !== getRabbitMqConnectionKey(connectionConfig)) {
             throw new Error('RabbitMQ delivery tag belongs to a different connection');
         }
 
         pending.channel.ack({ fields: { deliveryTag: pending.deliveryTag } });
-        pendingMessages.delete(deliveryTag);
+        this.state.pendingMessages.delete(deliveryTag);
     }
 
     async nack(
@@ -511,11 +277,11 @@ export class RabbitMQAmqpAdapter implements QueueAdapter {
         deliveryTag: string,
         requeue: boolean,
     ): Promise<void> {
-        const pending = pendingMessages.get(deliveryTag);
+        const pending = this.state.pendingMessages.get(deliveryTag);
         if (!pending) {
             throw new Error(`No pending message found for delivery tag: ${deliveryTag}`);
         }
-        if (pending.connectionIdentity !== getConnectionKey(connectionConfig)) {
+        if (pending.connectionIdentity !== getRabbitMqConnectionKey(connectionConfig)) {
             throw new Error('RabbitMQ delivery tag belongs to a different connection');
         }
 
@@ -524,13 +290,16 @@ export class RabbitMQAmqpAdapter implements QueueAdapter {
             false, // Don't affect other messages
             requeue,
         );
-        pendingMessages.delete(deliveryTag);
+        this.state.pendingMessages.delete(deliveryTag);
     }
 
     async testConnection(connectionConfig: QueueConnectionConfig): Promise<boolean> {
         this.startCleanup();
         try {
-            const { connection } = await getConnection(connectionConfig);
+            const { connection } = await getRabbitMqConnection(
+                this.state,
+                connectionConfig,
+            );
             return connection !== null;
         } catch {
             // Connection test failed - return false
@@ -542,7 +311,7 @@ export class RabbitMQAmqpAdapter implements QueueAdapter {
      * Close connection (useful for cleanup)
      */
     async close(connectionConfig: QueueConnectionConfig): Promise<void> {
-        await closeConnection(connectionConfig);
+        await closeRabbitMqConnection(this.state, connectionConfig);
     }
 }
 
