@@ -7,7 +7,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import type { DataHubLogger } from '../logger';
 import { RateLimitBackendUnavailableError, RateLimitService } from '../rate-limit';
 import { RedisRateLimitBackend } from '../rate-limit/redis-rate-limit.backend';
-import { RedisLockBackend } from './lock-backends';
+import { RedisLockBackend } from './lock-backends/redis-lock.backend';
 
 const execFileAsync = promisify(execFile);
 const redisUrl = process.env.DATAHUB_REDIS_INTEGRATION_URL?.trim();

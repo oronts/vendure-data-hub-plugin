@@ -6,6 +6,7 @@ export {
     createChannelScopedCacheKey,
     findVariantBySku,
     getArrayValue,
+    getBooleanValue,
     getIdValue,
     getNumberValue,
     getObjectValue,

@@ -541,7 +541,7 @@ Execute custom JavaScript for complex transformations:
 .load('update-stock', {
     adapterCode: 'stockAdjust',
     skuField: 'sku',
-    stockByLocationField: 'stockByLocation',  // Map of location code -> quantity
+    stockByLocationField: 'stockByLocation',  // Map of exact location name -> quantity
     absolute: true,                           // Set absolute value (false = delta)
 })
 ```

@@ -124,7 +124,7 @@ export const MERCHANDISING_LOADER_DEFINITIONS: LoaderDefinitionEntry[] = [
                     { key: 'sourceUrlField', label: 'Source URL field', type: 'string', required: true },
                     { key: 'filenameField', label: 'Filename field', type: 'string' },
                     { key: 'nameField', label: 'Name field', type: 'string' },
-                    { key: 'tagsField', label: 'Tags field (array)', type: 'string' },
+                    { key: 'tagsField', label: 'Tags field (array)', type: 'string', description: 'Record field containing an array of nonblank tag strings' },
                     { key: 'channel', label: 'Channel code', type: 'string' },
                 ],
             },

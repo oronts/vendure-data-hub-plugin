@@ -44,6 +44,14 @@ All loaders are configured using the `.load()` step in the pipeline DSL:
 })
 ```
 
+Boolean record fields accept JSON booleans and case-insensitive `"true"` or
+`"false"` strings from text formats such as CSV. Blank values are treated as
+omitted. Other values fail the record instead of using JavaScript truthiness.
+Numeric record fields accept only finite numbers or finite numeric strings;
+blank and non-finite values are treated as missing and fail required fields.
+String record fields accept nonblank strings and finite numeric identifiers;
+arrays and objects are not converted into placeholder strings.
+
 ### Loader Adapter Codes
 
 | Adapter Code | Entity Type | Description |
@@ -424,16 +432,17 @@ Create or update collections with parent relationships. Supports multi-language 
 
 Adapter Code: `stockAdjust`
 
-Set or adjust stock levels for product variants using a map of stock-location
-codes to quantities.
+Set or adjust stock levels for product variants using a map of exact
+stock-location names to quantities. Every name must resolve in the active
+Vendure channel before any stock movement is applied.
 
 ### Input Fields
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `skuField` | string | Yes | Record field containing the product variant SKU |
-| `stockByLocationField` | string | Yes | Record field containing an object that maps stock-location codes to quantities |
-| `absolute` | boolean | No | Set absolute stock levels when true; apply quantity deltas when false |
+| `stockByLocationField` | string | Yes | Record field containing an object that maps exact stock-location names to integer quantities |
+| `absolute` | boolean | No | Set non-negative absolute levels when true or omitted; apply signed quantity deltas when false |
 
 ### Example
 

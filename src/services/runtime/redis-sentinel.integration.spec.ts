@@ -3,7 +3,7 @@ import Redis from 'ioredis';
 import { describe, expect, it } from 'vitest';
 import type { DataHubLogger } from '../logger';
 import { RedisRateLimitBackend } from '../rate-limit/redis-rate-limit.backend';
-import { RedisLockBackend } from './lock-backends';
+import { RedisLockBackend } from './lock-backends/redis-lock.backend';
 import {
     getConfiguredRedisConnection,
     type RedisConnectionConfiguration,

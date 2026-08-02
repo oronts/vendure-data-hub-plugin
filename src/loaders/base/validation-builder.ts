@@ -295,8 +295,12 @@ export class ValidationBuilder {
             this.addError(field, message || `${field} is required`, VALIDATION_ERROR_CODE.REQUIRED);
             return this;
         }
-        const num = Number(value);
-        if (Number.isNaN(num) || num < 0) {
+        const num = typeof value === 'number'
+            ? value
+            : typeof value === 'string' && value.trim() !== ''
+                ? Number(value)
+                : Number.NaN;
+        if (!Number.isFinite(num) || num < 0) {
             const received = typeof value === 'string' ? `"${value}"` : String(value);
             const defaultMsg = `${field} must be a positive number (expected: number >= 0, received: ${received})`;
             this.addError(field, message || defaultMsg, VALIDATION_ERROR_CODE.INVALID_VALUE);

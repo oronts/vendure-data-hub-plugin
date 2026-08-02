@@ -7,7 +7,13 @@ import {
     PipelineStepDefinition,
     ProductUpsertLoaderConfig,
 } from '../../../types';
-import { getObjectValue, getNumberValue, getStringValue, slugify } from '../../../loaders/shared-helpers';
+import {
+    getBooleanValue,
+    getNumberValue,
+    getObjectValue,
+    getStringValue,
+    slugify,
+} from '../../../loaders/shared-helpers';
 import { majorToMinorUnits } from '../../../utils/money.utils';
 import { RecordObject } from '../../executor-types';
 import { CoercedProductFields } from './types';
@@ -41,7 +47,11 @@ function parseStockByLocation(
 ): Record<string, number> {
     const result: Record<string, number> = {};
     for (const [locationName, value] of Object.entries(stockObject)) {
-        const numericValue = typeof value === 'number' ? value : Number(value);
+        const numericValue = typeof value === 'number'
+            ? value
+            : typeof value === 'string' && value.trim() !== ''
+                ? Number(value)
+                : Number.NaN;
         if (Number.isFinite(numericValue)) {
             result[locationName] = Math.max(0, Math.floor(numericValue));
         }
@@ -239,12 +249,7 @@ export function coerceProductFields(
         record,
         config?.customFieldsField ?? 'customFields',
     );
-    const enabledValue = record[config?.enabledField ?? 'enabled'];
-    const enabled = enabledValue != null
-        ? typeof enabledValue === 'boolean'
-            ? enabledValue
-            : String(enabledValue).toLowerCase() === 'true'
-        : undefined;
+    const enabled = getBooleanValue(record, config?.enabledField ?? 'enabled');
 
     return {
         slug,

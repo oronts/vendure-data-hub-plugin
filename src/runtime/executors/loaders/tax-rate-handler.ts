@@ -18,7 +18,11 @@ import { RecordObject, OnRecordErrorCallback, LoaderExecutionResult } from '../.
 import { LoaderHandler } from './types';
 import { LoadStrategy } from '../../../constants/enums';
 import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
-import { getStringValue, getNumberValue } from '../../../loaders/shared-helpers';
+import {
+    getBooleanValue,
+    getNumberValue,
+    getStringValue,
+} from '../../../loaders/shared-helpers';
 import { resolveEntityReferenceId } from '../../../loaders/entity-reference.helpers';
 
 /**
@@ -97,8 +101,7 @@ export class TaxRateHandler implements LoaderHandler {
                 }
 
                 // Resolve enabled flag
-                const enabledRaw = rec[enabledField];
-                const enabled = enabledRaw === undefined ? true : Boolean(enabledRaw);
+                const enabled = getBooleanValue(rec, enabledField) ?? true;
 
                 // Resolve tax category
                 const taxCategoryId = await this.resolveTaxCategoryId(

@@ -19,7 +19,12 @@ import { LoaderHandler } from './types';
 import { assertCreateDuplicateCanBeSkipped, CreateDuplicateHandlingConfig } from './duplicate-handling';
 import { LoadStrategy } from '../../../constants/enums';
 import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
-import { getStringValue, getArrayValue, getObjectValue } from '../../../loaders/shared-helpers';
+import {
+    getArrayValue,
+    getBooleanValue,
+    getObjectValue,
+    getStringValue,
+} from '../../../loaders/shared-helpers';
 import { generateChannelToken, parseCurrencyCode, parseLanguageCode } from '../../../loaders/channel/helpers';
 import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger/datahub-logger';
 import { LOGGER_CONTEXTS } from '../../../constants/core';
@@ -162,8 +167,7 @@ export class ChannelHandler implements LoaderHandler {
                     availableCurrencyCodes.unshift(defaultCurrencyCode);
                 }
 
-                const pricesIncludeTaxRaw = rec[pricesIncludeTaxField];
-                const pricesIncludeTax = pricesIncludeTaxRaw === undefined ? false : Boolean(pricesIncludeTaxRaw);
+                const pricesIncludeTax = getBooleanValue(rec, pricesIncludeTaxField) ?? false;
 
                 // Resolve zone IDs
                 const taxZoneCode = getStringValue(rec, defaultTaxZoneCodeField);

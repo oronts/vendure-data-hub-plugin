@@ -176,7 +176,7 @@ export const CORE_LOADER_DEFINITIONS: LoaderDefinitionEntry[] = [
         definition: {
             type: 'LOADER',
             code: 'stockAdjust',
-            description: 'Adjust stock levels by SKU and stock location code map.',
+            description: 'Set or adjust stock levels by SKU and exact stock location name.',
             requires: ['UpdateCatalog'],
             icon: 'layers',
             color: '#0ea5e9',
@@ -185,8 +185,8 @@ export const CORE_LOADER_DEFINITIONS: LoaderDefinitionEntry[] = [
             schema: {
                 fields: [
                     { key: 'skuField', label: 'SKU field', type: 'string', required: true },
-                    { key: 'stockByLocationField', label: 'Stock by location map (code->qty)', type: 'string', required: true },
-                    { key: 'absolute', label: 'Set absolute (else delta)', type: 'boolean' },
+                    { key: 'stockByLocationField', label: 'Stock by location map (name → quantity)', type: 'string', required: true },
+                    { key: 'absolute', label: 'Set absolute values', type: 'boolean', defaultValue: true, description: 'Disable to apply each quantity as a delta.' },
                 ],
             },
         },

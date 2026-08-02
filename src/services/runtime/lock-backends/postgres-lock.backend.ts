@@ -2,7 +2,7 @@ import { TransactionalConnection } from '@vendure/core';
 import { LessThanOrEqual, MoreThan } from 'typeorm';
 import { DataHubLock } from '../../../entities/config';
 import { LockBackend, LockState, LockStatus, MemoryLockEntry } from './lock-backend.interface';
-import { DataHubLogger } from '../../logger';
+import type { DataHubLogger } from '../../logger/datahub-logger';
 import { getErrorMessage } from '../../../utils/error.utils';
 
 interface PostgresLockSqlIdentifiers {

@@ -17,6 +17,7 @@ import { JsonObject, PipelineStepDefinition, ErrorHandlingConfig } from '../../.
 import { RecordObject, OnRecordErrorCallback, LoaderExecutionResult } from '../../executor-types';
 import { LoaderHandler } from './types';
 import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
+import { getStringValue } from '../../../loaders/shared-helpers';
 
 /**
  * Configuration for asset attachment step
@@ -26,13 +27,6 @@ interface AssetAttachConfig {
     slugField?: string;
     assetIdField?: string;
     channel?: string;
-}
-
-/**
- * Record with dynamic field access
- */
-interface AssetAttachRecord {
-    [key: string]: unknown;
 }
 
 @Injectable()
@@ -57,12 +51,11 @@ export class AssetAttachHandler implements LoaderHandler {
 
         for (const rec of input) {
             try {
-                const record = rec as AssetAttachRecord;
                 const entity = cfg.entity;
                 const slugField = cfg.slugField ?? 'slug';
                 const assetIdField = cfg.assetIdField ?? 'assetId';
-                const slug = record[slugField] as string | undefined;
-                const assetId = record[assetIdField] as ID | undefined;
+                const slug = getStringValue(rec, slugField);
+                const assetId = getStringValue(rec, assetIdField) as ID | undefined;
 
                 if (!entity || !slug || !assetId) {
                     if (onRecordError) await onRecordError(step.key, `Missing required field: ${!entity ? 'entity' : !slug ? slugField : assetIdField}`, rec as JsonObject);

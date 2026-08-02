@@ -85,6 +85,46 @@ describe('TaxRateHandler references', () => {
         });
     });
 
+    it('preserves false strings instead of enabling the tax rate', async () => {
+        const { handler, taxRateService } = createFixture();
+
+        const result = await handler.execute(ctx, createStep(), [{
+            name: 'VAT',
+            value: 19,
+            enabled: 'false',
+            taxCategoryCode: 'standard-tax',
+            zoneCode: 'eu-zone',
+        }]);
+
+        expect(result).toEqual({ ok: 1, fail: 0, skipped: 0 });
+        expect(taxRateService.create).toHaveBeenCalledWith(
+            ctx,
+            expect.objectContaining({ enabled: false }),
+        );
+    });
+
+    it('rejects invalid boolean record values', async () => {
+        const { handler, taxRateService } = createFixture();
+        const onRecordError = vi.fn().mockResolvedValue(undefined);
+        const record = {
+            name: 'VAT',
+            value: 19,
+            enabled: 'disabled',
+            taxCategoryCode: 'standard-tax',
+            zoneCode: 'eu-zone',
+        };
+
+        await expect(handler.execute(ctx, createStep(), [record], onRecordError)).resolves
+            .toEqual({ ok: 0, fail: 1, skipped: 0 });
+        expect(taxRateService.create).not.toHaveBeenCalled();
+        expect(onRecordError).toHaveBeenCalledWith(
+            'load-tax-rates',
+            'Record field "enabled" must be a boolean or "true"/"false" string',
+            record,
+            expect.anything(),
+        );
+    });
+
     it('does not accept display names as reference codes', async () => {
         const { handler, taxRateService } = createFixture();
         const onRecordError = vi.fn().mockResolvedValue(undefined);

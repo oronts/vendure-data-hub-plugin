@@ -20,10 +20,10 @@ export function createChannelScopedCacheKey(
 export function getStringValue(record: RecordObject, key: string): string | undefined {
     const value = getRecordValue(record, key);
     if (typeof value === 'string') {
-        return value || undefined;
+        return value.trim() === '' ? undefined : value;
     }
-    if (value != null) {
-        return String(value) || undefined;
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        return String(value);
     }
     return undefined;
 }
@@ -31,13 +31,26 @@ export function getStringValue(record: RecordObject, key: string): string | unde
 export function getNumberValue(record: RecordObject, key: string): number | undefined {
     const value = getRecordValue(record, key);
     if (typeof value === 'number') {
-        return value;
+        return Number.isFinite(value) ? value : undefined;
     }
-    if (typeof value === 'string') {
+    if (typeof value === 'string' && value.trim() !== '') {
         const numberValue = Number(value);
-        return Number.isNaN(numberValue) ? undefined : numberValue;
+        return Number.isFinite(numberValue) ? numberValue : undefined;
     }
     return undefined;
+}
+
+export function getBooleanValue(record: RecordObject, key: string): boolean | undefined {
+    const value = getRecordValue(record, key);
+    if (value == null) return undefined;
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'string') {
+        const normalized = value.trim().toLowerCase();
+        if (normalized === '') return undefined;
+        if (normalized === 'true') return true;
+        if (normalized === 'false') return false;
+    }
+    throw new Error(`Record field "${key}" must be a boolean or "true"/"false" string`);
 }
 
 export function getObjectValue(

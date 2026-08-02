@@ -20,7 +20,11 @@ import { LoaderHandler } from './types';
 import { assertCreateDuplicateCanBeSkipped, CreateDuplicateHandlingConfig } from './duplicate-handling';
 import { LoadStrategy } from '../../../constants/enums';
 import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
-import { getStringValue, getObjectValue } from '../../../loaders/shared-helpers';
+import {
+    getBooleanValue,
+    getObjectValue,
+    getStringValue,
+} from '../../../loaders/shared-helpers';
 import { parseTranslationsInput, resolveChannelIds, toConfigurableOperation } from './shared-lookups';
 import { LOGGER_CONTEXTS } from '../../../constants/core';
 import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger/datahub-logger';
@@ -118,8 +122,7 @@ export class PaymentMethodHandler implements LoaderHandler {
                 }
 
                 const description = getStringValue(rec, descriptionField) ?? '';
-                const enabledRaw = rec[enabledField];
-                const enabled = enabledRaw === undefined ? true : Boolean(enabledRaw);
+                const enabled = getBooleanValue(rec, enabledField) ?? true;
                 const checkerOp = toConfigurableOperation(rec[checkerField]);
                 const customFieldsKey = cfg.customFieldsField ?? 'customFields';
                 const customFields = getObjectValue(rec, customFieldsKey);

@@ -19,7 +19,11 @@ import { LoaderHandler } from './types';
 import { LoadStrategy } from '../../../constants/enums';
 import { assertCreateDuplicateCanBeSkipped, CreateDuplicateHandlingConfig } from './duplicate-handling';
 import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
-import { getObjectValue } from '../../../loaders/shared-helpers';
+import {
+    getBooleanValue,
+    getObjectValue,
+    getStringValue,
+} from '../../../loaders/shared-helpers';
 import { parseTranslationsInput, resolveChannelIds } from './shared-lookups';
 import { LOGGER_CONTEXTS } from '../../../constants/core';
 import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger/datahub-logger';
@@ -50,10 +54,6 @@ interface FacetValueUpsertConfig extends CreateDuplicateHandlingConfig {
     channelsField?: string;
 }
 
-interface FacetRecord {
-    [key: string]: unknown;
-}
-
 @Injectable()
 export class FacetHandler implements LoaderHandler {
     private readonly logger: DataHubLogger;
@@ -81,11 +81,10 @@ export class FacetHandler implements LoaderHandler {
 
         for (const rec of input) {
             try {
-                const record = rec as FacetRecord;
                 const codeField = cfg.codeField ?? 'code';
                 const nameField = cfg.nameField ?? 'name';
-                const code = String(record[codeField] ?? '');
-                let name = String(record[nameField] ?? code);
+                const code = getStringValue(rec, codeField);
+                let name = getStringValue(rec, nameField) ?? code ?? '';
 
                 // Multi-language: extract name from first translation if missing
                 if ((!name || name === code) && cfg.translationsField) {
@@ -98,10 +97,19 @@ export class FacetHandler implements LoaderHandler {
                     }
                 }
 
-                if (!code) { fail++; continue; }
+                if (!code) {
+                    if (onRecordError) {
+                        await onRecordError(step.key, 'Missing required field: code', rec);
+                    }
+                    fail++;
+                    continue;
+                }
 
                 const customFieldsKey = cfg.customFieldsField ?? 'customFields';
                 const customFields = getObjectValue(rec, customFieldsKey);
+                const isPrivate = cfg.privateField
+                    ? getBooleanValue(rec, cfg.privateField)
+                    : undefined;
 
                 let opCtx = ctx;
                 if (cfg.channel) {
@@ -128,7 +136,7 @@ export class FacetHandler implements LoaderHandler {
                     }
                     const updated = await this.facetService.update(opCtx, {
                         id: existing.id,
-                        isPrivate: cfg.privateField ? Boolean(record[cfg.privateField]) : existing.isPrivate,
+                        isPrivate: isPrivate ?? existing.isPrivate,
                         translations,
                         ...(customFields ? { customFields } : {}),
                     });
@@ -141,7 +149,7 @@ export class FacetHandler implements LoaderHandler {
                     }
                     const created = await this.facetService.create(opCtx, {
                         code,
-                        isPrivate: cfg.privateField ? Boolean(record[cfg.privateField]) : false,
+                        isPrivate: isPrivate ?? false,
                         translations,
                         ...(customFields ? { customFields } : {}),
                     });
@@ -233,13 +241,12 @@ export class FacetValueHandler implements LoaderHandler {
 
         for (const rec of input) {
             try {
-                const record = rec as FacetRecord;
                 const facetCodeField = cfg.facetCodeField ?? 'facetCode';
                 const codeField = cfg.codeField ?? 'code';
                 const nameField = cfg.nameField ?? 'name';
-                const facetCode = String(record[facetCodeField] ?? '');
-                const code = String(record[codeField] ?? '');
-                let name = String(record[nameField] ?? code);
+                const facetCode = getStringValue(rec, facetCodeField);
+                const code = getStringValue(rec, codeField);
+                let name = getStringValue(rec, nameField) ?? code ?? '';
 
                 // Multi-language: extract name from first translation if missing
                 if ((!name || name === code) && cfg.translationsField) {
@@ -252,7 +259,17 @@ export class FacetValueHandler implements LoaderHandler {
                     }
                 }
 
-                if (!facetCode || !code) { fail++; continue; }
+                if (!facetCode || !code) {
+                    if (onRecordError) {
+                        await onRecordError(
+                            step.key,
+                            'Missing required field: facetCode or code',
+                            rec,
+                        );
+                    }
+                    fail++;
+                    continue;
+                }
 
                 const customFieldsKey = cfg.customFieldsField ?? 'customFields';
                 const customFields = getObjectValue(rec, customFieldsKey);

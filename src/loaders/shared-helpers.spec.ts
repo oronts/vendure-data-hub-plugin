@@ -2,6 +2,9 @@ import { describe, expect, it, vi } from 'vitest';
 import type { DataHubLogger } from '../services/logger/datahub-logger';
 import {
     buildConfigurableOperation,
+    getBooleanValue,
+    getNumberValue,
+    getStringValue,
     handleAssets,
     handleFeaturedAsset,
     resolveFacetValueIds,
@@ -14,6 +17,39 @@ const logger = {
 } as unknown as DataHubLogger;
 
 describe('shared loader integrity helpers', () => {
+    it('accepts scalar string fields without stringifying structured values', () => {
+        expect(getStringValue({ code: ' value ' }, 'code')).toBe(' value ');
+        expect(getStringValue({ code: 42 }, 'code')).toBe('42');
+        expect(getStringValue({ code: ' ' }, 'code')).toBeUndefined();
+        expect(getStringValue({ code: Number.POSITIVE_INFINITY }, 'code')).toBeUndefined();
+        expect(getStringValue({ code: true }, 'code')).toBeUndefined();
+        expect(getStringValue({ code: ['value'] }, 'code')).toBeUndefined();
+        expect(getStringValue({ code: { value: 'nested' } }, 'code')).toBeUndefined();
+    });
+
+    it('parses boolean record fields without JavaScript truthiness', () => {
+        expect(getBooleanValue({ active: true }, 'active')).toBe(true);
+        expect(getBooleanValue({ active: ' FALSE ' }, 'active')).toBe(false);
+        expect(getBooleanValue({ nested: { active: 'true' } }, 'nested.active')).toBe(true);
+        expect(getBooleanValue({ active: '' }, 'active')).toBeUndefined();
+        expect(getBooleanValue({}, 'active')).toBeUndefined();
+        expect(() => getBooleanValue({ active: 'disabled' }, 'active')).toThrow(
+            'Record field "active" must be a boolean or "true"/"false" string',
+        );
+        expect(() => getBooleanValue({ active: 1 }, 'active')).toThrow(
+            'Record field "active" must be a boolean or "true"/"false" string',
+        );
+    });
+
+    it('accepts only finite, nonblank numeric record fields', () => {
+        expect(getNumberValue({ amount: 12.5 }, 'amount')).toBe(12.5);
+        expect(getNumberValue({ amount: ' 12.5 ' }, 'amount')).toBe(12.5);
+        expect(getNumberValue({ amount: '' }, 'amount')).toBeUndefined();
+        expect(getNumberValue({ amount: ' ' }, 'amount')).toBeUndefined();
+        expect(getNumberValue({ amount: Number.POSITIVE_INFINITY }, 'amount')).toBeUndefined();
+        expect(getNumberValue({ amount: 'Infinity' }, 'amount')).toBeUndefined();
+    });
+
     it('fails when any requested facet value is unresolved', async () => {
         const ctx = { languageCode: 'en' } as never;
         const facetValueService = {

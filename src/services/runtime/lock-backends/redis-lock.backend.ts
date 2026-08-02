@@ -1,6 +1,6 @@
 import { LockBackend, LockState, LockStatus } from './lock-backend.interface';
-import { DataHubLogger } from '../../logger';
-import { DISTRIBUTED_LOCK } from '../../../constants/index';
+import type { DataHubLogger } from '../../logger/datahub-logger';
+import { DISTRIBUTED_LOCK } from '../../../constants/defaults/reliability-defaults';
 import { getErrorMessage } from '../../../utils/error.utils';
 import {
     createConfiguredRedisClient,

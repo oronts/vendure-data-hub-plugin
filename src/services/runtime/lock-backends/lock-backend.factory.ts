@@ -1,6 +1,6 @@
 import { TransactionalConnection } from '@vendure/core';
 import { LockBackendType } from '../../../constants/enums';
-import { DataHubLogger } from '../../logger';
+import type { DataHubLogger } from '../../logger/datahub-logger';
 import { LockBackend, MemoryLockEntry } from './lock-backend.interface';
 import { MemoryLockBackend } from './memory-lock.backend';
 import { RedisLockBackend } from './redis-lock.backend';

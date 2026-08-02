@@ -180,9 +180,7 @@ export interface StockAdjustLoaderConfig {
     skuField: string;
     /** Field containing stock by location map */
     stockByLocationField?: string;
-    /** Field containing quantity */
-    quantityField?: string;
-    /** Use absolute values (not delta) */
+    /** Use absolute values (default true); false applies quantity deltas */
     absolute?: boolean;
 }
 
@@ -283,4 +281,3 @@ export interface OrderTransitionLoaderConfig {
     /** Target state */
     state: string;
 }
-

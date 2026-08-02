@@ -17,6 +17,7 @@ import {
     getAssetMimeType,
 } from '../../../utils/asset-file.utils';
 import { sanitizeUrlForLogging } from '../../../utils/url-sanitize.utils';
+import { getStringValue } from '../../../loaders/shared-helpers';
 
 interface AssetImportConfig {
     channel?: string;
@@ -26,8 +27,18 @@ interface AssetImportConfig {
     tagsField?: string;
 }
 
-interface AssetRecord {
-    [key: string]: unknown;
+function getAssetTags(record: RecordObject, field: string | undefined): string[] | undefined {
+    if (!field || record[field] == null) return undefined;
+    const value = record[field];
+    if (!Array.isArray(value)) {
+        throw new Error(`Asset tags field "${field}" must be an array of nonblank strings`);
+    }
+    return value.map(tag => {
+        if (typeof tag !== 'string' || tag.trim() === '') {
+            throw new Error(`Asset tags field "${field}" must be an array of nonblank strings`);
+        }
+        return tag.trim();
+    });
 }
 
 @Injectable()
@@ -50,15 +61,22 @@ export class AssetImportHandler implements LoaderHandler {
 
         for (const rec of input) {
             try {
-                const record = rec as AssetRecord;
                 const sourceUrlField = cfg.sourceUrlField ?? 'sourceUrl';
                 const filenameField = cfg.filenameField ?? 'filename';
                 const nameField = cfg.nameField ?? 'name';
-                const sourceUrl = String(record[sourceUrlField] ?? '');
-                const filename = String(record[filenameField] ?? extractFilenameFromUrl(sourceUrl));
-                const name = String(record[nameField] ?? filename);
+                const sourceUrl = getStringValue(rec, sourceUrlField);
 
-                if (!sourceUrl) { fail++; continue; }
+                if (!sourceUrl) {
+                    if (onRecordError) {
+                        await onRecordError(step.key, 'Missing required field: sourceUrl', rec);
+                    }
+                    fail++;
+                    continue;
+                }
+                const filename = getStringValue(rec, filenameField)
+                    ?? extractFilenameFromUrl(sourceUrl);
+                const name = getStringValue(rec, nameField) ?? filename;
+                const tags = getAssetTags(rec, cfg.tagsField);
 
                 let opCtx = ctx;
                 if (cfg.channel) {
@@ -95,10 +113,6 @@ export class AssetImportHandler implements LoaderHandler {
                     mimetype: mimeType,
                     createReadStream: () => createReadStreamFromBuffer(fileData),
                 };
-
-                const tags = cfg.tagsField && Array.isArray(record[cfg.tagsField])
-                    ? record[cfg.tagsField] as string[]
-                    : undefined;
 
                 const result = await this.assetService.create(opCtx, { file, tags });
 

@@ -23,7 +23,12 @@ import { LoaderHandler, LoaderSimulationResult } from './types';
 import { assertCreateDuplicateCanBeSkipped, CreateDuplicateHandlingConfig } from './duplicate-handling';
 import { LoadStrategy } from '../../../constants/enums';
 import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
-import { getStringValue, getObjectValue, slugify } from '../../../loaders/shared-helpers';
+import {
+    getBooleanValue,
+    getObjectValue,
+    getStringValue,
+    slugify,
+} from '../../../loaders/shared-helpers';
 import { parseTranslationsInput, resolveChannelIds } from './shared-lookups';
 import { LOGGER_CONTEXTS } from '../../../constants/core';
 import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger/datahub-logger';
@@ -164,7 +169,7 @@ export class CollectionHandler implements LoaderHandler {
 
                 // Resolve isPrivate from record
                 const isPrivate = cfg.isPrivateField
-                    ? Boolean(rec[cfg.isPrivateField])
+                    ? getBooleanValue(rec, cfg.isPrivateField)
                     : undefined;
 
                 // Build translations

@@ -1,9 +1,10 @@
 import * as crypto from 'crypto';
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { TransactionalConnection } from '@vendure/core';
-import { DataHubLoggerFactory, DataHubLogger } from '../logger';
-import { LockBackend, MemoryLockEntry, LockBackendFactory } from './lock-backends';
-import { DISTRIBUTED_LOCK } from '../../constants/index';
+import { DataHubLoggerFactory, type DataHubLogger } from '../logger/datahub-logger';
+import type { LockBackend, MemoryLockEntry } from './lock-backends/lock-backend.interface';
+import { LockBackendFactory } from './lock-backends/lock-backend.factory';
+import { DISTRIBUTED_LOCK } from '../../constants/defaults/reliability-defaults';
 import { sleep } from '../../utils/retry.utils';
 import { getErrorMessage } from '../../utils/error.utils';
 import { generateTimestampedId } from '../../utils/id-generation.utils';

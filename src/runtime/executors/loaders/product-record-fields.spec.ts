@@ -69,7 +69,12 @@ describe('product record fields', () => {
     it('normalizes stock, inventory, enabled, and custom fields', () => {
         const fields = coerceProductFields({
             stock: -2.4,
-            locations: { Berlin: '4.9', Hamburg: -1, Invalid: 'not-a-number' },
+            locations: {
+                Berlin: '4.9',
+                Hamburg: -1,
+                Blank: ' ',
+                Invalid: 'not-a-number',
+            },
             published: 'TRUE',
             custom: { source: 'erp' },
         }, {
@@ -88,6 +93,13 @@ describe('product record fields', () => {
             enabled: true,
             customFields: { source: 'erp' },
         });
+    });
+
+    it('preserves false strings and rejects invalid boolean values', () => {
+        expect(coerceProductFields({ enabled: 'FALSE' }, undefined, 2).enabled).toBe(false);
+        expect(() => coerceProductFields({ enabled: 'disabled' }, undefined, 2)).toThrow(
+            'Record field "enabled" must be a boolean or "true"/"false" string',
+        );
     });
 
     it('builds Vendure variant price and stock inputs without empty arrays', () => {
