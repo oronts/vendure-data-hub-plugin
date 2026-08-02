@@ -55,12 +55,12 @@ export function FileUploadField({ field: _field, value, onChange, compact, disab
     const handleDrop = useCallback((e: React.DragEvent) => {
         e.preventDefault();
         const file = e.dataTransfer.files[0];
-        if (file && !disabled) handleFileSelect(file);
+        if (file && !disabled) void handleFileSelect(file);
     }, [disabled, handleFileSelect]);
 
     const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
-        if (file) handleFileSelect(file);
+        if (file) void handleFileSelect(file);
     }, [handleFileSelect]);
 
     const handleDragOver = useCallback((e: React.DragEvent) => {

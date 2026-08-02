@@ -21,6 +21,12 @@
       "varsIgnorePattern": "^_"
     }],
     "@typescript-eslint/no-explicit-any": "error",
+    "@typescript-eslint/no-floating-promises": "error",
+    "@typescript-eslint/no-misused-promises": ["error", {
+      "checksVoidReturn": {
+        "attributes": false
+      }
+    }],
     "@typescript-eslint/explicit-module-boundary-types": "off",
     "@typescript-eslint/no-non-null-assertion": "off",
     "react-hooks/rules-of-hooks": "error",
@@ -41,6 +47,13 @@
       "files": ["dev-server/**/*.ts", "scripts/**/*.ts"],
       "rules": {
         "no-console": "off"
+      }
+    },
+    {
+      "files": ["**/*spec.ts", "**/*spec.tsx", "**/*test.ts", "**/*test.tsx"],
+      "rules": {
+        "@typescript-eslint/no-floating-promises": "off",
+        "@typescript-eslint/no-misused-promises": "off"
       }
     }
   ]

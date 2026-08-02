@@ -114,11 +114,15 @@ function PipelineDetailPage({ route }: { route: DashboardRoute }) {
             definition: p?.definition ?? {},
         }),
         params: { id: params.id },
-        onSuccess: async data => {
+        onSuccess: data => {
             toast.success(t`Successfully saved pipeline`);
             resetForm();
             if (creating && typeof data === 'object' && data !== null && 'id' in data) {
-                await navigate({ to: `../$id`, params: { id: data.id } });
+                void navigate({ to: `../$id`, params: { id: data.id } }).catch(error => {
+                    toast.error(t`Pipeline saved, but navigation failed`, {
+                        description: getErrorMessage(error),
+                    });
+                });
             }
         },
         onError: err => {
@@ -142,10 +146,18 @@ function PipelineDetailPage({ route }: { route: DashboardRoute }) {
         form.setValue('definition', { ...def }, { shouldDirty: true });
     }, [form]);
 
-    const handleStatusChange = React.useCallback(() => {
-        queryClient.invalidateQueries({ queryKey: pipelineKeys.lists() });
-        refreshEntity();
-    }, [queryClient, refreshEntity]);
+    const refreshPipeline = React.useCallback(() => {
+        void Promise.all([
+            queryClient.invalidateQueries({ queryKey: pipelineKeys.lists() }),
+            refreshEntity(),
+        ]).catch(error => {
+            toast.error(t`Failed to refresh pipeline`, {
+                description: getErrorMessage(error),
+            });
+        });
+    }, [queryClient, refreshEntity, t]);
+
+    const handleStatusChange = refreshPipeline;
 
     const handleRevisionApplied = React.useCallback((
         pipeline: AppliedPipelineRevision,
@@ -163,9 +175,8 @@ function PipelineDetailPage({ route }: { route: DashboardRoute }) {
                 : {},
         });
         setHistoryOpen(false);
-        queryClient.invalidateQueries({ queryKey: pipelineKeys.lists() });
-        refreshEntity();
-    }, [form, queryClient, refreshEntity]);
+        refreshPipeline();
+    }, [form, refreshPipeline]);
 
     // Scroll to runs section if hash is #runs
     React.useEffect(() => {

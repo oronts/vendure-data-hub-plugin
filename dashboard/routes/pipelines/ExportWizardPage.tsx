@@ -101,7 +101,7 @@ function ExportWizardPageContent() {
         onSuccess: async (data) => {
             await queryClient.invalidateQueries({ queryKey: pipelineKeys.lists() });
             toast.success(t`Export configuration created`);
-            void navigate({ to: `${ROUTES.PIPELINES}/${data.id}` });
+            await navigate({ to: `${ROUTES.PIPELINES}/${data.id}` });
         },
         onError: (err) => {
             toast.error(t`Failed to create export configuration`, {
@@ -116,8 +116,12 @@ function ExportWizardPageContent() {
     }, [createPipeline]);
 
     const handleCancel = React.useCallback(() => {
-        void navigate({ to: ROUTES.PIPELINES });
-    }, [navigate]);
+        void navigate({ to: ROUTES.PIPELINES }).catch(error => {
+            toast.error(t`Navigation failed`, {
+                description: getErrorMessage(error),
+            });
+        });
+    }, [navigate, t]);
 
     return (
         <Page>

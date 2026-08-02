@@ -210,11 +210,13 @@ export function useCancelRun() {
     return useMutation({
         mutationFn: (id: string) =>
             api.mutate(cancelRunDocument, { id }).then((res) => res.cancelDataHubPipelineRun),
-        onSuccess: (data) => {
-            queryClient.invalidateQueries({ queryKey: runKeys.lists() });
-            if (data?.id) {
-                queryClient.invalidateQueries({ queryKey: runKeys.detail(String(data.id)) });
-            }
+        onSuccess: async data => {
+            await Promise.all([
+                queryClient.invalidateQueries({ queryKey: runKeys.lists() }),
+                ...(data?.id
+                    ? [queryClient.invalidateQueries({ queryKey: runKeys.detail(String(data.id)) })]
+                    : []),
+            ]);
         },
         onError: createMutationErrorHandler(
             t`Failed to cancel pipeline run`,
@@ -230,12 +232,14 @@ export function useRetryError() {
     return useMutation({
         mutationFn: ({ errorId, patch }: { errorId: string; patch?: Record<string, unknown> }) =>
             api.mutate(retryErrorDocument, { errorId, patch }).then((res) => res.retryDataHubRecord),
-        onSuccess: (result) => {
+        onSuccess: async result => {
             if (!result.success) {
                 return;
             }
-            queryClient.invalidateQueries({ queryKey: runKeys.all });
-            queryClient.invalidateQueries({ queryKey: queueKeys.all });
+            await Promise.all([
+                queryClient.invalidateQueries({ queryKey: runKeys.all }),
+                queryClient.invalidateQueries({ queryKey: queueKeys.all }),
+            ]);
         },
         onError: createMutationErrorHandler(
             t`Failed to retry record`,
@@ -251,11 +255,13 @@ export function useApproveGate() {
     return useMutation({
         mutationFn: ({ runId, stepKey }: { runId: string; stepKey: string }) =>
             api.mutate(approveGateDocument, { runId, stepKey }).then((res) => res.approveDataHubGate),
-        onSuccess: (data) => {
-            queryClient.invalidateQueries({ queryKey: runKeys.lists() });
-            if (data?.run?.id) {
-                queryClient.invalidateQueries({ queryKey: runKeys.detail(String(data.run.id)) });
-            }
+        onSuccess: async data => {
+            await Promise.all([
+                queryClient.invalidateQueries({ queryKey: runKeys.lists() }),
+                ...(data?.run?.id
+                    ? [queryClient.invalidateQueries({ queryKey: runKeys.detail(String(data.run.id)) })]
+                    : []),
+            ]);
         },
         onError: createMutationErrorHandler(
             t`Failed to approve gate`,
@@ -271,11 +277,13 @@ export function useRejectGate() {
     return useMutation({
         mutationFn: ({ runId, stepKey }: { runId: string; stepKey: string }) =>
             api.mutate(rejectGateDocument, { runId, stepKey }).then((res) => res.rejectDataHubGate),
-        onSuccess: (data) => {
-            queryClient.invalidateQueries({ queryKey: runKeys.lists() });
-            if (data?.run?.id) {
-                queryClient.invalidateQueries({ queryKey: runKeys.detail(String(data.run.id)) });
-            }
+        onSuccess: async data => {
+            await Promise.all([
+                queryClient.invalidateQueries({ queryKey: runKeys.lists() }),
+                ...(data?.run?.id
+                    ? [queryClient.invalidateQueries({ queryKey: runKeys.detail(String(data.run.id)) })]
+                    : []),
+            ]);
         },
         onError: createMutationErrorHandler(
             t`Failed to reject gate`,

@@ -52,8 +52,8 @@ export function useUpdateSettings(feedback: SettingsMutationFeedback) {
     return useMutation({
         mutationFn: (input: DataHubSettingsInput) =>
             api.mutate(setSettingsDocument, { input }).then((res) => res.updateDataHubSettings),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: settingsKeys.detail() });
+        onSuccess: async () => {
+            await queryClient.invalidateQueries({ queryKey: settingsKeys.detail() });
             toast.success(feedback.successMessage);
         },
         onError: error => {

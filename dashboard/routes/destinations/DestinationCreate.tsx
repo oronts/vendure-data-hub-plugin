@@ -161,13 +161,17 @@ function DestinationCreatePage() {
         registerDestination.mutate(
             prepareManagedDestinationInput(draft, selectedSchema),
             {
-                onSuccess: async result => {
+                onSuccess: result => {
                     if (!result.success) {
                         toast.error(t`Failed to create destination`);
                         return;
                     }
                     toast.success(t`Destination created`);
-                    await navigate({ to: ROUTES.DESTINATIONS });
+                    void navigate({ to: ROUTES.DESTINATIONS }).catch(error => {
+                        toast.error(t`Destination created, but navigation failed`, {
+                            description: getErrorMessage(error),
+                        });
+                    });
                 },
                 onError: error => toast.error(
                     t`Failed to create destination`,

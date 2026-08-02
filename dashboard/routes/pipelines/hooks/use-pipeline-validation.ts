@@ -91,7 +91,7 @@ export function usePipelineValidation(definition: unknown): {
 
         const requestId = ++requestIdRef.current;
 
-        const timer = setTimeout(async () => {
+        const validateDefinition = async () => {
             try {
                 const out = await validateMutation.mutateAsync(definition);
                 if (requestId !== requestIdRef.current) return;
@@ -109,6 +109,9 @@ export function usePipelineValidation(definition: unknown): {
                     warnings: [],
                 });
             }
+        };
+        const timer = setTimeout(() => {
+            void validateDefinition();
         }, VALIDATION_DEBOUNCE_MS);
 
         return () => {

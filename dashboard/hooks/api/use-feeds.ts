@@ -156,9 +156,11 @@ export function useCreateFeed() {
         mutationFn: (input: DataHubFeedInput) => (
             api.mutate(createFeedDocument, { input }).then(response => response.createDataHubFeed)
         ),
-        onSuccess: feed => {
-            void queryClient.invalidateQueries({ queryKey: feedKeys.lists() });
-            void queryClient.invalidateQueries({ queryKey: feedKeys.detail(String(feed.id)) });
+        onSuccess: async feed => {
+            await Promise.all([
+                queryClient.invalidateQueries({ queryKey: feedKeys.lists() }),
+                queryClient.invalidateQueries({ queryKey: feedKeys.detail(String(feed.id)) }),
+            ]);
         },
     });
 }
@@ -169,9 +171,11 @@ export function useUpdateFeed() {
         mutationFn: ({ id, input }: { id: string; input: DataHubFeedInput }) => (
             api.mutate(updateFeedDocument, { id, input }).then(response => response.updateDataHubFeed)
         ),
-        onSuccess: feed => {
-            void queryClient.invalidateQueries({ queryKey: feedKeys.lists() });
-            void queryClient.invalidateQueries({ queryKey: feedKeys.detail(String(feed.id)) });
+        onSuccess: async feed => {
+            await Promise.all([
+                queryClient.invalidateQueries({ queryKey: feedKeys.lists() }),
+                queryClient.invalidateQueries({ queryKey: feedKeys.detail(String(feed.id)) }),
+            ]);
         },
     });
 }
@@ -190,8 +194,8 @@ export function useDeleteFeed() {
             }
             return result;
         },
-        onSuccess: () => {
-            void queryClient.invalidateQueries({ queryKey: feedKeys.all });
+        onSuccess: async () => {
+            await queryClient.invalidateQueries({ queryKey: feedKeys.all });
         },
     });
 }
@@ -202,8 +206,8 @@ export function useGenerateFeed() {
         mutationFn: (feedCode: string) => (
             api.mutate(generateFeedDocument, { feedCode }).then(response => response.generateDataHubFeed)
         ),
-        onSuccess: () => {
-            void queryClient.invalidateQueries({ queryKey: feedKeys.all });
+        onSuccess: async () => {
+            await queryClient.invalidateQueries({ queryKey: feedKeys.all });
         },
     });
 }

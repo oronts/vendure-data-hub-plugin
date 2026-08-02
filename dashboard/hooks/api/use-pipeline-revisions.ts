@@ -92,11 +92,13 @@ export function usePipelineRevisionDiff(
 
 function useRevisionMutationInvalidation(pipelineId: string | undefined) {
     const queryClient = useQueryClient();
-    return () => {
-        queryClient.invalidateQueries({ queryKey: pipelineKeys.lists() });
-        if (pipelineId) {
-            queryClient.invalidateQueries({ queryKey: pipelineKeys.detail(pipelineId) });
-        }
+    return async () => {
+        await Promise.all([
+            queryClient.invalidateQueries({ queryKey: pipelineKeys.lists() }),
+            ...(pipelineId
+                ? [queryClient.invalidateQueries({ queryKey: pipelineKeys.detail(pipelineId) })]
+                : []),
+        ]);
     };
 }
 

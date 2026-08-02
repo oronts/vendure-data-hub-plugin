@@ -1276,7 +1276,6 @@ msgstr "-{count} Schritt"
 msgid "-{count} steps"
 msgstr "-{count} Schritte"
 
-#: dashboard/components/shared/step-config/LoadTestResults.tsx:58
 #: dashboard/components/wizards/import-wizard/MappingStep.tsx:246
 #: dashboard/components/wizards/import-wizard/TransformPipelineCard.tsx:92
 msgid "(empty)"
@@ -1611,7 +1610,7 @@ msgid "A feed ID is required"
 msgstr "Eine Feed-ID ist erforderlich"
 
 #: dashboard/hooks/api/use-pipelines.ts:264
-#: dashboard/hooks/api/use-pipelines.ts:345
+#: dashboard/hooks/api/use-pipelines.ts:347
 msgid "A pipeline ID is required"
 msgstr "Eine Pipeline-ID ist erforderlich"
 
@@ -1619,7 +1618,7 @@ msgstr "Eine Pipeline-ID ist erforderlich"
 msgid "A reviewer will check the configuration before publishing."
 msgstr "Die Konfiguration wird vor der Veröffentlichung geprüft."
 
-#: dashboard/routes/secrets/SecretDetail.tsx:139
+#: dashboard/routes/secrets/SecretDetail.tsx:143
 msgid "A secret value cannot be replaced and cleared at the same time."
 msgstr "Ein geheimer Wert kann nicht gleichzeitig ersetzt und gelöscht werden."
 
@@ -1631,7 +1630,7 @@ msgstr "Aktion"
 #: dashboard/routes/feeds/FeedsPage.tsx:144
 #: dashboard/routes/pipelines/PipelineRunsBlock.tsx:225
 #: dashboard/routes/pipelines/RunErrorsList.tsx:138
-#: dashboard/routes/queues/ConsumersTable.tsx:155
+#: dashboard/routes/queues/ConsumersTable.tsx:174
 #: dashboard/routes/queues/DeadLettersTable.tsx:121
 msgid "Actions"
 msgstr "Aktionen"
@@ -1642,7 +1641,7 @@ msgid "Actions for feed {0}"
 msgstr "Aktionen für Feed {0}"
 
 #: dashboard/components/shared/trigger-config/TriggerForm.tsx:469
-#: dashboard/routes/queues/ConsumersTable.tsx:59
+#: dashboard/routes/queues/ConsumersTable.tsx:62
 msgid "Active"
 msgstr "Aktiv"
 
@@ -1650,7 +1649,7 @@ msgstr "Aktiv"
 msgid "Active and ready to run"
 msgstr "Aktiv und ausführungsbereit"
 
-#: dashboard/routes/destinations/DestinationCreate.tsx:216
+#: dashboard/routes/destinations/DestinationCreate.tsx:220
 msgid "active channel"
 msgstr "aktiver Kanal"
 
@@ -1735,8 +1734,7 @@ msgstr "Feldzuordnung hinzufügen"
 msgid "Add Filter"
 msgstr "Filter hinzufügen"
 
-#: dashboard/components/common/HeadersEditor.tsx:103
-#: dashboard/components/common/HttpHeadersFields.tsx:112
+#: dashboard/components/common/HeadersEditor.tsx:158
 msgid "Add header"
 msgstr "Header hinzufügen"
 
@@ -1748,10 +1746,6 @@ msgstr "Fügen Sie Hooks über die Pipeline-Builder-DSL hinzu mit"
 #: dashboard/components/wizards/import-wizard/MappingStep.tsx:85
 msgid "Add mapping"
 msgstr "Zuordnung hinzufügen"
-
-#: dashboard/components/common/HttpHeadersFields.tsx:109
-msgid "Add new HTTP header"
-msgstr "Neuen HTTP-Header hinzufügen"
 
 #: dashboard/components/shared/step-config/advanced-editors/MultiOperatorEditor.tsx:123
 msgid "Add operator"
@@ -2016,11 +2010,19 @@ msgstr "Pipeline-Knoten automatisch anordnen"
 msgid "Auto-refreshing every {seconds}s"
 msgstr "Automatische Aktualisierung alle {seconds} s"
 
+#: dashboard/routes/queues/ConsumersTable.tsx:75
+msgid "Auto-start off"
+msgstr "Automatischer Start deaktiviert"
+
+#: dashboard/routes/queues/ConsumersTable.tsx:75
+msgid "Auto-start on"
+msgstr "Automatischer Start aktiviert"
+
 #: dashboard/routes/feeds/FeedDefinitionFields.tsx:185
 msgid "Automatic generation"
 msgstr "Automatische Generierung"
 
-#: dashboard/routes/feeds/FeedDetail.tsx:294
+#: dashboard/routes/feeds/FeedDetail.tsx:305
 msgid "Availability"
 msgstr "Verfügbarkeit"
 
@@ -2149,7 +2151,7 @@ msgstr "Nach Ebene"
 #: dashboard/components/shared/step-config/OperatorCard.tsx:244
 #: dashboard/components/shared/wizard/WizardFooter.tsx:24
 #: dashboard/components/wizards/import-wizard/TransformConfigDialog.tsx:106
-#: dashboard/routes/destinations/DestinationCreate.tsx:225
+#: dashboard/routes/destinations/DestinationCreate.tsx:229
 #: dashboard/routes/pipelines/components/PipelineRevisionActions.tsx:272
 #: dashboard/routes/pipelines/components/ReviewActionDialogs.tsx:53
 #: dashboard/routes/pipelines/RunErrorsList.tsx:180
@@ -2174,16 +2176,16 @@ msgid "Cancelling..."
 msgstr "Wird abgebrochen..."
 
 #. placeholder {0}: validation.count
-#: dashboard/routes/pipelines/PipelineDetail.tsx:186
+#: dashboard/routes/pipelines/PipelineDetail.tsx:197
 msgid "Cannot save: {0} validation error"
 msgstr "Speichern nicht möglich: {0} Validierungsfehler"
 
 #. placeholder {0}: validation.count
-#: dashboard/routes/pipelines/PipelineDetail.tsx:187
+#: dashboard/routes/pipelines/PipelineDetail.tsx:198
 msgid "Cannot save: {0} validation errors"
 msgstr "Speichern nicht möglich: {0} Validierungsfehler"
 
-#: dashboard/routes/pipelines/components/PipelineFormFields.tsx:152
+#: dashboard/routes/pipelines/components/PipelineFormFields.tsx:154
 #: dashboard/routes/pipelines/PipelinesList.tsx:104
 msgid "Capabilities"
 msgstr "Fähigkeiten"
@@ -2210,7 +2212,7 @@ msgstr "Kanalbezogene Data-Hub-Ereignisse (Aktualisierung alle {0} Sekunden)"
 msgid "Channels"
 msgstr "Channels"
 
-#: dashboard/routes/secrets/SecretDetail.tsx:169
+#: dashboard/routes/secrets/SecretDetail.tsx:173
 msgid "Checking inline storage availability…"
 msgstr "Verfügbarkeit der Inline-Speicherung wird geprüft…"
 
@@ -2234,12 +2236,12 @@ msgstr "Ziel auswählen"
 msgid "Choose a template"
 msgstr "Vorlage auswählen"
 
-#: dashboard/components/wizards/import-wizard/TemplateStep.tsx:123
+#: dashboard/components/wizards/import-wizard/TemplateStep.tsx:127
 msgid "Choose a template to preview its configuration."
 msgstr "Wählen Sie eine Vorlage aus, um ihre Konfiguration anzuzeigen."
 
 #. placeholder {0}: getErrorMessage(error)
-#: dashboard/components/wizards/import-wizard/TemplateStep.tsx:97
+#: dashboard/components/wizards/import-wizard/TemplateStep.tsx:101
 msgid "Choose a template: {0}"
 msgstr "Vorlage auswählen: {0}"
 
@@ -2279,15 +2281,15 @@ msgstr "Wählen Sie die zu exportierende Vendure-Entität aus"
 msgid "Clear run ID filter"
 msgstr "Filter für Lauf-ID löschen"
 
-#: dashboard/routes/secrets/SecretDetail.tsx:424
+#: dashboard/routes/secrets/SecretDetail.tsx:428
 msgid "Clear stored secret value?"
 msgstr "Gespeicherten Zugangsdatenwert löschen?"
 
-#: dashboard/routes/secrets/SecretDetail.tsx:441
+#: dashboard/routes/secrets/SecretDetail.tsx:445
 msgid "Clear stored value"
 msgstr "Gespeicherten Wert löschen"
 
-#: dashboard/routes/secrets/SecretDetail.tsx:426
+#: dashboard/routes/secrets/SecretDetail.tsx:430
 msgid "Clear value"
 msgstr "Wert löschen"
 
@@ -2304,19 +2306,19 @@ msgid "Close"
 msgstr "Schließen"
 
 #: dashboard/routes/adapters/AdaptersTable.tsx:47
-#: dashboard/routes/connections/ConnectionDetail.tsx:220
+#: dashboard/routes/connections/ConnectionDetail.tsx:224
 #: dashboard/routes/connections/ConnectionsList.tsx:47
 #: dashboard/routes/feeds/FeedDefinitionFields.tsx:93
-#: dashboard/routes/pipelines/components/PipelineFormFields.tsx:84
+#: dashboard/routes/pipelines/components/PipelineFormFields.tsx:86
 #: dashboard/routes/pipelines/components/ValidationPanel.tsx:102
-#: dashboard/routes/secrets/SecretDetail.tsx:233
+#: dashboard/routes/secrets/SecretDetail.tsx:237
 #: dashboard/routes/secrets/SecretsList.tsx:87
 msgid "Code"
 msgstr "Code"
 
-#: dashboard/routes/connections/ConnectionDetail.tsx:230
-#: dashboard/routes/pipelines/components/PipelineFormFields.tsx:94
-#: dashboard/routes/secrets/SecretDetail.tsx:242
+#: dashboard/routes/connections/ConnectionDetail.tsx:234
+#: dashboard/routes/pipelines/components/PipelineFormFields.tsx:96
+#: dashboard/routes/secrets/SecretDetail.tsx:246
 msgid "Code is required"
 msgstr "Code ist erforderlich"
 
@@ -2381,8 +2383,8 @@ msgstr "Kompatibilität"
 msgid "Complete"
 msgstr "Abschließen"
 
-#: dashboard/routes/connections/ConnectionDetail.tsx:158
-#: dashboard/routes/connections/ConnectionDetail.tsx:319
+#: dashboard/routes/connections/ConnectionDetail.tsx:162
+#: dashboard/routes/connections/ConnectionDetail.tsx:323
 msgid "Complete or correct the connection settings before saving."
 msgstr "Vervollständigen oder korrigieren Sie die Verbindungseinstellungen vor dem Speichern."
 
@@ -2429,7 +2431,7 @@ msgstr "Konfigurationsfelder"
 msgid "Configuration has been reviewed"
 msgstr "Die Konfiguration wurde geprüft"
 
-#: dashboard/routes/destinations/DestinationCreate.tsx:351
+#: dashboard/routes/destinations/DestinationCreate.tsx:355
 msgid "Configuration unavailable"
 msgstr "Konfiguration nicht verfügbar"
 
@@ -2512,7 +2514,11 @@ msgstr "Verbindung fehlgeschlagen"
 msgid "Connection saved successfully"
 msgstr "Verbindung erfolgreich gespeichert"
 
-#: dashboard/routes/connections/ConnectionDetail.tsx:307
+#: dashboard/routes/connections/ConnectionDetail.tsx:96
+msgid "Connection saved, but navigation failed"
+msgstr "Verbindung gespeichert, aber Navigation fehlgeschlagen"
+
+#: dashboard/routes/connections/ConnectionDetail.tsx:311
 msgid "Connection Settings"
 msgstr "Verbindungseinstellungen"
 
@@ -2520,11 +2526,11 @@ msgstr "Verbindungseinstellungen"
 msgid "Connection successful"
 msgstr "Verbindung erfolgreich"
 
-#: dashboard/routes/connections/ConnectionDetail.tsx:250
+#: dashboard/routes/connections/ConnectionDetail.tsx:254
 msgid "Connection Type"
 msgstr "Verbindungstyp"
 
-#: dashboard/routes/connections/ConnectionDetail.tsx:256
+#: dashboard/routes/connections/ConnectionDetail.tsx:260
 msgid "Connection type is required"
 msgstr "Verbindungstyp ist erforderlich"
 
@@ -2622,13 +2628,13 @@ msgstr "{entityLabel} konnte nicht aus dem Kanal entfernt werden"
 msgid "Could not update schema metadata"
 msgstr "Schemametadaten konnten nicht aktualisiert werden"
 
-#: dashboard/routes/pipelines/StepCounters.tsx:13
+#: dashboard/routes/pipelines/StepCounters.tsx:14
 msgid "Counters"
 msgstr "Zähler"
 
-#: dashboard/routes/connections/ConnectionDetail.tsx:196
-#: dashboard/routes/pipelines/PipelineDetail.tsx:223
-#: dashboard/routes/secrets/SecretDetail.tsx:195
+#: dashboard/routes/connections/ConnectionDetail.tsx:200
+#: dashboard/routes/pipelines/PipelineDetail.tsx:234
+#: dashboard/routes/secrets/SecretDetail.tsx:199
 msgid "Create"
 msgstr "Erstellen"
 
@@ -2640,11 +2646,11 @@ msgstr "Erstellen Sie ein Ziel, um exportierte Daten für diesen Kanal bereitzus
 msgid "Create a feed to generate and schedule product catalog artifacts for this channel."
 msgstr "Erstellen Sie einen Feed, um Produktkatalogartefakte für diesen Kanal zu generieren und zu planen."
 
-#: dashboard/components/wizards/import-wizard/TemplateStep.tsx:75
+#: dashboard/components/wizards/import-wizard/TemplateStep.tsx:79
 msgid "Create custom import"
 msgstr "Benutzerdefinierten Import erstellen"
 
-#: dashboard/routes/destinations/DestinationCreate.tsx:234
+#: dashboard/routes/destinations/DestinationCreate.tsx:238
 #: dashboard/routes/destinations/DestinationsList.tsx:166
 msgid "Create destination"
 msgstr "Ziel erstellen"
@@ -2653,7 +2659,7 @@ msgstr "Ziel erstellen"
 msgid "Create Export"
 msgstr "Export erstellen"
 
-#: dashboard/routes/feeds/FeedDetail.tsx:244
+#: dashboard/routes/feeds/FeedDetail.tsx:255
 msgid "Create feed"
 msgstr "Feed erstellen"
 
@@ -2667,11 +2673,11 @@ msgid "Create version"
 msgstr "Version erstellen"
 
 #: dashboard/components/shared/wizard/WizardFooter.tsx:44
-#: dashboard/routes/destinations/DestinationCreate.tsx:234
+#: dashboard/routes/destinations/DestinationCreate.tsx:238
 msgid "Creating..."
 msgstr "Wird erstellt..."
 
-#: dashboard/routes/destinations/DestinationCreate.tsx:354
+#: dashboard/routes/destinations/DestinationCreate.tsx:358
 msgid "Credentials must reference secrets; plaintext credentials are not stored here."
 msgstr "Anmeldedaten müssen auf Zugangsdaten verweisen; Klartext-Anmeldedaten werden hier nicht gespeichert."
 
@@ -2687,7 +2693,7 @@ msgstr "CSV, Excel, JSON oder XML"
 msgid "Current"
 msgstr "Aktuell"
 
-#: dashboard/routes/feeds/FeedDetail.tsx:265
+#: dashboard/routes/feeds/FeedDetail.tsx:276
 msgid "Current artifact"
 msgstr "Aktuelles Artefakt"
 
@@ -2702,7 +2708,7 @@ msgstr "Benutzerdefiniert"
 msgid "Custom generator code"
 msgstr "Code des benutzerdefinierten Generators"
 
-#: dashboard/components/common/HeadersEditor.tsx:23
+#: dashboard/components/common/HeadersEditor.tsx:43
 msgid "Custom Headers"
 msgstr "Benutzerdefinierte Header"
 
@@ -2746,7 +2752,7 @@ msgstr "Dead Letters sind Datensätze, deren Verarbeitung fehlgeschlagen ist und
 msgid "Dead-letter records awaiting manual review"
 msgstr "Dead-Letter-Datensätze zur manuellen Überprüfung"
 
-#: dashboard/components/common/HttpHeadersFields.tsx:97
+#: dashboard/components/common/HttpHeadersFields.tsx:26
 msgid "Default Headers"
 msgstr "Standard-Header"
 
@@ -2881,21 +2887,29 @@ msgstr "Beschreibung"
 msgid "Deselect All"
 msgstr "Auswahl aufheben"
 
+#: dashboard/routes/queues/ConsumersTable.tsx:162
+msgid "Desired"
+msgstr "Gewünscht"
+
 #: dashboard/components/wizards/export-wizard/DestinationStep.tsx:32
 #: dashboard/components/wizards/export-wizard/ExportWizard.tsx:53
 #: dashboard/components/wizards/export-wizard/ReviewStep.tsx:83
 #: dashboard/components/wizards/export-wizard/ReviewStep.tsx:126
-#: dashboard/routes/destinations/DestinationCreate.tsx:244
+#: dashboard/routes/destinations/DestinationCreate.tsx:248
 msgid "Destination"
 msgstr "Ziel"
 
-#: dashboard/routes/destinations/DestinationCreate.tsx:367
+#: dashboard/routes/destinations/DestinationCreate.tsx:371
 msgid "Destination configuration unavailable"
 msgstr "Zielkonfiguration nicht verfügbar"
 
 #: dashboard/routes/destinations/DestinationCreate.tsx:169
 msgid "Destination created"
 msgstr "Ziel erstellt"
+
+#: dashboard/routes/destinations/DestinationCreate.tsx:171
+msgid "Destination created, but navigation failed"
+msgstr "Ziel erstellt, aber Navigation fehlgeschlagen"
 
 #: dashboard/routes/destinations/DestinationsList.tsx:87
 msgid "Destination deleted"
@@ -2915,7 +2929,7 @@ msgstr "Zieltest fehlgeschlagen"
 msgid "Destination test passed"
 msgstr "Zieltest erfolgreich"
 
-#: dashboard/routes/destinations/DestinationCreate.tsx:304
+#: dashboard/routes/destinations/DestinationCreate.tsx:308
 msgid "Destination type"
 msgstr "Zieltyp"
 
@@ -2937,6 +2951,7 @@ msgstr "Richtung"
 
 #: dashboard/components/common/ConnectionSchemaFields.tsx:132
 #: dashboard/routes/destinations/DestinationsList.tsx:213
+#: dashboard/routes/queues/ConsumersTable.tsx:72
 msgid "Disabled"
 msgstr "Deaktiviert"
 
@@ -2944,7 +2959,7 @@ msgstr "Deaktiviert"
 msgid "Disabled and inactive"
 msgstr "Deaktiviert und inaktiv"
 
-#: dashboard/routes/destinations/DestinationCreate.tsx:329
+#: dashboard/routes/destinations/DestinationCreate.tsx:333
 msgid "Disabled destinations cannot receive exported data."
 msgstr "Deaktivierte Ziele können keine exportierten Daten empfangen."
 
@@ -3000,7 +3015,7 @@ msgstr "Testlauf erfolgreich abgeschlossen"
 msgid "Dry run does not persist changes to the database"
 msgstr "Der Testlauf speichert keine Änderungen in der Datenbank"
 
-#: dashboard/hooks/api/use-pipelines.ts:357
+#: dashboard/hooks/api/use-pipelines.ts:361
 #: dashboard/routes/pipelines/components/DryRunDialog.tsx:54
 #: dashboard/routes/pipelines/components/DryRunSummary.tsx:58
 msgid "Dry run failed"
@@ -3015,7 +3030,7 @@ msgid "Duplicate branch names detected"
 msgstr "Doppelte Zweignamen erkannt"
 
 #: dashboard/routes/logs/components/LogDetailDrawer.tsx:76
-#: dashboard/routes/logs/components/LogExplorerTab.tsx:336
+#: dashboard/routes/logs/components/LogExplorerTab.tsx:339
 #: dashboard/routes/pipelines/components/DryRunSummary.tsx:196
 #: dashboard/routes/pipelines/StepSummaryTable.tsx:32
 msgid "Duration"
@@ -3034,11 +3049,11 @@ msgstr "z. B. pfad.zum.feld"
 msgid "Edit"
 msgstr "Bearbeiten"
 
-#: dashboard/routes/pipelines/PipelineDetail.tsx:252
+#: dashboard/routes/pipelines/PipelineDetail.tsx:263
 msgid "Edit the deployed definition and restart the application. Review and publish remain available; removing the definition releases this pipeline to Dashboard ownership without deleting its history."
 msgstr "Bearbeiten Sie die bereitgestellte Definition und starten Sie die Anwendung neu. Prüfung und Veröffentlichung bleiben verfügbar; wenn Sie die Definition entfernen, wird diese Pipeline ohne Verlust ihres Verlaufs an die Dashboard-Verwaltung übergeben."
 
-#: dashboard/routes/connections/ConnectionDetail.tsx:210
+#: dashboard/routes/connections/ConnectionDetail.tsx:214
 msgid "Edit this connection in deployed configuration. Removing the definition releases the persisted connection to Dashboard ownership without deleting it."
 msgstr "Bearbeiten Sie diese Verbindung in der bereitgestellten Konfiguration. Wenn Sie die Definition entfernen, wird die gespeicherte Verbindung ohne Löschung an die Dashboard-Verwaltung übergeben."
 
@@ -3048,11 +3063,12 @@ msgstr "Parallele Schritte aktivieren"
 
 #: dashboard/components/common/ConnectionSchemaFields.tsx:132
 #: dashboard/components/shared/trigger-config/TriggerForm.tsx:405
-#: dashboard/routes/destinations/DestinationCreate.tsx:326
+#: dashboard/routes/destinations/DestinationCreate.tsx:330
 #: dashboard/routes/destinations/DestinationsList.tsx:213
 #: dashboard/routes/feeds/FeedDefinitionFields.tsx:190
-#: dashboard/routes/pipelines/components/PipelineFormFields.tsx:115
+#: dashboard/routes/pipelines/components/PipelineFormFields.tsx:117
 #: dashboard/routes/pipelines/PipelinesList.tsx:130
+#: dashboard/routes/queues/ConsumersTable.tsx:72
 msgid "Enabled"
 msgstr "Aktiviert"
 
@@ -3172,7 +3188,7 @@ msgstr "Geben Sie eine ganze Anzahl von Tagen ein. Mit 0 werden fehlgeschlagene 
 msgid "Enter a whole-number port between 1 and 65535"
 msgstr "Geben Sie einen ganzzahligen Port zwischen 1 und 65535 ein"
 
-#: dashboard/routes/secrets/SecretDetail.tsx:389
+#: dashboard/routes/secrets/SecretDetail.tsx:393
 msgid "Enter secret value"
 msgstr "Zugangsdatenwert eingeben"
 
@@ -3192,23 +3208,23 @@ msgstr "Entitätsfeldschemata"
 msgid "Entity metadata could not be loaded."
 msgstr "Entitätsmetadaten konnten nicht geladen werden."
 
-#: dashboard/routes/secrets/SecretDetail.tsx:336
+#: dashboard/routes/secrets/SecretDetail.tsx:340
 msgid "Environment variable name"
 msgstr "Name der Umgebungsvariable"
 
-#: dashboard/routes/secrets/SecretDetail.tsx:360
+#: dashboard/routes/secrets/SecretDetail.tsx:364
 msgid "Environment variable name is required"
 msgstr "Name der Umgebungsvariable ist erforderlich"
 
-#: dashboard/routes/secrets/SecretDetail.tsx:366
+#: dashboard/routes/secrets/SecretDetail.tsx:370
 msgid "Environment variable names should be uppercase with underscores and no spaces (e.g., MY_API_KEY)"
 msgstr "Umgebungsvariablennamen sollten in Großbuchstaben mit Unterstrichen und ohne Leerzeichen geschrieben werden (z. B. MY_API_KEY)"
 
-#: dashboard/routes/destinations/DestinationCreate.tsx:291
+#: dashboard/routes/destinations/DestinationCreate.tsx:295
 msgid "ERP API"
 msgstr "ERP-API"
 
-#: dashboard/routes/destinations/DestinationCreate.tsx:265
+#: dashboard/routes/destinations/DestinationCreate.tsx:269
 msgid "erp-api"
 msgstr "erp-api"
 
@@ -3344,7 +3360,7 @@ msgstr "Als Code exportieren"
 msgid "Export to external system"
 msgstr "In ein externes System exportieren"
 
-#: dashboard/routes/pipelines/ExportWizardPage.tsx:124
+#: dashboard/routes/pipelines/ExportWizardPage.tsx:128
 msgid "Export Wizard"
 msgstr "Export-Assistent"
 
@@ -3373,7 +3389,7 @@ msgid "Extracts sample records using the configured extractor."
 msgstr "Extrahiert Beispieldatensätze mit dem konfigurierten Extraktor."
 
 #: dashboard/routes/pipelines/components/DryRunSummary.tsx:163
-#: dashboard/routes/queues/ConsumersTable.tsx:149
+#: dashboard/routes/queues/ConsumersTable.tsx:168
 #: dashboard/routes/queues/QueuesPage.tsx:224
 msgid "Failed"
 msgstr "Fehlgeschlagen"
@@ -3382,7 +3398,7 @@ msgstr "Fehlgeschlagen"
 msgid "Failed records captured during this run"
 msgstr "Während dieses Laufs erfasste fehlgeschlagene Datensätze"
 
-#: dashboard/hooks/api/use-pipeline-runs.ts:261
+#: dashboard/hooks/api/use-pipeline-runs.ts:267
 #: dashboard/routes/pipelines/RunDetailsPanel.tsx:134
 msgid "Failed to approve gate"
 msgstr "Gate konnte nicht genehmigt werden"
@@ -3391,7 +3407,7 @@ msgstr "Gate konnte nicht genehmigt werden"
 msgid "Failed to archive pipeline"
 msgstr "Pipeline konnte nicht archiviert werden"
 
-#: dashboard/hooks/api/use-pipeline-runs.ts:220
+#: dashboard/hooks/api/use-pipeline-runs.ts:222
 msgid "Failed to cancel pipeline run"
 msgstr "Pipeline-Ausführung konnte nicht abgebrochen werden"
 
@@ -3404,7 +3420,7 @@ msgid "Failed to copy"
 msgstr "Kopieren fehlgeschlagen"
 
 #: dashboard/routes/destinations/DestinationCreate.tsx:166
-#: dashboard/routes/destinations/DestinationCreate.tsx:173
+#: dashboard/routes/destinations/DestinationCreate.tsx:177
 msgid "Failed to create destination"
 msgstr "Ziel konnte nicht erstellt werden"
 
@@ -3412,7 +3428,7 @@ msgstr "Ziel konnte nicht erstellt werden"
 msgid "Failed to create export configuration"
 msgstr "Exportkonfiguration konnte nicht erstellt werden"
 
-#: dashboard/routes/feeds/FeedDetail.tsx:148
+#: dashboard/routes/feeds/FeedDetail.tsx:152
 msgid "Failed to create feed"
 msgstr "Feed konnte nicht erstellt werden"
 
@@ -3444,7 +3460,7 @@ msgstr "Adapter konnten nicht geladen werden"
 msgid "Failed to load audit trail"
 msgstr "Audit-Verlauf konnte nicht geladen werden"
 
-#: dashboard/routes/destinations/DestinationCreate.tsx:189
+#: dashboard/routes/destinations/DestinationCreate.tsx:193
 msgid "Failed to load destination schemas"
 msgstr "Zielschemata konnten nicht geladen werden"
 
@@ -3452,7 +3468,7 @@ msgstr "Zielschemata konnten nicht geladen werden"
 msgid "Failed to load destinations"
 msgstr "Ziele konnten nicht geladen werden"
 
-#: dashboard/routes/feeds/FeedDetail.tsx:191
+#: dashboard/routes/feeds/FeedDetail.tsx:195
 msgid "Failed to load feed"
 msgstr "Feed konnte nicht geladen werden"
 
@@ -3513,35 +3529,39 @@ msgstr "Datei konnte nicht analysiert werden"
 msgid "Failed to reactivate pipeline"
 msgstr "Pipeline konnte nicht reaktiviert werden"
 
-#: dashboard/hooks/api/use-pipeline-runs.ts:281
+#: dashboard/routes/pipelines/PipelineDetail.tsx:154
+msgid "Failed to refresh pipeline"
+msgstr "Pipeline konnte nicht aktualisiert werden"
+
+#: dashboard/hooks/api/use-pipeline-runs.ts:289
 #: dashboard/routes/pipelines/RunDetailsPanel.tsx:150
 msgid "Failed to reject gate"
 msgstr "Gate konnte nicht abgelehnt werden"
 
-#: dashboard/hooks/api/use-pipeline-revisions.ts:113
+#: dashboard/hooks/api/use-pipeline-revisions.ts:115
 #: dashboard/routes/pipelines/components/PipelineRevisionActions.tsx:134
 msgid "Failed to restore draft"
 msgstr "Entwurf konnte nicht wiederhergestellt werden"
 
-#: dashboard/hooks/api/use-pipeline-revisions.ts:129
+#: dashboard/hooks/api/use-pipeline-revisions.ts:131
 #: dashboard/routes/pipelines/components/PipelineRevisionActions.tsx:135
 msgid "Failed to restore published version"
 msgstr "Veröffentlichte Version konnte nicht wiederhergestellt werden"
 
-#: dashboard/hooks/api/use-pipeline-runs.ts:241
+#: dashboard/hooks/api/use-pipeline-runs.ts:245
 #: dashboard/routes/pipelines/RunDetailsPanel.tsx:90
 msgid "Failed to retry record"
 msgstr "Datensatz konnte nicht erneut verarbeitet werden"
 
-#: dashboard/routes/connections/ConnectionDetail.tsx:99
+#: dashboard/routes/connections/ConnectionDetail.tsx:103
 msgid "Failed to save connection"
 msgstr "Verbindung konnte nicht gespeichert werden"
 
-#: dashboard/routes/pipelines/PipelineDetail.tsx:125
+#: dashboard/routes/pipelines/PipelineDetail.tsx:129
 msgid "Failed to save pipeline"
 msgstr "Pipeline konnte nicht gespeichert werden"
 
-#: dashboard/routes/secrets/SecretDetail.tsx:141
+#: dashboard/routes/secrets/SecretDetail.tsx:145
 msgid "Failed to save secret"
 msgstr "Zugangsdaten konnten nicht gespeichert werden"
 
@@ -3549,17 +3569,17 @@ msgstr "Zugangsdaten konnten nicht gespeichert werden"
 msgid "Failed to save settings"
 msgstr "Einstellungen konnten nicht gespeichert werden"
 
-#: dashboard/hooks/api/use-queues.ts:139
-#: dashboard/hooks/api/use-queues.ts:146
+#: dashboard/hooks/api/use-queues.ts:141
+#: dashboard/hooks/api/use-queues.ts:148
 msgid "Failed to start consumer"
 msgstr "Consumer konnte nicht gestartet werden"
 
-#: dashboard/hooks/api/use-pipelines.ts:312
+#: dashboard/hooks/api/use-pipelines.ts:314
 msgid "Failed to start pipeline"
 msgstr "Pipeline konnte nicht gestartet werden"
 
-#: dashboard/hooks/api/use-queues.ts:170
-#: dashboard/hooks/api/use-queues.ts:177
+#: dashboard/hooks/api/use-queues.ts:172
+#: dashboard/hooks/api/use-queues.ts:179
 msgid "Failed to stop consumer"
 msgstr "Consumer konnte nicht gestoppt werden"
 
@@ -3567,12 +3587,12 @@ msgstr "Consumer konnte nicht gestoppt werden"
 msgid "Failed to test hook"
 msgstr "Hook konnte nicht getestet werden"
 
-#: dashboard/hooks/api/use-queues.ts:201
-#: dashboard/hooks/api/use-queues.ts:209
+#: dashboard/hooks/api/use-queues.ts:203
+#: dashboard/hooks/api/use-queues.ts:213
 msgid "Failed to update dead letter"
 msgstr "Dead Letter konnte nicht aktualisiert werden"
 
-#: dashboard/routes/feeds/FeedDetail.tsx:161
+#: dashboard/routes/feeds/FeedDetail.tsx:165
 msgid "Failed to update feed"
 msgstr "Feed konnte nicht aktualisiert werden"
 
@@ -3580,14 +3600,14 @@ msgstr "Feed konnte nicht aktualisiert werden"
 msgid "Failed to upload file"
 msgstr "Datei konnte nicht hochgeladen werden"
 
-#: dashboard/hooks/api/use-pipelines.ts:332
+#: dashboard/hooks/api/use-pipelines.ts:334
 msgid "Failed to validate pipeline definition"
 msgstr "Pipeline-Definition konnte nicht validiert werden"
 
 #: dashboard/components/pipelines/shared/PipelineNode.tsx:31
-#: dashboard/routes/feeds/FeedDetail.tsx:171
-#: dashboard/routes/feeds/FeedDetail.tsx:187
-#: dashboard/routes/feeds/FeedDetail.tsx:203
+#: dashboard/routes/feeds/FeedDetail.tsx:175
+#: dashboard/routes/feeds/FeedDetail.tsx:191
+#: dashboard/routes/feeds/FeedDetail.tsx:207
 #: dashboard/routes/feeds/FeedsPage.tsx:139
 msgid "Feed"
 msgstr "Feed"
@@ -3595,6 +3615,10 @@ msgstr "Feed"
 #: dashboard/routes/feeds/FeedDetail.tsx:140
 msgid "Feed created"
 msgstr "Feed erstellt"
+
+#: dashboard/routes/feeds/FeedDetail.tsx:146
+msgid "Feed created, but navigation failed"
+msgstr "Feed erstellt, aber Navigation fehlgeschlagen"
 
 #: dashboard/routes/feeds/FeedDefinitionFields.tsx:63
 msgid "Feed definition"
@@ -3613,11 +3637,11 @@ msgstr "Feed mit Warnungen generiert"
 msgid "Feed generation failed"
 msgstr "Feed-Generierung fehlgeschlagen"
 
-#: dashboard/routes/feeds/FeedDetail.tsx:207
+#: dashboard/routes/feeds/FeedDetail.tsx:211
 msgid "Feed not found"
 msgstr "Feed nicht gefunden"
 
-#: dashboard/routes/feeds/FeedDetail.tsx:157
+#: dashboard/routes/feeds/FeedDetail.tsx:161
 msgid "Feed updated"
 msgstr "Feed aktualisiert"
 
@@ -3789,7 +3813,7 @@ msgstr "Fest verwendet eine konstante Verzögerung; exponentiell verdoppelt die 
 msgid "Format"
 msgstr "Formatieren"
 
-#: dashboard/routes/feeds/FeedDetail.tsx:252
+#: dashboard/routes/feeds/FeedDetail.tsx:263
 msgid "Format descriptions could not be loaded. Built-in format values remain available."
 msgstr "Formatbeschreibungen konnten nicht geladen werden. Integrierte Formatwerte bleiben verfügbar."
 
@@ -3863,7 +3887,7 @@ msgstr "Vorschau wird generiert..."
 msgid "Generating..."
 msgstr "Wird generiert..."
 
-#: dashboard/routes/feeds/FeedDetail.tsx:267
+#: dashboard/routes/feeds/FeedDetail.tsx:278
 msgid "Generation state for this channel-specific feed."
 msgstr "Generierungsstatus dieses kanalspezifischen Feeds."
 
@@ -3883,46 +3907,31 @@ msgstr "Fehler und Wiederholungen behandeln"
 msgid "Has headers"
 msgstr "Enthält Spaltenüberschriften"
 
-#: dashboard/components/common/HeadersEditor.tsx:84
+#: dashboard/components/common/HeadersEditor.tsx:135
 msgid "Header name"
 msgstr "Headername"
 
 #: dashboard/components/common/HttpAuthenticationFields.tsx:179
-#: dashboard/components/common/HttpHeadersFields.tsx:140
-#: dashboard/components/common/HttpHeadersFields.tsx:211
-#: dashboard/components/common/HttpHeadersFields.tsx:216
 msgid "Header Name"
 msgstr "Headername"
 
-#: dashboard/components/common/HeadersEditor.tsx:60
-msgid "Header name {key}"
-msgstr "Header-Name {key}"
+#: dashboard/components/common/HeadersEditor.tsx:233
+msgid "Header name {name}"
+msgstr "Header-Name {name}"
 
-#. placeholder {0}: row.name
-#: dashboard/components/common/HttpHeadersFields.tsx:152
-msgid "Header name for {0}"
-msgstr "Header-Name für {0}"
-
-#: dashboard/components/common/HeadersEditor.tsx:25
+#: dashboard/components/common/HeadersEditor.tsx:45
 msgid "Header value"
 msgstr "Headerwert"
 
-#: dashboard/components/common/HttpHeadersFields.tsx:155
-#: dashboard/components/common/HttpHeadersFields.tsx:219
+#: dashboard/components/common/HttpHeadersFields.tsx:29
 msgid "Header Value"
 msgstr "Headerwert"
 
-#. placeholder {0}: row.name
-#: dashboard/components/common/HttpHeadersFields.tsx:159
-#: dashboard/components/common/HttpHeadersFields.tsx:223
-msgid "Header value for {0}"
-msgstr "Header-Wert für {0}"
-
-#: dashboard/components/common/HeadersEditor.tsx:67
+#: dashboard/components/common/HeadersEditor.tsx:108
 msgid "Header value for {key}"
 msgstr "Header-Wert für {key}"
 
-#: dashboard/components/common/HttpHeadersFields.tsx:100
+#: dashboard/components/common/HttpHeadersFields.tsx:27
 msgid "Headers sent with every request."
 msgstr "Header, die mit jeder Anfrage gesendet werden."
 
@@ -3993,11 +4002,11 @@ msgstr "Hooks führen benutzerdefinierten Code an bestimmten Punkten der Pipelin
 msgid "How dry run works"
 msgstr "So funktioniert der Testlauf"
 
-#: dashboard/routes/secrets/SecretDetail.tsx:268
+#: dashboard/routes/secrets/SecretDetail.tsx:272
 msgid "How the secret value is resolved"
 msgstr "Legt fest, wie der Zugangsdatenwert aufgelöst wird"
 
-#: dashboard/routes/destinations/DestinationCreate.tsx:253
+#: dashboard/routes/destinations/DestinationCreate.tsx:257
 #: dashboard/routes/destinations/DestinationsList.tsx:187
 #: dashboard/routes/queues/DeadLettersTable.tsx:109
 msgid "ID"
@@ -4019,7 +4028,7 @@ msgstr "Importieren"
 msgid "Import configuration created"
 msgstr "Importkonfiguration erstellt"
 
-#: dashboard/components/wizards/import-wizard/TemplateStep.tsx:96
+#: dashboard/components/wizards/import-wizard/TemplateStep.tsx:100
 #: dashboard/routes/pipelines/ImportWizardPage.tsx:71
 #: dashboard/routes/pipelines/ImportWizardPage.tsx:78
 msgid "Import configuration unavailable"
@@ -4041,7 +4050,7 @@ msgstr "Pipeline aus JSON importieren"
 msgid "Import strategy"
 msgstr "Importstrategie"
 
-#: dashboard/routes/pipelines/ImportWizardPage.tsx:145
+#: dashboard/routes/pipelines/ImportWizardPage.tsx:149
 msgid "Import Wizard"
 msgstr "Import-Assistent"
 
@@ -4063,7 +4072,7 @@ msgstr "Nicht zugeordnete Felder einschließen"
 msgid "Index to search engine"
 msgstr "In eine Suchmaschine indexieren"
 
-#: dashboard/routes/secrets/SecretDetail.tsx:214
+#: dashboard/routes/secrets/SecretDetail.tsx:218
 msgid "Inline storage availability could not be verified. Environment variable references remain available."
 msgstr "Die Verfügbarkeit der Inline-Speicherung konnte nicht geprüft werden. Verweise auf Umgebungsvariablen bleiben verfügbar."
 
@@ -4071,7 +4080,7 @@ msgstr "Die Verfügbarkeit der Inline-Speicherung konnte nicht geprüft werden. 
 msgid "Inline storage is disabled until DATAHUB_MASTER_KEY is configured. Use an environment variable reference."
 msgstr "Inline-Speicherung ist deaktiviert, bis DATAHUB_MASTER_KEY konfiguriert ist. Verwenden Sie eine Umgebungsvariablen-Referenz."
 
-#: dashboard/routes/secrets/SecretDetail.tsx:170
+#: dashboard/routes/secrets/SecretDetail.tsx:174
 msgid "Inline storage is unavailable until a master key is configured"
 msgstr "Inline-Speicherung ist nicht verfügbar, bis ein Master-Schlüssel konfiguriert ist"
 
@@ -4096,11 +4105,10 @@ msgstr "Ungültiges Metadaten-JSON"
 msgid "Invalid schema JSON"
 msgstr "Ungültiges Schema-JSON"
 
-#: dashboard/routes/feeds/FeedDetail.tsx:288
+#: dashboard/routes/feeds/FeedDetail.tsx:299
 msgid "Item count"
 msgstr "Anzahl der Einträge"
 
-#: dashboard/components/shared/step-config/LoadTestResults.tsx:51
 #: dashboard/routes/feeds/FeedsPage.tsx:143
 msgid "Items"
 msgstr "Elemente"
@@ -4134,12 +4142,12 @@ msgstr "Weiter ausführen"
 msgid "Keep: {fields}"
 msgstr "Beibehalten: {fields}"
 
-#: dashboard/routes/feeds/FeedDetail.tsx:274
+#: dashboard/routes/feeds/FeedDetail.tsx:285
 #: dashboard/routes/feeds/FeedsPage.tsx:142
 msgid "Last generated"
 msgstr "Zuletzt generiert"
 
-#: dashboard/routes/queues/ConsumersTable.tsx:152
+#: dashboard/routes/queues/ConsumersTable.tsx:171
 msgid "Last Message"
 msgstr "Letzte Nachricht"
 
@@ -4169,11 +4177,11 @@ msgstr "Neueste"
 msgid "Latest log entries across all pipelines"
 msgstr "Neueste Protokolleinträge aller Pipelines"
 
-#: dashboard/routes/pipelines/components/PipelineFormFields.tsx:89
+#: dashboard/routes/pipelines/components/PipelineFormFields.tsx:91
 msgid "Letters, numbers, hyphens, and underscores only"
 msgstr "Nur Buchstaben, Zahlen, Bindestriche und Unterstriche"
 
-#: dashboard/routes/logs/components/LogExplorerTab.tsx:332
+#: dashboard/routes/logs/components/LogExplorerTab.tsx:335
 msgid "Level"
 msgstr "Ebene"
 
@@ -4262,7 +4270,7 @@ msgstr "Vergleich wird geladen..."
 msgid "Loading Data Hub configuration..."
 msgstr "Data Hub-Konfiguration wird geladen..."
 
-#: dashboard/routes/destinations/DestinationCreate.tsx:208
+#: dashboard/routes/destinations/DestinationCreate.tsx:212
 msgid "Loading destination configuration..."
 msgstr "Zielkonfiguration wird geladen..."
 
@@ -4279,7 +4287,7 @@ msgstr "Entitätskatalog wird geladen..."
 msgid "Loading export configuration..."
 msgstr "Exportkonfiguration wird geladen..."
 
-#: dashboard/routes/feeds/FeedDetail.tsx:177
+#: dashboard/routes/feeds/FeedDetail.tsx:181
 msgid "Loading feed..."
 msgstr "Feed wird geladen..."
 
@@ -4295,12 +4303,12 @@ msgstr "Hooks werden geladen…"
 msgid "Loading impact…"
 msgstr "Auswirkungen werden geladen…"
 
-#: dashboard/components/wizards/import-wizard/TemplateStep.tsx:92
+#: dashboard/components/wizards/import-wizard/TemplateStep.tsx:96
 #: dashboard/routes/pipelines/ImportWizardPage.tsx:72
 msgid "Loading import configuration..."
 msgstr "Importkonfiguration wird geladen..."
 
-#: dashboard/routes/logs/components/LogExplorerTab.tsx:344
+#: dashboard/routes/logs/components/LogExplorerTab.tsx:347
 msgid "Loading log entries..."
 msgstr "Protokolleinträge werden geladen..."
 
@@ -4360,6 +4368,10 @@ msgstr "Wird geladen..."
 msgid "Loading…"
 msgstr "Wird geladen…"
 
+#: dashboard/routes/queues/ConsumersTable.tsx:159
+msgid "Local status"
+msgstr "Lokaler Status"
+
 #: dashboard/routes/logs/components/LogDetailDrawer.tsx:38
 msgid "Log Details"
 msgstr "Protokolldetails"
@@ -4369,6 +4381,7 @@ msgid "Log diagnostics"
 msgstr "Protokolldiagnose"
 
 #: dashboard/routes/logs/components/LogExplorerTab.tsx:297
+#: dashboard/routes/logs/components/LogExplorerTab.tsx:330
 msgid "Log Entries"
 msgstr "Protokolleinträge"
 
@@ -4416,8 +4429,8 @@ msgstr "Suche: {field}"
 msgid "Make sure you've saved all changes before submitting."
 msgstr "Speichern Sie vor dem Einreichen alle Änderungen."
 
-#: dashboard/routes/connections/ConnectionDetail.tsx:207
-#: dashboard/routes/pipelines/PipelineDetail.tsx:249
+#: dashboard/routes/connections/ConnectionDetail.tsx:211
+#: dashboard/routes/pipelines/PipelineDetail.tsx:260
 msgid "Managed by code-first configuration"
 msgstr "Über Code-First-Konfiguration verwaltet"
 
@@ -4493,19 +4506,15 @@ msgid "Maximum value"
 msgstr "Maximalwert"
 
 #: dashboard/routes/logs/components/LogDetailDrawer.tsx:63
-#: dashboard/routes/logs/components/LogExplorerTab.tsx:335
+#: dashboard/routes/logs/components/LogExplorerTab.tsx:338
 #: dashboard/routes/pipelines/RunErrorsList.tsx:132
 #: dashboard/routes/queues/DeadLettersTable.tsx:115
 msgid "Message"
 msgstr "Meldung"
 
-#: dashboard/routes/queues/ConsumersTable.tsx:130
+#: dashboard/routes/queues/ConsumersTable.tsx:146
 msgid "Message queue consumers"
 msgstr "Consumer der Nachrichtenwarteschlange"
-
-#: dashboard/routes/queues/ConsumersTable.tsx:125
-msgid "Message queue consumers that process pipeline triggers. Start/stop consumers to manage message processing."
-msgstr "Consumer der Nachrichtenwarteschlange verarbeiten Pipeline-Trigger. Starten oder stoppen Sie Consumer, um die Nachrichtenverarbeitung zu steuern."
 
 #: dashboard/routes/pipelines/components/DryRunSummary.tsx:136
 msgid "Messages"
@@ -4578,13 +4587,13 @@ msgstr "Mehrere Webhook-Trigger sind konfiguriert. Die Anfrage wird gegen jeden 
 msgid "Must match a custom feed generator registered by server configuration."
 msgstr "Muss einem durch die Serverkonfiguration registrierten benutzerdefinierten Feed-Generator entsprechen."
 
-#: dashboard/routes/connections/ConnectionDetail.tsx:233
-#: dashboard/routes/pipelines/components/PipelineFormFields.tsx:97
-#: dashboard/routes/secrets/SecretDetail.tsx:245
+#: dashboard/routes/connections/ConnectionDetail.tsx:237
+#: dashboard/routes/pipelines/components/PipelineFormFields.tsx:99
+#: dashboard/routes/secrets/SecretDetail.tsx:249
 msgid "Must start with a letter and contain only letters, numbers, hyphens, and underscores"
 msgstr "Muss mit einem Buchstaben beginnen und darf nur Buchstaben, Zahlen, Bindestriche und Unterstriche enthalten"
 
-#: dashboard/routes/pipelines/components/PipelineFormFields.tsx:75
+#: dashboard/routes/pipelines/components/PipelineFormFields.tsx:77
 msgid "My Pipeline"
 msgstr "Meine Pipeline"
 
@@ -4596,32 +4605,38 @@ msgstr "Mein Produktexport"
 msgid "My product import"
 msgstr "Mein Produktimport"
 
-#: dashboard/routes/pipelines/components/PipelineFormFields.tsx:105
+#: dashboard/routes/pipelines/components/PipelineFormFields.tsx:107
 msgid "my-pipeline-code"
 msgstr "meine-pipeline"
 
 #: dashboard/components/shared/wizard/ConfigurationNameCard.tsx:34
-#: dashboard/routes/destinations/DestinationCreate.tsx:279
+#: dashboard/routes/destinations/DestinationCreate.tsx:283
 #: dashboard/routes/destinations/DestinationsList.tsx:184
 #: dashboard/routes/feeds/FeedDefinitionFields.tsx:75
-#: dashboard/routes/pipelines/components/PipelineFormFields.tsx:59
+#: dashboard/routes/pipelines/components/PipelineFormFields.tsx:61
 #: dashboard/routes/pipelines/PipelinesList.tsx:80
 msgid "Name"
 msgstr "Name"
 
 #: dashboard/components/wizards/import-wizard/ImportWizard.tsx:167
 #: dashboard/components/wizards/import-wizard/ImportWizard.tsx:194
-#: dashboard/routes/pipelines/components/PipelineFormFields.tsx:64
+#: dashboard/routes/pipelines/components/PipelineFormFields.tsx:66
 msgid "Name is required"
 msgstr "Name ist erforderlich"
 
-#: dashboard/routes/pipelines/components/PipelineFormFields.tsx:67
+#: dashboard/routes/pipelines/components/PipelineFormFields.tsx:69
 msgid "Name must be at least 2 characters"
 msgstr "Der Name muss mindestens 2 Zeichen lang sein"
 
-#: dashboard/routes/secrets/SecretDetail.tsx:343
+#: dashboard/routes/secrets/SecretDetail.tsx:347
 msgid "Name of the environment variable to read at runtime"
 msgstr "Name der Umgebungsvariable, die zur Laufzeit gelesen wird"
+
+#: dashboard/routes/feeds/FeedDetail.tsx:223
+#: dashboard/routes/pipelines/ExportWizardPage.tsx:120
+#: dashboard/routes/pipelines/ImportWizardPage.tsx:141
+msgid "Navigation failed"
+msgstr "Navigation fehlgeschlagen"
 
 #: dashboard/components/shared/step-config/advanced-editors/AdvancedWhenEditor.tsx:99
 msgid "Nested condition groups are not supported by the when operator."
@@ -4631,7 +4646,7 @@ msgstr "Verschachtelte Bedingungsgruppen werden vom when-Operator nicht unterst�
 msgid "Nested paths are supported, for example category.code."
 msgstr "Verschachtelte Pfade werden unterstützt, zum Beispiel category.code."
 
-#: dashboard/routes/feeds/FeedDetail.tsx:283
+#: dashboard/routes/feeds/FeedDetail.tsx:294
 #: dashboard/routes/feeds/FeedsPage.tsx:195
 msgid "Never"
 msgstr "Nie"
@@ -4640,16 +4655,16 @@ msgstr "Nie"
 msgid "New destination"
 msgstr "Neues Ziel"
 
-#: dashboard/routes/feeds/FeedDetail.tsx:225
+#: dashboard/routes/feeds/FeedDetail.tsx:236
 #: dashboard/routes/feeds/FeedsPage.tsx:75
 msgid "New feed"
 msgstr "Neuer Feed"
 
-#: dashboard/components/common/HeadersEditor.tsx:86
+#: dashboard/components/common/HeadersEditor.tsx:137
 msgid "New header name"
 msgstr "Neuer Headername"
 
-#: dashboard/components/common/HeadersEditor.tsx:94
+#: dashboard/components/common/HeadersEditor.tsx:148
 msgid "New header value"
 msgstr "Neuer Headerwert"
 
@@ -4721,7 +4736,7 @@ msgstr "Für das Ziel vom Typ {destinationType} ist kein Konfigurationsschema ve
 msgid "No connections found."
 msgstr "Keine Verbindungen gefunden."
 
-#: dashboard/components/common/HeadersEditor.tsx:110
+#: dashboard/components/common/HeadersEditor.tsx:171
 msgid "No custom headers. Add headers using the fields above."
 msgstr "Keine benutzerdefinierten Header. Fügen Sie über die obigen Felder Header hinzu."
 
@@ -4758,7 +4773,7 @@ msgstr "Es wurden noch keine Ereignisse beobachtet."
 msgid "No executable differences found."
 msgstr "Keine ausführbaren Unterschiede gefunden."
 
-#: dashboard/routes/destinations/DestinationCreate.tsx:368
+#: dashboard/routes/destinations/DestinationCreate.tsx:372
 msgid "No executable schema is registered for the selected destination type."
 msgstr "Für den ausgewählten Zieltyp ist kein ausführbares Schema registriert."
 
@@ -4766,7 +4781,7 @@ msgstr "Für den ausgewählten Zieltyp ist kein ausführbares Schema registriert
 msgid "No filters - all records will be exported"
 msgstr "Keine Filter – alle Datensätze werden exportiert"
 
-#: dashboard/components/common/HttpHeadersFields.tsx:54
+#: dashboard/components/common/HttpHeadersFields.tsx:28
 msgid "No headers configured."
 msgstr "Keine Header konfiguriert."
 
@@ -4779,7 +4794,7 @@ msgstr "Es sind keine Metadaten für Hook-Phasen verfügbar."
 msgid "No hooks configured"
 msgstr "Keine Hooks konfiguriert"
 
-#: dashboard/routes/logs/components/LogExplorerTab.tsx:350
+#: dashboard/routes/logs/components/LogExplorerTab.tsx:353
 msgid "No log entries found"
 msgstr "Keine Protokolleinträge gefunden"
 
@@ -4799,7 +4814,7 @@ msgstr "Keine passenden Ereignisse."
 msgid "No matching feeds"
 msgstr "Keine passenden Feeds"
 
-#: dashboard/routes/queues/ConsumersTable.tsx:174
+#: dashboard/routes/queues/ConsumersTable.tsx:193
 msgid "No message queue consumers configured"
 msgstr "Keine Consumer für Nachrichtenwarteschlangen konfiguriert"
 
@@ -4868,7 +4883,7 @@ msgstr "Keine Schemaversionen gefunden"
 msgid "No secrets found."
 msgstr "Keine Geheimnisse gefunden."
 
-#: dashboard/components/shared/step-config/LoadTestResults.tsx:27
+#: dashboard/components/shared/step-config/LoadTestResults.tsx:22
 msgid "No simulation data returned"
 msgstr "Keine Simulationsdaten zurückgegeben"
 
@@ -4880,7 +4895,7 @@ msgstr "Keine Quelle konfiguriert"
 msgid "No steps yet. Add a step to get started."
 msgstr "Noch keine Schritte. Fügen Sie einen Schritt hinzu, um zu beginnen."
 
-#: dashboard/routes/feeds/FeedDetail.tsx:299
+#: dashboard/routes/feeds/FeedDetail.tsx:310
 msgid "No stored artifact"
 msgstr "Kein gespeichertes Artefakt"
 
@@ -5020,7 +5035,7 @@ msgstr "Diesen Feed optional nach einem standardmäßigen fünfteiligen Cron-Zei
 msgid "or add a new step from the left panel"
 msgstr "oder fügen Sie im linken Bereich einen neuen Schritt hinzu"
 
-#: dashboard/components/wizards/import-wizard/TemplateStep.tsx:85
+#: dashboard/components/wizards/import-wizard/TemplateStep.tsx:89
 msgid "Or choose a template"
 msgstr "Oder wählen Sie eine Vorlage"
 
@@ -5129,8 +5144,8 @@ msgstr "Nutzdaten"
 msgid "Pending"
 msgstr "Ausstehend"
 
-#: dashboard/routes/logs/components/LogExplorerTab.tsx:333
-#: dashboard/routes/queues/ConsumersTable.tsx:134
+#: dashboard/routes/logs/components/LogExplorerTab.tsx:336
+#: dashboard/routes/queues/ConsumersTable.tsx:150
 #: dashboard/routes/queues/FailedRunsTable.tsx:65
 #: dashboard/routes/queues/QueuesPage.tsx:236
 #: dashboard/routes/queues/QueuesPage.tsx:317
@@ -5198,6 +5213,10 @@ msgstr "Verlauf der Pipeline-Läufe"
 #: dashboard/routes/pipelines/components/PipelineActionButtons.tsx:66
 msgid "Pipeline run started"
 msgstr "Pipeline-Ausführung gestartet"
+
+#: dashboard/routes/pipelines/PipelineDetail.tsx:122
+msgid "Pipeline saved, but navigation failed"
+msgstr "Pipeline gespeichert, aber Navigation fehlgeschlagen"
 
 #: dashboard/components/pipelines/PipelineEditorDetails.tsx:131
 #: dashboard/components/pipelines/ReactFlowPipelineEditor.tsx:375
@@ -5267,7 +5286,9 @@ msgstr "Vorschau für {feedCode}"
 msgid "Preview content for {feedCode}"
 msgstr "Vorschauinhalt für {feedCode}"
 
+#: dashboard/components/templates/TemplatePreview.tsx:192
 #: dashboard/components/wizards/import-wizard/PreviewStep.tsx:37
+#: dashboard/components/wizards/import-wizard/PreviewStep.tsx:54
 msgid "Preview data"
 msgstr "Datenvorschau"
 
@@ -5289,7 +5310,7 @@ msgstr "Vorherige Seite"
 
 #: dashboard/routes/pipelines/components/DryRunSummary.tsx:161
 #: dashboard/routes/pipelines/PipelineRunsBlock.tsx:218
-#: dashboard/routes/queues/ConsumersTable.tsx:146
+#: dashboard/routes/queues/ConsumersTable.tsx:165
 msgid "Processed"
 msgstr "Verarbeitet"
 
@@ -5305,12 +5326,12 @@ msgstr "{count} Datensätze verarbeitet"
 msgid "Product selection, such as inStock, hasPrice, minPrice, maxPrice, or categories."
 msgstr "Produktauswahl, beispielsweise inStock, hasPrice, minPrice, maxPrice oder categories."
 
-#: dashboard/routes/secrets/SecretDetail.tsx:263
+#: dashboard/routes/secrets/SecretDetail.tsx:267
 #: dashboard/routes/secrets/SecretsList.tsx:104
 msgid "Provider"
 msgstr "Anbieter"
 
-#: dashboard/routes/secrets/SecretDetail.tsx:273
+#: dashboard/routes/secrets/SecretDetail.tsx:277
 msgid "Provider is required"
 msgstr "Anbieter ist erforderlich"
 
@@ -5332,7 +5353,7 @@ msgstr "Pipeline veröffentlichen"
 msgid "Publish the submitted definition as the active pipeline version."
 msgstr "Die eingereichte Definition als aktive Pipeline-Version veröffentlichen."
 
-#: dashboard/routes/pipelines/components/PipelineFormFields.tsx:140
+#: dashboard/routes/pipelines/components/PipelineFormFields.tsx:142
 #: dashboard/routes/pipelines/components/ReviewActionsPanel.tsx:184
 msgid "Published"
 msgstr "Veröffentlicht"
@@ -5371,7 +5392,7 @@ msgstr "Abfragetyp"
 msgid "Query Type"
 msgstr "Abfragetyp"
 
-#: dashboard/routes/queues/ConsumersTable.tsx:140
+#: dashboard/routes/queues/ConsumersTable.tsx:156
 msgid "Queue"
 msgstr "Warteschlange"
 
@@ -5448,7 +5469,7 @@ msgstr "Nur Lesezugriff"
 msgid "Ready for production use"
 msgstr "Für den Produktiveinsatz bereit"
 
-#: dashboard/routes/feeds/FeedDetail.tsx:298
+#: dashboard/routes/feeds/FeedDetail.tsx:309
 msgid "Ready to download"
 msgstr "Zum Download bereit"
 
@@ -5517,7 +5538,7 @@ msgstr "Datensatzpfad"
 msgid "Record retry applied"
 msgstr "Datensatz erneut verarbeitet"
 
-#: dashboard/routes/logs/components/LogExplorerTab.tsx:337
+#: dashboard/routes/logs/components/LogExplorerTab.tsx:340
 msgid "Records"
 msgstr "Datensätze"
 
@@ -5625,12 +5646,6 @@ msgstr "Relative Endpunkte werden anhand dieser URL aufgelöst."
 msgid "Remove"
 msgstr "Entfernen"
 
-#. placeholder {0}: row.name
-#: dashboard/components/common/HttpHeadersFields.tsx:167
-#: dashboard/components/common/HttpHeadersFields.tsx:231
-msgid "Remove {0} header"
-msgstr "Header {0} entfernen"
-
 #. placeholder {0}: typeMeta?.label ?? transform.type
 #: dashboard/components/wizards/import-wizard/TransformPipelineCard.tsx:143
 msgid "Remove {0} transformation"
@@ -5641,7 +5656,7 @@ msgstr "Transformation {0} entfernen"
 msgid "Remove {field} as a lookup field {0}"
 msgstr "{field} als Suchfeld entfernen {0}"
 
-#: dashboard/components/common/HeadersEditor.tsx:74
+#: dashboard/components/common/HeadersEditor.tsx:116
 msgid "Remove {key} header"
 msgstr "Header {key} entfernen"
 
@@ -5800,7 +5815,7 @@ msgstr "Die Aufbewahrungsbereinigung wird automatisch ausgeführt. Ältere Daten
 #: dashboard/routes/schemas/SchemaDetail.tsx:224
 #: dashboard/routes/schemas/SchemaDetail.tsx:456
 #: dashboard/routes/schemas/SchemaVersionHistory.tsx:52
-#: dashboard/routes/secrets/SecretDetail.tsx:223
+#: dashboard/routes/secrets/SecretDetail.tsx:227
 msgid "Retry"
 msgstr "Erneut versuchen"
 
@@ -6036,7 +6051,7 @@ msgstr "Beispieldatensatz (JSON)"
 msgid "Save"
 msgstr "Speichern"
 
-#: dashboard/routes/feeds/FeedDetail.tsx:244
+#: dashboard/routes/feeds/FeedDetail.tsx:255
 msgid "Save changes"
 msgstr "Änderungen speichern"
 
@@ -6073,7 +6088,7 @@ msgstr "Speichern oder verwerfen Sie lokale Änderungen, bevor Sie eine frühere
 msgid "Save Settings"
 msgstr "Einstellungen speichern"
 
-#: dashboard/routes/feeds/FeedDetail.tsx:243
+#: dashboard/routes/feeds/FeedDetail.tsx:254
 msgid "Saving..."
 msgstr "Wird gespeichert..."
 
@@ -6173,15 +6188,19 @@ msgstr "Zugangsdaten-Code"
 msgid "Secret saved successfully"
 msgstr "Zugangsdaten erfolgreich gespeichert"
 
-#: dashboard/routes/secrets/SecretDetail.tsx:337
+#: dashboard/routes/secrets/SecretDetail.tsx:133
+msgid "Secret saved, but navigation failed"
+msgstr "Geheimnis gespeichert, aber Navigation fehlgeschlagen"
+
+#: dashboard/routes/secrets/SecretDetail.tsx:341
 msgid "Secret value"
 msgstr "Zugangsdatenwert"
 
-#: dashboard/routes/secrets/SecretDetail.tsx:138
+#: dashboard/routes/secrets/SecretDetail.tsx:142
 msgid "Secret value is required when creating a new secret"
 msgstr "Beim Erstellen neuer Zugangsdaten ist ein Wert erforderlich"
 
-#: dashboard/routes/secrets/SecretDetail.tsx:363
+#: dashboard/routes/secrets/SecretDetail.tsx:367
 msgid "Secret value is required when creating a secret or changing provider"
 msgstr "Beim Erstellen eines Secrets oder Ändern des Anbieters ist ein Geheimwert erforderlich"
 
@@ -6221,7 +6240,7 @@ msgstr "Verbindung auswählen"
 msgid "Select a data source"
 msgstr "Wählen Sie eine Datenquelle aus"
 
-#: dashboard/routes/destinations/DestinationCreate.tsx:309
+#: dashboard/routes/destinations/DestinationCreate.tsx:313
 msgid "Select a destination type"
 msgstr "Zieltyp auswählen"
 
@@ -6261,7 +6280,7 @@ msgstr "Wählen Sie eine Zielentität aus"
 msgid "Select a target field"
 msgstr "Zielfeld auswählen"
 
-#: dashboard/components/wizards/import-wizard/TemplateStep.tsx:121
+#: dashboard/components/wizards/import-wizard/TemplateStep.tsx:125
 msgid "Select a template"
 msgstr "Vorlage auswählen"
 
@@ -6337,7 +6356,7 @@ msgstr "Pipeline auswählen"
 msgid "Select pipeline..."
 msgstr "Pipeline auswählen..."
 
-#: dashboard/routes/secrets/SecretDetail.tsx:302
+#: dashboard/routes/secrets/SecretDetail.tsx:306
 msgid "Select provider"
 msgstr "Anbieter auswählen"
 
@@ -6356,7 +6375,7 @@ msgstr "Vorlage {0} auswählen"
 msgid "Select the Vendure entity to import records into."
 msgstr "Wählen Sie die Vendure-Entität aus, in die Datensätze importiert werden sollen."
 
-#: dashboard/routes/connections/ConnectionDetail.tsx:289
+#: dashboard/routes/connections/ConnectionDetail.tsx:293
 msgid "Select type"
 msgstr "Typ auswählen"
 
@@ -6505,16 +6524,24 @@ msgstr "Quellfeld"
 msgid "Source Field"
 msgstr "Quellfeld"
 
-#: dashboard/routes/queues/ConsumersTable.tsx:97
+#: dashboard/routes/queues/ConsumersTable.tsx:64
+msgid "Standby"
+msgstr "Bereitschaft"
+
+#: dashboard/routes/queues/ConsumersTable.tsx:113
 msgid "Start"
 msgstr "Starten"
+
+#: dashboard/routes/queues/ConsumersTable.tsx:141
+msgid "Start and stop update durable intent. A local owner reacts immediately; a remote owner can take up to 60 seconds."
+msgstr "Starten und Stoppen aktualisieren den dauerhaften Sollzustand. Ein lokaler Besitzer reagiert sofort; ein entfernter Besitzer kann bis zu 60 Sekunden benötigen."
 
 #: dashboard/components/pipelines/ReactFlowPipelineEditor.tsx:434
 msgid "Start Building Your Pipeline"
 msgstr "Beginnen Sie mit dem Aufbau Ihrer Pipeline"
 
 #. placeholder {0}: consumer.queueName
-#: dashboard/routes/queues/ConsumersTable.tsx:94
+#: dashboard/routes/queues/ConsumersTable.tsx:110
 msgid "Start consumer for queue {0}"
 msgstr "Consumer für Queue {0} starten"
 
@@ -6547,10 +6574,9 @@ msgstr "Wird gestartet…"
 
 #: dashboard/routes/adapters/AdapterDetail.tsx:140
 #: dashboard/routes/destinations/DestinationsList.tsx:193
-#: dashboard/routes/pipelines/components/PipelineFormFields.tsx:132
+#: dashboard/routes/pipelines/components/PipelineFormFields.tsx:134
 #: dashboard/routes/pipelines/PipelineRunsBlock.tsx:187
 #: dashboard/routes/pipelines/PipelinesList.tsx:98
-#: dashboard/routes/queues/ConsumersTable.tsx:143
 #: dashboard/routes/queues/QueuesPage.tsx:316
 msgid "Status"
 msgstr "Status"
@@ -6560,7 +6586,7 @@ msgid "Status:"
 msgstr "Status:"
 
 #: dashboard/routes/logs/components/LogDetailDrawer.tsx:72
-#: dashboard/routes/logs/components/LogExplorerTab.tsx:334
+#: dashboard/routes/logs/components/LogExplorerTab.tsx:337
 #: dashboard/routes/pipelines/components/DryRunSummary.tsx:192
 #: dashboard/routes/pipelines/components/ValidationPanel.tsx:96
 #: dashboard/routes/pipelines/RunErrorsList.tsx:129
@@ -6605,18 +6631,22 @@ msgstr "Schritt: {step}"
 msgid "Steps"
 msgstr "Schritte"
 
-#: dashboard/routes/queues/ConsumersTable.tsx:86
+#: dashboard/routes/queues/ConsumersTable.tsx:102
 msgid "Stop"
 msgstr "Stoppen"
 
 #. placeholder {0}: consumer.queueName
-#: dashboard/routes/queues/ConsumersTable.tsx:83
+#: dashboard/routes/queues/ConsumersTable.tsx:99
 msgid "Stop consumer for queue {0}"
 msgstr "Consumer für Queue {0} stoppen"
 
-#: dashboard/routes/queues/ConsumersTable.tsx:59
+#: dashboard/routes/queues/ConsumersTable.tsx:66
 msgid "Stopped"
 msgstr "Gestoppt"
+
+#: dashboard/routes/queues/ConsumersTable.tsx:60
+msgid "Stopping"
+msgstr "Wird gestoppt"
 
 #: dashboard/routes/secrets/SecretsList.tsx:114
 msgid "Stored value"
@@ -6789,7 +6819,7 @@ msgstr "Die Konfiguration {0} und ihr aktuelles Artefakt werden dauerhaft gelös
 msgid "The active execution channel is inherited."
 msgstr "Der aktive Ausführungs-Channel wird übernommen."
 
-#: dashboard/routes/secrets/SecretDetail.tsx:167
+#: dashboard/routes/secrets/SecretDetail.tsx:171
 msgid "The actual secret value (stored encrypted)"
 msgstr "Der tatsächliche Zugangsdatenwert (verschlüsselt gespeichert)"
 
@@ -6809,7 +6839,7 @@ msgstr "Die konfigurierten zulässigen Werte sind kein Array und verhindern die 
 msgid "The configured value type is unsupported and prevents pipeline publication."
 msgstr "Der konfigurierte Werttyp wird nicht unterstützt und verhindert die Veröffentlichung der Pipeline."
 
-#: dashboard/hooks/api/use-feeds.ts:188
+#: dashboard/hooks/api/use-feeds.ts:192
 msgid "The feed could not be deleted"
 msgstr "Der Feed konnte nicht gelöscht werden"
 
@@ -6862,7 +6892,7 @@ msgstr "Die ausgewählte Pipeline ist nicht verfügbar"
 msgid "The source schema no longer exists."
 msgstr "Das Quellschema existiert nicht mehr."
 
-#: dashboard/routes/secrets/SecretDetail.tsx:425
+#: dashboard/routes/secrets/SecretDetail.tsx:429
 msgid "The stored value or environment variable reference will be removed when you save this secret. This cannot be recovered from the Data Hub."
 msgstr "Der gespeicherte Wert oder die Umgebungsvariablen-Referenz wird entfernt, wenn Sie diese Zugangsdaten speichern. Er kann im Data Hub nicht wiederhergestellt werden."
 
@@ -6882,7 +6912,7 @@ msgstr "Diese nicht unterstützten Felder verhindern die Veröffentlichung der P
 msgid "This action is available to publishing roles after a pipeline has been submitted for review."
 msgstr "Diese Aktion steht Veröffentlichungsrollen zur Verfügung, nachdem eine Pipeline zur Prüfung eingereicht wurde."
 
-#: dashboard/routes/destinations/DestinationCreate.tsx:246
+#: dashboard/routes/destinations/DestinationCreate.tsx:250
 msgid "This destination belongs to channel {channelLabel}."
 msgstr "Dieses Ziel gehört zum Kanal {channelLabel}."
 
@@ -6890,7 +6920,7 @@ msgstr "Dieses Ziel gehört zum Kanal {channelLabel}."
 msgid "This destination configuration will be permanently deleted."
 msgstr "Diese Zielkonfiguration wird dauerhaft gelöscht."
 
-#: dashboard/routes/feeds/FeedDetail.tsx:208
+#: dashboard/routes/feeds/FeedDetail.tsx:212
 msgid "This feed does not exist in the active channel or has been deleted."
 msgstr "Dieser Feed ist im aktiven Kanal nicht vorhanden oder wurde gelöscht."
 
@@ -6949,7 +6979,7 @@ msgid "Throughput overrides"
 msgstr "Durchsatzüberschreibungen"
 
 #: dashboard/routes/hooks/HookEventsTable.tsx:50
-#: dashboard/routes/logs/components/LogExplorerTab.tsx:331
+#: dashboard/routes/logs/components/LogExplorerTab.tsx:334
 msgid "Time"
 msgstr "Zeit"
 
@@ -7022,7 +7052,7 @@ msgstr "Fehlende Felder als leere Zeichenfolgen behandeln"
 #: dashboard/components/wizards/export-wizard/TriggerStep.tsx:76
 #: dashboard/components/wizards/import-wizard/ImportWizard.tsx:91
 #: dashboard/components/wizards/import-wizard/ReviewStep.tsx:94
-#: dashboard/routes/queues/ConsumersTable.tsx:137
+#: dashboard/routes/queues/ConsumersTable.tsx:153
 msgid "Trigger"
 msgstr "Auslöser"
 
@@ -7068,7 +7098,6 @@ msgstr "Erneut versuchen"
 msgid "Two revision IDs are required"
 msgstr "Zwei Revisions-IDs sind erforderlich"
 
-#: dashboard/components/shared/step-config/LoadTestResults.tsx:54
 #: dashboard/components/wizards/export-wizard/ReviewStep.tsx:215
 #: dashboard/components/wizards/export-wizard/ReviewStep.tsx:233
 #: dashboard/components/wizards/import-wizard/ReviewStep.tsx:226
@@ -7090,7 +7119,7 @@ msgstr "Typ: {0}"
 msgid "Unavailable pipeline ({pipelineId})"
 msgstr "Nicht verfügbare Pipeline ({pipelineId})"
 
-#: dashboard/routes/secrets/SecretDetail.tsx:420
+#: dashboard/routes/secrets/SecretDetail.tsx:424
 msgid "Undo clear"
 msgstr "Löschen rückgängig machen"
 
@@ -7098,7 +7127,7 @@ msgstr "Löschen rückgängig machen"
 msgid "Unencrypted inline value"
 msgstr "Unverschlüsselter Inline-Wert"
 
-#: dashboard/routes/connections/ConnectionDetail.tsx:225
+#: dashboard/routes/connections/ConnectionDetail.tsx:229
 msgid "Unique identifier for this connection"
 msgstr "Eindeutige Kennung für diese Verbindung"
 
@@ -7106,11 +7135,11 @@ msgstr "Eindeutige Kennung für diese Verbindung"
 msgid "Unique identifier for this step in the pipeline"
 msgstr "Eindeutige Kennung dieses Schritts in der Pipeline"
 
-#: dashboard/routes/secrets/SecretDetail.tsx:238
+#: dashboard/routes/secrets/SecretDetail.tsx:242
 msgid "Unique identifier used to reference this secret"
 msgstr "Eindeutige Kennung zum Referenzieren dieser Zugangsdaten"
 
-#: dashboard/routes/destinations/DestinationCreate.tsx:273
+#: dashboard/routes/destinations/DestinationCreate.tsx:277
 msgid "Unique identifier within the active channel."
 msgstr "Eindeutige Kennung innerhalb des aktiven Kanals."
 
@@ -7135,9 +7164,9 @@ msgstr "Nicht unterstützter Authentifizierungstyp: {0}"
 msgid "Unsupported destination type: {type}"
 msgstr "Nicht unterstützter Zieltyp: {type}"
 
-#: dashboard/routes/connections/ConnectionDetail.tsx:196
-#: dashboard/routes/pipelines/PipelineDetail.tsx:223
-#: dashboard/routes/secrets/SecretDetail.tsx:195
+#: dashboard/routes/connections/ConnectionDetail.tsx:200
+#: dashboard/routes/pipelines/PipelineDetail.tsx:234
+#: dashboard/routes/secrets/SecretDetail.tsx:199
 msgid "Update"
 msgstr "Aktualisieren"
 

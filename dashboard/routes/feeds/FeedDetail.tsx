@@ -136,12 +136,16 @@ function FeedDetailPage({ route }: Readonly<{ route: DashboardRoute }>) {
         const input = feedFormToInput(values);
         if (creating) {
             createFeed.mutate(input, {
-                onSuccess: async feed => {
+                onSuccess: feed => {
                     toast.success(t`Feed created`);
                     form.reset(values);
-                    await navigate({
+                    void navigate({
                         to: `${ROUTES.FEEDS}/$id`,
                         params: { id: String(feed.id) },
+                    }).catch(error => {
+                        toast.error(t`Feed created, but navigation failed`, {
+                            description: getErrorMessage(error),
+                        });
                     });
                 },
                 onError: error => {
@@ -214,6 +218,13 @@ function FeedDetailPage({ route }: Readonly<{ route: DashboardRoute }>) {
     }
 
     const feed = feedQuery.data;
+    const handleDeleted = () => {
+        void navigate({ to: ROUTES.FEEDS }).catch(error => {
+            toast.error(t`Navigation failed`, {
+                description: getErrorMessage(error),
+            });
+        });
+    };
     return (
         <Page
             pageId={FEED_DETAIL_PAGE_ID}
@@ -229,7 +240,7 @@ function FeedDetailPage({ route }: Readonly<{ route: DashboardRoute }>) {
                     {feed && (
                         <FeedActions
                             feed={feed}
-                            onDeleted={() => void navigate({ to: ROUTES.FEEDS })}
+                            onDeleted={handleDeleted}
                         />
                     )}
                     <Button

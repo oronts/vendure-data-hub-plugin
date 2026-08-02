@@ -141,8 +141,8 @@ export function useStartConsumer() {
                 t`Failed to start consumer`,
             );
         },
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: queueKeys.consumers() });
+        onSuccess: async () => {
+            await queryClient.invalidateQueries({ queryKey: queueKeys.consumers() });
         },
         onError: createMutationErrorHandler(
             t`Failed to start consumer`,
@@ -172,8 +172,8 @@ export function useStopConsumer() {
                 t`Failed to stop consumer`,
             );
         },
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: queueKeys.consumers() });
+        onSuccess: async () => {
+            await queryClient.invalidateQueries({ queryKey: queueKeys.consumers() });
         },
         onError: createMutationErrorHandler(
             t`Failed to stop consumer`,
@@ -203,9 +203,11 @@ export function useMarkDeadLetter() {
                 t`Failed to update dead letter`,
             );
         },
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: queueKeys.deadLetters() });
-            queryClient.invalidateQueries({ queryKey: queueKeys.stats() });
+        onSuccess: async () => {
+            await Promise.all([
+                queryClient.invalidateQueries({ queryKey: queueKeys.deadLetters() }),
+                queryClient.invalidateQueries({ queryKey: queueKeys.stats() }),
+            ]);
         },
         onError: createMutationErrorHandler(
             t`Failed to update dead letter`,

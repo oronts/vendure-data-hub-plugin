@@ -304,9 +304,11 @@ export function useRunPipeline() {
                 pipelineId,
                 expectedRevisionId,
             }).then((res) => res.startDataHubPipelineRun),
-        onSuccess: (_data, { pipelineId }) => {
-            queryClient.invalidateQueries({ queryKey: runKeys.lists() });
-            queryClient.invalidateQueries({ queryKey: pipelineKeys.detail(pipelineId) });
+        onSuccess: async (_data, { pipelineId }) => {
+            await Promise.all([
+                queryClient.invalidateQueries({ queryKey: runKeys.lists() }),
+                queryClient.invalidateQueries({ queryKey: pipelineKeys.detail(pipelineId) }),
+            ]);
         },
         onError: createMutationErrorHandler(
             t`Failed to start pipeline`,
@@ -348,9 +350,11 @@ export function useDryRunPipeline(pipelineId: string | undefined) {
                 .mutate(dryRunPipelineDocument, { pipelineId })
                 .then((res) => res.startDataHubPipelineDryRun);
         },
-        onSuccess: () => {
+        onSuccess: async () => {
             if (pipelineId) {
-                queryClient.invalidateQueries({ queryKey: pipelineKeys.detail(pipelineId) });
+                await queryClient.invalidateQueries({
+                    queryKey: pipelineKeys.detail(pipelineId),
+                });
             }
         },
         onError: createMutationErrorHandler(
@@ -371,11 +375,16 @@ function createPipelineStatusHook<TDoc extends Parameters<typeof api.mutate>[0]>
         return useMutation({
             mutationFn: (id: string) =>
                 api.mutate(document, { id }).then((res) => (res as Record<string, unknown>)[resultKey]),
-            onSuccess: (data) => {
-                queryClient.invalidateQueries({ queryKey: pipelineKeys.lists() });
-                if (data && typeof data === 'object' && 'id' in data) {
-                    queryClient.invalidateQueries({ queryKey: pipelineKeys.detail(String(data.id)) });
-                }
+            onSuccess: async data => {
+                const detailId = data && typeof data === 'object' && 'id' in data
+                    ? String(data.id)
+                    : undefined;
+                await Promise.all([
+                    queryClient.invalidateQueries({ queryKey: pipelineKeys.lists() }),
+                    ...(detailId
+                        ? [queryClient.invalidateQueries({ queryKey: pipelineKeys.detail(detailId) })]
+                        : []),
+                ]);
             },
             onError: createMutationErrorHandler(getErrorMessage(t), {
                 showDetails: true,

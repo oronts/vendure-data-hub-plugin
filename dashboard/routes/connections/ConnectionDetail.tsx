@@ -88,11 +88,15 @@ function ConnectionDetailPage({ route }: { route: DashboardRoute }) {
         transformCreateInput: input => prepareConnectionInput(input, connectionSchemas),
         transformUpdateInput: input => prepareConnectionInput(input, connectionSchemas),
         params: { id: params.id },
-        onSuccess: async data => {
+        onSuccess: data => {
             toast.success(t`Connection saved successfully`);
             resetForm();
             if (creating && typeof data === 'object' && data !== null && 'id' in data) {
-                await navigate({ to: `../$id`, params: { id: data.id } });
+                void navigate({ to: `../$id`, params: { id: data.id } }).catch(error => {
+                    toast.error(t`Connection saved, but navigation failed`, {
+                        description: getErrorMessage(error),
+                    });
+                });
             }
         },
         onError: err => {

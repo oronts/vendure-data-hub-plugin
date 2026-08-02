@@ -136,7 +136,7 @@ export function ReactFlowPipelineEditor({
 
         onChange(newDef);
 
-        Promise.resolve().then(() => {
+        queueMicrotask(() => {
             isUpdatingRef.current = false;
         });
     }, [definition, onChange]);
