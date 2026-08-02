@@ -29,9 +29,10 @@ metadata hostnames, resolves DNS, and rejects private or reserved IP addresses b
 default.
 
 Built-in HTTP requests revalidate redirects and socket DNS lookups. Native
-RabbitMQ AMQP, FTP, SFTP, SMTP, custom S3 endpoints, PostgreSQL, and MySQL bind
-connections to an address approved by the same policy; SFTP also supports
-required production host-key fingerprints. Database connection strings accept
+RabbitMQ AMQP, Redis Streams, FTP, SFTP, SMTP, custom S3/SQS endpoints,
+PostgreSQL, and MySQL bind connections to an address approved by the same
+policy; SFTP also supports required production host-key fingerprints. Database
+connection strings accept
 only documented single-host TCP URI schemes, reject endpoint-changing
 parameters and local sockets, and enable MySQL TLS certificate identity
 verification.
@@ -44,6 +45,12 @@ RabbitMQ adapters require explicit username and password values. Saved
 connections resolve the password through `passwordSecretCode`; direct adapter
 use must provide the resolved password. No built-in RabbitMQ adapter supplies
 default `guest` credentials.
+
+Redis Streams resolves the configured host through the same policy and connects
+to an approved IP while preserving the original TLS server name. Custom SQS
+`endpoint` and non-AWS `queueUrl` hosts use a bounded Smithy transport with a
+pinned DNS lookup. SQS URLs containing credentials are rejected; use Secret
+Codes or the AWS credential-provider chain.
 
 `allowedHostnames` is an explicit bypass of the normal hostname and IP checks.
 Only use it for hosts that are trusted even if they resolve to a private address.

@@ -93,6 +93,8 @@ ports bind only to `127.0.0.1` and use per-run ports where the protocol permits.
 The aggregate Redis suite starts independent Node.js processes and checks atomic
 shared counters, webhook quotas, locks, Streams consumers, consumer-process
 crash recovery, fail-closed outage behavior, and reconnect to one Redis server.
+Streams workers trust only the isolated Compose broker hostname through the
+normal SSRF policy; production defaults remain unchanged.
 It then starts a primary, two replicas, and a three-Sentinel quorum. The runner
 waits until lock and quota state has reached both replicas, keeps the application
 client alive, sends `SIGKILL` to the primary from outside that client, and proves

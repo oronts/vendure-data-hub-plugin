@@ -140,6 +140,11 @@ URL from `accountId` and either `region` or the optional SQS-compatible
 instead of reusing the direct URL. Configure the access-key and secret-key Secret
 Codes together, or omit both to use the AWS SDK credential chain.
 
+Custom SQS-compatible endpoints and non-AWS direct Queue URLs are resolved
+through the configured SSRF policy and bound to the validated address set.
+Connection and inactive-socket timeouts are bounded. Endpoint and Queue URLs
+must use HTTP(S) and cannot contain credentials.
+
 ### Redis Streams
 
 Redis Streams connections are configured per saved connection or pipeline
@@ -166,6 +171,14 @@ DataHubPlugin.init({
     ],
 });
 ```
+
+`host` is required, `port` must be an integer from 1 through 65535, and
+`db` must be a non-negative integer supported by the target server. Before ioredis opens a socket, the
+host is resolved through the configured SSRF policy. The client connects to the
+approved IP and, with TLS enabled, validates the certificate against the
+configured hostname. Private or local broker addresses therefore require an
+explicit trusted-host or private-IP policy; development may disable SSRF only in
+an isolated environment.
 
 ### Kafka and other brokers
 
