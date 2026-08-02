@@ -20,6 +20,7 @@ import { assertCreateDuplicateCanBeSkipped, CreateDuplicateHandlingConfig } from
 import { LoadStrategy } from '../../../constants/enums';
 import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
 import {
+    assertVendureMutationSucceeded,
     getArrayValue,
     getBooleanValue,
     getObjectValue,
@@ -201,10 +202,11 @@ export class ChannelHandler implements LoaderHandler {
                     if (defaultShippingZoneId) updateInput.defaultShippingZoneId = defaultShippingZoneId;
                     if (customFields) updateInput.customFields = customFields;
 
-                    await this.channelService.update(
+                    const result = await this.channelService.update(
                         ctx,
                         updateInput as Parameters<typeof this.channelService.update>[1],
                     );
+                    assertVendureMutationSucceeded('update channel', result);
                 } else {
                     if (strategy === LoadStrategy.UPDATE) {
                         fail++;
@@ -231,10 +233,7 @@ export class ChannelHandler implements LoaderHandler {
                         ctx,
                         createInput as Parameters<typeof this.channelService.create>[1],
                     );
-                    // Handle ErrorResultUnion
-                    if ('errorCode' in result) {
-                        throw new Error(`Failed to create channel: ${'message' in result ? String(result.message) : 'Unknown error'}`);
-                    }
+                    assertVendureMutationSucceeded('create channel', result);
                 }
                 ok++;
             } catch (e: unknown) {

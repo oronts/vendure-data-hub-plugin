@@ -4,7 +4,10 @@ import { LinesMode } from '../../../shared/types';
 import { DataHubLogger } from '../../services/logger/datahub-logger';
 
 export { isRecoverableError, shouldUpdateField, findVariantBySku } from '../shared-helpers';
-import { findVariantBySku } from '../shared-helpers';
+import {
+    assertVendureMutationSucceeded,
+    findVariantBySku,
+} from '../shared-helpers';
 
 export async function findCustomerByEmail(
     ctx: RequestContext,
@@ -75,7 +78,7 @@ export async function handleOrderLines(
             line.quantity,
             line.customFields,
         );
-        assertOrderMutationSucceeded(`add SKU "${line.sku}"`, result);
+        assertVendureMutationSucceeded(`add SKU "${line.sku}"`, result);
     };
 
     // Guard: cannot modify lines on orders in non-modifiable states (produces SQL NaN errors)
@@ -125,7 +128,7 @@ export async function handleOrderLines(
                         newQuantity,
                         newLine.customFields,
                     );
-                    assertOrderMutationSucceeded(`merge SKU "${newLine.sku}"`, result);
+                    assertVendureMutationSucceeded(`merge SKU "${newLine.sku}"`, result);
                     logger.debug(`Merged line for SKU "${newLine.sku}": ${existing.quantity} + ${newLine.quantity} = ${newQuantity}`);
                 } else {
                     await addLine(newLine);
@@ -144,7 +147,7 @@ export async function handleOrderLines(
                 }
                 for (const line of existingOrder.lines) {
                     const result = await orderService.adjustOrderLine(ctx, orderId, line.id, 0);
-                    assertOrderMutationSucceeded('remove existing line', result);
+                    assertVendureMutationSucceeded('remove existing line', result);
                 }
                 logger.debug(`Removed ${existingOrder.lines.length} existing order lines`);
             }
@@ -155,15 +158,4 @@ export async function handleOrderLines(
             break;
         }
     }
-}
-
-function assertOrderMutationSucceeded(action: string, result: unknown): void {
-    if (!result || typeof result !== 'object' || !('errorCode' in result)) {
-        return;
-    }
-    const error = result as { errorCode?: unknown; message?: unknown };
-    const detail = typeof error.message === 'string'
-        ? error.message
-        : String(error.errorCode ?? 'unknown error');
-    throw new Error(`Failed to ${action}: ${detail}`);
 }

@@ -35,6 +35,7 @@ import {
     handleCustomerAddresses,
     shouldUpdateField,
 } from './helpers';
+import { assertVendureMutationSucceeded } from '../shared-helpers';
 import type { AddressesMode } from '../../../shared/types/adapter-config.types';
 
 const ADDRESS_MODES = [
@@ -264,7 +265,11 @@ export class CustomerLoader extends BaseEntityLoader<CustomerInput, Customer> {
             updateInput.customFields = record.customFields;
         }
 
-        await this.customerService.update(ctx, updateInput as Parameters<typeof this.customerService.update>[1]);
+        const result = await this.customerService.update(
+            ctx,
+            updateInput as Parameters<typeof this.customerService.update>[1],
+        );
+        assertVendureMutationSucceeded('update customer', result);
 
         if (record.groupCodes && shouldUpdateField('groupCodes', options.updateOnlyFields)) {
             await assignCustomerGroups(ctx, this.customerGroupService, customerId, record.groupCodes, this.logger);
