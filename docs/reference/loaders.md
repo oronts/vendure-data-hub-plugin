@@ -236,8 +236,8 @@ Update product variants by SKU with multi-currency prices and auto-create option
 | `translationsField` | string | No | Record field containing multi-language translations. Overrides name field. Supports array `[{ languageCode, name }]` or object map `{ en: { name }, de: { name } }` |
 | `customFieldsField` | string | No | Record field containing custom fields object |
 | `optionGroupsField` | string | No | Record field containing option group key-value pairs (auto-creates groups) |
-| `optionIdsField` | string | No | Record field containing pre-existing Vendure option IDs array |
-| `optionCodesField` | string | No | Record field containing option codes array for lookup |
+| `optionIdsField` | string | No | Record field containing pre-existing Vendure option IDs array; applied on create and update |
+| `optionCodesField` | string | No | Record field containing option codes resolved within the parent product; duplicate codes across its groups are rejected |
 | `taxCategoryName` | string | No | Tax category name to assign |
 | `stockField` | string | No | Record field for stock on hand |
 | `stockByLocationField` | string | No | Record field for stock by location map |
@@ -280,9 +280,9 @@ Variants can be assigned to option groups in three ways:
 })
 ```
 
-**Direct ID passthrough** (`optionIdsField`): Pass an array of Vendure option IDs directly.
+**Direct ID passthrough** (`optionIdsField`): Pass an array of Vendure option IDs directly. Existing variants receive the new assignments through Vendure's validated update API.
 
-**Code lookup** (`optionCodesField`): Pass an array of option codes like `['size-s', 'color-blue']` to resolve by code.
+**Code lookup** (`optionCodesField`): Pass an array of option codes like `['size-s', 'color-blue']`. Codes are resolved only from the parent product; missing or ambiguous codes fail the record.
 
 ### Example
 
@@ -482,7 +482,6 @@ Delete entities by slug, SKU, code, email, name, or ID. Supports 13 entity types
 | `entityType` | string | No | Entity type: `'product'`, `'variant'`, `'collection'`, `'promotion'`, `'shipping-method'`, `'customer'`, `'payment-method'`, `'facet'`, `'facet-value'`, `'customer-group'`, `'tax-rate'`, `'asset'`, or `'stock-location'` (default: `'product'`) |
 | `identifierField` | string | No | Record field containing the identifier (default depends on entity type) |
 | `matchBy` | string | No | How to find the entity: `'slug'`, `'sku'`, `'id'`, `'code'`, `'email'`, or `'name'` (default depends on entity type) |
-| `cascadeVariants` | boolean | No | Delete all variants before deleting a product (default: `true`) |
 | `channel` | string | No | Channel code for context |
 
 ### Default matchBy per Entity Type
@@ -510,7 +509,6 @@ Delete entities by slug, SKU, code, email, name, or ID. Supports 13 entity types
     adapterCode: 'entityDeletion',
     entityType: 'product',
     matchBy: 'slug',
-    cascadeVariants: true,
 })
 ```
 
@@ -556,8 +554,7 @@ Delete entities by slug, SKU, code, email, name, or ID. Supports 13 entity types
 
 ### Behavior
 
-- **Product deletion with cascade**: All variants are soft-deleted first, then the product
-- **Product deletion without cascade**: Only the product is soft-deleted (variants remain)
+- **Product deletion**: Uses Vendure's `ProductService.softDelete()`, which soft-deletes the product and all its variants transactionally
 - **Collection deletion**: Deletes the collection found by slug or ID
 - **Promotion deletion**: Soft-deletes the promotion found by coupon code or ID
 - **Shipping method deletion**: Soft-deletes the shipping method found by code or ID
@@ -569,7 +566,8 @@ Delete entities by slug, SKU, code, email, name, or ID. Supports 13 entity types
 - **Tax rate deletion**: Deletes the tax rate found by name or ID
 - **Asset deletion**: Deletes the asset found by name or ID
 - **Stock location deletion**: Deletes the stock location found by name or ID
-- **Not found**: Logs a warning and skips (does not fail the record)
+- **Not found**: Logs a warning and increments the skipped count
+- **Rejected deletions**: Vendure `NOT_DELETED` responses fail the record with Vendure's reason
 - **Errors**: Reported via `onRecordError` callback per standard loader error handling
 
 ---
