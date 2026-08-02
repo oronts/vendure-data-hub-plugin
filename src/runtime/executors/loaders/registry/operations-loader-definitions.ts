@@ -59,7 +59,7 @@ export const OPERATIONS_LOADER_DEFINITIONS: LoaderDefinitionEntry[] = [
                     SKIP_DUPLICATES_FIELD,
                     { key: 'skuField', label: 'SKU field', type: 'string', required: true, description: 'Field containing the product variant SKU' },
                     { key: 'stockOnHandField', label: 'Stock on hand field', type: 'string', required: true, description: 'Field containing the new absolute stock level' },
-                    { key: 'stockLocationNameField', label: 'Stock location name field', type: 'string', description: 'Field containing stock location name (uses default if not specified)' },
+                    { key: 'stockLocationNameField', label: 'Stock location name field', type: 'string', description: 'Field containing stock location name (uses the oldest location in the active channel if omitted)' },
                     { key: 'stockLocationIdField', label: 'Stock location ID field', type: 'string', description: 'Field containing stock location ID (alternative to name)' },
                     { key: 'reasonField', label: 'Reason field', type: 'string', description: 'Field containing the adjustment reason' },
                 ],

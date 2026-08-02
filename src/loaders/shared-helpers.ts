@@ -3,6 +3,7 @@ export { slugify } from '../operators/helpers';
 export {
     buildConfigurableOperation,
     buildConfigurableOperations,
+    createChannelScopedCacheKey,
     findVariantBySku,
     getArrayValue,
     getIdValue,

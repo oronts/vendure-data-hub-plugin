@@ -23,7 +23,11 @@ import {
     ValidationBuilder,
 } from '../base';
 import { InventoryInput, INVENTORY_LOADER_METADATA } from './types';
-import { findVariantBySku, resolveStockLocationId } from './helpers';
+import {
+    findVariantBySku,
+    resolveDefaultStockLocationId,
+    resolveStockLocationId,
+} from './helpers';
 
 /** Loads Inventory (stock level) records via StockMovementService. Supports UPDATE, UPSERT. */
 @Injectable()
@@ -106,7 +110,7 @@ export class InventoryLoader extends BaseEntityLoader<InventoryInput, ProductVar
                     key: 'stockLocationName',
                     label: 'Stock Location Name',
                     type: 'string',
-                    description: 'Exact stock location name (uses Vendure default if not specified)',
+                    description: 'Exact stock location name (uses the oldest location in the active channel if omitted)',
                     example: 'Main Warehouse',
                 },
                 {
@@ -146,7 +150,10 @@ export class InventoryLoader extends BaseEntityLoader<InventoryInput, ProductVar
 
         let targetLocationId = stockLocationId;
         if (!targetLocationId) {
-            targetLocationId = (await this.stockLocationService.defaultStockLocation(ctx)).id;
+            targetLocationId = await resolveDefaultStockLocationId(
+                this.stockLocationService,
+                ctx,
+            );
         }
 
         if (!targetLocationId) {

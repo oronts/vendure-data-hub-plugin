@@ -1,5 +1,6 @@
 import { ID, RequestContext, FacetService } from '@vendure/core';
 import { FacetValueInput } from './types';
+import { createChannelScopedCacheKey } from '../shared-helpers';
 
 export { isRecoverableError, shouldUpdateField } from '../shared-helpers';
 
@@ -15,8 +16,11 @@ export async function resolveFacetId(
     }
 
     // Check cache
-    if (record.facetCode && cache.has(record.facetCode)) {
-        return cache.get(record.facetCode) ?? null;
+    const cacheKey = record.facetCode
+        ? createChannelScopedCacheKey(ctx, record.facetCode)
+        : undefined;
+    if (cacheKey && cache.has(cacheKey)) {
+        return cache.get(cacheKey) ?? null;
     }
 
     // Look up by code
@@ -26,7 +30,7 @@ export async function resolveFacetId(
         });
         if (facets.totalItems > 0) {
             const facetId = facets.items[0].id;
-            cache.set(record.facetCode, facetId);
+            if (cacheKey) cache.set(cacheKey, facetId);
             return facetId;
         }
     }
@@ -45,4 +49,3 @@ export async function resolveFacetIdFromCode(
     });
     return facets.totalItems > 0 ? facets.items[0].id : null;
 }
-

@@ -10,6 +10,13 @@ function getRecordValue(record: RecordObject, key: string): unknown {
         : record[key];
 }
 
+export function createChannelScopedCacheKey(
+    ctx: RequestContext,
+    value: string,
+): string {
+    return JSON.stringify([String(ctx.channelId), value]);
+}
+
 export function getStringValue(record: RecordObject, key: string): string | undefined {
     const value = getRecordValue(record, key);
     if (typeof value === 'string') {
