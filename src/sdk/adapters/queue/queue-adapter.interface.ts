@@ -28,7 +28,7 @@ export interface ConsumeResult {
 
 export interface QueueConnectionConfig {
     readonly host: string;
-    readonly port: number;
+    readonly port?: number;
     readonly username?: string;
     readonly password?: string;
     readonly vhost?: string;

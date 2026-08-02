@@ -69,6 +69,8 @@ const MAX_QUEUE_MESSAGE_CONCURRENCY = 32;
 export const QUEUE = {
     /** Maximum number of concurrently configured message consumers */
     MAX_CONSUMERS: MAX_QUEUE_CONSUMERS,
+    /** Maximum number of pooled native RabbitMQ connections */
+    RABBITMQ_MAX_CONNECTIONS: 100,
     /** Default limit for recent failed runs query */
     DEFAULT_RECENT_FAILED_LIMIT: 10,
     /** Default messages requested per broker poll */

@@ -49,6 +49,20 @@ describe('connection configuration validation', () => {
         })).not.toThrow();
     });
 
+    it('requires a Secret Code for RabbitMQ passwords', () => {
+        const config = {
+            host: 'rabbitmq.example.com',
+            port: 5672,
+            username: 'data-hub',
+        };
+        expect(() => assertConnectionConfig(ConnectionType.RABBITMQ, config))
+            .toThrow('Connection field "passwordSecretCode" is required');
+        expect(() => assertConnectionConfig(ConnectionType.RABBITMQ, {
+            ...config,
+            passwordSecretCode: 'rabbitmq-password',
+        })).not.toThrow();
+    });
+
     it('rejects plaintext and unknown database fields', () => {
         expect(() => assertConnectionConfig(ConnectionType.POSTGRES, {
             host: 'database.internal',

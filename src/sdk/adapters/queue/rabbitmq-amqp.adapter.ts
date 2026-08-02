@@ -21,12 +21,20 @@ import { JsonObject } from '../../../types/index';
 import { AckMode } from '../../../constants/enums';
 import { INTERNAL_TIMINGS } from '../../../constants/defaults/core-defaults';
 import { QUEUE } from '../../../constants/defaults/runtime-defaults';
+import { HTTP } from '../../../constants/defaults/http-defaults';
 import { LOGGER_CONTEXTS } from '../../../constants/core';
 import { CONTENT_TYPES } from '../../../constants/services';
 import { DataHubLoggerFactory } from '../../../services/logger/datahub-logger';
-import { isBlockedHostname } from '../../../utils/url-security.utils';
 import { getErrorMessage } from '../../../utils/error.utils';
+import {
+    createPinnedAddressLookup,
+    resolveSafeRemoteAddresses,
+} from '../../../utils/remote-host-security.utils';
 import { createQueueConnectionIdentity } from './connection-identity';
+import {
+    resolveRabbitMqConnection,
+    type ResolvedRabbitMqConnection,
+} from './rabbitmq-connection';
 
 const logger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.RABBITMQ_ADAPTER);
 
@@ -72,9 +80,35 @@ interface ConnectionEntry {
 /**
  * Connection pool for RabbitMQ connections
  */
-const MAX_CONNECTIONS = 100;
 const connectionPool = new Map<string, ConnectionEntry>();
 const connectingPromises = new Map<string, Promise<{ connection: AmqpConnection; channel: AmqpChannel }>>();
+
+async function closeAmqpResources(
+    resources: Partial<ConnectionEntry>,
+    phase: string,
+): Promise<void> {
+    const closeOperations = [
+        resources.channel && {
+            label: 'channel',
+            close: () => resources.channel!.close(),
+        },
+        resources.connection && {
+            label: 'connection',
+            close: () => resources.connection!.close(),
+        },
+    ].filter((resource): resource is { label: string; close: () => Promise<void> } => Boolean(resource));
+    const results = await Promise.allSettled(
+        closeOperations.map(resource => resource.close()),
+    );
+    results.forEach((result, index) => {
+        if (result.status === 'rejected') {
+            logger.warn(
+                `RabbitMQ: Failed to close ${closeOperations[index].label} during ${phase}`,
+                { error: getErrorMessage(result.reason) },
+            );
+        }
+    });
+}
 
 /**
  * Generate a unique key for a connection configuration
@@ -86,18 +120,13 @@ function getConnectionKey(config: QueueConnectionConfig): string {
 /**
  * Build AMQP URL from configuration
  */
-function buildAmqpUrl(config: QueueConnectionConfig): string {
+function buildAmqpUrl(config: ResolvedRabbitMqConnection): string {
     const protocol = config.useTls ? 'amqps' : 'amqp';
-    const username = encodeURIComponent(config.username ?? 'guest');
-    const password = encodeURIComponent(config.password ?? 'guest');
-    const host = config.host ?? 'localhost';
-    if (isBlockedHostname(host)) {
-        throw new Error(`SSRF protection: hostname '${host}' is blocked for security reasons`);
-    }
-    const port = config.port ?? 5672;
-    const vhost = encodeURIComponent(config.vhost ?? '/');
+    const username = encodeURIComponent(config.username);
+    const password = encodeURIComponent(config.password);
+    const vhost = encodeURIComponent(config.vhost);
 
-    return `${protocol}://${username}:${password}@${host}:${port}/${vhost}`;
+    return `${protocol}://${username}:${password}@${config.host}:${config.port}/${vhost}`;
 }
 
 /**
@@ -124,41 +153,63 @@ async function getConnection(config: QueueConnectionConfig): Promise<{
 
     // Create connection promise that concurrent callers can share
     const connectPromise = (async () => {
+        let connection: AmqpConnection | undefined;
+        let channel: AmqpChannel | undefined;
         try {
             const amqplib = await import('amqplib');
-            const url = buildAmqpUrl(config);
-            const connection = await amqplib.connect(url) as unknown as AmqpConnection;
-            const channel = await connection.createConfirmChannel();
+            const resolvedConfig = resolveRabbitMqConnection(config, 'AMQP');
+            const url = buildAmqpUrl(resolvedConfig);
+            const remotes = await resolveSafeRemoteAddresses(
+                resolvedConfig.host,
+            );
+            connection = await amqplib.connect(
+                url,
+                {
+                    timeout: HTTP.TIMEOUT_MS,
+                    lookup: createPinnedAddressLookup(remotes),
+                },
+            ) as unknown as AmqpConnection;
+            channel = await connection.createConfirmChannel();
+            const activeConnection = connection;
+            const activeChannel = channel;
 
             const cleanupConnection = () => {
                 const current = connectionPool.get(key);
-                if (current?.connection === connection) {
+                if (current?.connection === activeConnection) {
                     connectionPool.delete(key);
                 }
-                removePendingMessagesForChannel(channel);
+                removePendingMessagesForChannel(activeChannel);
             };
 
-            connection.on('error', cleanupConnection);
-            connection.on('close', cleanupConnection);
+            activeConnection.on('error', error => {
+                logger.warn('RabbitMQ: Connection failed', {
+                    error: getErrorMessage(error),
+                });
+                cleanupConnection();
+            });
+            activeConnection.on('close', cleanupConnection);
 
-            await channel.prefetch(10);
+            await activeChannel.prefetch(QUEUE.DEFAULT_MESSAGE_BATCH_SIZE);
 
-            channel.on('error', () => {
+            activeChannel.on('error', error => {
+                logger.warn('RabbitMQ: Channel failed', {
+                    error: getErrorMessage(error),
+                });
                 const current = connectionPool.get(key);
-                if (current?.channel === channel) {
+                if (current?.channel === activeChannel) {
                     connectionPool.delete(key);
                 }
-                removePendingMessagesForChannel(channel);
+                removePendingMessagesForChannel(activeChannel);
             });
 
             const entry: ConnectionEntry = {
-                connection,
-                channel,
+                connection: activeConnection,
+                channel: activeChannel,
                 lastUsed: Date.now(),
             };
 
             // Evict oldest connection if pool is at capacity
-            if (connectionPool.size >= MAX_CONNECTIONS) {
+            if (connectionPool.size >= QUEUE.RABBITMQ_MAX_CONNECTIONS) {
                 let oldestKey: string | null = null;
                 let oldestTime = Infinity;
                 for (const [k, e] of connectionPool.entries()) {
@@ -171,23 +222,23 @@ async function getConnection(config: QueueConnectionConfig): Promise<{
                     }
                 }
                 if (!oldestKey) {
-                    await channel.close().catch(() => undefined);
-                    await connection.close().catch(() => undefined);
                     throw new Error(
                         'RabbitMQ connection pool is at capacity with active deliveries',
                     );
                 }
                 const stale = connectionPool.get(oldestKey);
                 if (stale) {
-                    stale.channel.close().catch(() => undefined);
-                    stale.connection.close().catch(() => undefined);
+                    connectionPool.delete(oldestKey);
                     removePendingMessagesForChannel(stale.channel);
+                    await closeAmqpResources(stale, 'pool eviction');
                 }
-                connectionPool.delete(oldestKey);
             }
 
             connectionPool.set(key, entry);
-            return { connection, channel };
+            return { connection: activeConnection, channel: activeChannel };
+        } catch (error) {
+            await closeAmqpResources({ connection, channel }, 'connection setup');
+            throw error;
         } finally {
             connectingPromises.delete(key);
         }
@@ -205,14 +256,9 @@ async function closeConnection(config: QueueConnectionConfig): Promise<void> {
     const entry = connectionPool.get(key);
 
     if (entry) {
-        try {
-            await entry.channel.close();
-            await entry.connection.close();
-        } catch {
-            // Ignore close errors
-        }
         removePendingMessagesForChannel(entry.channel);
         connectionPool.delete(key);
+        await closeAmqpResources(entry, 'explicit close');
     }
 }
 
@@ -246,6 +292,14 @@ export class RabbitMQAmqpAdapter implements QueueAdapter {
     readonly description = 'RabbitMQ message broker using native AMQP 0-9-1 protocol';
 
     private connectionCleanupHandle?: ReturnType<typeof setInterval>;
+    private readonly cleanupOperations = new Set<Promise<void>>();
+
+    private trackCleanup(operation: Promise<void>): void {
+        this.cleanupOperations.add(operation);
+        void operation.finally(() => {
+            this.cleanupOperations.delete(operation);
+        });
+    }
 
     /**
      * Start the periodic cleanup intervals for idle connections and stale pending messages.
@@ -263,16 +317,13 @@ export class RabbitMQAmqpAdapter implements QueueAdapter {
                         !activeConnections.has(key) &&
                         now - entry.lastUsed > INTERNAL_TIMINGS.CONNECTION_MAX_IDLE_MS
                     ) {
-                        entry.channel.close().catch((err) => {
-                            logger.warn('RabbitMQ: Failed to close channel during cleanup', { error: err?.message ?? err });
-                        });
-                        entry.connection.close().catch((err) => {
-                            logger.warn('RabbitMQ: Failed to close connection during cleanup', { error: err?.message ?? err });
-                        });
                         connectionPool.delete(key);
+                        this.trackCleanup(
+                            closeAmqpResources(entry, 'idle cleanup'),
+                        );
                     }
                 }
-            }, 60_000);
+            }, INTERNAL_TIMINGS.CLEANUP_INTERVAL_MS);
 
             if (typeof this.connectionCleanupHandle.unref === 'function') {
                 this.connectionCleanupHandle.unref();
@@ -290,15 +341,15 @@ export class RabbitMQAmqpAdapter implements QueueAdapter {
             clearInterval(this.connectionCleanupHandle);
             this.connectionCleanupHandle = undefined;
         }
-        for (const [key, entry] of connectionPool.entries()) {
-            try {
-                await entry.channel.close();
-                await entry.connection.close();
-            } catch {
-                // Ignore close errors during shutdown
-            }
-            connectionPool.delete(key);
-        }
+        await Promise.allSettled(connectingPromises.values());
+        const pooledConnections = [...connectionPool.values()];
+        connectionPool.clear();
+        await Promise.all([
+            ...this.cleanupOperations,
+            ...pooledConnections.map(entry =>
+                closeAmqpResources(entry, 'adapter shutdown'),
+            ),
+        ]);
         pendingMessages.clear();
     }
 

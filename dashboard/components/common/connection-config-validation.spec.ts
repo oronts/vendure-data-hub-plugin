@@ -36,7 +36,7 @@ const schemas: ConnectionSchema[] = [
     {
         type: 'RABBITMQ',
         label: 'RabbitMQ',
-        fields: requiredHostFields(),
+        fields: [...requiredHostFields(), requiredSecret('passwordSecretCode')],
     },
     {
         type: 'SQS',
@@ -71,7 +71,7 @@ const validConfigs: Record<string, Record<string, unknown>> = {
     S3: { bucket: 'catalog', region: 'eu-central-1' },
     FTP: hostConfig(),
     SFTP: hostConfig(),
-    RABBITMQ: hostConfig(),
+    RABBITMQ: { ...hostConfig(), passwordSecretCode: 'rabbitmq-password' },
     SQS: { region: 'eu-central-1', accountId: '123456789012' },
     REDIS: { host: 'redis.internal', port: 6379 },
     CUSTOM: { config: '{"endpoint":"https://example.com"}' },
@@ -149,6 +149,10 @@ function optionalText(key: string) {
 
 function optionalSecret(key: string) {
     return { key, label: key, type: 'secret' } as const;
+}
+
+function requiredSecret(key: string) {
+    return { key, label: key, type: 'secret', required: true } as const;
 }
 
 function requiredPort() {

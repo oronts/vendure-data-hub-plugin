@@ -151,7 +151,7 @@ export const CONNECTION_SCHEMAS: ConnectionSchema[] = [
             { key: 'port', label: 'Port', type: 'number', placeholder: String(PORTS.RABBITMQ), defaultValue: PORTS.RABBITMQ, required: true, min: PORTS.MIN, max: PORTS.MAX },
             { key: 'vhost', label: 'Virtual Host', type: 'text', placeholder: '/', description: 'RabbitMQ virtual host' },
             { key: 'username', label: 'Username', type: 'text', placeholder: 'guest', required: true },
-            { key: 'passwordSecretCode', label: 'Password Secret Code', type: 'secret', description: 'Reference a secret by code' },
+            { key: 'passwordSecretCode', label: 'Password Secret Code', type: 'secret', description: 'Reference a secret by code', required: true },
             { key: 'ssl', label: 'SSL', type: 'boolean' },
         ],
     },

@@ -11,6 +11,8 @@ vi.mock('../../../utils/secure-fetch.utils', () => ({
 const connectionConfig = {
     host: 'rabbitmq.example.com',
     port: 15_672,
+    username: 'data-hub',
+    password: 'secret',
 } as QueueConnectionConfig;
 
 describe('RabbitMQAdapter acknowledgment capabilities', () => {

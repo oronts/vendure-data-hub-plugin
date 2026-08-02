@@ -76,6 +76,16 @@ DataHubPlugin.init({
 });
 ```
 
+RabbitMQ connections require both `username` and `passwordSecretCode`; neither
+adapter supplies `guest` credentials. The native adapter's direct configuration
+defaults to port `5672`, or `5671` when TLS is enabled. Connection records
+should set the port explicitly as shown. Before a socket is opened,
+every resolved address must pass the configured SSRF policy; the connection
+then uses that validated address set for DNS lookup while TLS continues to
+verify the configured hostname. Connection setup has a bounded timeout, and
+partial channel/connection setup is closed independently on failure and during
+application shutdown.
+
 ### RabbitMQ (HTTP API Fallback)
 
 ```typescript
@@ -95,6 +105,13 @@ DataHubPlugin.init({
     ],
 });
 ```
+
+The HTTP adapter's direct configuration defaults to management port `15672`, or
+`15671` when TLS is enabled. Set the management port explicitly on a connection
+record because the shared RabbitMQ connection form defaults to the recommended
+native AMQP port. The HTTP adapter is suitable for publishing and direct adapter
+use, but not for reliable message triggers because RabbitMQ's HTTP get endpoint
+acknowledges during the consume request.
 
 ### Amazon SQS
 

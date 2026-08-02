@@ -11,34 +11,30 @@ import { JsonObject } from '../../../types/index';
 import { AckMode } from '../../../constants/enums';
 import { AUTH_SCHEMES, CONTENT_TYPES, HTTP_HEADERS } from '../../../constants/services';
 import { HTTP, HTTP_STATUS, OUTBOUND_RESPONSE_LIMITS } from '../../../constants/defaults/http-defaults';
-import { isBlockedHostname } from '../../../utils/url-security.utils';
 import { secureFetch } from '../../../utils/secure-fetch.utils';
 import { readResponseJson, readResponseText } from '../../../utils/secure-response-body.utils';
 import { getErrorMessage } from '../../../utils/error.utils';
+import {
+    resolveRabbitMqConnection,
+    type ResolvedRabbitMqConnection,
+} from './rabbitmq-connection';
 
 export class RabbitMQAdapter implements QueueAdapter {
     readonly code = 'rabbitmq';
     readonly name = 'RabbitMQ';
     readonly description = 'RabbitMQ message broker via HTTP Management API';
 
-    private buildAuthHeader(config: QueueConnectionConfig): string {
-        const username = config.username ?? 'guest';
-        const password = config.password ?? 'guest';
-        return `${AUTH_SCHEMES.BASIC} ${Buffer.from(`${username}:${password}`).toString('base64')}`;
+    private buildAuthHeader(config: ResolvedRabbitMqConnection): string {
+        return `${AUTH_SCHEMES.BASIC} ${Buffer.from(`${config.username}:${config.password}`).toString('base64')}`;
     }
 
-    private buildBaseUrl(config: QueueConnectionConfig): string {
-        const host = config.host ?? 'localhost';
-        if (isBlockedHostname(host)) {
-            throw new Error(`SSRF protection: hostname '${host}' is blocked for security reasons`);
-        }
-        const port = config.port ?? 15672;
+    private buildBaseUrl(config: ResolvedRabbitMqConnection): string {
         const protocol = config.useTls ? 'https' : 'http';
-        return `${protocol}://${host}:${port}/api`;
+        return `${protocol}://${config.host}:${config.port}/api`;
     }
 
-    private encodeVhost(config: QueueConnectionConfig): string {
-        return encodeURIComponent(config.vhost ?? '/');
+    private encodeVhost(config: ResolvedRabbitMqConnection): string {
+        return encodeURIComponent(config.vhost);
     }
 
     async publish(
@@ -46,9 +42,10 @@ export class RabbitMQAdapter implements QueueAdapter {
         queueName: string,
         messages: QueueMessage[],
     ): Promise<PublishResult[]> {
-        const baseUrl = this.buildBaseUrl(connectionConfig);
-        const auth = this.buildAuthHeader(connectionConfig);
-        const vhost = this.encodeVhost(connectionConfig);
+        const resolvedConfig = resolveRabbitMqConnection(connectionConfig, 'HTTP');
+        const baseUrl = this.buildBaseUrl(resolvedConfig);
+        const auth = this.buildAuthHeader(resolvedConfig);
+        const vhost = this.encodeVhost(resolvedConfig);
         const results: PublishResult[] = [];
 
         for (const msg of messages) {
@@ -125,10 +122,10 @@ export class RabbitMQAdapter implements QueueAdapter {
                 'RabbitMQ HTTP consumption supports AUTO acknowledgment only; use rabbitmq-amqp for MANUAL acknowledgment',
             );
         }
-        const baseUrl = this.buildBaseUrl(connectionConfig);
-
-        const auth = this.buildAuthHeader(connectionConfig);
-        const vhost = this.encodeVhost(connectionConfig);
+        const resolvedConfig = resolveRabbitMqConnection(connectionConfig, 'HTTP');
+        const baseUrl = this.buildBaseUrl(resolvedConfig);
+        const auth = this.buildAuthHeader(resolvedConfig);
+        const vhost = this.encodeVhost(resolvedConfig);
 
         const getUrl = `${baseUrl}/queues/${vhost}/${encodeURIComponent(queueName)}/get`;
 
@@ -226,10 +223,10 @@ export class RabbitMQAdapter implements QueueAdapter {
     }
 
     async testConnection(connectionConfig: QueueConnectionConfig): Promise<boolean> {
-        const baseUrl = this.buildBaseUrl(connectionConfig);
-        const auth = this.buildAuthHeader(connectionConfig);
-
         try {
+            const resolvedConfig = resolveRabbitMqConnection(connectionConfig, 'HTTP');
+            const baseUrl = this.buildBaseUrl(resolvedConfig);
+            const auth = this.buildAuthHeader(resolvedConfig);
             const response = await secureFetch(`${baseUrl}/overview`, {
                 method: 'GET',
                 headers: { [HTTP_HEADERS.AUTHORIZATION]: auth },
