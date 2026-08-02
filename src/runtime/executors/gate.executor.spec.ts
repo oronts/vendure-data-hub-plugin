@@ -8,18 +8,25 @@ vi.mock('../../utils/secure-fetch.utils', () => ({
     secureFetch: vi.fn(),
 }));
 
-function createExecutor() {
+function createFixture() {
     const logger = {
         debug: vi.fn(),
         info: vi.fn(),
         warn: vi.fn(),
         error: vi.fn(),
     };
-    return new GateExecutor(
-        {} as never,
-        { publishGateApprovalRequested: vi.fn() } as never,
-        { createLogger: vi.fn(() => logger) } as never,
-    );
+    return {
+        executor: new GateExecutor(
+            {} as never,
+            { publishGateApprovalRequested: vi.fn() } as never,
+            { createLogger: vi.fn(() => logger) } as never,
+        ),
+        logger,
+    };
+}
+
+function createExecutor() {
+    return createFixture().executor;
 }
 
 function createContext(data: Record<string, unknown> = {}) {
@@ -127,6 +134,7 @@ describe('GateExecutor', () => {
         const cancel = vi.fn(async () => undefined);
         vi.mocked(secureFetch).mockResolvedValue({
             body: { cancel },
+            ok: true,
             status: 202,
         } as unknown as Response);
         const timeout = vi.spyOn(AbortSignal, 'timeout');
@@ -154,5 +162,38 @@ describe('GateExecutor', () => {
                 signal: expect.any(AbortSignal),
             }),
         );
+    });
+
+    it('keeps the gate paused and reports a failed webhook response', async () => {
+        const cancel = vi.fn(async () => undefined);
+        vi.mocked(secureFetch).mockResolvedValue({
+            body: { cancel },
+            ok: false,
+            status: 503,
+        } as unknown as Response);
+        const { executor, logger } = createFixture();
+
+        const result = await executor.execute(
+            {} as never,
+            {
+                key: 'approval',
+                type: 'GATE',
+                config: {
+                    approvalType: 'MANUAL',
+                    notifyWebhook: 'https://hooks.example.com/gate',
+                },
+            } as never,
+            [{ sku: 'SKU-1' }],
+            createContext() as never,
+        );
+
+        expect(result.paused).toBe(true);
+        await vi.waitFor(() => expect(logger.warn).toHaveBeenCalledWith(
+            'GATE "approval": webhook notification failed: GATE webhook returned HTTP 503',
+        ));
+        expect(logger.info).not.toHaveBeenCalledWith(
+            expect.stringContaining('webhook notification sent'),
+        );
+        expect(cancel).toHaveBeenCalledOnce();
     });
 });

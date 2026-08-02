@@ -237,6 +237,9 @@ export class GateExecutor {
         });
 
         await response.body?.cancel().catch(() => undefined);
+        if (!response.ok) {
+            throw new Error(`GATE webhook returned HTTP ${response.status}`);
+        }
         this.logger.info(`GATE "${stepKey}": webhook notification sent (status=${response.status})`);
     }
 
