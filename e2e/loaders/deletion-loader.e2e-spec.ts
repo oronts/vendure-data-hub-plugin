@@ -48,7 +48,6 @@ describe('DeletionHandler e2e', () => {
         const step = makeStep('test-delete-by-slug', {
             entityType: 'product',
             matchBy: 'slug',
-            cascadeVariants: true,
         });
         const input = [{ slug: 'delete-me-product' }];
 
@@ -69,7 +68,6 @@ describe('DeletionHandler e2e', () => {
         const step = makeStep('test-cascade-delete', {
             entityType: 'product',
             matchBy: 'slug',
-            cascadeVariants: true,
         });
         const input = [{ slug: 'delete-cascade-product' }];
 
@@ -103,10 +101,10 @@ describe('DeletionHandler e2e', () => {
         });
         const input = [{ slug: 'nonexistent-product-xyz' }];
 
-        // Should complete without throwing — handler warns and counts as ok (no-op)
         const result = await deletionHandler.execute(ctx, step, input);
-        expect(result.ok).toBe(1);
+        expect(result.ok).toBe(0);
         expect(result.fail).toBe(0);
+        expect(result.skipped).toBe(1);
     });
 
     it('reports error for missing identifier field', async () => {
@@ -134,7 +132,6 @@ describe('DeletionHandler e2e', () => {
         const step = makeStep('test-batch-delete', {
             entityType: 'product',
             matchBy: 'slug',
-            cascadeVariants: true,
         });
         const input = [
             { slug: 'batch-del-a' },

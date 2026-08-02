@@ -334,8 +334,6 @@ export interface EntityDeletionLoaderConfig {
     identifierField?: string;
     /** How to match the entity (default depends on entity type) */
     matchBy?: 'slug' | 'sku' | 'id' | 'code' | 'email' | 'name';
-    /** Delete variants when deleting a product (default: true) */
-    cascadeVariants?: boolean;
     /** Channel code */
     channel?: string;
 }
@@ -345,4 +343,3 @@ export interface GenericLoaderConfig {
     adapterCode: string;
     [key: string]: unknown;
 }
-

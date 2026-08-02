@@ -102,7 +102,6 @@ export const OPERATIONS_LOADER_DEFINITIONS: LoaderDefinitionEntry[] = [
                         { value: 'email', label: 'Email' },
                         { value: 'name', label: 'Name' },
                     ], description: 'How to find the entity (default: slug for products, sku for variants, code for promotions/shipping methods, email for customers, name for groups/tax rates/assets/stock locations)' },
-                    { key: 'cascadeVariants', label: 'Cascade delete variants', type: 'boolean', description: 'Delete all variants when deleting a product (default: true)' },
                     { key: 'channel', label: 'Channel code', type: 'string' },
                 ],
             },

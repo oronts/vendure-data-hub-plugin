@@ -24,7 +24,6 @@ import {
     AssetService,
     StockLocationService,
     RequestContextService,
-    TransactionalConnection,
     ID,
     LanguageCode,
 } from '@vendure/core';
@@ -37,46 +36,13 @@ import { getStringValue } from '../../../loaders/shared-helpers';
 import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
 import { LOGGER_CONTEXTS } from '../../../constants/core';
 import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger/datahub-logger';
-
-/**
- * Configuration for entity deletion handler step
- */
-type DeletionEntityType = 'product' | 'variant' | 'collection' | 'promotion' | 'shipping-method' | 'customer' | 'payment-method' | 'facet' | 'facet-value' | 'customer-group' | 'tax-rate' | 'asset' | 'stock-location';
-type DeletionMatchBy = 'slug' | 'sku' | 'id' | 'code' | 'email' | 'name';
-
-interface DeletionHandlerConfig {
-    /** Entity type to delete (default: 'product') */
-    entityType?: DeletionEntityType;
-    /** Record field containing the identifier to match (default depends on entity type) */
-    identifierField?: string;
-    /** How to find the entity (default depends on entity type) */
-    matchBy?: DeletionMatchBy;
-    /** Delete variants when deleting a product (default: true) */
-    cascadeVariants?: boolean;
-    /** Channel code for context */
-    channel?: string;
-}
-
-/** Default matchBy per entity type */
-const DEFAULT_MATCH_BY: Record<DeletionEntityType, DeletionMatchBy> = {
-    product: 'slug',
-    variant: 'sku',
-    collection: 'slug',
-    promotion: 'code',
-    'shipping-method': 'code',
-    customer: 'email',
-    'payment-method': 'code',
-    facet: 'code',
-    'facet-value': 'code',
-    'customer-group': 'name',
-    'tax-rate': 'name',
-    asset: 'name',
-    'stock-location': 'name',
-};
-
-function getConfig(config: Record<string, unknown>): DeletionHandlerConfig {
-    return config as unknown as DeletionHandlerConfig;
-}
+import {
+    assertDeletionSucceeded,
+    DeletionTargetNotFoundError,
+    isDeletionTargetNotFoundError,
+    resolveUniqueDeletionTargetId,
+} from './deletion-handler-errors';
+import { parseDeletionHandlerConfig } from './deletion-handler-config';
 
 @Injectable()
 export class DeletionHandler implements LoaderHandler {
@@ -98,7 +64,6 @@ export class DeletionHandler implements LoaderHandler {
         private stockLocationService: StockLocationService,
         private requestContextService: RequestContextService,
         private channelService: ChannelService,
-        private connection: TransactionalConnection,
         loggerFactory: DataHubLoggerFactory,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.ENTITY_DELETION_LOADER);
@@ -113,13 +78,9 @@ export class DeletionHandler implements LoaderHandler {
     ): Promise<LoaderExecutionResult> {
         let ok = 0;
         let fail = 0;
-        const cfg = getConfig(step.config);
-        const entityType: DeletionEntityType = cfg.entityType ?? 'product';
-        const cascadeVariants = cfg.cascadeVariants !== false;
-
-        // Resolve defaults based on entity type
-        const matchBy = cfg.matchBy ?? DEFAULT_MATCH_BY[entityType] ?? 'slug';
-        const identifierField = cfg.identifierField ?? matchBy;
+        let skipped = 0;
+        const cfg = parseDeletionHandlerConfig(step.config);
+        const { entityType, matchBy, identifierField } = cfg;
 
         let opCtx = ctx;
         if (cfg.channel) {
@@ -144,7 +105,7 @@ export class DeletionHandler implements LoaderHandler {
 
                 switch (entityType) {
                     case 'product':
-                        await this.deleteProduct(opCtx, identifier, matchBy, cascadeVariants);
+                        await this.deleteProduct(opCtx, identifier, matchBy);
                         break;
                     case 'variant':
                         await this.deleteVariant(opCtx, identifier, matchBy);
@@ -187,13 +148,18 @@ export class DeletionHandler implements LoaderHandler {
                 }
                 ok++;
             } catch (e: unknown) {
+                if (isDeletionTargetNotFoundError(e)) {
+                    this.logger.warn(getErrorMessage(e));
+                    skipped++;
+                    continue;
+                }
                 if (onRecordError) {
                     await onRecordError(step.key, getErrorMessage(e) || 'entityDeletion failed', rec, getErrorStack(e));
                 }
                 fail++;
             }
         }
-        return { ok, fail, skipped: 0 };
+        return { ok, fail, skipped };
     }
 
     private async deleteVariant(ctx: RequestContext, identifier: string, matchBy: string): Promise<void> {
@@ -208,18 +174,18 @@ export class DeletionHandler implements LoaderHandler {
         }
 
         if (!variantId) {
-            this.logger.warn(`Variant not found for deletion: ${identifier} (matchBy: ${matchBy})`);
-            return;
+            throw new DeletionTargetNotFoundError(
+                `Variant not found for deletion: ${identifier} (matchBy: ${matchBy})`,
+            );
         }
 
-        await this.productVariantService.softDelete(ctx, variantId);
+        assertDeletionSucceeded('variant', identifier, await this.productVariantService.softDelete(ctx, variantId));
     }
 
     private async deleteProduct(
         ctx: RequestContext,
         identifier: string,
         matchBy: string,
-        cascadeVariants: boolean,
     ): Promise<void> {
         let productId: ID | undefined;
 
@@ -238,20 +204,12 @@ export class DeletionHandler implements LoaderHandler {
         }
 
         if (!productId) {
-            this.logger.warn(`Product not found for deletion: ${identifier} (matchBy: ${matchBy})`);
-            return;
+            throw new DeletionTargetNotFoundError(
+                `Product not found for deletion: ${identifier} (matchBy: ${matchBy})`,
+            );
         }
 
-        if (cascadeVariants) {
-            const variants = await this.productVariantService.findAll(ctx, {
-                filter: { productId: { eq: String(productId) } },
-            } as never);
-            for (const v of variants.items) {
-                await this.productVariantService.softDelete(ctx, v.id);
-            }
-        }
-
-        await this.productService.softDelete(ctx, productId);
+        assertDeletionSucceeded('product', identifier, await this.productService.softDelete(ctx, productId));
     }
 
     private async deletePromotion(ctx: RequestContext, identifier: string, matchBy: string): Promise<void> {
@@ -263,17 +221,18 @@ export class DeletionHandler implements LoaderHandler {
             // matchBy === 'code', find by couponCode
             const list = await this.promotionService.findAll(ctx, {
                 filter: { couponCode: { eq: identifier } },
-                take: 1,
+                take: 2,
             });
-            promotionId = list.items[0]?.id;
+            promotionId = resolveUniqueDeletionTargetId(list.items, 'promotion', identifier);
         }
 
         if (!promotionId) {
-            this.logger.warn(`Promotion not found for deletion: ${identifier} (matchBy: ${matchBy})`);
-            return;
+            throw new DeletionTargetNotFoundError(
+                `Promotion not found for deletion: ${identifier} (matchBy: ${matchBy})`,
+            );
         }
 
-        await this.promotionService.softDeletePromotion(ctx, promotionId);
+        assertDeletionSucceeded('promotion', identifier, await this.promotionService.softDeletePromotion(ctx, promotionId));
     }
 
     private async deleteShippingMethod(ctx: RequestContext, identifier: string, matchBy: string): Promise<void> {
@@ -285,16 +244,18 @@ export class DeletionHandler implements LoaderHandler {
             // matchBy === 'code', find by code
             const list = await this.shippingMethodService.findAll(ctx, {
                 filter: { code: { eq: identifier } },
+                take: 2,
             } as never);
-            shippingMethodId = list.items[0]?.id;
+            shippingMethodId = resolveUniqueDeletionTargetId(list.items, 'shipping method', identifier);
         }
 
         if (!shippingMethodId) {
-            this.logger.warn(`Shipping method not found for deletion: ${identifier} (matchBy: ${matchBy})`);
-            return;
+            throw new DeletionTargetNotFoundError(
+                `Shipping method not found for deletion: ${identifier} (matchBy: ${matchBy})`,
+            );
         }
 
-        await this.shippingMethodService.softDelete(ctx, shippingMethodId);
+        assertDeletionSucceeded('shipping method', identifier, await this.shippingMethodService.softDelete(ctx, shippingMethodId));
     }
 
     private async deleteCustomer(ctx: RequestContext, identifier: string, matchBy: string): Promise<void> {
@@ -306,16 +267,18 @@ export class DeletionHandler implements LoaderHandler {
             // matchBy === 'email', find by emailAddress
             const list = await this.customerService.findAll(ctx, {
                 filter: { emailAddress: { eq: identifier } },
+                take: 2,
             } as never);
-            customerId = list.items[0]?.id;
+            customerId = resolveUniqueDeletionTargetId(list.items, 'customer', identifier);
         }
 
         if (!customerId) {
-            this.logger.warn(`Customer not found for deletion: ${identifier} (matchBy: ${matchBy})`);
-            return;
+            throw new DeletionTargetNotFoundError(
+                `Customer not found for deletion: ${identifier} (matchBy: ${matchBy})`,
+            );
         }
 
-        await this.customerService.softDelete(ctx, customerId);
+        assertDeletionSucceeded('customer', identifier, await this.customerService.softDelete(ctx, customerId));
     }
 
     private async deletePaymentMethod(ctx: RequestContext, identifier: string, matchBy: string): Promise<void> {
@@ -327,16 +290,18 @@ export class DeletionHandler implements LoaderHandler {
             // matchBy === 'code', find by code
             const list = await this.paymentMethodService.findAll(ctx, {
                 filter: { code: { eq: identifier } },
+                take: 2,
             });
-            paymentMethodId = list.items[0]?.id;
+            paymentMethodId = resolveUniqueDeletionTargetId(list.items, 'payment method', identifier);
         }
 
         if (!paymentMethodId) {
-            this.logger.warn(`Payment method not found for deletion: ${identifier} (matchBy: ${matchBy})`);
-            return;
+            throw new DeletionTargetNotFoundError(
+                `Payment method not found for deletion: ${identifier} (matchBy: ${matchBy})`,
+            );
         }
 
-        await this.paymentMethodService.delete(ctx, paymentMethodId);
+        assertDeletionSucceeded('payment method', identifier, await this.paymentMethodService.delete(ctx, paymentMethodId));
     }
 
     private async deleteFacet(ctx: RequestContext, identifier: string, matchBy: string): Promise<void> {
@@ -351,11 +316,12 @@ export class DeletionHandler implements LoaderHandler {
         }
 
         if (!facetId) {
-            this.logger.warn(`Facet not found for deletion: ${identifier} (matchBy: ${matchBy})`);
-            return;
+            throw new DeletionTargetNotFoundError(
+                `Facet not found for deletion: ${identifier} (matchBy: ${matchBy})`,
+            );
         }
 
-        await this.facetService.delete(ctx, facetId);
+        assertDeletionSucceeded('facet', identifier, await this.facetService.delete(ctx, facetId));
     }
 
     private async deleteFacetValue(ctx: RequestContext, identifier: string, matchBy: string): Promise<void> {
@@ -367,17 +333,18 @@ export class DeletionHandler implements LoaderHandler {
             // matchBy === 'code', use findAllList for paginated/filtered query
             const list = await this.facetValueService.findAllList(ctx, {
                 filter: { code: { eq: identifier } },
-                take: 1,
+                take: 2,
             } as never);
-            facetValueId = list.items[0]?.id;
+            facetValueId = resolveUniqueDeletionTargetId(list.items, 'facet value', identifier);
         }
 
         if (!facetValueId) {
-            this.logger.warn(`Facet value not found for deletion: ${identifier} (matchBy: ${matchBy})`);
-            return;
+            throw new DeletionTargetNotFoundError(
+                `Facet value not found for deletion: ${identifier} (matchBy: ${matchBy})`,
+            );
         }
 
-        await this.facetValueService.delete(ctx, facetValueId);
+        assertDeletionSucceeded('facet value', identifier, await this.facetValueService.delete(ctx, facetValueId));
     }
 
     private async deleteCustomerGroup(ctx: RequestContext, identifier: string, matchBy: string): Promise<void> {
@@ -389,17 +356,18 @@ export class DeletionHandler implements LoaderHandler {
             // matchBy === 'name', find by name
             const list = await this.customerGroupService.findAll(ctx, {
                 filter: { name: { eq: identifier } },
-                take: 1,
+                take: 2,
             } as never);
-            groupId = list.items[0]?.id;
+            groupId = resolveUniqueDeletionTargetId(list.items, 'customer group', identifier);
         }
 
         if (!groupId) {
-            this.logger.warn(`Customer group not found for deletion: ${identifier} (matchBy: ${matchBy})`);
-            return;
+            throw new DeletionTargetNotFoundError(
+                `Customer group not found for deletion: ${identifier} (matchBy: ${matchBy})`,
+            );
         }
 
-        await this.customerGroupService.delete(ctx, groupId);
+        assertDeletionSucceeded('customer group', identifier, await this.customerGroupService.delete(ctx, groupId));
     }
 
     private async deleteTaxRate(ctx: RequestContext, identifier: string, matchBy: string): Promise<void> {
@@ -411,17 +379,18 @@ export class DeletionHandler implements LoaderHandler {
             // matchBy === 'name', find by name
             const list = await this.taxRateService.findAll(ctx, {
                 filter: { name: { eq: identifier } },
-                take: 1,
+                take: 2,
             });
-            taxRateId = list.items[0]?.id;
+            taxRateId = resolveUniqueDeletionTargetId(list.items, 'tax rate', identifier);
         }
 
         if (!taxRateId) {
-            this.logger.warn(`Tax rate not found for deletion: ${identifier} (matchBy: ${matchBy})`);
-            return;
+            throw new DeletionTargetNotFoundError(
+                `Tax rate not found for deletion: ${identifier} (matchBy: ${matchBy})`,
+            );
         }
 
-        await this.taxRateService.delete(ctx, taxRateId);
+        assertDeletionSucceeded('tax rate', identifier, await this.taxRateService.delete(ctx, taxRateId));
     }
 
     private async deleteAsset(ctx: RequestContext, identifier: string, matchBy: string): Promise<void> {
@@ -433,17 +402,18 @@ export class DeletionHandler implements LoaderHandler {
             // matchBy === 'name', find by name
             const list = await this.assetService.findAll(ctx, {
                 filter: { name: { eq: identifier } },
-                take: 1,
+                take: 2,
             } as never);
-            assetId = list.items[0]?.id;
+            assetId = resolveUniqueDeletionTargetId(list.items, 'asset', identifier);
         }
 
         if (!assetId) {
-            this.logger.warn(`Asset not found for deletion: ${identifier} (matchBy: ${matchBy})`);
-            return;
+            throw new DeletionTargetNotFoundError(
+                `Asset not found for deletion: ${identifier} (matchBy: ${matchBy})`,
+            );
         }
 
-        await this.assetService.delete(ctx, [assetId]);
+        assertDeletionSucceeded('asset', identifier, await this.assetService.delete(ctx, [assetId]));
     }
 
     private async deleteStockLocation(ctx: RequestContext, identifier: string, matchBy: string): Promise<void> {
@@ -455,17 +425,18 @@ export class DeletionHandler implements LoaderHandler {
             // matchBy === 'name', find by name
             const list = await this.stockLocationService.findAll(ctx, {
                 filter: { name: { eq: identifier } },
-                take: 1,
+                take: 2,
             });
-            stockLocationId = list.items[0]?.id;
+            stockLocationId = resolveUniqueDeletionTargetId(list.items, 'stock location', identifier);
         }
 
         if (!stockLocationId) {
-            this.logger.warn(`Stock location not found for deletion: ${identifier} (matchBy: ${matchBy})`);
-            return;
+            throw new DeletionTargetNotFoundError(
+                `Stock location not found for deletion: ${identifier} (matchBy: ${matchBy})`,
+            );
         }
 
-        await this.stockLocationService.delete(ctx, { id: stockLocationId });
+        assertDeletionSucceeded('stock location', identifier, await this.stockLocationService.delete(ctx, { id: stockLocationId }));
     }
 
     private async deleteCollection(ctx: RequestContext, identifier: string, matchBy: string): Promise<void> {
@@ -480,10 +451,11 @@ export class DeletionHandler implements LoaderHandler {
         }
 
         if (!collectionId) {
-            this.logger.warn(`Collection not found for deletion: ${identifier} (matchBy: ${matchBy})`);
-            return;
+            throw new DeletionTargetNotFoundError(
+                `Collection not found for deletion: ${identifier} (matchBy: ${matchBy})`,
+            );
         }
 
-        await this.collectionService.delete(ctx, collectionId);
+        assertDeletionSucceeded('collection', identifier, await this.collectionService.delete(ctx, collectionId));
     }
 }
