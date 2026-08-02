@@ -47,7 +47,11 @@ async function connectSftpDestination(
         return client;
     } catch (error) {
         socket.destroy();
-        await client.end().catch(() => undefined);
+        await client.end().catch(closeError => {
+            logger.warn('SFTP: Failed to close rejected connection', {
+                error: getErrorMessage(closeError),
+            });
+        });
         throw error;
     }
 }
@@ -185,7 +189,11 @@ export async function testSftpDestination(
             latencyMs: Date.now() - start,
         };
     } finally {
-        await client?.end().catch(() => undefined);
+        await client?.end().catch(error => {
+            logger.warn('SFTP: Failed to close connection test client', {
+                error: getErrorMessage(error),
+            });
+        });
     }
 }
 

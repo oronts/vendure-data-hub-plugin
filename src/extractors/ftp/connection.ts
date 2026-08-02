@@ -281,7 +281,13 @@ export async function testConnection(
             error: getErrorMessage(error),
         };
     } finally {
-        try { await client?.close(); } catch { /* already closed or failed */ }
+        try {
+            await client?.close();
+        } catch (error) {
+            context.logger.warn('Failed to close FTP/SFTP connection test client', {
+                error: getErrorMessage(error),
+            });
+        }
     }
 }
 

@@ -213,7 +213,13 @@ export async function testS3Connection(
             error: getErrorMessage(error),
         };
     } finally {
-        try { await client?.close(); } catch { /* already closed or failed */ }
+        try {
+            await client?.close();
+        } catch (error) {
+            context.logger.warn('Failed to close S3 connection test client', {
+                error: getErrorMessage(error),
+            });
+        }
     }
 }
 
