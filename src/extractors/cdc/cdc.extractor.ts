@@ -10,14 +10,14 @@ import {
     ExtractorCategory,
 } from '../../types/index';
 import { getErrorMessage } from '../../utils/error.utils';
-import { DatabaseType, TRANSFORM_LIMITS } from '../../constants/index';
+import { TRANSFORM_LIMITS } from '../../constants/index';
 import { CdcExtractorConfig, CdcOperation } from './types';
 import { CDC_EXTRACTOR_SCHEMA } from './schema';
 import {
     createDatabaseClient,
     DatabaseClient,
+    testDatabaseConnection,
 } from '../database/connection-pool';
-import { DATABASE_TEST_QUERIES } from '../database/types';
 import {
     escapeSqlIdentifier,
     escapeSqlTableIdentifier,
@@ -259,20 +259,13 @@ export class CdcExtractor implements DataExtractor<CdcExtractorConfig> {
         context: ExtractorContext,
         config: CdcExtractorConfig,
     ): Promise<ConnectionTestResult> {
-        const startTime = Date.now();
-
-        let client: Awaited<ReturnType<typeof createDatabaseClient>> | null = null;
         try {
             const connection = await context.connections.getRequired(config.connectionCode);
             const dbConfig = toCdcDatabaseConfig(config, connection);
-            const testQuery = DATABASE_TEST_QUERIES[config.databaseType as DatabaseType] || 'SELECT 1';
-
-            client = await createDatabaseClient(context, dbConfig);
-            await client.query(testQuery);
+            const result = await testDatabaseConnection(context, dbConfig);
 
             return {
-                success: true,
-                latencyMs: Date.now() - startTime,
+                ...result,
                 details: {
                     databaseType: config.databaseType,
                     table: config.table,
@@ -288,8 +281,6 @@ export class CdcExtractor implements DataExtractor<CdcExtractorConfig> {
                     table: config.table,
                 },
             };
-        } finally {
-            if (client) await client.close().catch(() => {});
         }
     }
 

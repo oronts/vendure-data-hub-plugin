@@ -90,9 +90,3 @@ export const DATABASE_DEFAULT_PORTS: Record<DatabaseType, number> = {
     [DatabaseType.MYSQL]: PORTS.MYSQL,
     [DatabaseType.SQLITE]: 0,
 };
-
-export const DATABASE_TEST_QUERIES: Record<DatabaseType, string> = {
-    [DatabaseType.POSTGRESQL]: 'SELECT 1',
-    [DatabaseType.MYSQL]: 'SELECT 1',
-    [DatabaseType.SQLITE]: 'SELECT 1',
-};

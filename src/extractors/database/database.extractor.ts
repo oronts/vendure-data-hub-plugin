@@ -20,11 +20,11 @@ import { DATABASE_EXTRACTOR_SCHEMA } from './schema';
 import {
     DatabaseCursorValue,
     DatabaseExtractorConfig,
-    DATABASE_TEST_QUERIES,
 } from './types';
 import {
     createDatabaseClient,
     getDefaultPort,
+    testDatabaseConnection,
     DatabaseClient,
 } from './connection-pool';
 import {
@@ -192,38 +192,16 @@ export class DatabaseExtractor implements DataExtractor<DatabaseExtractorConfig>
         config: DatabaseExtractorConfig,
     ): Promise<ConnectionTestResult> {
         config = await resolveDatabaseExtractorConfig(context, config);
-        const testQuery = DATABASE_TEST_QUERIES[config.databaseType] || 'SELECT 1';
-        const startTime = Date.now();
-
-        let client: Awaited<ReturnType<typeof createDatabaseClient>> | null = null;
-        try {
-            client = await createDatabaseClient(context, config);
-            await client.query(testQuery);
-
-            return {
-                success: true,
-                latencyMs: Date.now() - startTime,
-                details: {
-                    databaseType: config.databaseType,
-                    host: config.host ?? null,
-                    port: config.port || getDefaultPort(config.databaseType),
-                    database: config.database ?? null,
-                },
-            };
-        } catch (error) {
-            return {
-                success: false,
-                error: getErrorMessage(error),
-                details: {
-                    databaseType: config.databaseType,
-                    host: config.host ?? null,
-                    port: config.port || getDefaultPort(config.databaseType),
-                    database: config.database ?? null,
-                },
-            };
-        } finally {
-            if (client) await client.close().catch(() => {});
-        }
+        const result = await testDatabaseConnection(context, config);
+        return {
+            ...result,
+            details: {
+                databaseType: config.databaseType,
+                host: config.host ?? null,
+                port: config.port || getDefaultPort(config.databaseType),
+                database: config.database ?? null,
+            },
+        };
     }
 
     async preview(

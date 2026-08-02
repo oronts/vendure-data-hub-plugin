@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ExtractorContext, RecordEnvelope } from '../../types';
 import { CdcExtractor } from './cdc.extractor';
-import { createDatabaseClient } from '../database/connection-pool';
+import {
+    createDatabaseClient,
+    testDatabaseConnection,
+} from '../database/connection-pool';
 import type { DatabaseClient } from '../database/connection-pool';
 import type { CdcExtractorConfig } from './types';
 import { PAGINATION } from '../../constants';
@@ -11,6 +14,7 @@ vi.mock('../database/connection-pool', async importOriginal => {
     return {
         ...original,
         createDatabaseClient: vi.fn(),
+        testDatabaseConnection: vi.fn(),
     };
 });
 
@@ -284,5 +288,31 @@ describe('CdcExtractor checkpoints', () => {
             [10],
         );
         expect(close).toHaveBeenCalledOnce();
+    });
+
+    it('uses the resource-safe shared connection test and preserves CDC details', async () => {
+        vi.mocked(testDatabaseConnection).mockResolvedValueOnce({
+            success: false,
+            error: 'authentication failed',
+        });
+        const context = createContext();
+
+        await expect(new CdcExtractor().testConnection(context, baseConfig)).resolves.toEqual({
+            success: false,
+            error: 'authentication failed',
+            details: {
+                databaseType: 'POSTGRESQL',
+                table: 'products',
+                trackingColumn: 'updated_at',
+            },
+        });
+        expect(testDatabaseConnection).toHaveBeenCalledWith(
+            context,
+            expect.objectContaining({
+                databaseType: 'POSTGRESQL',
+                host: 'db.example.test',
+                database: 'catalog',
+            }),
+        );
     });
 });

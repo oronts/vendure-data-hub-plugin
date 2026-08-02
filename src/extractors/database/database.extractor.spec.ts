@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ExtractorContext, RecordEnvelope } from '../../types';
 import { DatabasePaginationType, DatabaseType, PAGINATION } from '../../constants';
 import { DatabaseExtractor } from './database.extractor';
-import { createDatabaseClient } from './connection-pool';
+import { createDatabaseClient, testDatabaseConnection } from './connection-pool';
 import type { DatabaseClient } from './connection-pool';
 import type { DatabaseExtractorConfig } from './types';
 
@@ -11,6 +11,7 @@ vi.mock('./connection-pool', async importOriginal => {
     return {
         ...original,
         createDatabaseClient: vi.fn(),
+        testDatabaseConnection: vi.fn(),
     };
 });
 
@@ -302,5 +303,31 @@ describe('DatabaseExtractor pagination', () => {
             field: 'pagination.type',
             message: 'Incremental extraction requires cursor pagination',
         });
+    });
+
+    it('uses the resource-safe shared connection test and preserves details', async () => {
+        vi.mocked(testDatabaseConnection).mockResolvedValueOnce({
+            success: true,
+            latencyMs: 12,
+        });
+        const context = createContext();
+        const config: DatabaseExtractorConfig = {
+            databaseType: DatabaseType.POSTGRESQL,
+            host: 'db.example.test',
+            database: 'catalog',
+            query: 'SELECT id FROM products',
+        };
+
+        await expect(new DatabaseExtractor().testConnection(context, config)).resolves.toEqual({
+            success: true,
+            latencyMs: 12,
+            details: {
+                databaseType: DatabaseType.POSTGRESQL,
+                host: 'db.example.test',
+                port: 5432,
+                database: 'catalog',
+            },
+        });
+        expect(testDatabaseConnection).toHaveBeenCalledWith(context, config);
     });
 });
