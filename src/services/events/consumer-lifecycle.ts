@@ -184,34 +184,50 @@ export class ConsumerLifecycle {
     ): void {
         if (!this.distributedLock || !consumer.lockToken) return;
 
-        consumer.lockRefreshTimer = setInterval(async () => {
-            if (!consumer.running || isDestroying() || !consumer.lockToken || !this.distributedLock) {
-                return;
-            }
-
-            try {
-                const extended = await this.distributedLock.extend(
-                    lockKey,
-                    consumer.lockToken,
-                    DISTRIBUTED_LOCK.MESSAGE_CONSUMER_LOCK_TTL_MS,
-                );
-                if (!extended) {
-                    this.logger.warn(`Failed to extend lock for consumer ${consumerKey}, stopping`, {
-                        pipelineCode: consumer.config.pipelineCode,
-                    });
-                    await this.stopConsumer(consumerKey, consumers);
-                }
-            } catch (error) {
-                this.logger.error(`Error extending lock for consumer ${consumerKey}`,
-                    toErrorOrUndefined(error), {
-                    pipelineCode: consumer.config.pipelineCode,
-                });
-                await this.stopConsumer(consumerKey, consumers);
-            }
+        consumer.lockRefreshTimer = setInterval(() => {
+            void this.refreshConsumerLock(
+                consumerKey,
+                consumer,
+                lockKey,
+                consumers,
+                isDestroying,
+            );
         }, DISTRIBUTED_LOCK.MESSAGE_CONSUMER_LOCK_REFRESH_MS);
 
         if (typeof consumer.lockRefreshTimer.unref === 'function') {
             consumer.lockRefreshTimer.unref();
+        }
+    }
+
+    private async refreshConsumerLock(
+        consumerKey: string,
+        consumer: ActiveConsumer,
+        lockKey: string,
+        consumers: Map<string, ActiveConsumer>,
+        isDestroying: () => boolean,
+    ): Promise<void> {
+        try {
+            if (!consumer.running || isDestroying() || !consumer.lockToken || !this.distributedLock) {
+                return;
+            }
+
+            const extended = await this.distributedLock.extend(
+                lockKey,
+                consumer.lockToken,
+                DISTRIBUTED_LOCK.MESSAGE_CONSUMER_LOCK_TTL_MS,
+            );
+            if (!extended) {
+                this.logger.warn(`Failed to extend lock for consumer ${consumerKey}, stopping`, {
+                    pipelineCode: consumer.config.pipelineCode,
+                });
+                await this.stopConsumer(consumerKey, consumers);
+            }
+        } catch (error) {
+            this.logger.error(`Error extending lock for consumer ${consumerKey}`,
+                toErrorOrUndefined(error), {
+                pipelineCode: consumer.config.pipelineCode,
+            });
+            await this.stopConsumer(consumerKey, consumers);
         }
     }
 

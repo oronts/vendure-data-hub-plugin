@@ -104,4 +104,26 @@ describe('RateLimitService', () => {
 
         await service.onModuleDestroy();
     });
+
+    it('observes a Redis backend close failure after invalidation', async () => {
+        vi.stubEnv('DATAHUB_REDIS_URL', 'redis://rate-limits.internal:6379');
+        const logger = createLogger();
+        const backend = redisBackend(async () => {
+            throw new Error('command timed out');
+        });
+        backend.close = vi.fn().mockRejectedValue(new Error('socket close failed'));
+        vi.spyOn(RedisRateLimitBackend, 'create').mockResolvedValue(backend);
+        const service = new RateLimitService({
+            createLogger: vi.fn(() => logger),
+        } as never);
+        await service.onModuleInit();
+
+        await expect(service.isRateLimited({ ip: '203.0.113.10' }, 10, 60_000))
+            .rejects.toBeInstanceOf(RateLimitBackendUnavailableError);
+        await vi.waitFor(() => expect(logger.warn).toHaveBeenCalledWith(
+            'Failed to close invalid Redis webhook rate limiter: socket close failed',
+        ));
+
+        await service.onModuleDestroy();
+    });
 });

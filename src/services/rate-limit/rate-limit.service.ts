@@ -220,7 +220,11 @@ export class RateLimitService implements OnModuleInit, OnModuleDestroy {
             this.redisBackend = undefined;
             this.nextRedisInitializationAt =
                 Date.now() + RATE_LIMIT.REDIS_RECONNECT_DELAY_MS;
-            void backend.close();
+            void backend.close().catch(closeError => {
+                this.logger.warn(
+                    `Failed to close invalid Redis webhook rate limiter: ${getErrorMessage(closeError)}`,
+                );
+            });
         }
         this.logger.error(
             `Redis webhook rate-limit command failed: ${getErrorMessage(error)}`,

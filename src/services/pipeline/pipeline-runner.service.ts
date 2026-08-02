@@ -297,27 +297,8 @@ export class PipelineRunnerService {
     private startLockRefresh(execCtx: ExecutionContext): void {
         if (!this.distributedLock || !execCtx.lockToken) return;
 
-        const timer = setInterval(async () => {
-            if (!execCtx.lockToken || !this.distributedLock || execCtx.lockLossError) return;
-
-            try {
-                const extended = await this.distributedLock.extend(
-                    execCtx.lockKey,
-                    execCtx.lockToken,
-                    DISTRIBUTED_LOCK.PIPELINE_LOCK_TTL_MS,
-                );
-                if (!extended) {
-                    this.markExecutionLockLost(
-                        execCtx,
-                        new Error('Pipeline execution lock was lost'),
-                    );
-                }
-            } catch (error) {
-                this.markExecutionLockLost(
-                    execCtx,
-                    new Error(`Pipeline execution lock refresh failed: ${getErrorMessage(error)}`),
-                );
-            }
+        const timer = setInterval(() => {
+            void this.refreshExecutionLock(execCtx);
         }, DISTRIBUTED_LOCK.PIPELINE_LOCK_REFRESH_MS);
 
         if (typeof timer.unref === 'function') {
@@ -325,6 +306,29 @@ export class PipelineRunnerService {
         }
 
         execCtx.lockRefreshTimer = timer;
+    }
+
+    private async refreshExecutionLock(execCtx: ExecutionContext): Promise<void> {
+        if (!execCtx.lockToken || !this.distributedLock || execCtx.lockLossError) return;
+
+        try {
+            const extended = await this.distributedLock.extend(
+                execCtx.lockKey,
+                execCtx.lockToken,
+                DISTRIBUTED_LOCK.PIPELINE_LOCK_TTL_MS,
+            );
+            if (!extended) {
+                this.markExecutionLockLost(
+                    execCtx,
+                    new Error('Pipeline execution lock was lost'),
+                );
+            }
+        } catch (error) {
+            this.markExecutionLockLost(
+                execCtx,
+                new Error(`Pipeline execution lock refresh failed: ${getErrorMessage(error)}`),
+            );
+        }
     }
 
     private markExecutionLockLost(execCtx: ExecutionContext, error: Error): void {

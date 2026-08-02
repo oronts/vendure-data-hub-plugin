@@ -95,12 +95,11 @@ export class DataHubScheduleHandler implements OnApplicationBootstrap, OnModuleD
         }
         if (this.isDestroying) return;
 
-        const refreshHandle = setInterval(
-            () => this.refresh().catch(err => {
+        const refreshHandle = setInterval(() => {
+            void this.refresh().catch(err => {
                 this.logger.error('Failed to refresh schedules', toErrorOrUndefined(err), {});
-            }),
-            this.schedulerConfig.refreshIntervalMs,
-        );
+            });
+        }, this.schedulerConfig.refreshIntervalMs);
         refreshHandle.unref();
         this.scheduleTimers.addRefreshTimer(refreshHandle);
     }

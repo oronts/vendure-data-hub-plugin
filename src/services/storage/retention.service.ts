@@ -73,9 +73,11 @@ export class DataHubRetentionService implements OnModuleInit, OnModuleDestroy {
             maxRowsPerEntity: RETENTION.MAX_ROWS_PER_ENTITY_PER_PURGE,
         });
 
-        this.handle = setInterval(() => this.runPurgeCycle().catch(err => {
-            this.logger.error('Scheduled retention purge failed', ensureError(err));
-        }), SCHEDULER.RETENTION_PURGE_INTERVAL_MS);
+        this.handle = setInterval(() => {
+            void this.runPurgeCycle().catch(err => {
+                this.logger.error('Scheduled retention purge failed', ensureError(err));
+            });
+        }, SCHEDULER.RETENTION_PURGE_INTERVAL_MS);
         this.handle.unref();
 
         this.logger.debug('Running initial retention purge on startup');

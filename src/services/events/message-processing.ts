@@ -84,7 +84,9 @@ export class MessageProcessing {
         };
 
         void poll();
-        consumer.pollTimer = setInterval(poll, consumer.config.pollIntervalMs);
+        consumer.pollTimer = setInterval(() => {
+            void poll();
+        }, consumer.config.pollIntervalMs);
         if (typeof consumer.pollTimer.unref === 'function') {
             consumer.pollTimer.unref();
         }

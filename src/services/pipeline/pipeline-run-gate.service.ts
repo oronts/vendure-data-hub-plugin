@@ -29,6 +29,7 @@ import {
 } from '../logger';
 import { getActivePipelineRunChannelId } from './pipeline-run-channel';
 import { findPipelineRunInActiveChannel } from './pipeline-run-lookup';
+import { publishPipelineQueueRequest } from './pipeline-queue-request';
 
 @Injectable()
 export class PipelineRunGateService {
@@ -115,7 +116,7 @@ export class PipelineRunGateService {
             userId: ctx.activeUserId,
         });
 
-        this.eventBus.publish(new PipelineQueueRequestEvent(
+        publishPipelineQueueRequest(this.eventBus, this.logger, new PipelineQueueRequestEvent(
             ctx,
             runId,
             gateState.pipelineId,

@@ -47,6 +47,7 @@ import {
     type SeededRunOptions,
 } from './pipeline-run-types';
 import { loadPublishedPipelineDefinition } from './published-pipeline-definition';
+import { publishPipelineQueueRequest } from './pipeline-queue-request';
 
 interface PreparedPipelineRun {
     readonly pipeline: Pipeline;
@@ -103,7 +104,7 @@ export class PipelineRunCreationService {
         runEntity.queueDispatchedAt = null;
         clearPipelineRunGateState(runEntity);
         const run = await repo.save(runEntity);
-        this.eventBus.publish(new PipelineQueueRequestEvent(
+        publishPipelineQueueRequest(this.eventBus, this.logger, new PipelineQueueRequestEvent(
             ctx,
             run.id,
             pipelineId,
@@ -344,7 +345,7 @@ export class PipelineRunCreationService {
 
         const run = await this.connection.getRepository(ctx, PipelineRun).save(runEntity);
         if (!options.deferQueueEnqueue) {
-            this.eventBus.publish(new PipelineQueueRequestEvent(
+            publishPipelineQueueRequest(this.eventBus, this.logger, new PipelineQueueRequestEvent(
                 ctx,
                 run.id,
                 pipelineId,

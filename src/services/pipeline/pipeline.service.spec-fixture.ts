@@ -184,7 +184,7 @@ export function createPipelineServiceFixture(
             work: (transactionCtx: RequestContext) => Promise<unknown>,
         ) => work(ctx)),
     };
-    const eventBus = { publish: vi.fn() };
+    const eventBus = { publish: vi.fn(async () => undefined) };
     const definitionValidator = {
         validate: vi.fn(),
         validateAsync: vi.fn(async () => ({
