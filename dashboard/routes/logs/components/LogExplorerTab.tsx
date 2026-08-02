@@ -31,6 +31,7 @@ import {
 } from '../../../hooks';
 import { ErrorState, LoadingState, PipelineSelector } from '../../../components/shared';
 import { UI_DEFAULTS, FILTER_VALUES } from '../../../constants';
+import { downloadBrowserBlob } from '../../../utils/browser-download';
 import { LogTableRow } from './LogTableRow';
 import { LogDetailDrawer } from './LogDetailDrawer';
 import { SortOrder, type DataHubLogListOptions } from '../../../types';
@@ -156,15 +157,9 @@ export function LogExplorerTab({ initialRunId }: { initialRunId?: string }) {
             }));
             const json = JSON.stringify(data, null, 2);
             const blob = new Blob([json], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const downloadLink = document.createElement('a');
-            downloadLink.href = url;
-            downloadLink.download = `datahub-logs-${new Date().toISOString().split('T')[0]}.json`;
-            downloadLink.click();
-            // Revoke blob URL after 1 second to ensure download completes
-            setTimeout(
-                () => URL.revokeObjectURL(url),
-                UI_DEFAULTS.OBJECT_URL_REVOKE_DELAY_MS,
+            downloadBrowserBlob(
+                blob,
+                `datahub-logs-${new Date().toISOString().split('T')[0]}.json`,
             );
             toast.success(t`Logs exported successfully`);
         } catch {

@@ -1,5 +1,5 @@
 import { fetchDataHubApi } from '../../utils/data-hub-request';
-import { UI_DEFAULTS } from '../../constants';
+import { downloadBrowserBlob } from '../../utils/browser-download';
 
 function filenameFromDisposition(value: string | null, fallback: string): string {
     const match = value?.match(/filename="([^"]+)"/i);
@@ -22,18 +22,11 @@ export async function downloadFeedArtifact(
         );
     }
     const blob = await response.blob();
-    const objectUrl = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = objectUrl;
-    anchor.download = filenameFromDisposition(
-        response.headers.get('Content-Disposition'),
-        `${feedCode}-feed`,
-    );
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    window.setTimeout(
-        () => URL.revokeObjectURL(objectUrl),
-        UI_DEFAULTS.OBJECT_URL_REVOKE_DELAY_MS,
+    downloadBrowserBlob(
+        blob,
+        filenameFromDisposition(
+            response.headers.get('Content-Disposition'),
+            `${feedCode}-feed`,
+        ),
     );
 }

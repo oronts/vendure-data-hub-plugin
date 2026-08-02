@@ -21,6 +21,8 @@ import { Badge, Button } from '@vendure/dashboard';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { toast } from 'sonner';
 import type { ImportTemplate } from '../../hooks/use-import-templates';
+import { downloadBrowserBlob } from '../../utils/browser-download';
+import { buildTemplateSampleCsv } from './template-sample-csv';
 
 export interface TemplatePreviewProps {
     template: ImportTemplate;
@@ -33,50 +35,27 @@ function TemplatePreviewComponent({ template, onUseTemplate }: TemplatePreviewPr
 
     const handleCopySampleData = React.useCallback(() => {
         if (template.sampleData) {
-            const csvHeader = [...template.requiredFields, ...template.optionalFields].join(',');
-            const csvRows = template.sampleData.map(row =>
-                [...template.requiredFields, ...template.optionalFields]
-                    .map(field => row[field] ?? '')
-                    .join(','),
-            );
-            const csv = [csvHeader, ...csvRows].join('\n');
+            const csv = buildTemplateSampleCsv(template);
             void navigator.clipboard.writeText(csv)
                 .then(() => {
                     toast.success(t`Sample data copied to clipboard`);
                 })
-                .catch(() => undefined);
+                .catch(() => {
+                    toast.error(t`Failed to copy`);
+                });
         }
     }, [t, template]);
 
     const handleDownloadSample = React.useCallback(() => {
         if (template.sampleData) {
-            const csvHeader = [...template.requiredFields, ...template.optionalFields].join(',');
-            const csvRows = template.sampleData.map(row =>
-                [...template.requiredFields, ...template.optionalFields]
-                    .map(field => {
-                        const value = row[field] ?? '';
-                        // Escape commas and quotes in CSV
-                        const strValue = String(value);
-                        if (strValue.includes(',') || strValue.includes('"')) {
-                            return `"${strValue.replace(/"/g, '""')}"`;
-                        }
-                        return strValue;
-                    })
-                    .join(','),
-            );
-            const csv = [csvHeader, ...csvRows].join('\n');
-
-            const blob = new Blob([csv], { type: 'text/csv' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `${template.id}-sample.csv`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-
-            toast.success(t`Sample file downloaded`);
+            try {
+                const csv = buildTemplateSampleCsv(template);
+                const blob = new Blob([csv], { type: 'text/csv' });
+                downloadBrowserBlob(blob, `${template.id}-sample.csv`);
+                toast.success(t`Sample file downloaded`);
+            } catch {
+                toast.error(t`Failed to download`);
+            }
         }
     }, [t, template]);
 

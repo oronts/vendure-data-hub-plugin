@@ -1825,13 +1825,13 @@ msgstr "After (first mapped record)"
 msgid "All"
 msgstr "All"
 
-#: dashboard/routes/logs/components/LogExplorerTab.tsx:230
-#: dashboard/routes/logs/components/LogExplorerTab.tsx:234
+#: dashboard/routes/logs/components/LogExplorerTab.tsx:225
+#: dashboard/routes/logs/components/LogExplorerTab.tsx:229
 msgid "All Levels"
 msgstr "All Levels"
 
-#: dashboard/routes/logs/components/LogExplorerTab.tsx:223
-#: dashboard/routes/logs/components/LogExplorerTab.tsx:224
+#: dashboard/routes/logs/components/LogExplorerTab.tsx:218
+#: dashboard/routes/logs/components/LogExplorerTab.tsx:219
 msgid "All Pipelines"
 msgstr "All Pipelines"
 
@@ -1856,7 +1856,7 @@ msgid "Allowed values"
 msgstr "Allowed values"
 
 #: dashboard/components/shared/error-boundary/ErrorBoundary.tsx:63
-#: dashboard/routes/logs/components/LogExplorerTab.tsx:179
+#: dashboard/routes/logs/components/LogExplorerTab.tsx:174
 #: dashboard/routes/logs/components/LogsOverviewTab.tsx:130
 #: dashboard/routes/logs/components/RealtimeLogTab.tsx:38
 #: dashboard/routes/queues/QueuesPage.tsx:182
@@ -2277,7 +2277,7 @@ msgstr "Choose which fields to include in the export"
 msgid "Choose which Vendure entity to export"
 msgstr "Choose which Vendure entity to export"
 
-#: dashboard/routes/logs/components/LogExplorerTab.tsx:202
+#: dashboard/routes/logs/components/LogExplorerTab.tsx:197
 msgid "Clear run ID filter"
 msgstr "Clear run ID filter"
 
@@ -2566,17 +2566,17 @@ msgstr "Copied"
 msgid "Copied!"
 msgstr "Copied!"
 
-#: dashboard/components/pipelines/PipelineExport.tsx:55
+#: dashboard/components/pipelines/PipelineExport.tsx:58
 #: dashboard/routes/adapters/AdapterDetail.tsx:220
 #: dashboard/routes/feeds/FeedPreviewDialog.tsx:99
 msgid "Copy"
 msgstr "Copy"
 
-#: dashboard/components/templates/TemplatePreview.tsx:182
+#: dashboard/components/templates/TemplatePreview.tsx:161
 msgid "Copy CSV"
 msgstr "Copy CSV"
 
-#: dashboard/components/pipelines/PipelineExport.tsx:48
+#: dashboard/components/pipelines/PipelineExport.tsx:51
 msgid "Copy or download the TypeScript DSL."
 msgstr "Copy or download the TypeScript DSL."
 
@@ -2963,8 +2963,8 @@ msgstr "Disabled and inactive"
 msgid "Disabled destinations cannot receive exported data."
 msgstr "Disabled destinations cannot receive exported data."
 
-#: dashboard/components/pipelines/PipelineExport.tsx:58
-#: dashboard/components/templates/TemplatePreview.tsx:186
+#: dashboard/components/pipelines/PipelineExport.tsx:61
+#: dashboard/components/templates/TemplatePreview.tsx:165
 #: dashboard/routes/feeds/FeedActions.tsx:140
 msgid "Download"
 msgstr "Download"
@@ -3030,7 +3030,7 @@ msgid "Duplicate branch names detected"
 msgstr "Duplicate branch names detected"
 
 #: dashboard/routes/logs/components/LogDetailDrawer.tsx:76
-#: dashboard/routes/logs/components/LogExplorerTab.tsx:339
+#: dashboard/routes/logs/components/LogExplorerTab.tsx:334
 #: dashboard/routes/pipelines/components/DryRunSummary.tsx:196
 #: dashboard/routes/pipelines/StepSummaryTable.tsx:32
 msgid "Duration"
@@ -3076,7 +3076,7 @@ msgstr "Enabled"
 msgid "Enabled pipelines"
 msgstr "Enabled pipelines"
 
-#: dashboard/routes/logs/components/LogExplorerTab.tsx:262
+#: dashboard/routes/logs/components/LogExplorerTab.tsx:257
 msgid "End date"
 msgstr "End date"
 
@@ -3321,7 +3321,7 @@ msgid "Expanded code editor for {label}"
 msgstr "Expanded code editor for {label}"
 
 #: dashboard/components/pipelines/shared/PipelineNode.tsx:29
-#: dashboard/routes/logs/components/LogExplorerTab.tsx:286
+#: dashboard/routes/logs/components/LogExplorerTab.tsx:281
 msgid "Export"
 msgstr "Export"
 
@@ -3348,11 +3348,11 @@ msgstr "Export name is required"
 msgid "Export Options"
 msgstr "Export Options"
 
-#: dashboard/components/pipelines/PipelineExport.tsx:45
+#: dashboard/components/pipelines/PipelineExport.tsx:48
 msgid "Export pipeline"
 msgstr "Export pipeline"
 
-#: dashboard/components/pipelines/PipelineExport.tsx:39
+#: dashboard/components/pipelines/PipelineExport.tsx:42
 msgid "Export to code"
 msgstr "Export to code"
 
@@ -3415,6 +3415,8 @@ msgstr "Failed to cancel pipeline run"
 msgid "Failed to compare revisions"
 msgstr "Failed to compare revisions"
 
+#: dashboard/components/pipelines/PipelineExport.tsx:26
+#: dashboard/components/templates/TemplatePreview.tsx:44
 #: dashboard/routes/adapters/AdapterDetail.tsx:60
 msgid "Failed to copy"
 msgstr "Failed to copy"
@@ -3444,11 +3446,16 @@ msgstr "Failed to delete destination"
 msgid "Failed to delete feed"
 msgstr "Failed to delete feed"
 
+#: dashboard/components/pipelines/PipelineExport.tsx:35
+#: dashboard/components/templates/TemplatePreview.tsx:57
+msgid "Failed to download"
+msgstr "Failed to download"
+
 #: dashboard/routes/feeds/FeedActions.tsx:84
 msgid "Failed to download feed"
 msgstr "Failed to download feed"
 
-#: dashboard/routes/logs/components/LogExplorerTab.tsx:171
+#: dashboard/routes/logs/components/LogExplorerTab.tsx:166
 msgid "Failed to export logs"
 msgstr "Failed to export logs"
 
@@ -3485,7 +3492,7 @@ msgstr "Failed to load hook data"
 msgid "Failed to load log statistics"
 msgstr "Failed to load log statistics"
 
-#: dashboard/routes/logs/components/LogExplorerTab.tsx:178
+#: dashboard/routes/logs/components/LogExplorerTab.tsx:173
 msgid "Failed to load logs"
 msgstr "Failed to load logs"
 
@@ -3711,15 +3718,15 @@ msgstr "File watch"
 msgid "Filter"
 msgstr "Filter"
 
-#: dashboard/routes/logs/components/LogExplorerTab.tsx:264
+#: dashboard/routes/logs/components/LogExplorerTab.tsx:259
 msgid "Filter by end date"
 msgstr "Filter by end date"
 
-#: dashboard/routes/logs/components/LogExplorerTab.tsx:217
+#: dashboard/routes/logs/components/LogExplorerTab.tsx:212
 msgid "Filter by run ID"
 msgstr "Filter by run ID"
 
-#: dashboard/routes/logs/components/LogExplorerTab.tsx:251
+#: dashboard/routes/logs/components/LogExplorerTab.tsx:246
 msgid "Filter by start date"
 msgstr "Filter by start date"
 
@@ -3755,13 +3762,13 @@ msgstr "Filter operator"
 msgid "Filter value"
 msgstr "Filter value"
 
-#: dashboard/routes/logs/components/LogExplorerTab.tsx:198
+#: dashboard/routes/logs/components/LogExplorerTab.tsx:193
 msgid "Filtered by Run ID:"
 msgstr "Filtered by Run ID:"
 
 #: dashboard/components/pipelines/DynamicNodePalette.tsx:180
 #: dashboard/routes/feeds/FeedDefinitionFields.tsx:271
-#: dashboard/routes/logs/components/LogExplorerTab.tsx:192
+#: dashboard/routes/logs/components/LogExplorerTab.tsx:187
 msgid "Filters"
 msgstr "Filters"
 
@@ -4181,7 +4188,7 @@ msgstr "Latest log entries across all pipelines"
 msgid "Letters, numbers, hyphens, and underscores only"
 msgstr "Letters, numbers, hyphens, and underscores only"
 
-#: dashboard/routes/logs/components/LogExplorerTab.tsx:335
+#: dashboard/routes/logs/components/LogExplorerTab.tsx:330
 msgid "Level"
 msgstr "Level"
 
@@ -4308,7 +4315,7 @@ msgstr "Loading impact…"
 msgid "Loading import configuration..."
 msgstr "Loading import configuration..."
 
-#: dashboard/routes/logs/components/LogExplorerTab.tsx:347
+#: dashboard/routes/logs/components/LogExplorerTab.tsx:342
 msgid "Loading log entries..."
 msgstr "Loading log entries..."
 
@@ -4380,8 +4387,8 @@ msgstr "Log Details"
 msgid "Log diagnostics"
 msgstr "Log diagnostics"
 
-#: dashboard/routes/logs/components/LogExplorerTab.tsx:297
-#: dashboard/routes/logs/components/LogExplorerTab.tsx:330
+#: dashboard/routes/logs/components/LogExplorerTab.tsx:292
+#: dashboard/routes/logs/components/LogExplorerTab.tsx:325
 msgid "Log Entries"
 msgstr "Log Entries"
 
@@ -4409,7 +4416,7 @@ msgstr "Logging"
 msgid "Logs & Analytics"
 msgstr "Logs & Analytics"
 
-#: dashboard/routes/logs/components/LogExplorerTab.tsx:169
+#: dashboard/routes/logs/components/LogExplorerTab.tsx:164
 msgid "Logs exported successfully"
 msgstr "Logs exported successfully"
 
@@ -4506,7 +4513,7 @@ msgid "Maximum value"
 msgstr "Maximum value"
 
 #: dashboard/routes/logs/components/LogDetailDrawer.tsx:63
-#: dashboard/routes/logs/components/LogExplorerTab.tsx:338
+#: dashboard/routes/logs/components/LogExplorerTab.tsx:333
 #: dashboard/routes/pipelines/RunErrorsList.tsx:132
 #: dashboard/routes/queues/DeadLettersTable.tsx:115
 msgid "Message"
@@ -4672,7 +4679,7 @@ msgstr "New header value"
 msgid "Next"
 msgstr "Next"
 
-#: dashboard/routes/logs/components/LogExplorerTab.tsx:319
+#: dashboard/routes/logs/components/LogExplorerTab.tsx:314
 msgid "Next page"
 msgstr "Next page"
 
@@ -4794,7 +4801,7 @@ msgstr "No hook stage metadata is available."
 msgid "No hooks configured"
 msgstr "No hooks configured"
 
-#: dashboard/routes/logs/components/LogExplorerTab.tsx:353
+#: dashboard/routes/logs/components/LogExplorerTab.tsx:348
 msgid "No log entries found"
 msgstr "No log entries found"
 
@@ -5015,7 +5022,7 @@ msgstr "Operators"
 msgid "Optional"
 msgstr "Optional"
 
-#: dashboard/components/templates/TemplatePreview.tsx:142
+#: dashboard/components/templates/TemplatePreview.tsx:121
 msgid "Optional fields"
 msgstr "Optional fields"
 
@@ -5091,7 +5098,7 @@ msgstr "Overridden by code-first configuration"
 msgid "Overview"
 msgstr "Overview"
 
-#: dashboard/routes/logs/components/LogExplorerTab.tsx:311
+#: dashboard/routes/logs/components/LogExplorerTab.tsx:306
 msgid "Page {page} of {total}"
 msgstr "Page {page} of {total}"
 
@@ -5144,7 +5151,7 @@ msgstr "Payload"
 msgid "Pending"
 msgstr "Pending"
 
-#: dashboard/routes/logs/components/LogExplorerTab.tsx:336
+#: dashboard/routes/logs/components/LogExplorerTab.tsx:331
 #: dashboard/routes/queues/ConsumersTable.tsx:150
 #: dashboard/routes/queues/FailedRunsTable.tsx:65
 #: dashboard/routes/queues/QueuesPage.tsx:236
@@ -5159,6 +5166,10 @@ msgstr "Pipeline adapters"
 #: dashboard/routes/pipelines/components/ReviewActionsPanel.tsx:194
 msgid "Pipeline archived"
 msgstr "Pipeline archived"
+
+#: dashboard/components/pipelines/PipelineExport.tsx:24
+msgid "Pipeline code copied to clipboard"
+msgstr "Pipeline code copied to clipboard"
 
 #: dashboard/components/shared/ExecutionContextFields.tsx:209
 msgid "Pipeline default"
@@ -5286,7 +5297,7 @@ msgstr "Preview {feedCode}"
 msgid "Preview content for {feedCode}"
 msgstr "Preview content for {feedCode}"
 
-#: dashboard/components/templates/TemplatePreview.tsx:192
+#: dashboard/components/templates/TemplatePreview.tsx:171
 #: dashboard/components/wizards/import-wizard/PreviewStep.tsx:37
 #: dashboard/components/wizards/import-wizard/PreviewStep.tsx:54
 msgid "Preview data"
@@ -5304,7 +5315,7 @@ msgstr "Preview pipeline execution without making changes"
 msgid "Previous"
 msgstr "Previous"
 
-#: dashboard/routes/logs/components/LogExplorerTab.tsx:306
+#: dashboard/routes/logs/components/LogExplorerTab.tsx:301
 msgid "Previous page"
 msgstr "Previous page"
 
@@ -5538,7 +5549,7 @@ msgstr "Record path"
 msgid "Record retry applied"
 msgstr "Record retry applied"
 
-#: dashboard/routes/logs/components/LogExplorerTab.tsx:340
+#: dashboard/routes/logs/components/LogExplorerTab.tsx:335
 msgid "Records"
 msgstr "Records"
 
@@ -5584,7 +5595,7 @@ msgstr "Refresh destinations"
 msgid "Refresh events"
 msgstr "Refresh events"
 
-#: dashboard/routes/logs/components/LogExplorerTab.tsx:281
+#: dashboard/routes/logs/components/LogExplorerTab.tsx:276
 msgid "Refresh logs"
 msgstr "Refresh logs"
 
@@ -5745,7 +5756,7 @@ msgstr "required"
 msgid "Required"
 msgstr "Required"
 
-#: dashboard/components/templates/TemplatePreview.tsx:123
+#: dashboard/components/templates/TemplatePreview.tsx:102
 msgid "Required fields"
 msgstr "Required fields"
 
@@ -5923,7 +5934,7 @@ msgstr "Run from the dashboard or API"
 msgid "Run ID"
 msgstr "Run ID"
 
-#: dashboard/routes/logs/components/LogExplorerTab.tsx:214
+#: dashboard/routes/logs/components/LogExplorerTab.tsx:209
 msgid "Run ID..."
 msgstr "Run ID..."
 
@@ -6017,20 +6028,20 @@ msgid "Runtime source"
 msgstr "Runtime source"
 
 #. placeholder {0}: template.sampleData.length
-#: dashboard/components/templates/TemplatePreview.tsx:173
+#: dashboard/components/templates/TemplatePreview.tsx:152
 msgid "Sample data ({0} row)"
 msgstr "Sample data ({0} row)"
 
 #. placeholder {0}: template.sampleData.length
-#: dashboard/components/templates/TemplatePreview.tsx:174
+#: dashboard/components/templates/TemplatePreview.tsx:153
 msgid "Sample data ({0} rows)"
 msgstr "Sample data ({0} rows)"
 
-#: dashboard/components/templates/TemplatePreview.tsx:45
+#: dashboard/components/templates/TemplatePreview.tsx:41
 msgid "Sample data copied to clipboard"
 msgstr "Sample data copied to clipboard"
 
-#: dashboard/components/templates/TemplatePreview.tsx:79
+#: dashboard/components/templates/TemplatePreview.tsx:55
 msgid "Sample file downloaded"
 msgstr "Sample file downloaded"
 
@@ -6151,11 +6162,11 @@ msgstr "Search connections..."
 msgid "Search feeds"
 msgstr "Search feeds"
 
-#: dashboard/routes/logs/components/LogExplorerTab.tsx:276
+#: dashboard/routes/logs/components/LogExplorerTab.tsx:271
 msgid "Search log messages"
 msgstr "Search log messages"
 
-#: dashboard/routes/logs/components/LogExplorerTab.tsx:273
+#: dashboard/routes/logs/components/LogExplorerTab.tsx:268
 msgid "Search logs..."
 msgstr "Search logs..."
 
@@ -6545,7 +6556,7 @@ msgstr "Start Building Your Pipeline"
 msgid "Start consumer for queue {0}"
 msgstr "Start consumer for queue {0}"
 
-#: dashboard/routes/logs/components/LogExplorerTab.tsx:249
+#: dashboard/routes/logs/components/LogExplorerTab.tsx:244
 msgid "Start date"
 msgstr "Start date"
 
@@ -6586,7 +6597,7 @@ msgid "Status:"
 msgstr "Status:"
 
 #: dashboard/routes/logs/components/LogDetailDrawer.tsx:72
-#: dashboard/routes/logs/components/LogExplorerTab.tsx:337
+#: dashboard/routes/logs/components/LogExplorerTab.tsx:332
 #: dashboard/routes/pipelines/components/DryRunSummary.tsx:192
 #: dashboard/routes/pipelines/components/ValidationPanel.tsx:96
 #: dashboard/routes/pipelines/RunErrorsList.tsx:129
@@ -6979,7 +6990,7 @@ msgid "Throughput overrides"
 msgstr "Throughput overrides"
 
 #: dashboard/routes/hooks/HookEventsTable.tsx:50
-#: dashboard/routes/logs/components/LogExplorerTab.tsx:334
+#: dashboard/routes/logs/components/LogExplorerTab.tsx:329
 msgid "Time"
 msgstr "Time"
 
@@ -7232,7 +7243,7 @@ msgstr "Use inherited content language"
 msgid "Use pipeline default"
 msgstr "Use pipeline default"
 
-#: dashboard/components/templates/TemplatePreview.tsx:93
+#: dashboard/components/templates/TemplatePreview.tsx:72
 msgid "Use template"
 msgstr "Use template"
 
