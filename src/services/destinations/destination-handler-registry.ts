@@ -141,24 +141,18 @@ export const DESTINATION_TEST_REGISTRY: ReadonlyMap<string, TestFn> =
                         },
                         signal: AbortSignal.timeout(HTTP.TIMEOUT_MS),
                     },
-                ).catch(() => null);
-                if (response?.ok) {
+                );
+                await response.body?.cancel().catch(() => undefined);
+                if (response.ok) {
                     return {
                         success: true,
                         message: `HTTP endpoint reachable (${response.status})`,
                         latencyMs: Date.now() - start,
                     };
                 }
-                if (response) {
-                    return {
-                        success: false,
-                        message: `HTTP endpoint returned ${response.status}`,
-                        latencyMs: Date.now() - start,
-                    };
-                }
                 return {
                     success: false,
-                    message: 'HTTP endpoint unreachable',
+                    message: `HTTP endpoint returned ${response.status}`,
                     latencyMs: Date.now() - start,
                 };
             },
