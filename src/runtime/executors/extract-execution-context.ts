@@ -1,4 +1,5 @@
 import type { ID, RequestContext } from '@vendure/core';
+import { TRANSFORM_LIMITS } from '../../constants';
 import type { ConnectionService } from '../../services/config/connection.service';
 import type { SecretService } from '../../services/config/secret.service';
 import type { DataHubLogger } from '../../services/logger';
@@ -44,10 +45,19 @@ export function normalizeRecordLimit(limit: number | undefined): number | undefi
 export function normalizeExecutorRecordLimit(
     executorCtx: ExecutorContext,
 ): ExecutorContext {
-    const recordLimit = normalizeRecordLimit(executorCtx.recordLimit);
+    const recordLimit = normalizePreviewRecordLimit(executorCtx.recordLimit);
     return recordLimit === executorCtx.recordLimit
         ? executorCtx
         : { ...executorCtx, recordLimit };
+}
+
+export function normalizePreviewRecordLimit(
+    limit: number | undefined,
+): number | undefined {
+    const normalizedLimit = normalizeRecordLimit(limit);
+    return normalizedLimit === undefined
+        ? undefined
+        : Math.min(normalizedLimit, TRANSFORM_LIMITS.MAX_PREVIEW_LIMIT);
 }
 
 export function hasReachedRecordLimit(

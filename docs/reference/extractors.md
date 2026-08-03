@@ -18,7 +18,11 @@ Complete reference for all data extractors.
 
 ---
 
-Extractor previews normalize requested record limits to an integer from 1 through 1,000. Non-finite values use the default of 10. Response-byte and remote-file-size limits still apply independently.
+The step-test API accepts preview limits from 1 through 1,000 and rejects other
+values. The runtime caps custom adapter preview work at 1,000 before calling the
+adapter. Built-in preview hooks also defend direct calls by normalizing limits
+to that range and using 10 for non-finite input. Response-byte and
+remote-file-size limits still apply independently.
 
 ## HTTP API Extractor
 

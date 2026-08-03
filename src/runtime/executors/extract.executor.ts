@@ -29,7 +29,7 @@ import {
     createSdkExtractorContext,
     materializeRecords,
     normalizeExecutorRecordLimit,
-    normalizeRecordLimit,
+    normalizePreviewRecordLimit,
 } from './extract-execution-context';
 import {
     normalizeExtractPreview,
@@ -226,7 +226,7 @@ export class ExtractExecutor {
         sourceRecords?: readonly JsonObject[],
     ): Promise<ExtractorPreviewResult> {
         const adapterCode = getAdapterCode(step) || undefined;
-        const normalizedLimit = normalizeRecordLimit(limit) ?? 0;
+        const normalizedLimit = normalizePreviewRecordLimit(limit) ?? 0;
         const executorCtx: ExecutorContext = {
             cpData: null,
             cpDirty: false,

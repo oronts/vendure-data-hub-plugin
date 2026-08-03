@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RequestContext } from '@vendure/core';
+import { TRANSFORM_LIMITS } from '../../constants';
 import { StepType } from '../../constants/enums';
 import { ExtractorRegistryService } from '../../extractors/extractor-registry.service';
 import { GraphQLExtractor } from '../../extractors/graphql';
@@ -460,6 +461,39 @@ describe('ExtractExecutor custom extractors', () => {
         expect(extract).not.toHaveBeenCalled();
     });
 
+    it('bounds registered extractor preview work before adapter invocation', async () => {
+        const preview = vi.fn(async () => ({ records: [] }));
+        const extractor = {
+            type: 'EXTRACTOR',
+            code: 'bounded-registered-preview',
+            name: 'Bounded registered preview',
+            category: 'CUSTOM',
+            schema: { fields: [] },
+            validate: vi.fn(async () => ({ valid: true, errors: [] })),
+            extract: vi.fn(),
+            preview,
+        };
+        const extractorRegistry = {
+            getExtractor: vi.fn(() => extractor),
+        };
+        const { executor } = createExecutor(
+            new DataHubRegistryService(),
+            extractorRegistry as unknown as ExtractorRegistryService,
+        );
+
+        await executor.preview(
+            ctx,
+            createStep(extractor.code),
+            TRANSFORM_LIMITS.MAX_PREVIEW_LIMIT + 1,
+        );
+
+        expect(preview).toHaveBeenCalledWith(
+            expect.any(Object),
+            expect.any(Object),
+            TRANSFORM_LIMITS.MAX_PREVIEW_LIMIT,
+        );
+    });
+
     it('does not request one extra streaming record at the preview limit', async () => {
         const registry = new DataHubRegistryService();
         let requested = 0;
@@ -504,6 +538,28 @@ describe('ExtractExecutor custom extractors', () => {
         expect(extractor.preview).toHaveBeenCalledWith(expect.any(Object), expect.any(Object), 1);
         expect(extractor.extractAll).not.toHaveBeenCalled();
     });
+
+    it('bounds SDK preview work before adapter invocation', async () => {
+        const registry = new DataHubRegistryService();
+        const extractor = {
+            ...createBatchExtractor('bounded-sdk-preview', vi.fn()),
+            preview: vi.fn(async () => ({ records: [] })),
+        };
+        registry.registerRuntime(extractor);
+        const { executor } = createExecutor(registry);
+
+        await executor.preview(
+            ctx,
+            createStep(extractor.code),
+            TRANSFORM_LIMITS.MAX_PREVIEW_LIMIT + 1,
+        );
+
+        expect(extractor.preview).toHaveBeenCalledWith(
+            expect.any(Object),
+            expect.any(Object),
+            TRANSFORM_LIMITS.MAX_PREVIEW_LIMIT,
+        );
+    });
     it('uses bounded preview instead of full SDK batch extraction in dry runs', async () => {
         const registry = new DataHubRegistryService();
         const extractAll = vi.fn(async () => ({
@@ -522,9 +578,16 @@ describe('ExtractExecutor custom extractors', () => {
         await expect(executor.execute(
             ctx,
             createStep(extractor.code),
-            { ...createExecutorContext(), recordLimit: 1 },
+            {
+                ...createExecutorContext(),
+                recordLimit: TRANSFORM_LIMITS.MAX_PREVIEW_LIMIT + 1,
+            },
         )).resolves.toEqual([{ id: 'bounded' }]);
-        expect(extractor.preview).toHaveBeenCalledOnce();
+        expect(extractor.preview).toHaveBeenCalledWith(
+            expect.any(Object),
+            expect.any(Object),
+            TRANSFORM_LIMITS.MAX_PREVIEW_LIMIT,
+        );
         expect(extractAll).not.toHaveBeenCalled();
     });
 
@@ -559,9 +622,16 @@ describe('ExtractExecutor custom extractors', () => {
         await expect(executor.execute(
             ctx,
             createStep(extractor.code),
-            { ...createExecutorContext(), recordLimit: 1 },
+            {
+                ...createExecutorContext(),
+                recordLimit: TRANSFORM_LIMITS.MAX_PREVIEW_LIMIT + 1,
+            },
         )).resolves.toEqual([{ id: 'bounded' }]);
-        expect(preview).toHaveBeenCalledOnce();
+        expect(preview).toHaveBeenCalledWith(
+            expect.any(Object),
+            expect.any(Object),
+            TRANSFORM_LIMITS.MAX_PREVIEW_LIMIT,
+        );
         expect(extractAll).not.toHaveBeenCalled();
     });
 
