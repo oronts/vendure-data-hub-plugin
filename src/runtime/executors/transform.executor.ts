@@ -24,6 +24,7 @@ import {
 } from './context-adapters';
 import { applyHttpLookupBatch } from '../../operators/enrichment/helpers';
 import type { HttpLookupOperatorConfig } from '../../operators/enrichment/types';
+import { createHttpLookupRuntimeNamespaces } from '../../operators/enrichment/http-lookup-security';
 import { getErrorMessage } from '../../utils/error.utils';
 import { validateEnrichmentConfig } from '../../validation/enrichment-config.validator';
 import {
@@ -187,7 +188,7 @@ export class TransformExecutor {
         }
 
         if (sourceType === 'HTTP') {
-            return this.executeEnrichHttp(ctx, step, input, _executorCtx);
+            return this.executeEnrichHttp(ctx, step, input, pipelineId);
         }
 
         if (sourceType === 'VENDURE') {
@@ -250,7 +251,7 @@ export class TransformExecutor {
         ctx: RequestContext,
         step: PipelineStepDefinition,
         input: RecordObject[],
-        _executorCtx?: ExecutorContext,
+        pipelineId?: ID,
     ): Promise<RecordObject[]> {
         const cfg = (step.config ?? {}) as Record<string, unknown>;
 
@@ -296,6 +297,11 @@ export class TransformExecutor {
                 connections: this.connectionService
                     ? createConnectionsAdapter(this.connectionService, ctx)
                     : undefined,
+                ...createHttpLookupRuntimeNamespaces(
+                    ctx.channelId,
+                    pipelineId ?? SANDBOX_PIPELINE_ID,
+                    step.key,
+                ),
             },
         );
 

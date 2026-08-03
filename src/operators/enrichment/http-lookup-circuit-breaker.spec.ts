@@ -91,4 +91,23 @@ describe('HTTP lookup circuit breaker', () => {
 
         expect(getCircuitBreakerStats().get(ENDPOINT)?.failures).toBe(0);
     });
+
+    it('isolates failures for the same endpoint by runtime state key', () => {
+        const firstStateKey = 'channel-a-credential';
+        const secondStateKey = 'channel-b-credential';
+        for (let failure = 0; failure < CIRCUIT_BREAKER.FAILURE_THRESHOLD; failure += 1) {
+            const permit = acquireCircuitPermit(
+                ENDPOINT,
+                1_000 + failure,
+                firstStateKey,
+            );
+            expect(permit).not.toBeNull();
+            recordCircuitFailure(permit!, 1_000 + failure);
+        }
+
+        expect(acquireCircuitPermit(ENDPOINT, 2_000, firstStateKey)).toBeNull();
+        expect(acquireCircuitPermit(ENDPOINT, 2_000, secondStateKey)).not.toBeNull();
+        expect(getCircuitBreakerStats().get(firstStateKey)?.state).toBe(CircuitState.OPEN);
+        expect(getCircuitBreakerStats().get(secondStateKey)?.state).toBe(CircuitState.CLOSED);
+    });
 });

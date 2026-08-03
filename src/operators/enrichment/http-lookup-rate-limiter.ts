@@ -15,27 +15,33 @@ const rateLimiters = new Map<string, RateLimitState>();
 export async function waitForHttpLookupRateLimit(
     endpoint: string,
     requestsPerSecond: number = HTTP_LOOKUP.DEFAULT_RATE_LIMIT_PER_SECOND,
+    stateKey?: string,
 ): Promise<void> {
     const origin = new URL(endpoint).origin;
-    const key = `${origin}\u0000${requestsPerSecond}`;
+    const key = stateKey ?? origin;
     const now = Date.now();
     const state = getRateLimiter(key, requestsPerSecond, now);
+    const effectiveLimit = state.limit;
     const elapsed = Math.max(0, now - state.lastRefill);
-    const refilled = state.tokens + elapsed * requestsPerSecond / TIME_UNITS.SECOND;
-    state.tokens = Math.min(requestsPerSecond, refilled) - 1;
+    const refilled = state.tokens + elapsed * effectiveLimit / TIME_UNITS.SECOND;
+    state.tokens = Math.min(effectiveLimit, refilled) - 1;
     state.lastRefill = now;
     state.lastActivity = now;
     updateWindow(state, now);
 
     const waitTime = state.tokens < 0
-        ? Math.ceil(-state.tokens * TIME_UNITS.SECOND / requestsPerSecond)
+        ? Math.ceil(-state.tokens * TIME_UNITS.SECOND / effectiveLimit)
         : 0;
     if (waitTime > 0) await sleep(waitTime);
 }
 
 function getRateLimiter(key: string, limit: number, now: number): RateLimitState {
     const existing = rateLimiters.get(key);
-    if (existing) return existing;
+    if (existing) {
+        existing.limit = Math.min(existing.limit, limit);
+        existing.tokens = Math.min(existing.tokens, existing.limit);
+        return existing;
+    }
     evictOldestLimiterIfFull();
     const created: RateLimitState = {
         tokens: limit,

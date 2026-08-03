@@ -331,6 +331,12 @@ Enrich records by fetching data from external HTTP endpoints with caching, authe
 The cache identity includes the execution namespace, resolved credential
 headers, URL, method, request body, response path, and optional
 `keyField` value; `keyField` does not replace the URL as the cache key.
+Circuit-breaker and process-local rate-limit state use a separate opaque key
+derived from the channel, endpoint, and resolved request headers. Failures or
+reservations from another channel or credential cannot open or throttle this
+lookup; lookups in the same channel using the same provider identity share the
+configured per-domain bucket. If those lookups declare different limits, the
+process uses the lower value until the idle bucket is discarded.
 Configure at most one of `bearerTokenSecretCode`,
 `apiKeySecretCode`, and `basicAuthSecretCode`. A Basic-auth secret
 must resolve to `username:password`. Missing or empty secrets fail before

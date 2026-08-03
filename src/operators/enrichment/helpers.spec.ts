@@ -9,7 +9,7 @@ import {
     resetEnrichmentState,
 } from './helpers';
 import { configureGlobalSsrfProtection } from '../../utils/url-security.utils';
-import { SINK } from '../../constants/defaults';
+import { CIRCUIT_BREAKER, SINK } from '../../constants/defaults';
 import { httpLookupOperator } from './enrichment.operators';
 import type { JsonObject } from '../types';
 import type {
@@ -84,8 +84,12 @@ function createConnectionResolver(
 function createHttpLookupRuntime(
     secrets?: HttpLookupSecretResolver,
     connections: ConnectionResolver = createConnectionResolver(),
+    namespaces: Pick<
+        HttpLookupRuntimeContext,
+        'cacheNamespace' | 'stateNamespace'
+    > = {},
 ): HttpLookupRuntimeContext {
-    return { secrets, connections };
+    return { secrets, connections, ...namespaces };
 }
 
 beforeEach(() => {
@@ -436,14 +440,17 @@ describe('httpLookup outbound security', () => {
     it('fails closed when an authentication Secret Code cannot resolve', async () => {
         const fetchSpy = vi.mocked(globalThis.fetch);
         const resolver = {
-            cacheNamespace: 'channel-a',
             get: vi.fn(async () => undefined),
         };
 
         await expect(applyHttpLookup({}, {
             ...AUTHENTICATED_HTTP_LOOKUP_CONFIG,
             bearerTokenSecretCode: 'missing-token',
-        }, createHttpLookupRuntime(resolver))).rejects.toThrow('Secret Code is unavailable');
+        }, createHttpLookupRuntime(
+            resolver,
+            createConnectionResolver(),
+            { cacheNamespace: 'channel-a' },
+        ))).rejects.toThrow('Secret Code is unavailable');
 
         expect(resolver.get).toHaveBeenCalledWith('missing-token');
         expect(fetchSpy).not.toHaveBeenCalled();
@@ -476,7 +483,6 @@ describe('httpLookup outbound security', () => {
         vi.stubGlobal('fetch', fetchSpy);
         let token = 'credential-a';
         const resolver = {
-            cacheNamespace: 'channel-a',
             get: vi.fn(async () => token),
         };
         const config = {
@@ -484,7 +490,11 @@ describe('httpLookup outbound security', () => {
             bearerTokenSecretCode: 'lookup-token',
         };
 
-        const runtime = createHttpLookupRuntime(resolver);
+        const runtime = createHttpLookupRuntime(
+            resolver,
+            createConnectionResolver(),
+            { cacheNamespace: 'channel-a' },
+        );
         const first = await applyHttpLookup({}, config, runtime);
         token = 'credential-b';
         const second = await applyHttpLookup({}, config, runtime);
@@ -510,18 +520,79 @@ describe('httpLookup outbound security', () => {
             ...AUTHENTICATED_HTTP_LOOKUP_CONFIG,
             apiKeySecretCode: 'lookup-key',
         };
-        const first = await applyHttpLookup({}, config, createHttpLookupRuntime({
-            cacheNamespace: 'channel-a',
-            get: async () => 'same-credential',
-        }));
-        const second = await applyHttpLookup({}, config, createHttpLookupRuntime({
-            cacheNamespace: 'channel-b',
-            get: async () => 'same-credential',
-        }));
+        const resolver = { get: async () => 'same-credential' };
+        const first = await applyHttpLookup(
+            {},
+            config,
+            createHttpLookupRuntime(
+                resolver,
+                createConnectionResolver(),
+                { cacheNamespace: 'channel-a' },
+            ),
+        );
+        const second = await applyHttpLookup(
+            {},
+            config,
+            createHttpLookupRuntime(
+                resolver,
+                createConnectionResolver(),
+                { cacheNamespace: 'channel-b' },
+            ),
+        );
 
         expect(first.record.lookup).toEqual({ responseNumber: 1 });
         expect(second.record.lookup).toEqual({ responseNumber: 2 });
         expect(fetchSpy).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not share circuit failures across channel state namespaces', async () => {
+        let failRequest = true;
+        const fetchSpy = vi.fn(async () => failRequest
+            ? new Response(null, {
+                status: 503,
+                statusText: 'Service Unavailable',
+            })
+            : new Response(JSON.stringify({ ok: true }), {
+                headers: { 'content-type': 'application/json' },
+            }));
+        vi.stubGlobal('fetch', fetchSpy);
+        const config = {
+            ...BASE_HTTP_LOOKUP_CONFIG,
+            cacheTtlSec: 0,
+            failOnError: true,
+        };
+        const resolver = { get: async () => undefined };
+        const firstRuntime = createHttpLookupRuntime(
+            resolver,
+            createConnectionResolver(),
+            {
+                cacheNamespace: 'channel-a-pipeline-step',
+                stateNamespace: 'channel-a',
+            },
+        );
+
+        for (let failure = 0; failure < CIRCUIT_BREAKER.FAILURE_THRESHOLD; failure += 1) {
+            await expect(applyHttpLookup({}, config, firstRuntime))
+                .resolves.toMatchObject({ error: 'HTTP 503: Service Unavailable' });
+        }
+        await expect(applyHttpLookup({}, config, firstRuntime))
+            .resolves.toMatchObject({ error: 'Circuit breaker open for https://example.com' });
+
+        failRequest = false;
+        const secondRuntime = createHttpLookupRuntime(
+            resolver,
+            createConnectionResolver(),
+            {
+                cacheNamespace: 'channel-b-pipeline-step',
+                stateNamespace: 'channel-b',
+            },
+        );
+        await expect(applyHttpLookup({}, config, secondRuntime)).resolves.toMatchObject({
+            record: { lookup: { ok: true } },
+        });
+        expect(fetchSpy).toHaveBeenCalledTimes(
+            CIRCUIT_BREAKER.FAILURE_THRESHOLD + 1,
+        );
     });
 
     it('includes response extraction configuration in cache identity', async () => {
@@ -534,11 +605,17 @@ describe('httpLookup outbound security', () => {
         const left = await applyHttpLookup({}, {
             ...BASE_HTTP_LOOKUP_CONFIG,
             responsePath: 'data.left',
-        }, { secrets: { cacheNamespace: 'channel-a', get: async () => undefined } });
+        }, {
+            secrets: { get: async () => undefined },
+            cacheNamespace: 'channel-a',
+        });
         const right = await applyHttpLookup({}, {
             ...BASE_HTTP_LOOKUP_CONFIG,
             responsePath: 'data.right',
-        }, { secrets: { cacheNamespace: 'channel-a', get: async () => undefined } });
+        }, {
+            secrets: { get: async () => undefined },
+            cacheNamespace: 'channel-a',
+        });
 
         expect(left.record.lookup).toBe('left-value');
         expect(right.record.lookup).toBe('right-value');
@@ -682,7 +759,6 @@ describe('httpLookup cache authentication boundary', () => {
         vi.stubGlobal('fetch', fetchSpy);
         let token: string | undefined = 'available-token';
         const resolver = {
-            cacheNamespace: 'channel-a',
             get: async () => token,
         };
         const config = {
@@ -690,7 +766,11 @@ describe('httpLookup cache authentication boundary', () => {
             bearerTokenSecretCode: 'lookup-token',
         };
 
-        const runtime = createHttpLookupRuntime(resolver);
+        const runtime = createHttpLookupRuntime(
+            resolver,
+            createConnectionResolver(),
+            { cacheNamespace: 'channel-a' },
+        );
         await expect(applyHttpLookup({}, config, runtime)).resolves.toMatchObject({
             record: { lookup: { source: 'remote' } },
         });

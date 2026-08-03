@@ -14,6 +14,7 @@ export interface CircuitBreakerState {
 
 export interface CircuitPermit {
     readonly endpoint: string;
+    readonly stateKey: string;
     readonly generation: number;
     readonly halfOpen: boolean;
     readonly breaker: CircuitBreakerState;
@@ -21,8 +22,12 @@ export interface CircuitPermit {
 
 const circuitBreakers = new Map<string, CircuitBreakerState>();
 
-export function acquireCircuitPermit(endpoint: string, now = Date.now()): CircuitPermit | null {
-    const breaker = getCircuitBreaker(endpoint, now);
+export function acquireCircuitPermit(
+    endpoint: string,
+    now = Date.now(),
+    stateKey = endpoint,
+): CircuitPermit | null {
+    const breaker = getCircuitBreaker(stateKey, now);
     breaker.lastActivity = now;
 
     if (breaker.state === CircuitState.OPEN) {
@@ -38,10 +43,10 @@ export function acquireCircuitPermit(endpoint: string, now = Date.now()): Circui
     if (breaker.state === CircuitState.HALF_OPEN) {
         if (breaker.halfOpenAttempts >= CIRCUIT_BREAKER.SUCCESS_THRESHOLD) return null;
         breaker.halfOpenAttempts += 1;
-        return createPermit(endpoint, breaker, true);
+        return createPermit(endpoint, stateKey, breaker, true);
     }
 
-    return createPermit(endpoint, breaker, false);
+    return createPermit(endpoint, stateKey, breaker, false);
 }
 
 function getCircuitBreaker(endpoint: string, now: number): CircuitBreakerState {
@@ -77,10 +82,11 @@ function enterHalfOpen(breaker: CircuitBreakerState): void {
 
 function createPermit(
     endpoint: string,
+    stateKey: string,
     breaker: CircuitBreakerState,
     halfOpen: boolean,
 ): CircuitPermit {
-    return { endpoint, generation: breaker.generation, halfOpen, breaker };
+    return { endpoint, stateKey, generation: breaker.generation, halfOpen, breaker };
 }
 
 export function recordCircuitSuccess(permit: CircuitPermit, now = Date.now()): void {
@@ -124,7 +130,7 @@ export function recordCircuitFailure(permit: CircuitPermit, now = Date.now()): v
 }
 
 function getCurrentBreaker(permit: CircuitPermit): CircuitBreakerState | undefined {
-    const breaker = circuitBreakers.get(permit.endpoint);
+    const breaker = circuitBreakers.get(permit.stateKey);
     return breaker === permit.breaker && breaker.generation === permit.generation
         ? breaker
         : undefined;
@@ -143,8 +149,8 @@ export function getCircuitBreakerStats(): Map<string, CircuitBreakerState> {
     );
 }
 
-export function resetCircuitBreaker(endpoint: string): void {
-    circuitBreakers.delete(endpoint);
+export function resetCircuitBreaker(endpoint: string, stateKey = endpoint): void {
+    circuitBreakers.delete(stateKey);
 }
 
 export function resetAllCircuitBreakers(): void {

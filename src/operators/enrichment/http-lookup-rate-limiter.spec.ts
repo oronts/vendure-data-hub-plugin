@@ -34,14 +34,22 @@ describe('HTTP lookup rate limiter', () => {
         expect(completed).toEqual([0, 1, 2]);
     });
 
-    it('isolates different limits configured for the same origin', async () => {
+    it('keeps the stricter limit configured for the same runtime scope', async () => {
         await waitForHttpLookupRateLimit('https://example.com/slow', 1);
-        await Promise.all([
-            waitForHttpLookupRateLimit('https://example.com/fast', 2),
-            waitForHttpLookupRateLimit('https://example.com/fast', 2),
-        ]);
+        let completed = false;
+        const request = waitForHttpLookupRateLimit(
+            'https://example.com/fast',
+            2,
+        ).then(() => {
+            completed = true;
+        });
 
-        expect(getRateLimiterStats()).toHaveLength(2);
+        await vi.advanceTimersByTimeAsync(999);
+        expect(completed).toBe(false);
+        await vi.advanceTimersByTimeAsync(1);
+        await request;
+        expect(getRateLimiterStats()).toHaveLength(1);
+        expect(getRateLimiterStats().values().next().value?.limit).toBe(1);
     });
 
     it('uses the documented default requests-per-second limit', async () => {
@@ -56,5 +64,22 @@ describe('HTTP lookup rate limiter', () => {
         snapshot.values().next().value!.tokens = 500;
 
         expect(getRateLimiterStats().values().next().value?.tokens).toBe(0);
+    });
+
+    it('isolates reservations for the same endpoint by runtime state key', async () => {
+        await waitForHttpLookupRateLimit(
+            'https://example.com/items',
+            1,
+            'channel-a-credential',
+        );
+        const secondScope = waitForHttpLookupRateLimit(
+            'https://example.com/items',
+            1,
+            'channel-b-credential',
+        );
+
+        await vi.advanceTimersByTimeAsync(0);
+        await expect(secondScope).resolves.toBeUndefined();
+        expect(getRateLimiterStats()).toHaveLength(2);
     });
 });

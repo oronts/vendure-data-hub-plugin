@@ -6,7 +6,8 @@ import { buildUrlWithConnection } from '../../utils/url-helpers';
 import type { HttpLookupOperatorConfig } from './types';
 
 const CACHE_KEY_HMAC_KEY = randomBytes(32);
-const IMPLICIT_CACHE_NAMESPACES = new WeakMap<HttpLookupSecretResolver, string>();
+const IMPLICIT_RUNTIME_NAMESPACES = new WeakMap<HttpLookupSecretResolver, string>();
+const DEFAULT_RUNTIME_NAMESPACE = randomBytes(16).toString('hex');
 const HEADER_NAME_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 const SENSITIVE_HEADER_PATTERN =
     /(?:^|[-_])(?:authorization|api[-_]?key|auth[-_]?token|access[-_]?token|refresh[-_]?token|security[-_]?token|client[-_]?secret|private[-_]?key|secret|signature|cookie)(?:$|[-_])/i;
@@ -38,16 +39,39 @@ export const HTTP_LOOKUP_LIMITS = {
 
 export interface HttpLookupSecretResolver {
     get(code: string): Promise<string | undefined>;
-    cacheNamespace?: string;
 }
 
 export interface HttpLookupRuntimeContext {
     readonly secrets?: HttpLookupSecretResolver;
     readonly connections?: ConnectionResolver;
+    readonly cacheNamespace?: string;
+    readonly stateNamespace?: string;
+}
+
+export interface HttpLookupRuntimeNamespaces {
+    readonly cacheNamespace: string;
+    readonly stateNamespace: string;
+}
+
+export function createHttpLookupRuntimeNamespaces(
+    channelId: string | number,
+    pipelineId: string | number,
+    stepKey: string,
+): HttpLookupRuntimeNamespaces {
+    const stateNamespace = String(channelId);
+    return {
+        cacheNamespace: JSON.stringify([
+            stateNamespace,
+            String(pipelineId),
+            stepKey,
+        ]),
+        stateNamespace,
+    };
 }
 
 export interface PreparedHttpLookupSecurity {
     cacheNamespace: string;
+    stateNamespace: string;
     fetchPolicy?: SecureFetchPolicy;
     headers: Record<string, string>;
     urlTemplate: string;
@@ -61,6 +85,12 @@ interface HttpLookupCacheIdentity {
     method: 'GET' | 'POST';
     responsePath: string | undefined;
     url: string;
+}
+
+interface HttpLookupStateIdentity {
+    endpoint: string;
+    headers: Readonly<Record<string, string>>;
+    stateNamespace: string;
 }
 
 export function validateHttpLookupConfig(config: HttpLookupOperatorConfig): void {
@@ -118,8 +148,18 @@ export async function prepareHttpLookupSecurity(
         await applyConnectionAuthentication(headers, connectionAuth, runtime.secrets);
     }
 
+    const cacheNamespace = getRuntimeNamespace(
+        runtime.cacheNamespace,
+        runtime.secrets,
+        'cache',
+    );
     return {
-        cacheNamespace: getCacheNamespace(runtime.secrets),
+        cacheNamespace,
+        stateNamespace: getRuntimeNamespace(
+            runtime.stateNamespace ?? cacheNamespace,
+            runtime.secrets,
+            'state',
+        ),
         fetchPolicy: baseUrl
             ? { allowedOrigins: [new URL(baseUrl).origin] }
             : undefined,
@@ -144,25 +184,43 @@ export function createHttpLookupCacheKey(identity: HttpLookupCacheIdentity): str
     return createHmac('sha256', CACHE_KEY_HMAC_KEY).update(material).digest('hex');
 }
 
-function getCacheNamespace(secretResolver: HttpLookupSecretResolver | undefined): string {
-    const explicitNamespace = secretResolver?.cacheNamespace;
+export function createHttpLookupStateKey(identity: HttpLookupStateIdentity): string {
+    const normalizedHeaders = Object.entries(identity.headers)
+        .map(([name, value]) => [name.toLowerCase(), value] as const)
+        .sort(([left], [right]) => left.localeCompare(right));
+    const material = JSON.stringify({
+        stateNamespace: identity.stateNamespace,
+        endpoint: identity.endpoint,
+        headers: normalizedHeaders,
+    });
+    return createHmac('sha256', CACHE_KEY_HMAC_KEY)
+        .update('state\u0000')
+        .update(material)
+        .digest('hex');
+}
+
+function getRuntimeNamespace(
+    explicitNamespace: string | undefined,
+    secretResolver: HttpLookupSecretResolver | undefined,
+    label: 'cache' | 'state',
+): string {
     if (explicitNamespace !== undefined) {
         if (
             typeof explicitNamespace !== 'string' ||
             explicitNamespace.trim().length === 0 ||
             explicitNamespace.length > HTTP_LOOKUP_LIMITS.MAX_CACHE_NAMESPACE_LENGTH
         ) {
-            throw new Error('HTTP lookup cache namespace is invalid');
+            throw new Error(`HTTP lookup ${label} namespace is invalid`);
         }
         return explicitNamespace;
     }
     if (!secretResolver) {
-        return randomBytes(16).toString('hex');
+        return DEFAULT_RUNTIME_NAMESPACE;
     }
-    const existing = IMPLICIT_CACHE_NAMESPACES.get(secretResolver);
+    const existing = IMPLICIT_RUNTIME_NAMESPACES.get(secretResolver);
     if (existing) return existing;
     const created = randomBytes(16).toString('hex');
-    IMPLICIT_CACHE_NAMESPACES.set(secretResolver, created);
+    IMPLICIT_RUNTIME_NAMESPACES.set(secretResolver, created);
     return created;
 }
 

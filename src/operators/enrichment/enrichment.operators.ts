@@ -15,7 +15,10 @@ import {
 } from './helpers';
 import { HTTP_METHOD_GET_POST_OPTIONS } from '../../constants/adapter-schema-options';
 import { createRecordOperator } from '../operator-factory';
-import { HTTP_LOOKUP_LIMITS } from './http-lookup-security';
+import {
+    createHttpLookupRuntimeNamespaces,
+    HTTP_LOOKUP_LIMITS,
+} from './http-lookup-security';
 
 export const LOOKUP_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
@@ -179,11 +182,6 @@ export async function httpLookupOperator(
     }
 
     const secretResolver = {
-        cacheNamespace: JSON.stringify([
-            String(helpers.ctx.ctx.channelId),
-            String(helpers.ctx.pipelineId),
-            helpers.ctx.stepKey,
-        ]),
         get: async (code: string) => helpers.secrets?.get(code),
     };
 
@@ -193,6 +191,11 @@ export async function httpLookupOperator(
         {
             secrets: secretResolver,
             connections: helpers.connections,
+            ...createHttpLookupRuntimeNamespaces(
+                helpers.ctx.ctx.channelId,
+                helpers.ctx.pipelineId,
+                helpers.ctx.stepKey,
+            ),
         },
     );
 

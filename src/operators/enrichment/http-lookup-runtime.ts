@@ -17,6 +17,7 @@ import { calculateSimpleBackoff, sleep } from '../../utils/retry.utils';
 import { ensureError } from '../../utils/error.utils';
 import {
     createHttpLookupCacheKey,
+    createHttpLookupStateKey,
     type HttpLookupRuntimeContext,
     type PreparedHttpLookupSecurity,
     prepareHttpLookupSecurity,
@@ -197,11 +198,20 @@ async function applyPreparedHttpLookup(
         }
     }
 
-    const permit = acquireCircuitPermit(request.endpoint);
+    const stateKey = createHttpLookupStateKey({
+        endpoint: request.endpoint,
+        headers: security.headers,
+        stateNamespace: security.stateNamespace,
+    });
+    const permit = acquireCircuitPermit(request.endpoint, undefined, stateKey);
     if (!permit) {
         return applyFallback(result, config, `Circuit breaker open for ${request.endpoint}`);
     }
-    await waitForHttpLookupRateLimit(request.endpoint, config.rateLimitPerSecond);
+    await waitForHttpLookupRateLimit(
+        request.endpoint,
+        config.rateLimitPerSecond,
+        stateKey,
+    );
     return completeHttpLookup(result, config, request, security, permit, cacheKey, cacheTtlSec);
 }
 

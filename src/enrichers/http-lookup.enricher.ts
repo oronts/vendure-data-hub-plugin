@@ -5,6 +5,7 @@ import { EnricherAdapter, EnrichContext, EnrichResult, StepConfigSchema } from '
 import { JsonObject } from '../types';
 import { applyHttpLookupBatch, HttpLookupOperatorConfig } from '../operators/enrichment';
 import { HTTP_METHOD_GET_POST_OPTIONS } from '../constants/adapter-schema-options';
+import { createHttpLookupRuntimeNamespaces } from '../operators/enrichment/http-lookup-security';
 
 export interface HttpLookupEnricherConfig {
     /** HTTP endpoint URL. Use {{field}} for dynamic values from record */
@@ -123,6 +124,11 @@ export const httpLookupEnricher: EnricherAdapter<HttpLookupEnricherConfig> = {
         const result = await applyHttpLookupBatch(records, operatorConfig, {
             secrets: secretResolver,
             connections: context.connections,
+            ...createHttpLookupRuntimeNamespaces(
+                context.ctx.channelId,
+                context.pipelineId,
+                context.stepKey,
+            ),
         });
 
         return {
