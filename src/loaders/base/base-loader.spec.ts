@@ -11,6 +11,7 @@ import type { DataHubLogger } from '../../services/logger/datahub-logger';
 import {
     BaseEntityLoader,
     ExistingEntityLookupResult,
+    LoaderExecutionState,
     LoaderMetadata,
 } from './base-loader';
 
@@ -32,19 +33,37 @@ class TestEntityLoader extends BaseEntityLoader<TestRecord, TestEntity> {
         requiredFields: ['sku'],
     };
 
+    readonly executionStates = new Map<string, LoaderExecutionState | undefined>();
+    readonly creationStates = new Map<string, LoaderExecutionState | undefined>();
+
     readonly findExisting = vi.fn(
         async (): Promise<ExistingEntityLookupResult<TestEntity> | null> => null,
     );
 
     readonly validate = vi.fn(
-        async (): Promise<EntityValidationResult> => ({
-            valid: true,
-            errors: [],
-            warnings: [],
-        }),
+        async (
+            _ctx: RequestContext,
+            record: TestRecord,
+            _operation: TargetOperation,
+            executionState?: LoaderExecutionState,
+        ): Promise<EntityValidationResult> => {
+            this.executionStates.set(record.sku, executionState);
+            return {
+                valid: true,
+                errors: [],
+                warnings: [],
+            };
+        },
     );
 
-    readonly createEntity = vi.fn(async (): Promise<ID> => 42);
+    readonly createEntity = vi.fn(async (
+        _context: LoaderContext,
+        record: TestRecord,
+        executionState?: LoaderExecutionState,
+    ): Promise<ID> => {
+        this.creationStates.set(record.sku, executionState);
+        return 42;
+    });
     readonly updateEntity = vi.fn(async (): Promise<void> => undefined);
 
     getFieldSchema(): EntityFieldSchema {
@@ -124,6 +143,23 @@ describe('BaseEntityLoader operation safety', () => {
         expect(loader.findExisting).toHaveBeenCalledOnce();
         expect(loader.createEntity).toHaveBeenCalledOnce();
         expect(loader.updateEntity).not.toHaveBeenCalled();
+    });
+
+    it('isolates mutable execution state between concurrent loads', async () => {
+        const loader = new TestEntityLoader();
+
+        await Promise.all([
+            loader.load(createContext('UPSERT'), [{ sku: 'first' }]),
+            loader.load(createContext('UPSERT'), [{ sku: 'second' }]),
+        ]);
+
+        const firstState = loader.executionStates.get('first');
+        const secondState = loader.executionStates.get('second');
+        expect(firstState).toBeDefined();
+        expect(secondState).toBeDefined();
+        expect(firstState).not.toBe(secondState);
+        expect(loader.creationStates.get('first')).toBe(firstState);
+        expect(loader.creationStates.get('second')).toBe(secondState);
     });
 
     it('fails CREATE duplicates when skipping is not explicit', async () => {

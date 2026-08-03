@@ -48,10 +48,6 @@ function getConfig(config: JsonObject): TaxRateHandlerConfig {
 
 @Injectable()
 export class TaxRateHandler implements LoaderHandler {
-    /** Cache for resolved IDs to reduce repeated lookups within a single batch */
-    private taxCategoryCache = new Map<string, ID>();
-    private zoneCache = new Map<string, ID>();
-
     constructor(
         private taxRateService: TaxRateService,
         private taxCategoryService: TaxCategoryService,
@@ -65,8 +61,8 @@ export class TaxRateHandler implements LoaderHandler {
         onRecordError?: OnRecordErrorCallback,
         _errorHandling?: ErrorHandlingConfig,
     ): Promise<LoaderExecutionResult> {
-        this.taxCategoryCache.clear();
-        this.zoneCache.clear();
+        const taxCategoryCache = new Map<string, ID>();
+        const zoneCache = new Map<string, ID>();
         let ok = 0;
         let fail = 0;
         let skipped = 0;
@@ -106,6 +102,7 @@ export class TaxRateHandler implements LoaderHandler {
                 // Resolve tax category
                 const taxCategoryId = await this.resolveTaxCategoryId(
                     ctx,
+                    taxCategoryCache,
                     getStringValue(rec, taxCategoryCodeField),
                     getReferenceId(rec, taxCategoryIdField),
                 );
@@ -120,6 +117,7 @@ export class TaxRateHandler implements LoaderHandler {
                 // Resolve zone
                 const zoneId = await this.resolveZoneId(
                     ctx,
+                    zoneCache,
                     getStringValue(rec, zoneCodeField),
                     getReferenceId(rec, zoneIdField),
                 );
@@ -184,6 +182,7 @@ export class TaxRateHandler implements LoaderHandler {
 
     private async resolveTaxCategoryId(
         ctx: RequestContext,
+        cache: Map<string, ID>,
         code?: string,
         id?: ID,
     ): Promise<ID | null> {
@@ -191,8 +190,8 @@ export class TaxRateHandler implements LoaderHandler {
             throw new Error('Provide either taxCategoryId or taxCategoryCode, not both');
         }
         const cacheKey = id !== undefined ? `id:${String(id)}` : code ? `code:${code}` : undefined;
-        if (cacheKey && this.taxCategoryCache.has(cacheKey)) {
-            return this.taxCategoryCache.get(cacheKey) ?? null;
+        if (cacheKey && cache.has(cacheKey)) {
+            return cache.get(cacheKey) ?? null;
         }
         const resolved = await resolveEntityReferenceId(
             ctx,
@@ -200,12 +199,13 @@ export class TaxRateHandler implements LoaderHandler {
             'Tax category',
             { id, code },
         );
-        if (cacheKey && resolved !== null) this.taxCategoryCache.set(cacheKey, resolved);
+        if (cacheKey && resolved !== null) cache.set(cacheKey, resolved);
         return resolved;
     }
 
     private async resolveZoneId(
         ctx: RequestContext,
+        cache: Map<string, ID>,
         code?: string,
         id?: ID,
     ): Promise<ID | null> {
@@ -213,8 +213,8 @@ export class TaxRateHandler implements LoaderHandler {
             throw new Error('Provide either zoneId or zoneCode, not both');
         }
         const cacheKey = id !== undefined ? `id:${String(id)}` : code ? `code:${code}` : undefined;
-        if (cacheKey && this.zoneCache.has(cacheKey)) {
-            return this.zoneCache.get(cacheKey) ?? null;
+        if (cacheKey && cache.has(cacheKey)) {
+            return cache.get(cacheKey) ?? null;
         }
         const resolved = await resolveEntityReferenceId(
             ctx,
@@ -222,7 +222,7 @@ export class TaxRateHandler implements LoaderHandler {
             'Zone',
             { id, code },
         );
-        if (cacheKey && resolved !== null) this.zoneCache.set(cacheKey, resolved);
+        if (cacheKey && resolved !== null) cache.set(cacheKey, resolved);
         return resolved;
     }
 }

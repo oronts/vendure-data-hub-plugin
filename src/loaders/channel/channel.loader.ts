@@ -20,6 +20,8 @@ import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
 import {
     BaseEntityLoader,
     ExistingEntityLookupResult,
+    getLoaderExecutionCache,
+    LoaderExecutionState,
     LoaderMetadata,
     ValidationBuilder,
     EntityLookupHelper,
@@ -38,14 +40,13 @@ import {
     shouldUpdateField,
 } from './helpers';
 
+const ZONE_CACHE_NAMESPACE = 'channel-loader:zones';
+
 /** Loads Channel entities via ChannelService. Supports CREATE, UPDATE, UPSERT. */
 @Injectable()
 export class ChannelLoader extends BaseEntityLoader<ChannelInput, Channel> {
     protected readonly logger: DataHubLogger;
     protected readonly metadata: LoaderMetadata = CHANNEL_LOADER_METADATA;
-
-    // Cache for resolved zone IDs to avoid repeated lookups
-    private zoneCache = new Map<string, ID>();
 
     private readonly lookupHelper: EntityLookupHelper<ChannelService, Channel, ChannelInput>;
 
@@ -86,11 +87,6 @@ export class ChannelLoader extends BaseEntityLoader<ChannelInput, Channel> {
             .addIdStrategy((ctx, svc, id) => svc.findOne(ctx, id));
     }
 
-    protected preprocessRecords(records: ChannelInput[]): ChannelInput[] {
-        this.zoneCache.clear();
-        return records;
-    }
-
     protected getDuplicateErrorMessage(record: ChannelInput): string {
         return `Channel with code "${record.code}" already exists`;
     }
@@ -107,7 +103,12 @@ export class ChannelLoader extends BaseEntityLoader<ChannelInput, Channel> {
         ctx: RequestContext,
         record: ChannelInput,
         operation: TargetOperation,
+        executionState?: LoaderExecutionState,
     ): Promise<EntityValidationResult> {
+        const zoneCache = getLoaderExecutionCache(
+            executionState,
+            ZONE_CACHE_NAMESPACE,
+        );
         const builder = new ValidationBuilder()
             .requireStringForCreate('code', record.code, operation, 'Channel code is required');
 
@@ -177,7 +178,7 @@ export class ChannelLoader extends BaseEntityLoader<ChannelInput, Channel> {
                     this.zoneService,
                     record.defaultTaxZoneCode,
                     record.defaultTaxZoneId,
-                    this.zoneCache,
+                    zoneCache,
                 );
                 if (!taxZoneId) {
                     builder.addError(
@@ -194,7 +195,7 @@ export class ChannelLoader extends BaseEntityLoader<ChannelInput, Channel> {
                     this.zoneService,
                     record.defaultShippingZoneCode,
                     record.defaultShippingZoneId,
-                    this.zoneCache,
+                    zoneCache,
                 );
                 if (!shippingZoneId) {
                     builder.addError(
@@ -300,8 +301,16 @@ export class ChannelLoader extends BaseEntityLoader<ChannelInput, Channel> {
         };
     }
 
-    protected async createEntity(context: LoaderContext, record: ChannelInput): Promise<ID | null> {
+    protected async createEntity(
+        context: LoaderContext,
+        record: ChannelInput,
+        executionState?: LoaderExecutionState,
+    ): Promise<ID | null> {
         const { ctx } = context;
+        const zoneCache = getLoaderExecutionCache(
+            executionState,
+            ZONE_CACHE_NAMESPACE,
+        );
 
         // Resolve zone IDs
         let defaultTaxZoneId: ID | undefined;
@@ -311,7 +320,7 @@ export class ChannelLoader extends BaseEntityLoader<ChannelInput, Channel> {
                 this.zoneService,
                 record.defaultTaxZoneCode,
                 record.defaultTaxZoneId,
-                this.zoneCache,
+                zoneCache,
             );
             if (!taxZoneId) {
                 this.logger.error(`Default tax zone "${record.defaultTaxZoneCode}" not found during create`);
@@ -327,7 +336,7 @@ export class ChannelLoader extends BaseEntityLoader<ChannelInput, Channel> {
                 this.zoneService,
                 record.defaultShippingZoneCode,
                 record.defaultShippingZoneId,
-                this.zoneCache,
+                zoneCache,
             );
             if (!shippingZoneId) {
                 this.logger.error(`Default shipping zone "${record.defaultShippingZoneCode}" not found during create`);
@@ -387,8 +396,17 @@ export class ChannelLoader extends BaseEntityLoader<ChannelInput, Channel> {
         return channel.id;
     }
 
-    protected async updateEntity(context: LoaderContext, channelId: ID, record: ChannelInput): Promise<void> {
+    protected async updateEntity(
+        context: LoaderContext,
+        channelId: ID,
+        record: ChannelInput,
+        executionState?: LoaderExecutionState,
+    ): Promise<void> {
         const { ctx, options } = context;
+        const zoneCache = getLoaderExecutionCache(
+            executionState,
+            ZONE_CACHE_NAMESPACE,
+        );
 
         const existing = await this.channelService.findOne(ctx, channelId);
         if (!existing) {
@@ -402,7 +420,7 @@ export class ChannelLoader extends BaseEntityLoader<ChannelInput, Channel> {
                 this.zoneService,
                 record.defaultTaxZoneCode,
                 record.defaultTaxZoneId,
-                this.zoneCache,
+                zoneCache,
             ) || undefined;
         }
 
@@ -413,7 +431,7 @@ export class ChannelLoader extends BaseEntityLoader<ChannelInput, Channel> {
                 this.zoneService,
                 record.defaultShippingZoneCode,
                 record.defaultShippingZoneId,
-                this.zoneCache,
+                zoneCache,
             ) || undefined;
         }
 

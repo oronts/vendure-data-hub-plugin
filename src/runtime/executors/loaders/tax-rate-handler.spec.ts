@@ -85,6 +85,87 @@ describe('TaxRateHandler references', () => {
         });
     });
 
+    it('isolates reference caches between concurrent channel executions', async () => {
+        const firstContext = { channelId: 'channel-a' } as RequestContext;
+        const secondContext = { channelId: 'channel-b' } as RequestContext;
+        const referenceService = (prefix: string) => ({
+            findAll: vi.fn(async (requestContext: RequestContext) => ({
+                items: [{
+                    id: `${prefix}-${String(requestContext.channelId)}`,
+                    name: prefix,
+                    customFields: { code: prefix },
+                }],
+                totalItems: 1,
+            })),
+        });
+        let releaseFirstCreate: (() => void) | undefined;
+        let firstCreateStarted: (() => void) | undefined;
+        const firstCreateReady = new Promise<void>(resolve => {
+            firstCreateStarted = resolve;
+        });
+        const continueFirstCreate = new Promise<void>(resolve => {
+            releaseFirstCreate = resolve;
+        });
+        let firstContextCreates = 0;
+        const taxRateService = {
+            findAll: vi.fn().mockResolvedValue({ items: [], totalItems: 0 }),
+            create: vi.fn(async (
+                requestContext: RequestContext,
+                _input: unknown,
+            ) => {
+                if (requestContext === firstContext && firstContextCreates++ === 0) {
+                    firstCreateStarted?.();
+                    await continueFirstCreate;
+                }
+                return { id: 'tax-rate' };
+            }),
+            update: vi.fn(),
+        };
+        const handler = new TaxRateHandler(
+            taxRateService as never,
+            referenceService('tax-category') as never,
+            referenceService('zone') as never,
+        );
+        const record = {
+            name: 'VAT',
+            value: 19,
+            taxCategoryCode: 'tax-category',
+            zoneCode: 'zone',
+        };
+
+        const firstExecution = handler.execute(
+            firstContext,
+            createStep(),
+            [record, { ...record, name: 'VAT reduced' }],
+        );
+        await firstCreateReady;
+        await expect(handler.execute(
+            secondContext,
+            createStep(),
+            [{ ...record, name: 'VAT B' }],
+        )).resolves.toEqual({ ok: 1, fail: 0, skipped: 0 });
+        releaseFirstCreate?.();
+        await expect(firstExecution).resolves.toEqual({
+            ok: 2,
+            fail: 0,
+            skipped: 0,
+        });
+
+        const firstInputs = taxRateService.create.mock.calls
+            .filter(([requestContext]) => requestContext === firstContext)
+            .map(([, input]) => input);
+        expect(firstInputs).toEqual([
+            expect.objectContaining({
+                categoryId: 'tax-category-channel-a',
+                zoneId: 'zone-channel-a',
+            }),
+            expect.objectContaining({
+                categoryId: 'tax-category-channel-a',
+                zoneId: 'zone-channel-a',
+            }),
+        ]);
+    });
+
     it('preserves false strings instead of enabling the tax rate', async () => {
         const { handler, taxRateService } = createFixture();
 

@@ -46,6 +46,22 @@ export interface ExistingEntityLookupResult<TEntity = unknown> {
     entity: TEntity;
 }
 
+export interface LoaderExecutionState {
+    readonly caches: Map<string, Map<string, ID>>;
+}
+
+export function getLoaderExecutionCache(
+    state: LoaderExecutionState | undefined,
+    namespace: string,
+): Map<string, ID> {
+    if (!state) return new Map<string, ID>();
+    const existing = state.caches.get(namespace);
+    if (existing) return existing;
+    const cache = new Map<string, ID>();
+    state.caches.set(namespace, cache);
+    return cache;
+}
+
 /**
  * Abstract base class for entity loaders.
  *
@@ -131,14 +147,22 @@ export abstract class BaseEntityLoader<
             errors: [],
             affectedIds: [],
         };
+        const executionState: LoaderExecutionState = {
+            caches: new Map(),
+        };
 
         // Allow subclasses to pre-process/sort records (e.g., CollectionLoader sorts by hierarchy)
-        const processedRecords = this.preprocessRecords(records);
+        const processedRecords = this.preprocessRecords(records, executionState);
 
         for (const record of processedRecords) {
             try {
                 // 1. Validate the record
-                const validation = await this.validate(context.ctx, record, context.operation);
+                const validation = await this.validate(
+                    context.ctx,
+                    record,
+                    context.operation,
+                    executionState,
+                );
                 if (!validation.valid) {
                     result.failed++;
                     result.errors.push({
@@ -150,15 +174,31 @@ export abstract class BaseEntityLoader<
                 }
 
                 // 2. Check for existing entity
-                const existing = await this.findExisting(context.ctx, context.lookupFields, record);
+                const existing = await this.findExisting(
+                    context.ctx,
+                    context.lookupFields,
+                    record,
+                    executionState,
+                );
 
                 // 3. Handle based on operation type and existence
                 if (existing) {
-                    const outcome = await this.handleExistingEntity(context, record, existing, result);
+                    const outcome = await this.handleExistingEntity(
+                        context,
+                        record,
+                        existing,
+                        result,
+                        executionState,
+                    );
                     if (outcome === OUTCOME_TYPE.SKIP) continue;
                     if (outcome === OUTCOME_TYPE.ERROR) continue;
                 } else {
-                    const outcome = await this.handleNewEntity(context, record, result);
+                    const outcome = await this.handleNewEntity(
+                        context,
+                        record,
+                        result,
+                        executionState,
+                    );
                     if (outcome === OUTCOME_TYPE.SKIP) continue;
                     if (outcome === OUTCOME_TYPE.ERROR) continue;
                 }
@@ -181,6 +221,7 @@ export abstract class BaseEntityLoader<
         record: TInput,
         existing: ExistingEntityLookupResult<TEntity>,
         result: EntityLoadResult,
+        executionState: LoaderExecutionState,
     ): Promise<LoaderOutcomeType> {
         if (context.operation === TARGET_OPERATION.CREATE) {
             if (context.options.skipDuplicates) {
@@ -199,7 +240,7 @@ export abstract class BaseEntityLoader<
 
         // UPDATE or UPSERT - update the existing entity
         if (!context.dryRun) {
-            await this.updateEntity(context, existing.id, record);
+            await this.updateEntity(context, existing.id, record, executionState);
         }
         result.updated++;
         result.affectedIds.push(existing.id);
@@ -213,6 +254,7 @@ export abstract class BaseEntityLoader<
         context: LoaderContext,
         record: TInput,
         result: EntityLoadResult,
+        executionState: LoaderExecutionState,
     ): Promise<LoaderOutcomeType> {
         if (context.operation === TARGET_OPERATION.UPDATE) {
             result.failed++;
@@ -227,7 +269,7 @@ export abstract class BaseEntityLoader<
 
         // CREATE or UPSERT - create new entity
         if (!context.dryRun) {
-            const newId = await this.createEntity(context, record);
+            const newId = await this.createEntity(context, record, executionState);
             if (newId) {
                 result.affectedIds.push(newId);
                 result.created++;
@@ -266,7 +308,10 @@ export abstract class BaseEntityLoader<
     /**
      * Preprocess records before loading. Override in subclasses for sorting, etc.
      */
-    protected preprocessRecords(records: TInput[]): TInput[] {
+    protected preprocessRecords(
+        records: TInput[],
+        _executionState?: LoaderExecutionState,
+    ): TInput[] {
         return records;
     }
 
@@ -278,12 +323,21 @@ export abstract class BaseEntityLoader<
     /**
      * Create a new entity. Returns the new entity's ID, or null on failure.
      */
-    protected abstract createEntity(context: LoaderContext, record: TInput): Promise<ID | null>;
+    protected abstract createEntity(
+        context: LoaderContext,
+        record: TInput,
+        executionState?: LoaderExecutionState,
+    ): Promise<ID | null>;
 
     /**
      * Update an existing entity.
      */
-    protected abstract updateEntity(context: LoaderContext, entityId: ID, record: TInput): Promise<void>;
+    protected abstract updateEntity(
+        context: LoaderContext,
+        entityId: ID,
+        record: TInput,
+        executionState?: LoaderExecutionState,
+    ): Promise<void>;
 
     /**
      * Find existing entity by lookup fields.
@@ -292,6 +346,7 @@ export abstract class BaseEntityLoader<
         ctx: RequestContext,
         lookupFields: string[],
         record: TInput,
+        executionState?: LoaderExecutionState,
     ): Promise<ExistingEntityLookupResult<TEntity> | null>;
 
     /**
@@ -301,6 +356,7 @@ export abstract class BaseEntityLoader<
         ctx: RequestContext,
         record: TInput,
         operation: TargetOperation,
+        executionState?: LoaderExecutionState,
     ): Promise<EntityValidationResult>;
 
     /**

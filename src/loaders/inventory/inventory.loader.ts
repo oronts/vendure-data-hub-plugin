@@ -19,6 +19,8 @@ import { VendureEntityType } from '../../constants/enums';
 import {
     BaseEntityLoader,
     ExistingEntityLookupResult,
+    getLoaderExecutionCache,
+    LoaderExecutionState,
     LoaderMetadata,
     ValidationBuilder,
 } from '../base';
@@ -29,14 +31,13 @@ import {
     resolveStockLocationId,
 } from './helpers';
 
+const LOCATION_CACHE_NAMESPACE = 'inventory-loader:locations';
+
 /** Loads Inventory (stock level) records via StockMovementService. Supports UPDATE, UPSERT. */
 @Injectable()
 export class InventoryLoader extends BaseEntityLoader<InventoryInput, ProductVariant> {
     protected readonly logger: DataHubLogger;
     protected readonly metadata: LoaderMetadata = INVENTORY_LOADER_METADATA;
-
-    // Cache for resolved stock location IDs
-    private locationCache = new Map<string, ID>();
 
     constructor(
         private productVariantService: ProductVariantService,
@@ -46,11 +47,6 @@ export class InventoryLoader extends BaseEntityLoader<InventoryInput, ProductVar
     ) {
         super();
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.INVENTORY_LOADER);
-    }
-
-    protected preprocessRecords(records: InventoryInput[]): InventoryInput[] {
-        this.locationCache.clear();
-        return records;
     }
 
     protected getDuplicateErrorMessage(record: InventoryInput): string {
@@ -138,14 +134,23 @@ export class InventoryLoader extends BaseEntityLoader<InventoryInput, ProductVar
         throw new Error(`Cannot adjust inventory for non-existent SKU "${record.sku}". Variant must exist before stock can be adjusted.`);
     }
 
-    protected async updateEntity(context: LoaderContext, variantId: ID, record: InventoryInput): Promise<void> {
+    protected async updateEntity(
+        context: LoaderContext,
+        variantId: ID,
+        record: InventoryInput,
+        executionState?: LoaderExecutionState,
+    ): Promise<void> {
         const { ctx } = context;
+        const locationCache = getLoaderExecutionCache(
+            executionState,
+            LOCATION_CACHE_NAMESPACE,
+        );
 
         const stockLocationId = await resolveStockLocationId(
             this.stockLocationService,
             ctx,
             record,
-            this.locationCache,
+            locationCache,
         );
 
         let targetLocationId = stockLocationId;

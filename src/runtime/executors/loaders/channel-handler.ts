@@ -58,7 +58,6 @@ function getConfig(config: JsonObject): ChannelHandlerConfig {
 @Injectable()
 export class ChannelHandler implements LoaderHandler {
     private readonly logger: DataHubLogger;
-    private zoneCache = new Map<string, ID>();
 
     constructor(
         private channelService: ChannelService,
@@ -79,7 +78,7 @@ export class ChannelHandler implements LoaderHandler {
         let fail = 0;
         let skipped = 0;
         const cfg = getConfig(step.config);
-        this.zoneCache = new Map<string, ID>();
+        const zoneCache = new Map<string, ID>();
 
         // Pre-fetch all channels and zones to avoid N+1 queries
         const allChannelsResult = await this.channelService.findAll(ctx);
@@ -88,7 +87,7 @@ export class ChannelHandler implements LoaderHandler {
 
         const allZones = await this.zoneService.findAll(ctx);
         for (const z of allZones.items) {
-            this.zoneCache.set(z.name.toLowerCase(), z.id);
+            zoneCache.set(z.name.toLowerCase(), z.id);
         }
 
         for (const rec of input) {
@@ -177,8 +176,12 @@ export class ChannelHandler implements LoaderHandler {
                 const customFieldsKey = cfg.customFieldsField ?? 'customFields';
                 const customFields = getObjectValue(rec, customFieldsKey);
 
-                const defaultTaxZoneId = taxZoneCode ? this.resolveZoneId(taxZoneCode) : undefined;
-                const defaultShippingZoneId = shippingZoneCode ? this.resolveZoneId(shippingZoneCode) : undefined;
+                const defaultTaxZoneId = taxZoneCode
+                    ? this.resolveZoneId(taxZoneCode, zoneCache)
+                    : undefined;
+                const defaultShippingZoneId = shippingZoneCode
+                    ? this.resolveZoneId(shippingZoneCode, zoneCache)
+                    : undefined;
 
                 const existing = this.findExistingByCode(ctx, code, channelByCode);
                 const strategy = cfg.strategy ?? LoadStrategy.UPSERT;
@@ -251,7 +254,7 @@ export class ChannelHandler implements LoaderHandler {
         return match ? { id: match.id } : null;
     }
 
-    private resolveZoneId(code: string): ID | undefined {
-        return this.zoneCache.get(code.toLowerCase());
+    private resolveZoneId(code: string, zoneCache: ReadonlyMap<string, ID>): ID | undefined {
+        return zoneCache.get(code.toLowerCase());
     }
 }
