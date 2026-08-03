@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { HTTP, GraphQLPaginationType, OUTBOUND_RESPONSE_LIMITS } from '../../constants/index';
+import {
+    HTTP,
+    GraphQLPaginationType,
+    OUTBOUND_RESPONSE_LIMITS,
+    TRANSFORM_LIMITS,
+} from '../../constants/index';
 import { getErrorMessage, toErrorOrUndefined } from '../../utils/error.utils';
 import { executeWithRetry, createRetryConfig } from '../../utils/retry.utils';
 import { secureFetch } from '../../utils/secure-fetch.utils';
@@ -35,6 +40,7 @@ import {
 } from './helpers';
 import { GRAPHQL_EXTRACTOR_SCHEMA } from './schema';
 import { assertCanonicalExtractorConfig } from '../extractor-config.contract';
+import { resolveBoundedLimit } from '../shared/pagination.utils';
 
 /**
  * GraphQL Extractor
@@ -294,18 +300,23 @@ export class GraphQLExtractor implements DataExtractor<GraphQLExtractorConfig> {
         limit: number = 10,
     ): Promise<ExtractorPreviewResult> {
         try {
+            const safeLimit = resolveBoundedLimit(
+                limit,
+                10,
+                TRANSFORM_LIMITS.MAX_PREVIEW_LIMIT,
+            );
             // For preview, add a limit to variables if pagination is enabled
             const variables = { ...config.variables };
 
             if (config.pagination?.type && config.pagination.type !== GraphQLPaginationType.NONE) {
                 const limitVar = config.pagination.limitVariable || 'take';
-                variables[limitVar] = limit;
+                variables[limitVar] = safeLimit;
             }
 
             const response = await this.executeQuery(context, config, variables);
             assertGraphqlResponseSucceeded(response, 'GraphQL preview');
             const records = extractGraphqlResponseRecords(response, config.dataPath);
-            const preview = records.slice(0, limit);
+            const preview = records.slice(0, safeLimit);
 
             return {
                 records: preview.map((record, index) => ({

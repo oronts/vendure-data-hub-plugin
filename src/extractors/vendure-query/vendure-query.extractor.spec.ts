@@ -106,6 +106,21 @@ describe('VendureQueryExtractor configuration', () => {
         expect(queryBuilder.orderBy).toHaveBeenCalledWith('entity.updatedAt', 'ASC');
         expect(queryBuilder.take).toHaveBeenCalledWith(5);
     });
+
+    it('bounds non-finite preview limits', async () => {
+        const queryBuilder = createQueryBuilderMock();
+        queryBuilder.getManyAndCount.mockResolvedValue([[], 0]);
+        const connection = {
+            getRepository: vi.fn(() => ({ createQueryBuilder: vi.fn(() => queryBuilder) })),
+        };
+        const instance = new VendureQueryExtractor(connection as never);
+
+        await instance.preview(createContext('channel-1') as never, {
+            entity: 'PRODUCT',
+        }, Number.POSITIVE_INFINITY);
+
+        expect(queryBuilder.take).toHaveBeenCalledWith(10);
+    });
 });
 
 function createQueryBuilderMock() {

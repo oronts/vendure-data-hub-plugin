@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { PaginationType, TIME_UNITS, HTTP } from '../../constants/index';
+import { PaginationType, TIME_UNITS, HTTP, TRANSFORM_LIMITS } from '../../constants/index';
 import { getErrorMessage, toErrorOrUndefined } from '../../utils/error.utils';
 import { executeWithRetry, createRetryConfig, isRetryableError, sleep } from '../../utils/retry.utils';
 import { secureFetch } from '../../utils/secure-fetch.utils';
@@ -42,6 +42,7 @@ import {
 } from './pagination';
 import { HTTP_API_EXTRACTOR_SCHEMA } from './schema';
 import { assertCanonicalExtractorConfig } from '../extractor-config.contract';
+import { resolveBoundedLimit } from '../shared/pagination.utils';
 
 @Injectable()
 export class HttpApiExtractor implements DataExtractor<HttpApiExtractorConfig> {
@@ -238,9 +239,14 @@ export class HttpApiExtractor implements DataExtractor<HttpApiExtractorConfig> {
         config: HttpApiExtractorConfig,
         limit: number = 10,
     ): Promise<ExtractorPreviewResult> {
+        const safeLimit = resolveBoundedLimit(
+            limit,
+            10,
+            TRANSFORM_LIMITS.MAX_PREVIEW_LIMIT,
+        );
         const response = await this.makeRequest(context, config);
         const records = extractRecords(response.data, config.dataPath);
-        const preview = records.slice(0, limit);
+        const preview = records.slice(0, safeLimit);
 
         return {
             records: preview.map((record, index) => ({

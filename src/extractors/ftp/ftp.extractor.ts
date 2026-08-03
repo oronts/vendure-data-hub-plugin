@@ -42,6 +42,7 @@ import { parseModifiedAfterDate } from '../shared';
 import { resolveConnectionBackedConfig } from '../shared/connection-backed-config';
 import { readRemoteFileSourceReferences } from '../shared/remote-file-source';
 import { assertRemoteFileSize } from '../shared/remote-file-content';
+import { resolveBoundedLimit } from '../shared/pagination.utils';
 import {
     appendRemoteSourceAcknowledgement,
     createRemoteSourceAcknowledgement,
@@ -306,6 +307,11 @@ export class FtpExtractor implements DataExtractor<FtpExtractorConfig> {
     ): Promise<ExtractorPreviewResult> {
         try {
             config = await this.resolveConfig(context, config);
+            const safeLimit = resolveBoundedLimit(
+                limit,
+                10,
+                TRANSFORM_LIMITS.MAX_PREVIEW_LIMIT,
+            );
             const client = await createClient(context, config);
             const records: RecordEnvelope[] = [];
 
@@ -314,13 +320,13 @@ export class FtpExtractor implements DataExtractor<FtpExtractorConfig> {
                 const files = filterFiles(allFiles, config).slice(0, MAX_PREVIEW_FILES);
 
                 for (const file of files) {
-                    if (records.length >= limit) break;
+                    if (records.length >= safeLimit) break;
 
                     try {
                         assertRemoteFileSize(file.size, buildFtpSourceId(config.protocol, config.host, file.path));
                         const content = await client.download(file.path);
                         const parsed = await parseFtpContent(content, file.name, config, this.fileParser);
-                        for (const data of parsed.slice(0, limit - records.length)) {
+                        for (const data of parsed.slice(0, safeLimit - records.length)) {
                             records.push({
                                 data,
                                 meta: {

@@ -36,6 +36,7 @@ import {
 import { resolveConnectionBackedConfig } from '../shared/connection-backed-config';
 import { readRemoteFileSourceReferences } from '../shared/remote-file-source';
 import { assertRemoteFileSize } from '../shared/remote-file-content';
+import { resolveBoundedLimit } from '../shared/pagination.utils';
 import {
     appendRemoteSourceAcknowledgement,
     createRemoteSourceAcknowledgement,
@@ -293,6 +294,11 @@ export class S3Extractor implements DataExtractor<S3ExtractorConfig> {
     ): Promise<ExtractorPreviewResult> {
         try {
             config = await this.resolveConfig(context, config);
+            const safeLimit = resolveBoundedLimit(
+                limit,
+                10,
+                TRANSFORM_LIMITS.MAX_PREVIEW_LIMIT,
+            );
             const client = await createS3Client(context, config);
             const records: RecordEnvelope[] = [];
 
@@ -301,13 +307,13 @@ export class S3Extractor implements DataExtractor<S3ExtractorConfig> {
                 const filteredObjects = filterObjects(listResult.objects, config).slice(0, MAX_PREVIEW_FILES);
 
                 for (const obj of filteredObjects) {
-                    if (records.length >= limit) break;
+                    if (records.length >= safeLimit) break;
 
                     try {
                         assertRemoteFileSize(obj.size, buildS3SourceId(config.bucket, obj.key));
                         const content = await client.getObject(obj.key);
                         const parsed = await parseS3Content(content, obj.key, config, this.fileParser);
-                        for (const data of parsed.slice(0, limit - records.length)) {
+                        for (const data of parsed.slice(0, safeLimit - records.length)) {
                             records.push({
                                 data,
                                 meta: {

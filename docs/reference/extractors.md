@@ -18,6 +18,8 @@ Complete reference for all data extractors.
 
 ---
 
+Extractor previews normalize requested record limits to an integer from 1 through 1,000. Non-finite values use the default of 10. Response-byte and remote-file-size limits still apply independently.
+
 ## HTTP API Extractor
 
 Code: `httpApi`

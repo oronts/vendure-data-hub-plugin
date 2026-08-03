@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ID, TransactionalConnection } from '@vendure/core';
-import { BATCH } from '../../constants/index';
+import { BATCH, TRANSFORM_LIMITS } from '../../constants/index';
 import { FIELD_LIMITS } from '../../constants/validation';
 import {
     DataExtractor,
@@ -15,6 +15,7 @@ import { VendureQueryExtractorConfig } from './types';
 import { configureVendureQuery, getEntityClass, entityToRecord, EntityLike, validateFieldName } from './helpers';
 import { getErrorMessage, toErrorOrUndefined } from '../../utils/error.utils';
 import { VENDURE_QUERY_EXTRACTOR_SCHEMA } from './schema';
+import { resolveBoundedLimit } from '../shared/pagination.utils';
 
 interface EntityWithMeta {
     id: ID;
@@ -172,6 +173,11 @@ export class VendureQueryExtractor implements DataExtractor<VendureQueryExtracto
         config: VendureQueryExtractorConfig,
         limit: number = 10,
     ): Promise<ExtractorPreviewResult> {
+        const safeLimit = resolveBoundedLimit(
+            limit,
+            10,
+            TRANSFORM_LIMITS.MAX_PREVIEW_LIMIT,
+        );
         const entityClass = getEntityClass(config.entity);
         if (!entityClass) {
             throw new Error(`Unknown entity type: ${config.entity}`);
@@ -180,7 +186,7 @@ export class VendureQueryExtractor implements DataExtractor<VendureQueryExtracto
         const repo = this.connection.getRepository(context.ctx, entityClass);
         const queryBuilder = repo.createQueryBuilder('entity');
         configureVendureQuery(queryBuilder, config, context.ctx.channelId);
-        queryBuilder.take(limit);
+        queryBuilder.take(safeLimit);
         const [entities, totalAvailable] = await queryBuilder.getManyAndCount();
 
         return {
