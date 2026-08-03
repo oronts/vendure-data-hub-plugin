@@ -1,4 +1,5 @@
-import { ConnectionAuthType, DESTINATION_TYPE } from '../../constants/index';
+import { DESTINATION_TYPE } from '../../../shared/constants/enums';
+import { ConnectionAuthType } from '../../../shared/types/extractor-config.types';
 import type { DestinationType as SharedDestinationType } from '../../../shared/types';
 
 export { DESTINATION_TYPE };

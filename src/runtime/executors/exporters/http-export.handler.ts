@@ -8,19 +8,48 @@
 import { JsonValue } from '../../../types/index';
 import { chunk } from '../../utils';
 import { executeWithRetry, createRetryConfig, ResolvedRetryConfig } from '../../../utils/retry.utils';
-import { BATCH, HTTP, HttpMethod, HTTP_HEADERS, CONTENT_TYPES, AUTH_SCHEMES, TRUNCATION, OUTBOUND_RESPONSE_LIMITS } from '../../../constants/index';
+import { HttpMethod } from '../../../constants/enums';
+import { OUTBOUND_RESPONSE_LIMITS } from '../../../constants/defaults/http-defaults';
+import { TRUNCATION } from '../../../constants/defaults/ui-defaults';
+import { AUTH_SCHEMES, CONTENT_TYPES, HTTP_HEADERS } from '../../../constants/services';
+import { FIELD_LIMITS } from '../../../constants/validation';
+import { BATCH, HTTP } from '../../../../shared/constants';
 import { secureFetch } from '../../../utils/secure-fetch.utils';
 import { getErrorMessage } from '../../../utils/error.utils';
 import { readResponseText } from '../../../utils/secure-response-body.utils';
 import { ExportHandlerParams, ExportHandlerResult } from './export-handler.types';
 import { parseDestinationConfig } from '../../../services/destinations/destination-config.validation';
 import type { HTTPDestinationConfig } from '../../../services/destinations/destination.types';
+import { resolveBoundedInteger, resolveBoundedNumber } from '../../execution-config';
 
 function resolveRetryConfig(cfg: Record<string, JsonValue>): ResolvedRetryConfig {
-    const retries = Math.max(0, Number(cfg.retryCount ?? 0) || 0);
-    const retryDelayMs = Math.max(0, Number(cfg.retryDelayMs ?? 0) || 0);
-    const maxRetryDelayMs = Math.max(0, Number(cfg.maxRetryDelayMs ?? HTTP.RETRY_MAX_DELAY_MS) || HTTP.RETRY_MAX_DELAY_MS);
-    const backoffMultiplier = Math.max(1, Number(cfg.backoffMultiplier ?? HTTP.BACKOFF_MULTIPLIER) || HTTP.BACKOFF_MULTIPLIER);
+    const retries = resolveBoundedInteger(cfg.retryCount, {
+        fieldName: 'HTTP export retryCount',
+        defaultValue: 0,
+        minimum: 0,
+        maximum: HTTP.MAX_RETRY_ATTEMPTS,
+    });
+    const retryDelayMs = resolveBoundedInteger(cfg.retryDelayMs, {
+        fieldName: 'HTTP export retryDelayMs',
+        defaultValue: 0,
+        minimum: 0,
+        maximum: HTTP.MAX_TIMEOUT_MS,
+    });
+    const maxRetryDelayMs = resolveBoundedInteger(cfg.maxRetryDelayMs, {
+        fieldName: 'HTTP export maxRetryDelayMs',
+        defaultValue: HTTP.RETRY_MAX_DELAY_MS,
+        minimum: 0,
+        maximum: HTTP.MAX_TIMEOUT_MS,
+    });
+    const backoffMultiplier = resolveBoundedNumber(cfg.backoffMultiplier, {
+        fieldName: 'HTTP export backoffMultiplier',
+        defaultValue: HTTP.BACKOFF_MULTIPLIER,
+        minimum: 1,
+        maximum: HTTP.MAX_BACKOFF_MULTIPLIER,
+    });
+    if (maxRetryDelayMs < retryDelayMs) {
+        throw new Error('HTTP export maxRetryDelayMs cannot be less than retryDelayMs');
+    }
     return createRetryConfig({
         maxAttempts: retries + 1,
         initialDelayMs: retryDelayMs,
@@ -34,13 +63,29 @@ export async function httpExportHandler(params: ExportHandlerParams): Promise<Ex
     let ok = 0;
     let fail = 0;
 
-    const method = ((config.method as string) ?? HttpMethod.POST).toUpperCase();
-    const batchSize = Number(config.batchSize ?? BATCH.BULK_SIZE) || BATCH.BULK_SIZE;
-    const retryConfig = resolveRetryConfig(config);
-    const timeoutMs = Math.max(0, Number(config.timeoutMs ?? HTTP.TIMEOUT_MS) || HTTP.TIMEOUT_MS);
-
+    let method: string;
+    let batchSize: number;
+    let retryConfig: ResolvedRetryConfig;
+    let timeoutMs: number;
     let destination: HTTPDestinationConfig;
     try {
+        if (config.method !== undefined && typeof config.method !== 'string') {
+            throw new Error('HTTP export method must be POST, PUT, or PATCH');
+        }
+        method = config.method?.toUpperCase() ?? HttpMethod.POST;
+        batchSize = resolveBoundedInteger(config.batchSize, {
+            fieldName: 'HTTP export batchSize',
+            defaultValue: BATCH.BULK_SIZE,
+            minimum: FIELD_LIMITS.BATCH_SIZE_MIN,
+            maximum: FIELD_LIMITS.BATCH_SIZE_MAX,
+        });
+        retryConfig = resolveRetryConfig(config);
+        timeoutMs = resolveBoundedInteger(config.timeoutMs, {
+            fieldName: 'HTTP export timeoutMs',
+            defaultValue: HTTP.TIMEOUT_MS,
+            minimum: 1,
+            maximum: HTTP.MAX_TIMEOUT_MS,
+        });
         destination = parseDestinationConfig({
             id: `pipeline:${stepKey}`,
             name: `Pipeline HTTP export ${stepKey}`,
@@ -62,6 +107,13 @@ export async function httpExportHandler(params: ExportHandlerParams): Promise<Ex
     // Get auth headers from secrets
     const bearerSecret = config.bearerTokenSecretCode as string | undefined;
     const basicSecret = config.basicSecretCode as string | undefined;
+    if (bearerSecret && basicSecret) {
+        const message = 'HTTP export cannot configure both bearerTokenSecretCode and basicSecretCode';
+        if (onRecordError) {
+            await onRecordError(stepKey, message, { _configError: true, recordCount: records.length });
+        }
+        return { ok: 0, fail: records.length };
+    }
     const secretHeaders: Record<string, string> = {};
     for (const [name, code] of Object.entries(destination.headerSecretCodes ?? {})) {
         if (
@@ -120,17 +172,15 @@ export async function httpExportHandler(params: ExportHandlerParams): Promise<Ex
         try {
             await executeWithRetry(
                 async () => {
-                    const controller = timeoutMs > 0 ? new AbortController() : undefined;
+                    const controller = new AbortController();
                     let timer: NodeJS.Timeout | undefined;
                     try {
-                        if (controller && timeoutMs > 0) {
-                            timer = setTimeout(() => controller.abort(), timeoutMs);
-                        }
+                        timer = setTimeout(() => controller.abort(), timeoutMs);
                         const response = await secureFetch(endpoint, {
                             method,
                             headers: finalHeaders,
                             body: payload,
-                            signal: controller?.signal,
+                            signal: controller.signal,
                         });
                         // Always consume response body to prevent memory leaks
                         const bodyText = await readResponseText(response, {

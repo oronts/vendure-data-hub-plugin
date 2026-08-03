@@ -831,10 +831,25 @@ interface ExportStepConfig {
     // HTTP export
     url?: string;
     method?: 'POST' | 'PUT' | 'PATCH';
+    /** Records sent per request; integer from 1 to 10000, default 100 */
+    batchSize?: number;
+    /** Request timeout in milliseconds; integer from 1 to 300000, default 30000 */
+    timeoutMs?: number;
+    /** Retries after the first attempt; integer from 0 to 10, default 0 */
+    retryCount?: number;
+    /** Initial retry delay in milliseconds; integer from 0 to 300000 */
+    retryDelayMs?: number;
+    /** Maximum retry delay in milliseconds; integer from 0 to 300000 */
+    maxRetryDelayMs?: number;
+    /** Exponential backoff multiplier from 1 to 10 */
+    backoffMultiplier?: number;
     /** Non-sensitive static headers only */
     headers?: Record<string, string>;
     /** Header name to Secret Code mapping */
     headerSecretCodes?: Record<string, string>;
+    bearerTokenSecretCode?: string;
+    /** Secret Code whose resolved value is username:password */
+    basicSecretCode?: string;
     auth?: {
         type: 'NONE' | 'BASIC' | 'BEARER' | 'API_KEY';
         secretCode?: string;
@@ -863,7 +878,11 @@ direct local-file behavior using `path`. When it is present, the value is
 validated and dispatched through the destination delivery handlers; unknown
 values never fall back to a local write. HTTP configuration uses `url`, not
 `endpoint`. Sensitive static headers such as `Authorization`, cookies, API
-keys, tokens, or passwords are rejected and must reference Secret Codes.
+keys, tokens, or passwords are rejected and must reference Secret Codes. The
+`restPostExport` and `webhookExport` adapters expose the same delivery,
+authentication, batching, timeout, and retry controls. Configure either Bearer
+or Basic authentication, never both. `maxRetryDelayMs` cannot be lower than
+`retryDelayMs`, and invalid numeric values fail before the first request.
 
 ### Feed Step
 

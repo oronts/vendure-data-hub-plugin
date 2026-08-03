@@ -5,7 +5,8 @@
  */
 
 import * as pathLib from 'path';
-import { FILE_STORAGE, EXTENSION_MIME_MAP, CONTENT_TYPES } from '../../../constants/index';
+import { FILE_STORAGE } from '../../../constants/defaults/storage-defaults';
+import { CONTENT_TYPES, EXTENSION_MIME_MAP } from '../../../constants/services';
 import { resolveSafeOutputPath, writeFileSafely } from '../../../utils/safe-output-path.utils';
 import { getErrorMessage } from '../../../utils/error.utils';
 import { ExportHandlerParams, ExportHandlerResult, renderOutputFilename } from './export-handler.types';

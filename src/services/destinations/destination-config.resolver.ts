@@ -1,5 +1,5 @@
 import type { RequestContext } from '@vendure/core';
-import { ConnectionAuthType } from '../../constants';
+import { ConnectionAuthType } from '../../../shared/types/extractor-config.types';
 import type { SecretService } from '../config/secret.service';
 import type {
     DestinationConfig,
