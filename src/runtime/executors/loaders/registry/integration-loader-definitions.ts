@@ -8,6 +8,55 @@ import {
     LOAD_STRATEGY_OPTIONS,
 } from "../../../../constants/adapter-schema-options";
 import { LoaderDefinitionEntry, SKIP_DUPLICATES_FIELD, toEntityCode } from "./loader-registry.shared";
+import { FIELD_LIMITS } from '../../../../constants/validation';
+import { HTTP } from '../../../../../shared/constants';
+
+const HTTP_LOADER_DELIVERY_FIELDS = [
+    {
+        key: 'maxBatchSize',
+        label: 'Maximum batch size',
+        type: 'number',
+        defaultValue: 0,
+        validation: { min: 0, max: FIELD_LIMITS.BATCH_SIZE_MAX },
+        description: `Records per batched request; 0 sends all records together (0-${FIELD_LIMITS.BATCH_SIZE_MAX}).`,
+    },
+    {
+        key: 'retries',
+        label: 'Retries',
+        type: 'number',
+        defaultValue: 0,
+        validation: { min: 0, max: HTTP.MAX_RETRY_ATTEMPTS },
+        description: `Retries after the first attempt (0-${HTTP.MAX_RETRY_ATTEMPTS}).`,
+    },
+    {
+        key: 'retryDelayMs',
+        label: 'Initial retry delay (ms)',
+        type: 'number',
+        defaultValue: 0,
+        validation: { min: 0, max: HTTP.MAX_TIMEOUT_MS },
+    },
+    {
+        key: 'maxRetryDelayMs',
+        label: 'Maximum retry delay (ms)',
+        type: 'number',
+        defaultValue: HTTP.RETRY_MAX_DELAY_MS,
+        validation: { min: 0, max: HTTP.MAX_TIMEOUT_MS },
+    },
+    {
+        key: 'backoffMultiplier',
+        label: 'Backoff multiplier',
+        type: 'number',
+        defaultValue: HTTP.BACKOFF_MULTIPLIER,
+        validation: { min: 1, max: HTTP.MAX_BACKOFF_MULTIPLIER },
+    },
+    {
+        key: 'timeoutMs',
+        label: 'Timeout (ms)',
+        type: 'number',
+        defaultValue: HTTP.TIMEOUT_MS,
+        validation: { min: 1, max: HTTP.MAX_TIMEOUT_MS },
+    },
+] as const;
 
 export const INTEGRATION_LOADER_DEFINITIONS: LoaderDefinitionEntry[] = [
     ['restPost', {
@@ -31,10 +80,7 @@ export const INTEGRATION_LOADER_DEFINITIONS: LoaderDefinitionEntry[] = [
                     { key: 'hmacHeader', label: 'HMAC header name', type: 'string' },
                     { key: 'hmacPayloadTemplate', label: 'HMAC payload template', type: 'string', description: 'e.g. ${method}:${path}:${timestamp}' },
                     { key: 'batchMode', label: 'Batch mode', type: 'select', options: BATCH_MODE_REST_OPTIONS },
-                    { key: 'maxBatchSize', label: 'Max batch size (array mode)', type: 'number', description: 'Chunk size when batchMode=array' },
-                    { key: 'retries', label: 'Retries', type: 'number', description: 'Number of retries for failed requests' },
-                    { key: 'retryDelayMs', label: 'Retry delay (ms)', type: 'number', description: 'Delay between retries' },
-                    { key: 'timeoutMs', label: 'Timeout (ms)', type: 'number', description: 'Request timeout in milliseconds' },
+                    ...HTTP_LOADER_DELIVERY_FIELDS,
                 ],
             },
         },
@@ -58,10 +104,7 @@ export const INTEGRATION_LOADER_DEFINITIONS: LoaderDefinitionEntry[] = [
                     { key: 'bearerTokenSecretCode', label: 'Bearer token secret code', type: 'secret' },
                     { key: 'basicSecretCode', label: 'Basic auth secret code', type: 'secret' },
                     { key: 'batchMode', label: 'Batch mode', type: 'select', options: BATCH_MODE_GRAPHQL_OPTIONS },
-                    { key: 'maxBatchSize', label: 'Max batch size', type: 'number', description: 'Chunk size when batchMode=batch' },
-                    { key: 'retries', label: 'Retries', type: 'number', description: 'Number of retries for failed requests' },
-                    { key: 'retryDelayMs', label: 'Retry delay (ms)', type: 'number', description: 'Delay between retries' },
-                    { key: 'timeoutMs', label: 'Timeout (ms)', type: 'number', description: 'Request timeout in milliseconds' },
+                    ...HTTP_LOADER_DELIVERY_FIELDS,
                 ],
             },
         },

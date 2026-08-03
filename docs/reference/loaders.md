@@ -686,6 +686,38 @@ Create/update channels with currencies and languages. Supports `customFieldsFiel
 
 ---
 
+## REST POST Loader
+
+Adapter Code: `restPost`
+
+Send individual records or JSON arrays to an external REST endpoint. The loader
+supports Bearer, Basic, and HMAC authentication through Secret Codes, bounded
+timeouts and retries, exponential backoff, and a per-origin circuit breaker.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `endpoint` | string | Yes | Destination URL |
+| `method` | select | Yes | `POST` or `PUT` |
+| `headers` | json | No | Non-sensitive static headers |
+| `auth` | select | No | `NONE`, `BEARER`, `BASIC`, or `HMAC` |
+| `bearerTokenSecretCode` | secret | No | Bearer token Secret Code |
+| `basicSecretCode` | secret | No | Basic credentials Secret Code |
+| `hmacSecretCode` | secret | No | HMAC signing Secret Code |
+| `hmacHeader` | string | No | Header that receives the HMAC signature |
+| `hmacPayloadTemplate` | string | No | Signature template using `${method}`, `${path}`, `${timestamp}`, and `${body}` |
+| `batchMode` | select | No | `single` or `array` |
+| `maxBatchSize` | number | No | Integer from 0 to 10000; 0 sends all records together (default: 0) |
+| `retries` | number | No | Retries after the first attempt; integer from 0 to 10 (default: 0) |
+| `retryDelayMs` | number | No | Initial retry delay; integer from 0 to 300000 ms (default: 0) |
+| `maxRetryDelayMs` | number | No | Maximum retry delay; integer from 0 to 300000 ms (default: 30000) |
+| `backoffMultiplier` | number | No | Number from 1 to 10 (default: 2) |
+| `timeoutMs` | number | No | Integer from 1 to 300000 ms (default: 30000) |
+
+`maxRetryDelayMs` cannot be lower than `retryDelayMs`. Invalid delivery values
+fail before authentication or the first target request.
+
+---
+
 ## GraphQL Mutation Loader
 
 Adapter Code: `graphqlMutation`
@@ -704,12 +736,12 @@ Send records as GraphQL mutations to external APIs. Supports variable mapping, a
 | `bearerTokenSecretCode` | string | No | Secret code for Bearer token (when auth is `BEARER`) |
 | `basicSecretCode` | string | No | Secret code for Basic auth credentials (when auth is `BASIC`) |
 | `batchMode` | string | No | `single` or `batch`. If `batch`, send multiple records in a single mutation (default: `single`) |
-| `maxBatchSize` | number | No | Maximum records per batch when batchMode is `batch` |
-| `retries` | number | No | Maximum retry attempts on failure (default: 0) |
-| `retryDelayMs` | number | No | Initial retry delay in milliseconds |
-| `maxRetryDelayMs` | number | No | Maximum retry delay in milliseconds (caps exponential backoff) |
-| `backoffMultiplier` | number | No | Multiplier for exponential backoff between retries |
-| `timeoutMs` | number | No | Request timeout in milliseconds |
+| `maxBatchSize` | number | No | Integer from 0 to 10000; 0 sends all records together (default: 0) |
+| `retries` | number | No | Retries after the first attempt; integer from 0 to 10 (default: 0) |
+| `retryDelayMs` | number | No | Initial retry delay; integer from 0 to 300000 ms (default: 0) |
+| `maxRetryDelayMs` | number | No | Maximum retry delay; integer from 0 to 300000 ms (default: 30000) |
+| `backoffMultiplier` | number | No | Number from 1 to 10 (default: 2) |
+| `timeoutMs` | number | No | Integer from 1 to 300000 ms (default: 30000) |
 
 ### Example - Single Record Mutation
 

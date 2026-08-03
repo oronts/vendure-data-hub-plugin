@@ -21,7 +21,14 @@ import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger/da
 import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
 import { setNestedValue } from '../../../utils/object-path.utils';
 import { resolveAuthHeaders } from './shared-http-auth';
-import { doHttpFetch, execHttpWithRetry, deriveCircuitKey, resolveHttpRetryConfig, HttpFetchResult } from './shared-http-client';
+import {
+    doHttpFetch,
+    execHttpWithRetry,
+    deriveCircuitKey,
+    resolveGraphqlBatchMode,
+    resolveHttpRetryConfig,
+    HttpFetchResult,
+} from './shared-http-client';
 import { readResponseJson } from '../../../utils/secure-response-body.utils';
 
 /** Delay in ms when circuit breaker is open, to give the downstream service time to recover */
@@ -125,7 +132,7 @@ export class GraphqlMutationHandler implements LoaderHandler {
             );
         };
 
-        const batchMode = String(cfg.batchMode ?? 'single');
+        const batchMode = resolveGraphqlBatchMode(cfg.batchMode);
         try {
             if (batchMode === 'batch') {
                 // In batch mode, send multiple records as a single variables array

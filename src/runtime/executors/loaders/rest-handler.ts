@@ -13,12 +13,20 @@ import { chunk } from '../../../utils/array.utils';
 import { LoaderHandler } from './types';
 import { TIME } from '../../../constants/time';
 import { LOGGER_CONTEXTS } from '../../../constants/core';
-import { ConnectionAuthType, HttpMethod } from '../../../constants/enums';
+import { ConnectionAuthType } from '../../../constants/enums';
 import { HTTP_HEADERS, CONTENT_TYPES } from '../../../constants/services';
 import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger/datahub-logger';
 import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
 import { resolveAuthHeaders } from './shared-http-auth';
-import { doHttpFetch, execHttpWithRetry, deriveCircuitKey, resolveHttpRetryConfig, HttpFetchResult } from './shared-http-client';
+import {
+    doHttpFetch,
+    execHttpWithRetry,
+    deriveCircuitKey,
+    resolveHttpRetryConfig,
+    resolveRestBatchMode,
+    resolveRestWriteMethod,
+    HttpFetchResult,
+} from './shared-http-client';
 
 @Injectable()
 export class RestPostHandler implements LoaderHandler {
@@ -42,7 +50,7 @@ export class RestPostHandler implements LoaderHandler {
         let ok = 0, fail = 0;
         const cfg = (step.config ?? {}) as unknown as RestPostLoaderConfig;
         const endpoint = String(cfg.endpoint ?? '');
-        const method = String(cfg.method ?? HttpMethod.POST).toUpperCase();
+        const method = resolveRestWriteMethod(cfg.method);
         let headers: Record<string, string> = cfg.headers ?? {};
         // Resolve retry/timeout/batch config from step config with pipeline error handling fallbacks
         const { retries, retryDelayMs, maxRetryDelayMs, backoffMultiplier, timeoutMs, maxBatchSize } = resolveHttpRetryConfig(cfg, errorHandling);
@@ -113,7 +121,7 @@ export class RestPostHandler implements LoaderHandler {
             );
         };
 
-        const batchMode = String(cfg.batchMode ?? 'single');
+        const batchMode = resolveRestBatchMode(cfg.batchMode);
         try {
             if (batchMode === 'array') {
                 const chunks = maxBatchSize > 0 ? chunk(input, maxBatchSize) : [input];
