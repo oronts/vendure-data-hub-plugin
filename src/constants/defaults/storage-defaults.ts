@@ -27,7 +27,15 @@ export const FILE_STORAGE = {
     MAX_BASE64_JSON_BODY_SIZE_BYTES:
         4 * Math.ceil(MAX_FILE_SIZE_BYTES / 3) + 64 * 1024,
     /** Maximum number of files per upload request */
-    FILE_MAX_FILES: 10,
+    FILE_MAX_FILES: 1,
+    /** Maximum number of non-file fields in a multipart upload */
+    MAX_MULTIPART_FIELDS: 2,
+    /** Busboy limit that rejects a fourth multipart part */
+    MULTIPART_PART_LIMIT: 4,
+    /** Maximum byte length of one multipart field value */
+    MAX_MULTIPART_FIELD_SIZE_BYTES: 64,
+    /** Maximum byte length of one multipart field name */
+    MAX_MULTIPART_FIELD_NAME_SIZE_BYTES: 64,
     /** File expiry time in minutes */
     EXPIRY_MINUTES: 60 * 24, // 24 hours
     /** Maximum temporary file expiry time accepted by the upload API */

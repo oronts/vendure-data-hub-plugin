@@ -1,11 +1,48 @@
 import { describe, expect, it } from 'vitest';
 import { FILE_STORAGE } from '../../constants/index';
 import {
+    resolveMulterUploadError,
     resolveFileListLimit,
     resolveFileListOffset,
     resolveFilePreviewRows,
     resolveUploadExpiry,
 } from './file-upload.config';
+
+describe('resolveMulterUploadError', () => {
+    it('maps bounded multipart failures to actionable client responses', () => {
+        expect(resolveMulterUploadError({
+            name: 'MulterError',
+            message: 'too large',
+            code: 'LIMIT_FILE_SIZE',
+        })).toMatchObject({ status: 413, error: expect.stringContaining('100MB') });
+        expect(resolveMulterUploadError({
+            name: 'MulterError',
+            message: 'too many',
+            code: 'LIMIT_FILE_COUNT',
+        })).toEqual({ status: 400, error: 'Too many files. Maximum is 1' });
+        expect(resolveMulterUploadError({
+            name: 'MulterError',
+            message: 'unexpected',
+            code: 'LIMIT_UNEXPECTED_FILE',
+            field: 'document',
+        })).toEqual({
+            status: 400,
+            error: 'The upload file field must be named "file"',
+        });
+        expect(resolveMulterUploadError({
+            name: 'MulterError',
+            message: 'too many fields',
+            code: 'LIMIT_FIELD_COUNT',
+        })).toEqual({
+            status: 400,
+            error: 'Multipart form exceeds the supported upload fields',
+        });
+    });
+
+    it('leaves unknown processing failures for operational handling', () => {
+        expect(resolveMulterUploadError(new Error('storage unavailable'))).toBeUndefined();
+    });
+});
 
 describe('resolveUploadExpiry', () => {
     it('uses the temporary upload default when expiry is omitted', () => {

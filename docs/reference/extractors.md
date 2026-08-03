@@ -115,7 +115,7 @@ CSV, JSON, and XML also accept explicitly configured inline content. XLSX requir
 
 ### Managed file API
 
-All managed-file routes require the corresponding Data Hub file permission and use the active Vendure channel. `POST /data-hub/upload` accepts either multipart form data with a `file` field or JSON with `filename`, base64 `content`, and optional `mimeType` fields.
+All managed-file routes require the corresponding Data Hub file permission and use the active Vendure channel. `POST /data-hub/upload` accepts either multipart form data with exactly one `file` field or a JSON object with `filename`, base64 `content`, and an optional string `mimeType` field. Array and primitive JSON bodies are rejected.
 
 Temporary uploads expire after 1,440 minutes by default. Set `expiresInMinutes` to an integer from 1 through 14,400, or set `persistent` to `true` to omit automatic expiry. These options are mutually exclusive. Multipart values are strings, while JSON accepts the matching number and boolean types.
 

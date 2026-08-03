@@ -22,6 +22,7 @@ import {
     resolveFileListLimit,
     resolveFileListOffset,
     resolveFilePreviewRows,
+    resolveMulterUploadError,
     resolveUploadExpiry,
 } from './file-upload.config';
 import {
@@ -62,18 +63,21 @@ export class DataHubFileUploadController {
         @Res() res: Response,
     ) {
         try {
-            const contentType = req.headers['content-type'] || '';
+            const contentTypeHeader = req.headers['content-type'];
+            const contentType = typeof contentTypeHeader === 'string'
+                ? contentTypeHeader.split(';', 1)[0].trim().toLowerCase()
+                : '';
 
-            if (contentType.includes(CONTENT_TYPES.MULTIPART)) {
+            if (contentType === CONTENT_TYPES.MULTIPART) {
                 return this.handleMultipartUpload(ctx, req, res);
-            } else if (contentType.includes(CONTENT_TYPES.JSON)) {
-                return this.handleBase64Upload(ctx, req, res);
-            } else {
-                return res.status(HttpStatus.BAD_REQUEST).json({
-                    success: false,
-                    error: 'Unsupported content type. Use multipart/form-data or application/json',
-                });
             }
+            if (contentType === CONTENT_TYPES.JSON) {
+                return this.handleBase64Upload(ctx, req, res);
+            }
+            return res.status(HttpStatus.BAD_REQUEST).json({
+                success: false,
+                error: 'Unsupported content type. Use multipart/form-data or application/json',
+            });
         } catch (error) {
             this.logger.error('Upload failed', toErrorOrUndefined(error));
             return res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
@@ -179,13 +183,8 @@ export class DataHubFileUploadController {
             });
         }
 
+        res.attachment(file.originalName);
         res.setHeader(HTTP_HEADERS.CONTENT_TYPE, file.mimeType);
-        /* eslint-disable no-control-regex */
-        const sanitizedName = file.originalName
-            .replace(/[\x00-\x1f\x7f"\\]/g, '')
-            .replace(/[^\x20-\x7e]/g, '_');
-        /* eslint-enable no-control-regex */
-        res.setHeader('Content-Disposition', `attachment; filename="${sanitizedName}"`);
         res.setHeader('Content-Length', file.size);
 
         return res.send(content);
@@ -314,17 +313,11 @@ export class DataHubFileUploadController {
             const multerCallback = async (err: MulterErrorLike | null): Promise<void> => {
                 try {
                     if (err) {
-                        if (err.code === 'LIMIT_FILE_SIZE') {
-                            res.status(HttpStatus.PAYLOAD_TOO_LARGE).json({
+                        const inputError = resolveMulterUploadError(err);
+                        if (inputError) {
+                            res.status(inputError.status).json({
                                 success: false,
-                                error: `File too large. Maximum size is ${FILE_STORAGE.MAX_FILE_SIZE_BYTES / (1024 * 1024)}MB`,
-                            });
-                            return resolve();
-                        }
-                        if (err.code === 'LIMIT_FILE_COUNT') {
-                            res.status(HttpStatus.BAD_REQUEST).json({
-                                success: false,
-                                error: `Too many files. Maximum is ${FILE_STORAGE.FILE_MAX_FILES}`,
+                                error: inputError.error,
                             });
                             return resolve();
                         }
@@ -395,14 +388,33 @@ export class DataHubFileUploadController {
     ): Promise<void> {
         try {
             const requestBody: unknown = req.body;
-            const body: Record<string, unknown> = requestBody && typeof requestBody === 'object' && !Array.isArray(requestBody)
-                ? requestBody as Record<string, unknown>
-                : await this.readJsonBody(req);
+            if (!requestBody || typeof requestBody !== 'object' || Array.isArray(requestBody)) {
+                res.status(HttpStatus.BAD_REQUEST).json({
+                    success: false,
+                    error: 'JSON upload body must be an object',
+                });
+                return;
+            }
+            const body = requestBody as Record<string, unknown>;
 
-            if (!body.content || !body.filename || typeof body.filename !== 'string') {
+            if (body.content === undefined || body.filename === undefined) {
                 res.status(HttpStatus.BAD_REQUEST).json({
                     success: false,
                     error: 'Missing content or filename in request body',
+                });
+                return;
+            }
+            if (typeof body.filename !== 'string' || body.filename.length === 0) {
+                res.status(HttpStatus.BAD_REQUEST).json({
+                    success: false,
+                    error: 'Filename must be a non-empty string',
+                });
+                return;
+            }
+            if (body.mimeType !== undefined && typeof body.mimeType !== 'string') {
+                res.status(HttpStatus.BAD_REQUEST).json({
+                    success: false,
+                    error: 'mimeType must be a string',
                 });
                 return;
             }
@@ -424,9 +436,7 @@ export class DataHubFileUploadController {
                 return;
             }
 
-            const mimeType = typeof body.mimeType === 'string'
-                ? body.mimeType
-                : detectMimeType(body.filename);
+            const mimeType = body.mimeType ?? detectMimeType(body.filename);
             const result = await this.fileStorage.storeBase64(
                 ctx,
                 body.content,
@@ -459,33 +469,6 @@ export class DataHubFileUploadController {
                 });
             }
         }
-    }
-
-    private readJsonBody(req: Request): Promise<Record<string, unknown>> {
-        return new Promise((resolve, reject) => {
-            const chunks: Buffer[] = [];
-            let totalSize = 0;
-            const maxBodySize = FILE_STORAGE.MAX_BASE64_JSON_BODY_SIZE_BYTES;
-
-            req.on('data', (chunk: Buffer) => {
-                totalSize += chunk.length;
-                if (totalSize > maxBodySize) {
-                    req.destroy();
-                    reject(new Error('Request body too large'));
-                    return;
-                }
-                chunks.push(chunk);
-            });
-            req.on('error', (err) => reject(err));
-            req.on('end', () => {
-                try {
-                    const body = JSON.parse(Buffer.concat(chunks).toString('utf-8'));
-                    resolve(body);
-                } catch (e) {
-                    reject(e);
-                }
-            });
-        });
     }
 
 }

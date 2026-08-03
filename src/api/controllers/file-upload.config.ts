@@ -1,3 +1,4 @@
+import { HttpStatus } from '@nestjs/common';
 import multer from 'multer';
 import { FILE_STORAGE, PAGINATION } from '../../constants/index';
 import { validateFileDescriptor } from '../../services/storage/file-storage-metadata';
@@ -5,9 +6,50 @@ import { detectMimeType } from './file-upload.utils';
 
 export interface MulterErrorLike extends Error {
     code?: string;
+    field?: string;
 }
 
 export class FileUploadInputError extends Error {}
+
+export interface MulterUploadErrorResponse {
+    status: HttpStatus;
+    error: string;
+}
+
+export function resolveMulterUploadError(
+    error: MulterErrorLike,
+): MulterUploadErrorResponse | undefined {
+    if (error.code === 'LIMIT_FILE_SIZE') {
+        return {
+            status: HttpStatus.PAYLOAD_TOO_LARGE,
+            error: `File too large. Maximum size is ${FILE_STORAGE.MAX_FILE_SIZE_BYTES / (1024 * 1024)}MB`,
+        };
+    }
+    if (error.code === 'LIMIT_FILE_COUNT' ||
+        (error.code === 'LIMIT_UNEXPECTED_FILE' && error.field === 'file')) {
+        return {
+            status: HttpStatus.BAD_REQUEST,
+            error: `Too many files. Maximum is ${FILE_STORAGE.FILE_MAX_FILES}`,
+        };
+    }
+    if (error.code === 'LIMIT_UNEXPECTED_FILE') {
+        return {
+            status: HttpStatus.BAD_REQUEST,
+            error: 'The upload file field must be named "file"',
+        };
+    }
+    if (error.code === 'LIMIT_FIELD_COUNT' ||
+        error.code === 'LIMIT_PART_COUNT' ||
+        error.code === 'LIMIT_FIELD_VALUE' ||
+        error.code === 'LIMIT_FIELD_KEY' ||
+        error.code === 'MISSING_FIELD_NAME') {
+        return {
+            status: HttpStatus.BAD_REQUEST,
+            error: 'Multipart form exceeds the supported upload fields',
+        };
+    }
+    return undefined;
+}
 
 const INTEGER_PATTERN = /^\d+$/;
 
@@ -85,6 +127,10 @@ export const fileUploadMiddleware = multer({
     limits: {
         fileSize: FILE_STORAGE.MAX_FILE_SIZE_BYTES,
         files: FILE_STORAGE.FILE_MAX_FILES,
+        fields: FILE_STORAGE.MAX_MULTIPART_FIELDS,
+        parts: FILE_STORAGE.MULTIPART_PART_LIMIT,
+        fieldSize: FILE_STORAGE.MAX_MULTIPART_FIELD_SIZE_BYTES,
+        fieldNameSize: FILE_STORAGE.MAX_MULTIPART_FIELD_NAME_SIZE_BYTES,
     },
     fileFilter: (_request, file, callback) => {
         try {
