@@ -17,6 +17,18 @@ import { StorageBackend, S3StorageOptions } from './storage-backend.interface';
 import { createPinnedAwsRequestHandler } from '../../utils/aws-request-handler.utils';
 import { resolveS3SignedUrlExpiry } from './s3-storage-expiry';
 
+function isS3NotFoundError(error: unknown): boolean {
+    if (!error || typeof error !== 'object') return false;
+
+    const name = Reflect.get(error, 'name');
+    if (name === 'NoSuchKey' || name === 'NotFound') return true;
+
+    const metadata = Reflect.get(error, '$metadata');
+    return metadata !== null
+        && typeof metadata === 'object'
+        && Reflect.get(metadata, 'httpStatusCode') === 404;
+}
+
 export class S3StorageBackend implements StorageBackend {
     readonly type = 's3' as const;
     private client: S3Client | undefined;
@@ -117,26 +129,19 @@ export class S3StorageBackend implements StorageBackend {
             }
             return Buffer.concat(chunks);
         } catch (error: unknown) {
-            if (error && typeof error === 'object' && 'name' in error && error.name === 'NoSuchKey') {
-                return null;
-            }
+            if (isS3NotFoundError(error)) return null;
             throw error;
         }
     }
 
     async delete(path: string): Promise<boolean> {
-        try {
-            const command = new DeleteObjectCommand({
-                Bucket: this.bucket,
-                Key: this.getFullKey(path),
-            });
+        const command = new DeleteObjectCommand({
+            Bucket: this.bucket,
+            Key: this.getFullKey(path),
+        });
 
-            await this.getClient().send(command);
-            return true;
-        } catch {
-            // S3 delete failed (object may not exist or access denied) - return false
-            return false;
-        }
+        await this.getClient().send(command);
+        return true;
     }
 
     async exists(path: string): Promise<boolean> {
@@ -148,9 +153,9 @@ export class S3StorageBackend implements StorageBackend {
 
             await this.getClient().send(command);
             return true;
-        } catch {
-            // S3 HeadObject returns 404 for non-existent objects - this is expected behavior
-            return false;
+        } catch (error: unknown) {
+            if (isS3NotFoundError(error)) return false;
+            throw error;
         }
     }
 
@@ -191,20 +196,11 @@ export class S3StorageBackend implements StorageBackend {
         const expiresIn = expiresInSeconds === undefined
             ? this.signedUrlExpiry
             : resolveS3SignedUrlExpiry(expiresInSeconds);
-        try {
-            const command = new GetObjectCommand({
-                Bucket: this.bucket,
-                Key: this.getFullKey(path),
-            });
+        const command = new GetObjectCommand({
+            Bucket: this.bucket,
+            Key: this.getFullKey(path),
+        });
 
-            const url = await getSignedUrl(this.getClient(), command, {
-                expiresIn,
-            });
-
-            return url;
-        } catch {
-            // Signed URL generation can fail if object doesn't exist or credentials are invalid
-            return null;
-        }
+        return getSignedUrl(this.getClient(), command, { expiresIn });
     }
 }

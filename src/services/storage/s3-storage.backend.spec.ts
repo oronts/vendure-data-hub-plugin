@@ -122,4 +122,43 @@ describe('S3StorageBackend lifecycle', () => {
             'integer from 1 to 604800 seconds',
         );
     });
+
+    it.each([
+        { name: 'NoSuchKey' },
+        { name: 'NotFound' },
+        { $metadata: { httpStatusCode: 404 } },
+    ])('returns absence only for S3 not-found responses %#', async error => {
+        const backend = new S3StorageBackend({
+            bucket: 'uploads',
+            region: 'eu-central-1',
+        });
+        await backend.init();
+
+        send.mockRejectedValueOnce(error);
+        await expect(backend.read('missing.txt')).resolves.toBeNull();
+        send.mockRejectedValueOnce(error);
+        await expect(backend.exists('missing.txt')).resolves.toBe(false);
+    });
+
+    it('preserves S3 authorization, deletion, and signing failures', async () => {
+        const backend = new S3StorageBackend({
+            bucket: 'uploads',
+            region: 'eu-central-1',
+        });
+        await backend.init();
+        const accessDenied = Object.assign(new Error('Access denied'), {
+            name: 'AccessDenied',
+            $metadata: { httpStatusCode: 403 },
+        });
+
+        send.mockRejectedValueOnce(accessDenied);
+        await expect(backend.read('protected.txt')).rejects.toBe(accessDenied);
+        send.mockRejectedValueOnce(accessDenied);
+        await expect(backend.exists('protected.txt')).rejects.toBe(accessDenied);
+        send.mockRejectedValueOnce(accessDenied);
+        await expect(backend.delete('protected.txt')).rejects.toBe(accessDenied);
+
+        vi.mocked(getSignedUrl).mockRejectedValueOnce(accessDenied);
+        await expect(backend.getUrl('protected.txt')).rejects.toBe(accessDenied);
+    });
 });
