@@ -907,7 +907,7 @@ Common patterns:
 
 **Endpoint:** `POST /data-hub/webhook/{pipeline-code}`
 
-**Request parsing:** The plugin installs one early, route-aware JSON parser through Vendure's `beforeListen` middleware. Webhook paths retain the exact bytes required for HMAC verification and enforce a 10 MiB limit; other JSON paths use the normal Express JSON parser. No separate Nest `rawBody` bootstrap option is required. A reverse proxy can still impose a smaller limit.
+**Request parsing:** The plugin installs one early, route-aware JSON parser through Vendure's `beforeListen` middleware. Webhook paths retain the exact bytes required for HMAC verification and enforce a 10 MiB limit; other JSON paths use the normal Express JSON parser. Incoming webhooks must use identity content encoding; compressed request bodies are rejected with 415 so middleware cannot transform the signed bytes. No separate Nest `rawBody` bootstrap option is required. A reverse proxy can still impose a smaller limit.
 
 **Security Features:**
 - Timing-safe comparison for all credential checks

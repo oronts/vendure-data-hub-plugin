@@ -194,6 +194,10 @@ secret and send either a raw hexadecimal digest or an algorithm-prefixed value:
 X-DataHub-Signature: sha256=<hex-digest>
 ```
 
+Send webhook JSON with identity content encoding. Compressed request bodies are
+rejected with 415 because decompression would change the byte sequence covered
+by the signature.
+
 The plugin installs an early Vendure JSON middleware on `*splat`. Webhook paths
 use a route-aware parser that retains the exact bytes for HMAC verification and
 enforces the 10 MiB plugin limit; other JSON paths use the normal Express JSON

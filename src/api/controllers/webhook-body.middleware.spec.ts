@@ -1,13 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { IncomingMessage } from 'node:http';
 import { Readable } from 'node:stream';
-import { FILE_STORAGE } from '../../constants';
+import { gzipSync } from 'node:zlib';
+import { FILE_STORAGE, WEBHOOK } from '../../constants';
 import {
     attachWebhookRawBody,
     dataHubJsonBodyParser,
     isFileUploadRequest,
     isWebhookRequest,
     resolveUploadJsonParserError,
+    resolveWebhookJsonParserError,
     type WebhookRawBodyRequest,
 } from './webhook-body.middleware';
 
@@ -27,7 +29,51 @@ function createUploadRequest(payload: Buffer, contentType = 'application/json') 
     return request;
 }
 
+function createWebhookRequest(
+    payload: Buffer,
+    headers: Record<string, string> = {},
+) {
+    const request = Readable.from([payload]) as Readable & {
+        url: string;
+        originalUrl: string;
+        headers: Record<string, string>;
+        body?: unknown;
+        rawBody?: Buffer;
+    };
+    request.url = '/data-hub/webhook/orders';
+    request.originalUrl = request.url;
+    request.headers = {
+        'content-type': 'application/json',
+        'content-length': String(payload.byteLength),
+        ...headers,
+    };
+    return request;
+}
+
 async function parseUploadRequest(request: ReturnType<typeof createUploadRequest>) {
+    return new Promise<{
+        status: number;
+        body: unknown;
+    } | undefined>((resolve, reject) => {
+        let status = 200;
+        const response = {
+            status: vi.fn((value: number) => {
+                status = value;
+                return response;
+            }),
+            json: vi.fn((body: unknown) => {
+                resolve({ status, body });
+                return response;
+            }),
+        };
+        dataHubJsonBodyParser(request as never, response as never, error => {
+            if (error) reject(error);
+            else resolve(undefined);
+        });
+    });
+}
+
+async function parseWebhookRequest(request: ReturnType<typeof createWebhookRequest>) {
     return new Promise<{
         status: number;
         body: unknown;
@@ -69,6 +115,69 @@ describe('webhook raw body capture', () => {
         } as WebhookRawBodyRequest)).toBe(true);
         expect(isWebhookRequest({ url: '/admin-api' } as IncomingMessage)).toBe(false);
         expect(isWebhookRequest({ url: '/data-hub/webhooks/orders' } as IncomingMessage)).toBe(false);
+    });
+
+    it('captures the exact identity-encoded bytes through the real JSON parser', async () => {
+        const payload = Buffer.from('{ "sku": "A-1" }');
+        const request = createWebhookRequest(payload);
+
+        await new Promise<void>((resolve, reject) => {
+            dataHubJsonBodyParser(request as never, {} as never, error => {
+                if (error) reject(error);
+                else resolve();
+            });
+        });
+
+        expect(request.body).toEqual({ sku: 'A-1' });
+        expect(request.rawBody).toEqual(payload);
+        expect(request.rawBody).not.toBe(payload);
+    });
+
+    it('rejects compressed webhooks before HMAC bytes can be transformed', async () => {
+        const request = createWebhookRequest(
+            gzipSync(Buffer.from('{"sku":"A-1"}')),
+            { 'content-encoding': 'gzip' },
+        );
+
+        const result = await parseWebhookRequest(request);
+
+        expect(result).toEqual({
+            status: 415,
+            body: {
+                statusCode: 415,
+                message: 'Webhook JSON encoding is unsupported',
+            },
+        });
+        expect(request.rawBody).toBeUndefined();
+    });
+
+    it('returns a client error for malformed webhook JSON', async () => {
+        const result = await parseWebhookRequest(
+            createWebhookRequest(Buffer.from('{"sku":')),
+        );
+
+        expect(result).toEqual({
+            status: 400,
+            body: {
+                statusCode: 400,
+                message: 'Webhook JSON body is malformed',
+            },
+        });
+    });
+
+    it('returns a client error for oversized webhook JSON', async () => {
+        const request = createWebhookRequest(Buffer.from('{}'));
+        request.headers['content-length'] = String(WEBHOOK.MAX_PAYLOAD_SIZE + 1);
+
+        const result = await parseWebhookRequest(request);
+
+        expect(result).toEqual({
+            status: 413,
+            body: {
+                statusCode: 413,
+                message: 'Webhook JSON body is too large',
+            },
+        });
     });
 
     it('selects the base64 parser only for the exact upload route', () => {
@@ -176,5 +285,6 @@ describe('webhook raw body capture', () => {
 
     it('does not reclassify unknown middleware failures as client input', () => {
         expect(resolveUploadJsonParserError(new Error('socket failure'))).toBeUndefined();
+        expect(resolveWebhookJsonParserError(new Error('socket failure'))).toBeUndefined();
     });
 });
