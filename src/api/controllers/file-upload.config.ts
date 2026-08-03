@@ -52,6 +52,7 @@ export function resolveMulterUploadError(
 }
 
 const INTEGER_PATTERN = /^\d+$/;
+const MULTIPART_FILENAME_CHARSET = 'utf8';
 
 function parseRequestInteger(
     value: unknown,
@@ -122,8 +123,12 @@ export function resolveFilePreviewRows(value?: string): number {
         : parseRequestInteger(value, 'rows', 1, PAGINATION.MAX_QUERY_LIMIT);
 }
 
-export const fileUploadMiddleware = multer({
+const multipartUploadOptions: multer.Options & {
+    defParamCharset: typeof MULTIPART_FILENAME_CHARSET;
+} = {
     storage: multer.memoryStorage(),
+    // Browsers encode non-ASCII multipart filenames as UTF-8; Busboy defaults to Latin-1.
+    defParamCharset: MULTIPART_FILENAME_CHARSET,
     limits: {
         fileSize: FILE_STORAGE.MAX_FILE_SIZE_BYTES,
         files: FILE_STORAGE.FILE_MAX_FILES,
@@ -143,4 +148,6 @@ export const fileUploadMiddleware = multer({
             callback(error instanceof Error ? error : new Error('Unsupported file type'));
         }
     },
-});
+};
+
+export const fileUploadMiddleware = multer(multipartUploadOptions);

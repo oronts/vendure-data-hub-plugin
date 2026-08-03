@@ -1,12 +1,47 @@
 import { describe, expect, it } from 'vitest';
+import { Readable } from 'node:stream';
 import { FILE_STORAGE } from '../../constants/index';
 import {
     resolveMulterUploadError,
+    fileUploadMiddleware,
     resolveFileListLimit,
     resolveFileListOffset,
     resolveFilePreviewRows,
     resolveUploadExpiry,
 } from './file-upload.config';
+
+describe('fileUploadMiddleware', () => {
+    it('preserves UTF-8 filenames sent by browser multipart clients', async () => {
+        const boundary = '----data-hub-filename';
+        const filename = '产品.csv';
+        const body = Buffer.from(
+            `--${boundary}\r\n` +
+            `Content-Disposition: form-data; name="file"; filename="${filename}"\r\n` +
+            'Content-Type: text/csv\r\n\r\n' +
+            `sku\nA-1\r\n--${boundary}--\r\n`,
+        );
+        const request = Readable.from([body]) as Readable & {
+            file?: Express.Multer.File;
+            headers: Record<string, string>;
+            method: string;
+        };
+        request.headers = {
+            'content-type': `multipart/form-data; boundary=${boundary}`,
+            'content-length': String(body.length),
+        };
+        request.method = 'POST';
+
+        await new Promise<void>((resolve, reject) => {
+            fileUploadMiddleware.single('file')(
+                request as never,
+                {} as never,
+                error => error ? reject(error) : resolve(),
+            );
+        });
+
+        expect(request.file?.originalname).toBe(filename);
+    });
+});
 
 describe('resolveMulterUploadError', () => {
     it('maps bounded multipart failures to actionable client responses', () => {
