@@ -736,6 +736,11 @@ Control execution performance:
 }
 ```
 
+Throughput limits are batch size `1-10,000`, concurrency `1-16`, rate limit
+`0-1,000` batch starts per second, threshold greater than `0` and at most `1`,
+and interval `0.1-3,600` seconds. Omitting the interval uses 1 second for
+BACKOFF and 5 seconds for QUEUE.
+
 ## Complete Example
 
 ```typescript

@@ -1033,13 +1033,13 @@ Rate limiting and performance tuning.
 
 ```typescript
 interface Throughput {
-    /** Records per batch; positive integer */
+    /** Records per batch; integer from 1 to 10,000 */
     batchSize?: number;
 
-    /** Parallel batch processing; positive integer */
+    /** Parallel batch processing; integer from 1 to 16 */
     concurrency?: number;
 
-    /** Maximum aggregate load-batch starts per second; finite and >= 0 */
+    /** Aggregate load-batch starts per second; finite from 0 to 1,000 */
     rateLimitRps?: number;
 
     /** Behavior when the rolling failed-record ratio reaches the threshold */
@@ -1049,15 +1049,15 @@ interface Throughput {
     pauseOnErrorRate?: {
         /** Error rate threshold (0-1) */
         threshold: number;
-        /** Rolling error window and recovery delay (seconds) */
-        intervalSec: number;
+        /** 0.1-3,600 seconds; defaults to 1 for BACKOFF and 5 for QUEUE */
+        intervalSec?: number;
     };
 }
 ```
 
 Throughput applies to load-batch execution. It does not rate-limit extractors.
-The error threshold must be between `0` and `1`, and `intervalSec` must be a
-finite value greater than zero.
+The error threshold must be greater than `0` and at most `1`. When supplied,
+`intervalSec` must be a finite value from `0.1` to `3,600`.
 
 ### VendureEntityType
 

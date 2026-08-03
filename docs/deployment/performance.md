@@ -101,19 +101,19 @@ Override the pipeline defaults for a specific load step:
 
 ```typescript
 interface Throughput {
-    // Records per load batch; defaults to the current input batch length
+    // Records per load batch; 1-10,000; defaults to the current input batch length
     batchSize?: number;
 
-    // Parallel load batches; defaults to 1
+    // Parallel load batches; 1-16; defaults to 1
     concurrency?: number;
 
-    // Aggregate load-batch starts per second; 0 or omitted disables the limit
+    // Aggregate load-batch starts per second; 0-1,000; 0 or omitted disables it
     rateLimitRps?: number;
 
     // Evaluated across load batches completed during the rolling interval
     pauseOnErrorRate?: {
         threshold: number;      // Ratio from 0 to 1
-        intervalSec: number;    // Rolling window and recovery delay in seconds
+        intervalSec?: number;   // 0.1-3,600; BACKOFF default 1, QUEUE default 5
     };
 
     drainStrategy?: 'BACKOFF' | 'SHED' | 'QUEUE';
@@ -122,6 +122,8 @@ interface Throughput {
 
 `rateLimitRps` spaces load-batch starts by at least `1000 / rateLimitRps`
 milliseconds across all concurrent workers. It does not rate-limit extractors.
+Values above 1,000 are rejected because the scheduler has millisecond
+resolution; they are not silently rounded down.
 
 ### Drain Strategies
 

@@ -1,4 +1,4 @@
-import { PIPELINE_RETRY } from '../../../shared/constants';
+import { PIPELINE_RETRY, THROUGHPUT_LIMITS } from '../../../shared/constants';
 import { PARALLEL_EXECUTION } from '../../constants/defaults/runtime-defaults';
 import { FIELD_LIMITS } from '../../constants/validation';
 import { DrainStrategy } from '../../constants/enums';
@@ -92,7 +92,15 @@ export function validateThroughput(
         return;
     }
 
-    validateFiniteNumber(value.rateLimitRps, `${path}.rateLimitRps`, 0, false, issues, stepKey);
+    validateBoundedNumber(
+        value.rateLimitRps,
+        `${path}.rateLimitRps`,
+        THROUGHPUT_LIMITS.MIN_RATE_LIMIT_RPS,
+        THROUGHPUT_LIMITS.MAX_RATE_LIMIT_RPS,
+        false,
+        issues,
+        stepKey,
+    );
     validateBoundedNumber(
         value.batchSize,
         `${path}.batchSize`,
@@ -114,7 +122,10 @@ export function validateThroughput(
 
     if (
         value.drainStrategy !== undefined
-        && !SUPPORTED_DRAIN_STRATEGIES.has(String(value.drainStrategy))
+        && (
+            typeof value.drainStrategy !== 'string'
+            || !SUPPORTED_DRAIN_STRATEGIES.has(value.drainStrategy)
+        )
     ) {
         issues.push({
             message: `${path}.drainStrategy must be BACKOFF, SHED, or QUEUE`,
@@ -149,14 +160,14 @@ export function validateThroughput(
             field: `${pausePath}.threshold`,
         });
     }
-    validateFiniteNumber(
+    validateBoundedNumber(
         pause.intervalSec,
         `${pausePath}.intervalSec`,
-        0,
+        THROUGHPUT_LIMITS.MIN_PAUSE_INTERVAL_SEC,
+        THROUGHPUT_LIMITS.MAX_PAUSE_INTERVAL_SEC,
         false,
         issues,
         stepKey,
-        true,
     );
 }
 
@@ -228,38 +239,6 @@ function validateBoundedNumber(
     ) {
         issues.push({
             message: `${field} must be ${integer ? 'an integer' : 'a finite number'} from ${minimum} to ${maximum}`,
-            errorCode: 'context-invalid',
-            stepKey,
-            field,
-        });
-    }
-}
-
-function validateFiniteNumber(
-    value: unknown,
-    field: string,
-    minimum: number,
-    integer: boolean,
-    issues: PipelineDefinitionIssue[],
-    stepKey?: string,
-    exclusiveMinimum = false,
-): void {
-    if (value === undefined) return;
-    const belowMinimum = exclusiveMinimum
-        ? typeof value !== 'number' || value <= minimum
-        : typeof value !== 'number' || value < minimum;
-    if (
-        belowMinimum
-        || !Number.isFinite(value)
-        || (integer && !Number.isSafeInteger(value))
-    ) {
-        const constraint = integer
-            ? `a positive integer greater than or equal to ${minimum}`
-            : exclusiveMinimum
-                ? `a finite number greater than ${minimum}`
-                : `a finite number greater than or equal to ${minimum}`;
-        issues.push({
-            message: `${field} must be ${constraint}`,
             errorCode: 'context-invalid',
             stepKey,
             field,

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { RequestContext } from '@vendure/core';
+import { THROUGHPUT_LIMITS } from '../../../shared/constants';
 import { THROUGHPUT } from '../../constants';
 import type { PipelineDefinition, PipelineStepDefinition } from '../../types';
 import type { LoadExecutor } from '../executors';
@@ -450,11 +451,30 @@ describe('executeLoadWithThroughput', () => {
     });
 
     it.each([
+        [{ rateLimitRps: '2' }, 'rateLimitRps'],
+        [{ rateLimitRps: null }, 'rateLimitRps'],
+        [{ rateLimitRps: THROUGHPUT_LIMITS.MAX_RATE_LIMIT_RPS + 1 }, 'rateLimitRps'],
         [{ batchSize: 1.5 }, 'batchSize'],
+        [{ batchSize: '1' }, 'batchSize'],
         [{ batchSize: 10_001 }, 'batchSize'],
         [{ concurrency: 0 }, 'concurrency'],
         [{ concurrency: 17 }, 'concurrency'],
+        [{ pauseOnErrorRate: { threshold: '0.5', intervalSec: 1 } }, 'threshold'],
         [{ pauseOnErrorRate: { threshold: 0, intervalSec: 1 } }, 'threshold'],
+        [{ pauseOnErrorRate: null }, 'pauseOnErrorRate'],
+        [{ pauseOnErrorRate: { threshold: 0.5, intervalSec: '1' } }, 'intervalSec'],
+        [{
+            pauseOnErrorRate: {
+                threshold: 0.5,
+                intervalSec: THROUGHPUT_LIMITS.MIN_PAUSE_INTERVAL_SEC / 2,
+            },
+        }, 'intervalSec'],
+        [{
+            pauseOnErrorRate: {
+                threshold: 0.5,
+                intervalSec: THROUGHPUT_LIMITS.MAX_PAUSE_INTERVAL_SEC + 1,
+            },
+        }, 'intervalSec'],
         [{ drainStrategy: 'DROP' }, 'drainStrategy'],
     ])('rejects unsafe throughput config %j', async (throughput, expectedField) => {
         const step = {
@@ -462,6 +482,28 @@ describe('executeLoadWithThroughput', () => {
             type: 'LOAD',
             config: { adapterCode: 'test-loader' },
             throughput,
+        } as unknown as PipelineStepDefinition;
+        const loadExecutor = { execute: vi.fn() } as unknown as LoadExecutor;
+
+        await expect(executeLoadWithThroughput({
+            ctx: {} as RequestContext,
+            step,
+            batch: [{ id: 1 }],
+            definition: { version: 1, steps: [step] } as PipelineDefinition,
+            loadExecutor,
+        })).rejects.toThrow(expectedField);
+        expect(loadExecutor.execute).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        ['step.throughput', { throughput: 'invalid' }],
+        ['step.context.throughput', { context: { throughput: [] } }],
+    ])('rejects a non-object %s value', async (expectedField, overrides) => {
+        const step = {
+            key: 'load',
+            type: 'LOAD',
+            config: { adapterCode: 'test-loader' },
+            ...overrides,
         } as unknown as PipelineStepDefinition;
         const loadExecutor = { execute: vi.fn() } as unknown as LoadExecutor;
 

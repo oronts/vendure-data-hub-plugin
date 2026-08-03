@@ -117,6 +117,21 @@ export const PARALLEL_EXECUTION = {
     ERROR_POLICIES: ['FAIL_FAST', 'CONTINUE', 'BEST_EFFORT'],
 } as const;
 
+const MIN_THROUGHPUT_PAUSE_INTERVAL_MS = 100;
+
+/** Shared limits for load-batch throughput controls. */
+export const THROUGHPUT_LIMITS = {
+    MIN_BATCH_SIZE: 1,
+    MAX_BATCH_SIZE: 10_000,
+    MIN_RATE_LIMIT_RPS: 0,
+    /** The scheduler starts at most one batch per millisecond. */
+    MAX_RATE_LIMIT_RPS: TIME_UNITS.SECOND,
+    MIN_PAUSE_INTERVAL_SEC:
+        MIN_THROUGHPUT_PAUSE_INTERVAL_MS / TIME_UNITS.SECOND,
+    /** A pause cannot outlive the maximum one-hour pipeline run. */
+    MAX_PAUSE_INTERVAL_SEC: TIME_UNITS.HOUR / TIME_UNITS.SECOND,
+} as const;
+
 /**
  * Batch processing defaults
  * Used by both dashboard and backend for consistent batch operations

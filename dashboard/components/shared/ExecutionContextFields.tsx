@@ -15,6 +15,7 @@ import {
 } from '@vendure/dashboard';
 import { X } from 'lucide-react';
 import { useOptionValues } from '../../hooks';
+import { PARALLEL_EXECUTION, THROUGHPUT_LIMITS } from '../../constants';
 import type {
     ChannelStrategy,
     Throughput,
@@ -428,7 +429,8 @@ export function ExecutionContextFields<TContext extends ExecutionContextValue>({
                             id={ids.batchSize}
                             label={<Trans>Batch size</Trans>}
                             value={context.throughput?.batchSize}
-                            minimum={1}
+                            minimum={THROUGHPUT_LIMITS.MIN_BATCH_SIZE}
+                            maximum={THROUGHPUT_LIMITS.MAX_BATCH_SIZE}
                             integer={true}
                             className={controlClass}
                             labelClassName={labelClass}
@@ -440,7 +442,8 @@ export function ExecutionContextFields<TContext extends ExecutionContextValue>({
                             id={ids.concurrency}
                             label={<Trans>Concurrency</Trans>}
                             value={context.throughput?.concurrency}
-                            minimum={1}
+                            minimum={PARALLEL_EXECUTION.MIN_CONCURRENT_STEPS}
+                            maximum={PARALLEL_EXECUTION.MAX_CONCURRENT_STEPS}
                             integer={true}
                             className={controlClass}
                             labelClassName={labelClass}
@@ -452,7 +455,8 @@ export function ExecutionContextFields<TContext extends ExecutionContextValue>({
                             id={ids.rateLimit}
                             label={<Trans>Rate limit</Trans>}
                             value={context.throughput?.rateLimitRps}
-                            minimum={0}
+                            minimum={THROUGHPUT_LIMITS.MIN_RATE_LIMIT_RPS}
+                            maximum={THROUGHPUT_LIMITS.MAX_RATE_LIMIT_RPS}
                             className={controlClass}
                             labelClassName={labelClass}
                             placeholder={throughputPlaceholder}

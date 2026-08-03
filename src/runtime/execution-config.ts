@@ -3,6 +3,7 @@ interface NumberRangeOptions {
     defaultValue: number;
     minimum: number;
     maximum: number;
+    minimumExclusive?: boolean;
 }
 
 export function resolveBoundedInteger(
@@ -13,7 +14,9 @@ export function resolveBoundedInteger(
     if (
         typeof resolved !== 'number'
         || !Number.isSafeInteger(resolved)
-        || resolved < options.minimum
+        || (options.minimumExclusive
+            ? resolved <= options.minimum
+            : resolved < options.minimum)
         || resolved > options.maximum
     ) {
         throw new Error(
@@ -31,11 +34,15 @@ export function resolveBoundedNumber(
     if (
         typeof resolved !== 'number'
         || !Number.isFinite(resolved)
-        || resolved < options.minimum
+        || (options.minimumExclusive
+            ? resolved <= options.minimum
+            : resolved < options.minimum)
         || resolved > options.maximum
     ) {
         throw new Error(
-            `${options.fieldName} must be a number from ${options.minimum} to ${options.maximum}`,
+            options.minimumExclusive
+                ? `${options.fieldName} must be a number greater than ${options.minimum} and at most ${options.maximum}`
+                : `${options.fieldName} must be a number from ${options.minimum} to ${options.maximum}`,
         );
     }
     return resolved;

@@ -203,6 +203,11 @@ Control how records flow through steps:
 }
 ```
 
+Batch size is `1-10,000`, concurrency is `1-16`, and the rate limit is
+`0-1,000` batch starts per second (`0` disables pacing). The error threshold is
+greater than `0` and at most `1`. Its optional interval is `0.1-3,600` seconds;
+BACKOFF defaults to 1 second and QUEUE defaults to 5 seconds.
+
 ## Load Strategies
 
 When loading entities, choose a strategy:

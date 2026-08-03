@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { PipelineDefinition } from '../../types';
 import type { PipelineDefinitionIssue } from '../../validation/pipeline-definition-error';
 import { FIELD_LIMITS, PARALLEL_EXECUTION } from '../../constants';
+import { THROUGHPUT_LIMITS } from '../../../shared/constants';
 import { validateCapabilities, validateContext } from './context-validation';
 
 function validate(parallelExecution: unknown): PipelineDefinitionIssue[] {
@@ -295,17 +296,23 @@ describe('validateContext step overrides', () => {
             steps: [],
             context: {
                 throughput: {
+                    rateLimitRps: THROUGHPUT_LIMITS.MAX_RATE_LIMIT_RPS + 1,
                     batchSize: FIELD_LIMITS.BATCH_SIZE_MAX + 1,
                     concurrency: PARALLEL_EXECUTION.MAX_CONCURRENT_STEPS + 1,
-                    pauseOnErrorRate: { threshold: 0, intervalSec: 1 },
+                    pauseOnErrorRate: {
+                        threshold: 0,
+                        intervalSec: THROUGHPUT_LIMITS.MAX_PAUSE_INTERVAL_SEC + 1,
+                    },
                 },
             },
         } as PipelineDefinition, issues);
 
         expect(issues.map(issue => issue.field)).toEqual([
+            'context.throughput.rateLimitRps',
             'context.throughput.batchSize',
             'context.throughput.concurrency',
             'context.throughput.pauseOnErrorRate.threshold',
+            'context.throughput.pauseOnErrorRate.intervalSec',
         ]);
     });
 });

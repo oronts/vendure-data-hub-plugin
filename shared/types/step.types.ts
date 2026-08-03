@@ -125,7 +125,7 @@ export interface Throughput {
     batchSize?: number;
     pauseOnErrorRate?: {
         threshold: number;
-        intervalSec: number;
+        intervalSec?: number;
     };
     drainStrategy?: DrainStrategy;
 }

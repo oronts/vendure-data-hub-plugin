@@ -11,27 +11,14 @@ import {
     PipelineDefinition,
     PipelineStepDefinition,
 } from '../../types/index';
-import type { DrainStrategy } from '../../../shared/types';
+import { THROUGHPUT_LIMITS } from '../../../shared/constants';
+import type { DrainStrategy, Throughput } from '../../../shared/types';
 import { LoaderExecutionResult, RecordObject, OnRecordErrorCallback } from '../executor-types';
 import { LoadExecutor } from '../executors';
+import { resolveBoundedInteger, resolveBoundedNumber } from '../execution-config';
 import { chunk, sleep } from '../utils';
-import { PARALLEL_EXECUTION, RATE_LIMIT, TIME, THROUGHPUT } from '../../constants/index';
+import { PARALLEL_EXECUTION, TIME, THROUGHPUT } from '../../constants/index';
 import { FIELD_LIMITS } from '../../constants/validation';
-
-/**
- * Throughput configuration
- */
-export interface ThroughputConfig {
-    rateLimitRps?: number;
-    batchSize?: number;
-    /** Concurrency level for parallel processing */
-    concurrency?: number;
-    pauseOnErrorRate?: {
-        threshold: number;
-        intervalSec?: number;
-    };
-    drainStrategy?: DrainStrategy;
-}
 
 /**
  * Queue for deferred batches when using 'queue' drain strategy.
@@ -143,71 +130,110 @@ const SUPPORTED_DRAIN_STRATEGIES = new Set<DrainStrategy>([
     'QUEUE',
 ]);
 
-function resolveBoundedInteger(
+function resolveThroughputObject(
     value: unknown,
-    fallback: number,
-    field: string,
-    maximum: number,
-): number {
-    const resolved = value === undefined ? fallback : Number(value);
-    if (!Number.isSafeInteger(resolved) || resolved < 1 || resolved > maximum) {
-        throw new Error(`${field} must be an integer from 1 to ${maximum}`);
+    fieldName: string,
+): Throughput {
+    if (value === undefined) return {};
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        throw new Error(`${fieldName} must be an object`);
     }
-    return resolved;
+    return value as Throughput;
+}
+
+function firstDefined<T>(...values: Array<T | undefined>): T | undefined {
+    return values.find(value => value !== undefined);
 }
 
 function resolveThroughputConfig(
-    step: PipelineStepDefinition & { throughput?: ThroughputConfig },
+    step: PipelineStepDefinition,
     definition: PipelineDefinition,
     recordCount: number,
 ): EffectiveThroughputConfig {
-    const contextThroughput = definition.context?.throughput ?? {};
-    const stepThroughput = {
-        ...step.throughput,
-        ...step.context?.throughput,
-    };
-    const rps = Number(
-        stepThroughput.rateLimitRps ?? contextThroughput.rateLimitRps ?? 0,
+    const contextThroughput = resolveThroughputObject(
+        definition.context?.throughput,
+        'context.throughput',
     );
-    if (!Number.isFinite(rps) || rps < 0) {
-        throw new Error('rateLimitRps must be a finite number greater than or equal to zero');
-    }
+    const stepThroughput = {
+        ...resolveThroughputObject(step.throughput, 'step.throughput'),
+        ...resolveThroughputObject(
+            step.context?.throughput,
+            'step.context.throughput',
+        ),
+    };
+    const rps = resolveBoundedNumber(
+        firstDefined(
+            stepThroughput.rateLimitRps,
+            contextThroughput.rateLimitRps,
+        ),
+        {
+            fieldName: 'rateLimitRps',
+            defaultValue: 0,
+            minimum: THROUGHPUT_LIMITS.MIN_RATE_LIMIT_RPS,
+            maximum: THROUGHPUT_LIMITS.MAX_RATE_LIMIT_RPS,
+        },
+    );
 
     const batchSize = resolveBoundedInteger(
-        stepThroughput.batchSize ?? contextThroughput.batchSize,
-        Math.min(Math.max(recordCount, 1), FIELD_LIMITS.BATCH_SIZE_MAX),
-        'batchSize',
-        FIELD_LIMITS.BATCH_SIZE_MAX,
+        firstDefined(stepThroughput.batchSize, contextThroughput.batchSize),
+        {
+            fieldName: 'batchSize',
+            defaultValue: Math.min(Math.max(recordCount, 1), FIELD_LIMITS.BATCH_SIZE_MAX),
+            minimum: FIELD_LIMITS.BATCH_SIZE_MIN,
+            maximum: FIELD_LIMITS.BATCH_SIZE_MAX,
+        },
     );
     const concurrency = resolveBoundedInteger(
-        stepThroughput.concurrency ?? contextThroughput.concurrency,
-        1,
-        'concurrency',
-        PARALLEL_EXECUTION.MAX_CONCURRENT_STEPS,
+        firstDefined(
+            stepThroughput.concurrency,
+            contextThroughput.concurrency,
+        ),
+        {
+            fieldName: 'concurrency',
+            defaultValue: PARALLEL_EXECUTION.MIN_CONCURRENT_STEPS,
+            minimum: PARALLEL_EXECUTION.MIN_CONCURRENT_STEPS,
+            maximum: PARALLEL_EXECUTION.MAX_CONCURRENT_STEPS,
+        },
     );
-    const rawPauseConfig = stepThroughput.pauseOnErrorRate
-        ?? contextThroughput.pauseOnErrorRate;
-    const drainStrategy = stepThroughput.drainStrategy
-        ?? contextThroughput.drainStrategy
-        ?? 'BACKOFF';
+    const rawPauseConfig = firstDefined(
+        stepThroughput.pauseOnErrorRate,
+        contextThroughput.pauseOnErrorRate,
+    );
+    const drainStrategy = firstDefined(
+        stepThroughput.drainStrategy,
+        contextThroughput.drainStrategy,
+        'BACKOFF',
+    ) as DrainStrategy;
     if (!SUPPORTED_DRAIN_STRATEGIES.has(drainStrategy)) {
         throw new Error('drainStrategy must be BACKOFF, SHED, or QUEUE');
     }
-    if (!rawPauseConfig) {
+    if (rawPauseConfig === undefined) {
         return { rps, batchSize, concurrency, drainStrategy };
     }
-
-    const threshold = Number(rawPauseConfig.threshold);
-    if (!Number.isFinite(threshold) || threshold <= 0 || threshold > 1) {
-        throw new Error('pauseOnErrorRate.threshold must be greater than zero and at most one');
+    if (
+        rawPauseConfig === null
+        || typeof rawPauseConfig !== 'object'
+        || Array.isArray(rawPauseConfig)
+    ) {
+        throw new Error('pauseOnErrorRate must be an object');
     }
+
+    const threshold = resolveBoundedNumber(rawPauseConfig.threshold, {
+        fieldName: 'pauseOnErrorRate.threshold',
+        defaultValue: Number.NaN,
+        minimum: 0,
+        maximum: 1,
+        minimumExclusive: true,
+    });
     const defaultIntervalSec = drainStrategy === 'QUEUE'
         ? THROUGHPUT.DEFERRED_RETRY_DELAY_SEC
         : 1;
-    const intervalSec = Number(rawPauseConfig.intervalSec ?? defaultIntervalSec);
-    if (!Number.isFinite(intervalSec) || intervalSec <= 0) {
-        throw new Error('pauseOnErrorRate.intervalSec must be a finite number greater than zero');
-    }
+    const intervalSec = resolveBoundedNumber(rawPauseConfig.intervalSec, {
+        fieldName: 'pauseOnErrorRate.intervalSec',
+        defaultValue: defaultIntervalSec,
+        minimum: THROUGHPUT_LIMITS.MIN_PAUSE_INTERVAL_SEC,
+        maximum: THROUGHPUT_LIMITS.MAX_PAUSE_INTERVAL_SEC,
+    });
 
     return {
         rps,
@@ -216,17 +242,14 @@ function resolveThroughputConfig(
         drainStrategy,
         pauseConfig: {
             threshold,
-            intervalMs: Math.max(
-                RATE_LIMIT.PAUSE_CHECK_INTERVAL_MS,
-                intervalSec * TIME.SECOND,
-            ),
+            intervalMs: intervalSec * TIME.SECOND,
         },
     };
 }
 
 interface ThroughputExecutionParams {
     ctx: RequestContext;
-    step: PipelineStepDefinition & { throughput?: ThroughputConfig };
+    step: PipelineStepDefinition;
     batch: RecordObject[];
     definition: PipelineDefinition;
     loadExecutor: LoadExecutor;
