@@ -150,7 +150,11 @@ export interface SinkStepConfig {
     apiKeySecretCode?: string;
     usernameSecretCode?: string;
     passwordSecretCode?: string;
-    queueType?: 'RABBITMQ' | 'RABBITMQ_AMQP' | 'SQS' | 'REDIS_STREAMS';
+    queueType?:
+        | 'RABBITMQ_AMQP'
+        | 'RABBITMQ'
+        | 'SQS'
+        | 'REDIS_STREAMS';
     queueName?: string;
     routingKey?: string;
     headers?: Record<string, string>;

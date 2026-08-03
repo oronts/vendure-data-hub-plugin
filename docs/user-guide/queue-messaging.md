@@ -16,13 +16,16 @@ Queue/messaging integration enables:
 | System | Consume | Produce | Status |
 |--------|---------|---------|--------|
 | RabbitMQ (AMQP) | ✅ | ✅ | **Recommended** - Native AMQP 0-9-1 protocol |
-| RabbitMQ (HTTP) | Adapter only | ✅ | Not available to message triggers because consume acknowledges immediately |
+| RabbitMQ (HTTP) | Adapter only | ✅ | Deprecated compatibility producer; RabbitMQ discourages HTTP API publishing |
 | Amazon SQS | ✅ | ✅ | Full support (requires `@aws-sdk/client-sqs`) |
 | Redis Streams | ✅ | ✅ | Consumer groups and XACK |
 | Apache Kafka | ❌ | ❌ | No built-in adapter; implement a custom integration |
 | Google Pub/Sub | ❌ | ❌ | Use custom adapter with `@google-cloud/pubsub` |
 
-These boundaries follow the [RabbitMQ HTTP API acknowledgment modes](https://www.rabbitmq.com/docs/http-api-reference) and Redis [XREADGROUP](https://redis.io/docs/latest/commands/xreadgroup/) / [XACK](https://redis.io/docs/latest/commands/xack/) consumer-group semantics.
+These boundaries follow RabbitMQ's guidance to use AMQP instead of the highly
+inefficient [HTTP publish endpoint](https://www.rabbitmq.com/docs/http-api-reference)
+and Redis [XREADGROUP](https://redis.io/docs/latest/commands/xreadgroup/) /
+[XACK](https://redis.io/docs/latest/commands/xack/) consumer-group semantics.
 
 ### Amazon SQS dependency
 
@@ -86,7 +89,7 @@ verify the configured hostname. Connection setup has a bounded timeout, and
 partial channel/connection setup is closed independently on failure and during
 application shutdown.
 
-### RabbitMQ (HTTP API Fallback)
+### RabbitMQ (HTTP API Compatibility)
 
 ```typescript
 DataHubPlugin.init({
@@ -106,12 +109,14 @@ DataHubPlugin.init({
 });
 ```
 
-The HTTP adapter's direct configuration defaults to management port `15672`, or
+The deprecated HTTP adapter exists for compatibility where a long-lived AMQP
+connection is impossible. Do not select it for new deployments. Its direct
+configuration defaults to management port `15672`, or
 `15671` when TLS is enabled. Set the management port explicitly on a connection
 record because the shared RabbitMQ connection form defaults to the recommended
-native AMQP port. The HTTP adapter is suitable for publishing and direct adapter
-use, but not for reliable message triggers because RabbitMQ's HTTP get endpoint
-acknowledges during the consume request.
+native AMQP port. Compatibility publishing and direct adapter use are the only
+supported HTTP cases; message triggers reject it because RabbitMQ's HTTP get
+endpoint acknowledges during the consume request.
 
 ### Amazon SQS
 
@@ -447,7 +452,7 @@ A custom adapter may implement `renewLease`. Renewal must extend ownership beyon
 
 After retries are exhausted or the correlated run ends unsuccessfully, a configured `deadLetterQueue` is published first. For SQS connections that set a direct `queueUrl`, also configure `accountId` (and `endpoint` for an SQS-compatible service) so the adapter can construct a distinct DLQ URL. The original manual delivery is rejected without requeue only when the adapter returns exactly one matching successful publish result. A thrown publish, an empty or mismatched result, or `success: false` causes the original manual delivery to be requeued. Without a DLQ, the failed manual delivery is rejected without requeue.
 
-`AUTO` is rejected for message-triggered pipelines because it acknowledges before the run outcome is known. The RabbitMQ HTTP adapter therefore remains producer/direct-adapter functionality only; use `RABBITMQ_AMQP` for reliable message triggers. A failed manual acknowledgment after a successful run is logged and is never copied to the DLQ, preventing the acknowledgment failure from being misreported as a processing failure.
+`AUTO` is rejected for message-triggered pipelines because it acknowledges before the run outcome is known. The deprecated RabbitMQ HTTP adapter therefore remains compatibility producer/direct-adapter functionality only; use `RABBITMQ_AMQP` for reliable message triggers. A failed manual acknowledgment after a successful run is logged and is never copied to the DLQ, preventing the acknowledgment failure from being misreported as a processing failure.
 
 `consumerGroup` is passed to Redis Streams and rejected for every other built-in queue type.
 
@@ -610,7 +615,7 @@ message: {
 
 ### Manual acknowledgment
 
-For adapters that support individual acknowledgments, select manual mode explicitly. `RABBITMQ` (the HTTP adapter) rejects manual mode; use `RABBITMQ_AMQP` when the broker delivery must remain unsettled until the correlated pipeline run completes:
+For adapters that support individual acknowledgments, select manual mode explicitly. The deprecated `RABBITMQ` HTTP adapter rejects manual mode; use `RABBITMQ_AMQP` when the broker delivery must remain unsettled until the correlated pipeline run completes:
 
 ```typescript
 message: {

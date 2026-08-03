@@ -1128,11 +1128,12 @@ const dataWarehouseSync = createPipeline()
 
     .trigger('cdc', {
         type: 'MESSAGE',
-        queueType: 'RABBITMQ',
-        connectionCode: 'rabbitmq',
-        queueName: 'vendure.cdc.product',
-        consumerGroup: 'warehouse-sync',
-        ackMode: 'MANUAL',
+        message: {
+            queueType: 'RABBITMQ_AMQP',
+            connectionCode: 'rabbitmq',
+            queueName: 'vendure.cdc.product',
+            ackMode: 'MANUAL',
+        },
     })
 
     // The queue message is injected as the seeded CDC record.

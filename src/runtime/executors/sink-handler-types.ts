@@ -5,6 +5,7 @@ import type { SecretService } from '../../services/config/secret.service';
 import type { ConnectionService } from '../../services/config/connection.service';
 import type { CircuitBreakerService } from '../../services/runtime';
 import type { DataHubLogger } from '../../services/logger';
+import type { QueueType } from '../../constants/enums';
 
 export const SINK_ADAPTER_CODES = {
     MEILISEARCH: 'meilisearch',
@@ -43,7 +44,11 @@ export interface BaseSinkCfg {
  * Queue producer sink configuration
  */
 export interface QueueProducerSinkCfg extends BaseSinkCfg {
-    queueType?: string;
+    queueType?:
+        | QueueType.RABBITMQ
+        | QueueType.RABBITMQ_AMQP
+        | QueueType.SQS
+        | QueueType.REDIS_STREAMS;
     connectionCode?: string;
     queueName?: string;
     routingKey?: string;

@@ -304,14 +304,14 @@ of treating it as an upsert.
 
 Code: `queueProducer`
 
-Publish records through RabbitMQ AMQP, the RabbitMQ HTTP Management API, Amazon
-SQS, or Redis Streams.
+Publish records through RabbitMQ AMQP, Amazon SQS, or Redis Streams. A deprecated
+RabbitMQ HTTP Management API producer remains available for compatibility.
 
 ### Configuration
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `queueType` | select | Yes | `RABBITMQ_AMQP`, `RABBITMQ`, `SQS`, or `REDIS_STREAMS` |
+| `queueType` | select | Yes | `RABBITMQ_AMQP`, `SQS`, `REDIS_STREAMS`, or deprecated `RABBITMQ` HTTP compatibility mode |
 | `connectionCode` | string | Yes | Saved queue connection code |
 | `queueName` | string | Yes | Queue name or Redis stream name |
 | `routingKey` | string | No | RabbitMQ routing key |
@@ -342,8 +342,9 @@ SQS and Redis Streams still receive the payload, ID, static headers, and
 })
 ```
 
-The native AMQP adapter is the recommended RabbitMQ transport. Select
-`RABBITMQ` only for the HTTP Management API fallback.
+The native AMQP adapter is the supported RabbitMQ transport for new deployments.
+Select the deprecated `RABBITMQ` HTTP mode only when a long-lived AMQP connection
+is impossible; RabbitMQ documents HTTP publishing as highly inefficient.
 
 ### RabbitMQ connection
 
@@ -366,8 +367,7 @@ DataHubPlugin.init({
 })
 ```
 
-Use port 15672 when `queueType` is `RABBITMQ`; that adapter talks to the
-RabbitMQ HTTP Management API. See
+The deprecated HTTP compatibility mode uses management port 15672. See
 [Queue & Messaging](../user-guide/queue-messaging.md) for SQS and Redis
 connection examples and their optional client dependencies.
 

@@ -1,4 +1,4 @@
-/** RabbitMQ HTTP Management API adapter. For production use the AMQP adapter instead. */
+/** RabbitMQ HTTP Management API compatibility adapter. */
 
 import {
     QueueAdapter,
@@ -22,10 +22,11 @@ import {
     type ResolvedRabbitMqConnection,
 } from './rabbitmq-connection';
 
+/** @deprecated Use RabbitMQAmqpAdapter for all new deployments. */
 export class RabbitMQAdapter implements QueueAdapter {
     readonly code = 'rabbitmq';
-    readonly name = 'RabbitMQ';
-    readonly description = 'RabbitMQ message broker via HTTP Management API';
+    readonly name = 'RabbitMQ HTTP (Deprecated)';
+    readonly description = 'Deprecated RabbitMQ HTTP Management API compatibility transport';
 
     private buildAuthHeader(config: ResolvedRabbitMqConnection): string {
         return `${AUTH_SCHEMES.BASIC} ${Buffer.from(`${config.username}:${config.password}`).toString('base64')}`;

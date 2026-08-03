@@ -4,6 +4,7 @@ import { QUEUE } from './defaults/runtime-defaults';
 import {
     ACK_MODE_OPTIONS,
     MESSAGE_QUEUE_TYPE_OPTIONS,
+    QUEUE_TYPE_OPTIONS,
     TRIGGER_TYPE_SCHEMAS,
 } from './adapter-schema-options';
 
@@ -49,5 +50,14 @@ describe('message trigger dynamic schema', () => {
             'REDIS_STREAMS',
             'INTERNAL',
         ]);
+        expect(QUEUE_TYPE_OPTIONS.map(option => option.value)).toEqual([
+            'RABBITMQ_AMQP',
+            'RABBITMQ',
+            'SQS',
+            'REDIS_STREAMS',
+        ]);
+        expect(QUEUE_TYPE_OPTIONS.map(option => option.value)).not.toContain('INTERNAL');
+        expect(QUEUE_TYPE_OPTIONS.find(option => option.value === 'RABBITMQ')?.label)
+            .toContain('Deprecated');
     });
 });

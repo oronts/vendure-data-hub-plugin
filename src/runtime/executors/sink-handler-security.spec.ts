@@ -410,7 +410,7 @@ describe('sink credential boundaries', () => {
         'accessKeyIdSecretCode',
         'secretAccessKeySecretCode',
     ])('does not publish when queue connection %s cannot be resolved', async field => {
-        const publish = vi.spyOn(queueAdapterRegistry.get('internal')!, 'publish');
+        const publish = vi.spyOn(queueAdapterRegistry.get('rabbitmq-amqp')!, 'publish');
         const { services } = createServices({
             connectionConfig: {
                 host: 'queue.example.com',
@@ -421,7 +421,7 @@ describe('sink credential boundaries', () => {
 
         await expect(runSink(SINK_ADAPTER_CODES.QUEUE_PRODUCER, {
             adapterCode: SINK_ADAPTER_CODES.QUEUE_PRODUCER,
-            queueType: 'INTERNAL',
+            queueType: 'RABBITMQ_AMQP',
             connectionCode: 'queue-connection',
             queueName: 'catalog-events',
         }, services)).rejects.toThrow('empty or unavailable');
@@ -430,7 +430,7 @@ describe('sink credential boundaries', () => {
     });
 
     it('resolves queue credentials while preserving non-sensitive message headers', async () => {
-        const adapter = queueAdapterRegistry.get('internal')!;
+        const adapter = queueAdapterRegistry.get('rabbitmq-amqp')!;
         const publish = vi.spyOn(adapter, 'publish').mockImplementation(async (_config, _queue, messages) =>
             messages.map(message => ({ success: true, messageId: message.id })),
         );
@@ -445,7 +445,7 @@ describe('sink credential boundaries', () => {
 
         const result = await runSink(SINK_ADAPTER_CODES.QUEUE_PRODUCER, {
             adapterCode: SINK_ADAPTER_CODES.QUEUE_PRODUCER,
-            queueType: 'INTERNAL',
+            queueType: 'RABBITMQ_AMQP',
             connectionCode: 'queue-connection',
             queueName: 'catalog-events',
             headers: { tenant: 'catalog', 'trace-id': 'trace-1' },
@@ -465,4 +465,42 @@ describe('sink credential boundaries', () => {
             'x-datahub-operation': 'UPSERT',
         });
     });
+
+    it('requires an explicit queue type instead of defaulting to RabbitMQ HTTP', async () => {
+        const { services, connectionService } = createServices();
+
+        await expect(runSink(SINK_ADAPTER_CODES.QUEUE_PRODUCER, {
+            adapterCode: SINK_ADAPTER_CODES.QUEUE_PRODUCER,
+            connectionCode: 'queue-connection',
+            queueName: 'catalog-events',
+        }, services)).resolves.toEqual({ ok: 0, fail: 1 });
+
+        expect(connectionService.getRuntimeByCode).not.toHaveBeenCalled();
+        expect(services.logger.error).toHaveBeenCalledWith(
+            expect.stringContaining('queueType'),
+            undefined,
+            expect.objectContaining({ stepKey: 'queueProducer-sink' }),
+        );
+    });
+
+    it.each(['INTERNAL', 'rabbitmq-amqp', 'UNKNOWN'])(
+        'rejects unsupported or non-canonical producer queue type %s',
+        async queueType => {
+            const { services, connectionService } = createServices();
+
+            await expect(runSink(SINK_ADAPTER_CODES.QUEUE_PRODUCER, {
+                adapterCode: SINK_ADAPTER_CODES.QUEUE_PRODUCER,
+                queueType,
+                connectionCode: 'queue-connection',
+                queueName: 'catalog-events',
+            }, services)).resolves.toEqual({ ok: 0, fail: 1 });
+
+            expect(connectionService.getRuntimeByCode).not.toHaveBeenCalled();
+            expect(services.logger.error).toHaveBeenCalledWith(
+                expect.stringContaining(`Unsupported queue type: ${queueType}`),
+                undefined,
+                expect.objectContaining({ stepKey: 'queueProducer-sink' }),
+            );
+        },
+    );
 });

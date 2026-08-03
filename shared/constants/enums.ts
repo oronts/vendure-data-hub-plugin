@@ -153,6 +153,7 @@ export const FILE_FORMAT = {
  * - internal: In-memory queue for testing
  */
 export const QUEUE_TYPE = {
+    /** @deprecated Use RABBITMQ_AMQP. RabbitMQ discourages HTTP API publishing. */
     RABBITMQ: 'RABBITMQ',
     RABBITMQ_AMQP: 'RABBITMQ_AMQP',
     SQS: 'SQS',

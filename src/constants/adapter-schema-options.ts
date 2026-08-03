@@ -218,7 +218,7 @@ export const PROTOCOL_OPTIONS = [
 /** Queue type options for sink producers (excludes INTERNAL) */
 export const QUEUE_TYPE_OPTIONS = [
     { value: QueueType.RABBITMQ_AMQP, label: 'RabbitMQ (AMQP) - Recommended' },
-    { value: QueueType.RABBITMQ, label: 'RabbitMQ (HTTP API)' },
+    { value: QueueType.RABBITMQ, label: 'RabbitMQ (HTTP API) - Deprecated' },
     { value: QueueType.SQS, label: 'Amazon SQS' },
     { value: QueueType.REDIS_STREAMS, label: 'Redis Streams' },
 ];

@@ -35,6 +35,7 @@ export enum ParallelErrorPolicy {
  * - internal: In-memory queue for testing
  */
 export enum QueueType {
+    /** @deprecated Use RABBITMQ_AMQP. RabbitMQ discourages HTTP API publishing. */
     RABBITMQ = 'RABBITMQ',
     RABBITMQ_AMQP = 'RABBITMQ_AMQP',
     SQS = 'SQS',

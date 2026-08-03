@@ -10,6 +10,15 @@ import type { ExecutionResult, RecordObject } from '../executor-types';
 import { resolveRequiredSecret } from './sink-handler-common';
 import { type QueueProducerSinkCfg, type SinkHandlerContext, type SinkServices } from './sink-handler-types';
 
+const QUEUE_PRODUCER_ADAPTERS: ReadonlyMap<string, string> = new Map([
+    [QueueType.RABBITMQ_AMQP, 'rabbitmq-amqp'],
+    [QueueType.RABBITMQ, 'rabbitmq'],
+    [QueueType.SQS, 'sqs'],
+    [QueueType.REDIS_STREAMS, 'redis-streams'],
+]);
+
+const SUPPORTED_QUEUE_PRODUCER_TYPES = Array.from(QUEUE_PRODUCER_ADAPTERS.keys()).join(', ');
+
 async function resolveQueueConnectionSecrets(
     services: SinkServices,
     ctx: RequestContext,
@@ -48,7 +57,7 @@ async function resolveQueueConnectionSecrets(
 export async function handleQueueProducer(hCtx: SinkHandlerContext, services: SinkServices): Promise<ExecutionResult> {
     const { ctx, step, input, onRecordError, bulkSize: batchSize } = hCtx;
     const cfg = step.config as QueueProducerSinkCfg;
-    const queueType = String(cfg.queueType ?? QueueType.RABBITMQ).toLowerCase().replace(/_/g, '-');
+    const queueType = cfg.queueType;
     const connectionCode = cfg.connectionCode;
     const queueName = cfg.queueName;
     const routingKey = cfg.routingKey;
@@ -58,18 +67,29 @@ export async function handleQueueProducer(hCtx: SinkHandlerContext, services: Si
     const priority = cfg.priority;
     const ttlMs = cfg.ttlMs;
 
-    if (!connectionCode || !queueName) {
-        const missingFields = [!connectionCode && 'connectionCode', !queueName && 'queueName'].filter(Boolean).join(', ');
+    if (!queueType || !connectionCode || !queueName) {
+        const missingFields = [
+            !queueType && 'queueType',
+            !connectionCode && 'connectionCode',
+            !queueName && 'queueName',
+        ].filter(Boolean).join(', ');
         services.logger.error(`Queue producer missing required fields: ${missingFields}`, undefined, { stepKey: step.key });
         if (onRecordError) await onRecordError(step.key, `Queue producer missing required fields: ${missingFields}`, {});
         return { ok: 0, fail: input.length };
     }
 
-    const adapter = queueAdapterRegistry.get(queueType);
+    const adapterCode = QUEUE_PRODUCER_ADAPTERS.get(queueType);
+    if (!adapterCode) {
+        const errorMessage = `Unsupported queue type: ${String(queueType)}. Supported: ${SUPPORTED_QUEUE_PRODUCER_TYPES}`;
+        services.logger.error(errorMessage, undefined, { stepKey: step.key });
+        if (onRecordError) await onRecordError(step.key, errorMessage, {});
+        return { ok: 0, fail: input.length };
+    }
+
+    const adapter = queueAdapterRegistry.get(adapterCode);
     if (!adapter) {
-        const availableAdapters = queueAdapterRegistry.getCodes().join(', ');
-        services.logger.error(`Unknown queue type: ${queueType}. Available: ${availableAdapters}`, undefined, { stepKey: step.key });
-        if (onRecordError) await onRecordError(step.key, `Unknown queue type: ${queueType}. Available: ${availableAdapters}`, {});
+        services.logger.error(`Queue adapter is unavailable: ${adapterCode}`, undefined, { stepKey: step.key });
+        if (onRecordError) await onRecordError(step.key, `Queue adapter is unavailable: ${adapterCode}`, {});
         return { ok: 0, fail: input.length };
     }
 

@@ -979,7 +979,8 @@ interface SinkStepConfig {
     passwordSecretCode?: string;
 
     // Queue producer
-    queueType?: 'RABBITMQ' | 'RABBITMQ_AMQP' | 'SQS' | 'REDIS_STREAMS';
+    // RABBITMQ HTTP is deprecated.
+    queueType?: 'RABBITMQ_AMQP' | 'SQS' | 'REDIS_STREAMS' | 'RABBITMQ';
     connectionCode?: string;
     queueName?: string;
     routingKey?: string;
