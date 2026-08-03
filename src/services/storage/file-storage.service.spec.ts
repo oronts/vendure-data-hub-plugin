@@ -4,6 +4,7 @@ import * as path from 'path';
 import { RequestContext } from '@vendure/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DataHubLoggerFactory } from '../logger';
+import { getMetadataPath } from './file-storage-metadata';
 import { FileStorageService } from './file-storage.service';
 import type { StorageBackend } from './storage-backend.interface';
 
@@ -185,6 +186,60 @@ describe('FileStorageService security boundaries', () => {
 
         expect(deleteSpy).toHaveBeenCalledTimes(2);
         expect(close).toHaveBeenCalledOnce();
+    });
+
+    it('fails initialization and closes the backend when index recovery is unavailable', async () => {
+        const service = new FileStorageService(loggerFactory);
+        const internals = service as unknown as FileStorageInternals;
+        const recoveryError = new Error('Storage unavailable');
+        const close = vi.fn(async () => undefined);
+        internals.backend.close = close;
+        vi.spyOn(internals.backend, 'list').mockRejectedValue(recoveryError);
+
+        await expect(service.onModuleInit()).rejects.toBe(recoveryError);
+        expect(close).toHaveBeenCalledOnce();
+    });
+
+    it('propagates backend metadata failures without losing a valid file', async () => {
+        const service = await createService();
+        const context = createContext('channel-a', 'user-17');
+        const result = await service.storeFile(
+            context,
+            Buffer.from('sku\nA-1'),
+            'products.csv',
+            'text/csv',
+        );
+        const internals = service as unknown as FileStorageInternals;
+        const storageError = new Error('Storage authorization failed');
+        vi.spyOn(internals.backend, 'read').mockRejectedValueOnce(storageError);
+
+        await expect(service.getFile(context, result.file!.id)).rejects.toBe(storageError);
+        await expect(service.getFile(context, result.file!.id)).resolves.toMatchObject({
+            id: result.file!.id,
+            channelId: 'channel-a',
+        });
+    });
+
+    it('skips corrupt persisted metadata without failing initialization', async () => {
+        const context = createContext('channel-a', 'user-17');
+        const firstService = await createService();
+        const result = await firstService.storeFile(
+            context,
+            Buffer.from('sku\nA-1'),
+            'products.csv',
+            'text/csv',
+        );
+        await firstService.onModuleDestroy();
+        const metadataPath = getMetadataPath('channel-a', result.file!.id);
+        await fs.promises.writeFile(path.join(root, metadataPath), '{invalid');
+
+        const recoveredService = await createService();
+
+        await expect(recoveredService.getFile(context, result.file!.id)).resolves.toBeNull();
+        expect(logger.warn).toHaveBeenCalledWith(
+            'Skipped invalid file metadata during storage recovery',
+            expect.objectContaining({ metadataPath }),
+        );
     });
 
     it('fails closed when stored content no longer matches its persisted hash', async () => {

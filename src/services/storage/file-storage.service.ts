@@ -59,15 +59,26 @@ export class FileStorageService implements OnModuleInit, OnModuleDestroy {
 
     async onModuleInit(): Promise<void> {
         await this.backend.init();
-        await this.rebuildIndex();
-        await this.cleanupExpiredFiles();
-        this.startCleanupJob();
+        try {
+            await this.rebuildIndex();
+            await this.cleanupExpiredFiles();
+            this.startCleanupJob();
 
-        this.logger.info('FileStorageService initialized', {
-            backendType: this.backend.type,
-            cleanupIntervalMs: SCHEDULER.FILE_CLEANUP_INTERVAL_MS,
-            recoveredFiles: this.fileIndex.size,
-        });
+            this.logger.info('FileStorageService initialized', {
+                backendType: this.backend.type,
+                cleanupIntervalMs: SCHEDULER.FILE_CLEANUP_INTERVAL_MS,
+                recoveredFiles: this.fileIndex.size,
+            });
+        } catch (error) {
+            try {
+                await this.backend.close?.();
+            } catch (closeError) {
+                this.logger.warn('Failed to close file storage after initialization failure', {
+                    error: getErrorMessage(closeError),
+                });
+            }
+            throw error;
+        }
     }
 
     async onModuleDestroy(): Promise<void> {
@@ -304,17 +315,11 @@ export class FileStorageService implements OnModuleInit, OnModuleDestroy {
     }
 
     private async rebuildIndex(): Promise<void> {
-        try {
-            const metadataFiles = (await this.backend.list(''))
-                .filter(storagePath => storagePath.endsWith(METADATA_SUFFIX));
-            for (const metadataPath of metadataFiles) {
-                const storedFile = await this.loadMetadataFile(metadataPath);
-                if (storedFile) this.fileIndex.set(storedFile.id, storedFile);
-            }
-        } catch (error) {
-            this.logger.warn('Failed to rebuild file index from storage backend', {
-                error: getErrorMessage(error),
-            });
+        const metadataFiles = (await this.backend.list(''))
+            .filter(storagePath => storagePath.endsWith(METADATA_SUFFIX));
+        for (const metadataPath of metadataFiles) {
+            const storedFile = await this.loadMetadataFile(metadataPath);
+            if (storedFile) this.fileIndex.set(storedFile.id, storedFile);
         }
     }
 
@@ -338,17 +343,13 @@ export class FileStorageService implements OnModuleInit, OnModuleDestroy {
     }
 
     private async loadMetadataFile(metadataPath: string): Promise<StoredFile | null> {
+        const metadataBuffer = await this.backend.read(metadataPath);
+        if (!metadataBuffer || metadataBuffer.length > MAX_METADATA_SIZE_BYTES) return null;
+
+        let storedFile: StoredFile | null;
         try {
-            const metadataBuffer = await this.backend.read(metadataPath);
-            if (!metadataBuffer || metadataBuffer.length > MAX_METADATA_SIZE_BYTES) return null;
             const parsed: unknown = JSON.parse(metadataBuffer.toString('utf-8'));
-            const storedFile = parsePersistedMetadata(parsed);
-            if (!storedFile ||
-                getMetadataPath(storedFile.channelId, storedFile.id) !== metadataPath ||
-                !(await this.backend.exists(storedFile.storagePath))) {
-                return null;
-            }
-            return storedFile;
+            storedFile = parsePersistedMetadata(parsed);
         } catch (error) {
             this.logger.warn('Skipped invalid file metadata during storage recovery', {
                 metadataPath,
@@ -356,6 +357,12 @@ export class FileStorageService implements OnModuleInit, OnModuleDestroy {
             });
             return null;
         }
+        if (!storedFile ||
+            getMetadataPath(storedFile.channelId, storedFile.id) !== metadataPath ||
+            !(await this.backend.exists(storedFile.storagePath))) {
+            return null;
+        }
+        return storedFile;
     }
 
     private async getAccessibleFile(ctx: RequestContext, fileId: string): Promise<StoredFile | null> {
