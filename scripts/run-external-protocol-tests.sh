@@ -27,7 +27,7 @@ compose() {
 cleanup() {
     local exit_code=$?
     if [[ "$exit_code" -ne 0 ]]; then
-        compose logs --no-color postgres mysql || true
+        compose logs --no-color postgres mysql rabbitmq || true
     fi
     compose down --volumes --remove-orphans || true
     if [[ -n "${CERTIFICATE_DIRECTORY:-}" ]]; then
@@ -50,6 +50,7 @@ wait_for_port() {
 }
 
 export DATAHUB_TEST_S3_PORT="${DATAHUB_TEST_S3_PORT:-$(allocate_port)}"
+export DATAHUB_TEST_RABBITMQ_PORT="${DATAHUB_TEST_RABBITMQ_PORT:-$(allocate_port)}"
 export DATAHUB_TEST_POSTGRES_PORT="${DATAHUB_TEST_POSTGRES_PORT:-$(allocate_port)}"
 export DATAHUB_TEST_MYSQL_PORT="${DATAHUB_TEST_MYSQL_PORT:-$(allocate_port)}"
 export DATAHUB_TEST_FTP_PORT="${DATAHUB_TEST_FTP_PORT:-$(allocate_port)}"
@@ -70,6 +71,10 @@ export DATAHUB_TEST_S3_ENDPOINT="http://127.0.0.1:$DATAHUB_TEST_S3_PORT"
 export DATAHUB_TEST_S3_ACCESS_KEY="datahub"
 export DATAHUB_TEST_S3_SECRET_KEY="datahub-secret-key"
 export DATAHUB_TEST_S3_BUCKET="data-hub-integration"
+export DATAHUB_TEST_RABBITMQ_HOST="rabbitmq.localhost"
+export DATAHUB_TEST_RABBITMQ_USERNAME="datahub"
+export DATAHUB_TEST_RABBITMQ_PASSWORD="datahub-password"
+export DATAHUB_TEST_RABBITMQ_VHOST="datahub"
 export DATAHUB_TEST_FTP_HOST="127.0.0.1"
 export DATAHUB_TEST_FTP_USERNAME="datahub"
 export DATAHUB_TEST_FTP_PASSWORD="datahub-password"
@@ -92,5 +97,6 @@ cd "$ROOT_DIR"
     src/extractors/s3/s3-transport.integration.spec.ts \
     src/extractors/ftp/ftp-transport.integration.spec.ts \
     src/extractors/database/database-transport.integration.spec.ts \
+    src/sdk/adapters/queue/rabbitmq-amqp.integration.spec.ts \
     connectors/pimcore/pimcore-graphql.transport.integration.spec.ts \
     dev-server/mock/mock-contracts.spec.ts

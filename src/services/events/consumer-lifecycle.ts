@@ -6,6 +6,7 @@ import { DataHubLogger } from '../logger';
 import { getErrorMessage, toErrorOrUndefined } from '../../utils/error.utils';
 import { MessageConsumerConfig, getConsumerKey } from './consumer-discovery';
 import { sleep } from '../../utils/retry.utils';
+import { queueAdapterRegistry } from '../../sdk/adapters/queue';
 
 /**
  * Active consumer state
@@ -252,6 +253,17 @@ export class ConsumerLifecycle {
         }
 
         await this.waitForInFlightDeliveries(key, consumer);
+
+        const adapter = queueAdapterRegistry.get(consumer.config.queueType);
+        if (adapter?.stopConsumer) {
+            try {
+                await adapter.stopConsumer(key);
+            } catch (error) {
+                this.logger.warn(`Failed to stop broker consumer ${key}`, {
+                    error: getErrorMessage(error),
+                });
+            }
+        }
 
         // Release distributed lock
         if (consumer.lockToken && this.distributedLock) {

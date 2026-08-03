@@ -25,12 +25,11 @@ import { DataHubSettingsService } from '../config/settings.service';
  * Message Consumer Service
  *
  * Manages message queue consumers for pipelines with message triggers.
- * Supports polling-based consumption for RabbitMQ via HTTP Management API.
  *
  * Architecture:
  * - Discovers pipelines with message triggers on startup
  * - Starts consumers based on autoStart configuration
- * - Polls queues at configured intervals
+ * - Drains queue adapters at configured intervals while native AMQP subscriptions stay active
  * - Processes messages by triggering pipeline runs
  * - Manages acknowledgments, retries, and dead-letter routing
  *

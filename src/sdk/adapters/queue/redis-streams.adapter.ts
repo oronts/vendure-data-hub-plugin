@@ -7,6 +7,7 @@ import type {
     PublishResult,
     QueueAdapter,
     QueueConnectionConfig,
+    QueueConsumeOptions,
     QueueMessage,
 } from './queue-adapter.interface';
 import {
@@ -149,7 +150,7 @@ export class RedisStreamsAdapter implements QueueAdapter {
     async consume(
         connectionConfig: QueueConnectionConfig,
         queueName: string,
-        options: { count: number; ackMode: AckMode; prefetch?: number },
+        options: QueueConsumeOptions,
     ): Promise<ConsumeResult[]> {
         this.startCleanup();
         const requestedCount = requirePositiveInteger(

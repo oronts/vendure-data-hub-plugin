@@ -36,6 +36,13 @@ export interface QueueConnectionConfig {
     readonly [key: string]: unknown;
 }
 
+export interface QueueConsumeOptions {
+    readonly count: number;
+    readonly ackMode: AckMode;
+    readonly prefetch?: number;
+    readonly consumerId?: string;
+}
+
 export interface QueueAdapter {
     readonly code: string;
     readonly name: string;
@@ -50,12 +57,10 @@ export interface QueueAdapter {
     consume(
         connectionConfig: QueueConnectionConfig,
         queueName: string,
-        options: {
-            count: number;
-            ackMode: AckMode;
-            prefetch?: number;
-        },
+        options: QueueConsumeOptions,
     ): Promise<ConsumeResult[]>;
+
+    stopConsumer?(consumerId: string): Promise<void>;
 
     ack(connectionConfig: QueueConnectionConfig, deliveryTag: string): Promise<void>;
 

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { AckMode, OUTBOUND_RESPONSE_LIMITS } from '../../../constants';
+import { AckMode, OUTBOUND_RESPONSE_LIMITS, QUEUE } from '../../../constants';
 import { secureFetch } from '../../../utils/secure-fetch.utils';
 import type { QueueConnectionConfig } from './queue-adapter.interface';
 import { RabbitMQAdapter } from './rabbitmq.adapter';
@@ -38,6 +38,18 @@ describe('RabbitMQAdapter acknowledgment capabilities', () => {
             .rejects.toThrow('cannot be rejected individually');
     });
 
+    it('rejects invalid direct consume counts before requesting the broker', async () => {
+        const adapter = new RabbitMQAdapter();
+
+        await expect(adapter.consume(connectionConfig, 'orders', {
+            count: QUEUE.MAX_MESSAGE_BATCH_SIZE + 1,
+            ackMode: AckMode.AUTO,
+        })).rejects.toThrow(
+            `RabbitMQ HTTP consume count must not exceed ${QUEUE.MAX_MESSAGE_BATCH_SIZE}`,
+        );
+        expect(secureFetch).not.toHaveBeenCalled();
+    });
+
     it('rejects oversized publish response bodies', async () => {
         vi.mocked(secureFetch).mockResolvedValue(new Response('{"routed":true}', {
             status: 200,
@@ -70,5 +82,18 @@ describe('RabbitMQAdapter acknowledgment capabilities', () => {
             count: 1,
             ackMode: AckMode.AUTO,
         })).rejects.toThrow('RabbitMQ consume response exceeds');
+    });
+
+    it('rejects a broker response larger than the requested batch', async () => {
+        vi.mocked(secureFetch).mockResolvedValue(new Response(JSON.stringify([
+            { payload: '{}', properties: { message_id: 'message-1' } },
+            { payload: '{}', properties: { message_id: 'message-2' } },
+        ]), { status: 200 }));
+        const adapter = new RabbitMQAdapter();
+
+        await expect(adapter.consume(connectionConfig, 'orders', {
+            count: 1,
+            ackMode: AckMode.AUTO,
+        })).rejects.toThrow('returned more messages than requested');
     });
 });

@@ -6,6 +6,7 @@ import {
     QueueMessage,
     PublishResult,
     ConsumeResult,
+    QueueConsumeOptions,
 } from './queue-adapter.interface';
 import { JsonObject } from '../../../types/index';
 import { AckMode } from '../../../constants/enums';
@@ -14,6 +15,8 @@ import { HTTP, HTTP_STATUS, OUTBOUND_RESPONSE_LIMITS } from '../../../constants/
 import { secureFetch } from '../../../utils/secure-fetch.utils';
 import { readResponseJson, readResponseText } from '../../../utils/secure-response-body.utils';
 import { getErrorMessage } from '../../../utils/error.utils';
+import { QUEUE } from '../../../constants/defaults/runtime-defaults';
+import { requirePositiveInteger } from './queue-message.utils';
 import {
     resolveRabbitMqConnection,
     type ResolvedRabbitMqConnection,
@@ -111,17 +114,18 @@ export class RabbitMQAdapter implements QueueAdapter {
     async consume(
         connectionConfig: QueueConnectionConfig,
         queueName: string,
-        options: {
-            count: number;
-            ackMode: AckMode;
-            prefetch?: number;
-        },
+        options: QueueConsumeOptions,
     ): Promise<ConsumeResult[]> {
         if (options.ackMode !== AckMode.AUTO) {
             throw new Error(
                 'RabbitMQ HTTP consumption supports AUTO acknowledgment only; use rabbitmq-amqp for MANUAL acknowledgment',
             );
         }
+        const requestedCount = requirePositiveInteger(
+            options.count,
+            'RabbitMQ HTTP consume count',
+            QUEUE.MAX_MESSAGE_BATCH_SIZE,
+        );
         const resolvedConfig = resolveRabbitMqConnection(connectionConfig, 'HTTP');
         const baseUrl = this.buildBaseUrl(resolvedConfig);
         const auth = this.buildAuthHeader(resolvedConfig);
@@ -137,7 +141,7 @@ export class RabbitMQAdapter implements QueueAdapter {
                     [HTTP_HEADERS.CONTENT_TYPE]: CONTENT_TYPES.JSON,
                 },
                 body: JSON.stringify({
-                    count: options.count,
+                    count: requestedCount,
                     ackmode: 'ack_requeue_false',
                     encoding: 'auto',
                 }),
@@ -171,6 +175,9 @@ export class RabbitMQAdapter implements QueueAdapter {
             });
             if (!Array.isArray(messages) || messages.length === 0) {
                 return [];
+            }
+            if (messages.length > requestedCount) {
+                throw new Error('RabbitMQ HTTP returned more messages than requested');
             }
 
             return messages.map((msg: RabbitMQMessage): ConsumeResult => {

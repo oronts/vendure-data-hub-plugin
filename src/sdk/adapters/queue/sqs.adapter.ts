@@ -10,6 +10,7 @@ import type {
     PublishResult,
     QueueAdapter,
     QueueConnectionConfig,
+    QueueConsumeOptions,
     QueueMessage,
 } from './queue-adapter.interface';
 import { parseJsonObject, requirePositiveInteger } from './queue-message.utils';
@@ -250,7 +251,7 @@ export class SqsAdapter implements QueueAdapter {
     async consume(
         connectionConfig: QueueConnectionConfig,
         queueName: string,
-        options: { count: number; ackMode: AckMode; prefetch?: number },
+        options: QueueConsumeOptions,
     ): Promise<ConsumeResult[]> {
         this.startCleanup();
         const requestedCount = requirePositiveInteger(

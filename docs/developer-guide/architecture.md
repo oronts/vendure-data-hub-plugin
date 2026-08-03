@@ -465,19 +465,19 @@ Message queue integration for event-driven pipelines:
 │                    Queue Adapters                            │
 ├──────────────┬──────────────┬─────────────┬────────────────┤
 │ RabbitMQ     │ Amazon SQS   │ Redis       │ Internal       │
-│ (AMQP)       │              │ Streams     │ (BullMQ)       │
+│ (AMQP)       │              │ Streams     │ (in-process)   │
 ├──────────────┼──────────────┼─────────────┼────────────────┤
 │ Native AMQP  │ AWS SDK      │ XREAD/XADD  │ Redis-backed   │
-│ Publisher    │ Long polling │ Consumer    │ Job queue      │
-│ confirms     │ Visibility   │ groups      │ Delayed jobs   │
-│ Dead-letter  │ timeout      │ Pending     │ Retries        │
-│ queues       │ Batch recv   │ entries     │                │
+│ confirms     │ Visibility   │ groups      │ buffer         │
+│ basic.consume│ timeout      │ Pending     │ Manual ack     │
+│ Prefetch     │ Batch recv   │ entries     │ Dev/test only  │
 └──────────────┴──────────────┴─────────────┴────────────────┘
 ```
 
 Consumer patterns:
 - Manual acknowledgment for guaranteed processing
-- Configurable prefetch/batch size
+- Long-lived native-AMQP subscriptions with bounded prefetch
+- Configurable batch size and local drain interval
 - Dead-letter queue for failed messages
 - Consumer groups for load balancing
 

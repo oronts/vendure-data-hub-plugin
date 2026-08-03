@@ -2,12 +2,15 @@
 
 import { randomUUID } from 'node:crypto';
 import { AckMode } from '../../../constants/enums';
+import { QUEUE } from '../../../constants/defaults/runtime-defaults';
+import { requirePositiveInteger } from './queue-message.utils';
 import {
     QueueAdapter,
     QueueConnectionConfig,
     QueueMessage,
     PublishResult,
     ConsumeResult,
+    QueueConsumeOptions,
 } from './queue-adapter.interface';
 
 interface BufferedMessage {
@@ -53,10 +56,21 @@ class InternalQueueAdapter implements QueueAdapter {
     async consume(
         _connectionConfig: QueueConnectionConfig,
         queueName: string,
-        options: { count: number; ackMode: AckMode; prefetch?: number },
+        options: QueueConsumeOptions,
     ): Promise<ConsumeResult[]> {
         const buf = getBuffer(queueName);
-        const batch = buf.splice(0, options.count);
+        const requestedCount = requirePositiveInteger(
+            options.count,
+            'Internal queue consume count',
+            QUEUE.MAX_MESSAGE_BATCH_SIZE,
+        );
+        const count = options.ackMode === AckMode.MANUAL
+            ? Math.min(
+                requestedCount,
+                Math.max(0, QUEUE.MAX_PENDING_MESSAGES - pendingMessages.size),
+            )
+            : requestedCount;
+        const batch = buf.splice(0, count);
         return batch.map(delivery => {
             const deliveryTag = `internal:${queueName}:${randomUUID()}`;
             if (options.ackMode === AckMode.MANUAL) {

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { AckMode } from '../../../constants/enums';
+import { QUEUE } from '../../../constants/defaults/runtime-defaults';
 import { internalQueueAdapter } from './internal.adapter';
 import type { QueueConnectionConfig } from './queue-adapter.interface';
 
@@ -56,5 +57,42 @@ describe('internal queue adapter', () => {
         await expect(internalQueueAdapter.renewLease(connection, 'missing')).rejects.toThrow(
             'No pending message found for delivery tag: missing',
         );
+    });
+
+    it('rejects invalid direct consume counts', async () => {
+        await expect(internalQueueAdapter.consume(connection, 'catalog', {
+            count: Number.POSITIVE_INFINITY,
+            ackMode: AckMode.AUTO,
+        })).rejects.toThrow('Internal queue consume count must be a positive integer');
+    });
+
+    it('retains buffered messages when manual settlement capacity is full', async () => {
+        const originalLimit = QUEUE.MAX_PENDING_MESSAGES;
+        Object.assign(QUEUE, { MAX_PENDING_MESSAGES: 1 });
+
+        try {
+            await internalQueueAdapter.publish(connection, 'catalog', [
+                { id: 'first', payload: { sequence: 1 } },
+                { id: 'second', payload: { sequence: 2 } },
+            ]);
+            const [first] = await internalQueueAdapter.consume(connection, 'catalog', {
+                count: 2,
+                ackMode: AckMode.MANUAL,
+            });
+
+            await expect(internalQueueAdapter.consume(connection, 'catalog', {
+                count: 1,
+                ackMode: AckMode.MANUAL,
+            })).resolves.toEqual([]);
+            await internalQueueAdapter.ack(connection, first.deliveryTag!);
+            await expect(internalQueueAdapter.consume(connection, 'catalog', {
+                count: 1,
+                ackMode: AckMode.AUTO,
+            })).resolves.toEqual([
+                expect.objectContaining({ messageId: 'second' }),
+            ]);
+        } finally {
+            Object.assign(QUEUE, { MAX_PENDING_MESSAGES: originalLimit });
+        }
     });
 });

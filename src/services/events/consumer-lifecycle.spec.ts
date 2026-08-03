@@ -3,6 +3,7 @@ import { AckMode, DISTRIBUTED_LOCK, QUEUE } from '../../constants';
 import type { DataHubLogger } from '../logger';
 import type { MessageConsumerConfig } from './consumer-discovery';
 import { ActiveConsumer, ConsumerLifecycle } from './consumer-lifecycle';
+import { queueAdapterRegistry } from '../../sdk/adapters/queue';
 
 function createConfig(): MessageConsumerConfig {
     return {
@@ -34,6 +35,9 @@ function createLogger(): DataHubLogger {
 describe('ConsumerLifecycle lease renewal', () => {
     it('retains ownership until in-flight deliveries stop', async () => {
         vi.useFakeTimers();
+        const stopConsumer = vi.fn().mockResolvedValue(undefined);
+        const registrySpy = vi.spyOn(queueAdapterRegistry, 'get')
+            .mockReturnValue({ stopConsumer } as never);
         try {
             const distributedLock = {
                 release: vi.fn().mockResolvedValue(true),
@@ -59,6 +63,7 @@ describe('ConsumerLifecycle lease renewal', () => {
             const stopping = lifecycle.stopConsumer(key, consumers);
             await vi.advanceTimersByTimeAsync(QUEUE.CONSUMER_DRAIN_POLL_INTERVAL_MS);
             expect(distributedLock.release).not.toHaveBeenCalled();
+            expect(stopConsumer).not.toHaveBeenCalled();
             expect(consumers.has(key)).toBe(true);
 
             consumer.inFlightCount = 0;
@@ -69,8 +74,13 @@ describe('ConsumerLifecycle lease renewal', () => {
                 `message-consumer:${key}`,
                 'worker-token',
             );
+            expect(stopConsumer).toHaveBeenCalledWith(key);
+            expect(stopConsumer.mock.invocationCallOrder[0]).toBeLessThan(
+                distributedLock.release.mock.invocationCallOrder[0],
+            );
             expect(consumers.has(key)).toBe(false);
         } finally {
+            registrySpy.mockRestore();
             vi.useRealTimers();
         }
     });

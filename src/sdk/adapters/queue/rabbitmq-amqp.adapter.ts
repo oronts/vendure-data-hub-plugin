@@ -16,6 +16,7 @@ import {
     QueueMessage,
     PublishResult,
     ConsumeResult,
+    QueueConsumeOptions,
 } from './queue-adapter.interface';
 import { JsonObject } from '../../../types/index';
 import { AckMode } from '../../../constants/enums';
@@ -25,6 +26,7 @@ import { LOGGER_CONTEXTS } from '../../../constants/core';
 import { CONTENT_TYPES } from '../../../constants/services';
 import { DataHubLoggerFactory } from '../../../services/logger/datahub-logger';
 import { getErrorMessage } from '../../../utils/error.utils';
+import { requirePositiveInteger } from './queue-message.utils';
 import {
     closeAmqpResources,
     closeRabbitMqConnection,
@@ -32,6 +34,12 @@ import {
     getRabbitMqConnectionKey,
 } from './rabbitmq-amqp.connection';
 import { RabbitMqAdapterState } from './rabbitmq-amqp.state';
+import {
+    closeRabbitMqSubscription,
+    closeRabbitMqSubscriptions,
+    closeRabbitMqSubscriptionsForConnection,
+    ensureRabbitMqSubscription,
+} from './rabbitmq-amqp.consumer';
 
 const logger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.RABBITMQ_ADAPTER);
 
@@ -67,13 +75,10 @@ export class RabbitMQAmqpAdapter implements QueueAdapter {
                         });
                     }
                 }
-                const activeConnections = new Set(
-                    [...this.state.pendingMessages.values()]
-                        .map(entry => entry.connectionIdentity),
-                );
                 for (const [key, entry] of this.state.connectionPool.entries()) {
                     if (
-                        !activeConnections.has(key) &&
+                        !this.state.hasPendingMessages(key) &&
+                        !this.state.hasActiveSubscriptions(key) &&
                         now - entry.lastUsed > INTERNAL_TIMINGS.CONNECTION_MAX_IDLE_MS
                     ) {
                         this.state.connectionPool.delete(key);
@@ -100,6 +105,7 @@ export class RabbitMQAmqpAdapter implements QueueAdapter {
             this.connectionCleanupHandle = undefined;
         }
         await Promise.allSettled(this.state.connectingPromises.values());
+        await closeRabbitMqSubscriptions(this.state);
         const pooledConnections = [...this.state.connectionPool.values()];
         this.state.connectionPool.clear();
         await Promise.all([
@@ -109,6 +115,7 @@ export class RabbitMQAmqpAdapter implements QueueAdapter {
             ),
         ]);
         this.state.pendingMessages.clear();
+        this.state.subscriptionCapacityReservations.clear();
     }
 
     async publish(
@@ -125,9 +132,6 @@ export class RabbitMQAmqpAdapter implements QueueAdapter {
 
         await channel.assertQueue(queueName, {
             durable: true,
-            arguments: {
-                'x-queue-type': 'classic',
-            },
         });
 
         for (const msg of messages) {
@@ -179,81 +183,79 @@ export class RabbitMQAmqpAdapter implements QueueAdapter {
     async consume(
         connectionConfig: QueueConnectionConfig,
         queueName: string,
-        options: {
-            count: number;
-            ackMode: AckMode;
-            prefetch?: number;
-        },
+        options: QueueConsumeOptions,
     ): Promise<ConsumeResult[]> {
         this.startCleanup();
-        const { channel } = await getRabbitMqConnection(
+        const requestedCount = requirePositiveInteger(
+            options.count,
+            'RabbitMQ consume count',
+            QUEUE.MAX_MESSAGE_BATCH_SIZE,
+        );
+        const prefetch = requirePositiveInteger(
+            options.prefetch ?? QUEUE.DEFAULT_MESSAGE_BATCH_SIZE,
+            'RabbitMQ prefetch',
+            QUEUE.MAX_MESSAGE_PREFETCH,
+        );
+        const connectionIdentity = getRabbitMqConnectionKey(connectionConfig);
+        const consumerId = this.resolveConsumerId(
+            options.consumerId,
+            connectionIdentity,
+            queueName,
+        );
+        const { connection } = await getRabbitMqConnection(
             this.state,
             connectionConfig,
         );
+        const subscription = await ensureRabbitMqSubscription(
+            this.state,
+            connection,
+            {
+                consumerId,
+                connectionIdentity,
+                queueName,
+                prefetch,
+                ackMode: options.ackMode,
+            },
+        );
+        const messages = subscription.deliveries.splice(0, requestedCount);
         const results: ConsumeResult[] = [];
 
-        // Set prefetch if specified
-        if (options.prefetch) {
-            await channel.prefetch(options.prefetch);
-        }
-
-        await channel.assertQueue(queueName, { durable: true });
-
-        // Get messages one by one up to count
-        for (let i = 0; i < options.count; i++) {
-            const msg = await channel.get(queueName, {
-                noAck: options.ackMode === AckMode.AUTO,
-            });
-
-            if (!msg) {
-                break; // No more messages
-            }
-
+        for (const message of messages) {
             let payload: JsonObject;
             try {
-                payload = JSON.parse(msg.content.toString('utf-8'));
+                payload = JSON.parse(message.content.toString('utf-8'));
             } catch {
-                // JSON parse failed - wrap raw payload
-                payload = { rawPayload: msg.content.toString('utf-8') };
+                payload = { rawPayload: message.content.toString('utf-8') };
             }
 
-            const messageId = msg.properties.messageId || crypto.randomUUID();
-            const connectionIdentity = getRabbitMqConnectionKey(connectionConfig);
-            const deliveryTag = `${connectionIdentity}:${msg.fields.deliveryTag}`;
-
-            // Store for manual ack/nack with timestamp for cleanup
+            const messageId = message.properties.messageId || crypto.randomUUID();
+            let deliveryTag: string | undefined;
             if (options.ackMode === AckMode.MANUAL) {
-                if (this.state.pendingMessages.size >= QUEUE.MAX_PENDING_MESSAGES) {
-                    channel.nack(
-                        { fields: { deliveryTag: msg.fields.deliveryTag } },
-                        false,
-                        true,
-                    );
-                    logger.warn('Pending message capacity reached; delivery was requeued', {
-                        maxPending: QUEUE.MAX_PENDING_MESSAGES,
-                        currentSize: this.state.pendingMessages.size,
-                    });
-                    continue;
-                }
-
+                deliveryTag = crypto.randomUUID();
                 this.state.pendingMessages.set(deliveryTag, {
-                    channel,
-                    deliveryTag: msg.fields.deliveryTag,
+                    channel: subscription.channel,
+                    deliveryTag: message.fields.deliveryTag,
                     connectionIdentity,
                     createdAt: Date.now(),
                 });
+            } else {
+                subscription.channel.ack(message);
             }
 
             results.push({
                 messageId,
                 payload,
-                headers: msg.properties.headers as Record<string, string> | undefined,
+                headers: message.properties.headers as Record<string, string> | undefined,
                 deliveryTag,
-                redelivered: msg.fields.redelivered,
+                redelivered: message.fields.redelivered,
             });
         }
 
         return results;
+    }
+
+    async stopConsumer(consumerId: string): Promise<void> {
+        await closeRabbitMqSubscription(this.state, consumerId);
     }
 
     async ack(
@@ -311,7 +313,27 @@ export class RabbitMQAmqpAdapter implements QueueAdapter {
      * Close connection (useful for cleanup)
      */
     async close(connectionConfig: QueueConnectionConfig): Promise<void> {
+        await closeRabbitMqSubscriptionsForConnection(
+            this.state,
+            getRabbitMqConnectionKey(connectionConfig),
+        );
         await closeRabbitMqConnection(this.state, connectionConfig);
+    }
+
+    private resolveConsumerId(
+        consumerId: string | undefined,
+        connectionIdentity: string,
+        queueName: string,
+    ): string {
+        if (consumerId === undefined) {
+            return `direct:${connectionIdentity}:${queueName}`;
+        }
+        if (!consumerId || consumerId.trim() !== consumerId) {
+            throw new Error(
+                'RabbitMQ consumerId must be a non-empty string without surrounding whitespace',
+            );
+        }
+        return consumerId;
     }
 }
 

@@ -19,6 +19,7 @@ import {
     type QueueRunWaiter,
 } from './message-processing.types';
 import { waitForSuccessfulQueueRun } from './message-run-waiter';
+import { getConsumerKey } from './consumer-discovery';
 
 export { ConsumerLeaseLostError } from './message-processing.types';
 
@@ -136,6 +137,10 @@ export class MessageProcessing {
                 count: fetchCount,
                 ackMode: config.ackMode,
                 prefetch,
+                consumerId: getConsumerKey(
+                    config.pipelineCode,
+                    config.triggerKey,
+                ),
             });
 
             if (messages.length === 0) return;

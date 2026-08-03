@@ -15,6 +15,7 @@ import {
 } from './rabbitmq-connection';
 import {
     type AmqpChannel,
+    type AmqpConfirmChannel,
     type AmqpConnection,
     RabbitMqAdapterState,
     type RabbitMqConnectionEntry,
@@ -38,7 +39,10 @@ function buildAmqpUrl(config: ResolvedRabbitMqConnection): string {
 }
 
 export async function closeAmqpResources(
-    resources: Partial<RabbitMqConnectionEntry>,
+    resources: {
+        channel?: AmqpChannel;
+        connection?: Pick<AmqpConnection, 'close'>;
+    },
     phase: string,
 ): Promise<void> {
     const closeOperations = [
@@ -51,17 +55,16 @@ export async function closeAmqpResources(
             close: () => resources.connection!.close(),
         },
     ].filter((resource): resource is { label: string; close: () => Promise<void> } => Boolean(resource));
-    const results = await Promise.allSettled(
-        closeOperations.map(resource => resource.close()),
-    );
-    results.forEach((result, index) => {
-        if (result.status === 'rejected') {
+    for (const resource of closeOperations) {
+        try {
+            await resource.close();
+        } catch (error) {
             logger.warn(
-                `RabbitMQ: Failed to close ${closeOperations[index].label} during ${phase}`,
-                { error: getErrorMessage(result.reason) },
+                `RabbitMQ: Failed to close ${resource.label} during ${phase}`,
+                { error: getErrorMessage(error) },
             );
         }
-    });
+    }
 }
 
 export async function getRabbitMqConnection(
@@ -69,7 +72,7 @@ export async function getRabbitMqConnection(
     config: QueueConnectionConfig,
 ): Promise<{
     connection: AmqpConnection;
-    channel: AmqpChannel;
+    channel: AmqpConfirmChannel;
 }> {
     const key = getRabbitMqConnectionKey(config);
     const existing = state.connectionPool.get(key);
@@ -85,7 +88,7 @@ export async function getRabbitMqConnection(
 
     const connectPromise = (async () => {
         let connection: AmqpConnection | undefined;
-        let channel: AmqpChannel | undefined;
+        let channel: AmqpConfirmChannel | undefined;
         try {
             const amqplib = await import('amqplib');
             const resolvedConfig = resolveRabbitMqConnection(config, 'AMQP');
@@ -105,16 +108,15 @@ export async function getRabbitMqConnection(
 
             const cleanupConnection = () => {
                 const current = state.connectionPool.get(key);
-                if (current?.connection === activeConnection) {
-                    state.connectionPool.delete(key);
-                }
-                state.removePendingMessagesForChannel(activeChannel);
+                if (current?.connection !== activeConnection) return;
+                state.connectionPool.delete(key);
+                state.removeConnectionState(key);
             };
             const invalidateConnection = (phase: string) => {
                 const current = state.connectionPool.get(key);
                 if (current?.connection !== activeConnection) return;
                 state.connectionPool.delete(key);
-                state.removePendingMessagesForChannel(activeChannel);
+                state.removeConnectionState(key);
                 state.trackCleanup(closeAmqpResources(current, phase));
             };
 
@@ -125,8 +127,6 @@ export async function getRabbitMqConnection(
                 invalidateConnection('connection failure');
             });
             activeConnection.on('close', cleanupConnection);
-
-            await activeChannel.prefetch(QUEUE.DEFAULT_MESSAGE_BATCH_SIZE);
 
             activeChannel.on('error', error => {
                 logger.warn('RabbitMQ: Channel failed', {
@@ -150,6 +150,7 @@ export async function getRabbitMqConnection(
                 for (const [connectionKey, pooled] of state.connectionPool.entries()) {
                     if (
                         !state.hasPendingMessages(connectionKey) &&
+                        !state.hasActiveSubscriptions(connectionKey) &&
                         pooled.lastUsed < oldestTime
                     ) {
                         oldestTime = pooled.lastUsed;
@@ -164,7 +165,7 @@ export async function getRabbitMqConnection(
                 const stale = state.connectionPool.get(oldestKey);
                 if (stale) {
                     state.connectionPool.delete(oldestKey);
-                    state.removePendingMessagesForChannel(stale.channel);
+                    state.removeConnectionState(oldestKey);
                     await closeAmqpResources(stale, 'pool eviction');
                 }
             }
@@ -191,7 +192,7 @@ export async function closeRabbitMqConnection(
     const entry = state.connectionPool.get(key);
     if (!entry) return;
 
-    state.removePendingMessagesForChannel(entry.channel);
     state.connectionPool.delete(key);
+    state.removeConnectionState(key);
     await closeAmqpResources(entry, 'explicit close');
 }

@@ -645,6 +645,7 @@ describe('MessageProcessing reliability', () => {
             count: 1,
             ackMode: AckMode.MANUAL,
             prefetch: QUEUE.MAX_MESSAGE_PREFETCH,
+            consumerId: 'orders:queue',
         });
     });
 

@@ -252,6 +252,27 @@ const orderProcessor = createPipeline()
 | `maxRetries` | number | Enqueue retries after the initial failure; default 3, range 0-10 |
 | `deadLetterQueue` | string | DLQ for exhausted enqueue failures and terminal run failures |
 
+The same batch and prefetch bounds are enforced by the built-in adapter API,
+including callers outside the managed consumer loop. Native AMQP creates one
+long-lived `basic.consume` subscription on a dedicated channel for each managed
+consumer. Broker prefetch bounds every subscription, and the adapter rejects a
+new subscription when its reserved prefetch would exceed the process-wide
+unsettled-delivery capacity. The configured poll interval drains the bounded
+local delivery buffer; it does not poll RabbitMQ with `basic.get`.
+
+Stopping or reconfiguring a managed consumer cancels its broker subscription and
+closes its channel before distributed ownership is released. RabbitMQ then
+requeues buffered or in-flight unacknowledged deliveries. Automatic mode, which
+is available only to direct adapter callers, acknowledges a delivery when it
+leaves the bounded buffer. These semantics follow RabbitMQ's guidance to prefer
+[long-lived consumers](https://www.rabbitmq.com/docs/consumers#polling) and make
+[consumer prefetch](https://www.rabbitmq.com/docs/consumer-prefetch) effective.
+
+`INTERNAL` is a process-local memory buffer. It has no durable storage,
+cross-process delivery, or restart recovery, so use it only for development,
+tests, or an intentionally ephemeral single-process deployment. Use RabbitMQ,
+SQS, or Redis Streams when delivery must survive process loss or span replicas.
+
 ## Producing to Queues
 
 ### Queue Producer Sink (RabbitMQ Example)

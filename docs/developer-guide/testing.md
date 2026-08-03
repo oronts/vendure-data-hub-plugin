@@ -108,14 +108,17 @@ metrics, traces, trust of its generated certificate authority, rejection by an
 untrusted client, collector-scoped CA loading, structured outage reporting, and
 queued retry after restart.
 The certificate, collector, and output directories are removed afterward. The
-external suite uses MinIO, FTP, SFTP, PostgreSQL, MySQL, a transport-level
-Pimcore HTTP server, and the repository mock contracts. PostgreSQL and MySQL
+external suite uses RabbitMQ, MinIO, FTP, SFTP, PostgreSQL, MySQL, a
+transport-level Pimcore HTTP server, and the repository mock contracts. The
+RabbitMQ cases prove publisher confirms, long-lived consumption, manual
+settlement, broker-enforced prefetch, cancellation, and redelivery through a
+real AMQP broker. PostgreSQL and MySQL
 require an ephemeral client certificate and verify the generated server CA and
 `localhost` certificate identity. The suite proves active TLS sessions and
 rejects an untrusted CA, a hostname mismatch, and a missing client certificate.
-It does not replace target AWS IAM/TLS, FTPS, database HA/failover or historical
-upgrade rehearsal, private-key SFTP rotation, or an active real Pimcore Data Hub
-validation. See the
+It does not replace target RabbitMQ TLS/HA/failover, AWS IAM/TLS, FTPS, database
+HA/failover or historical upgrade rehearsal, private-key SFTP rotation, or an
+active real Pimcore Data Hub validation. See the
 [production sign-off matrix](../deployment/production.md#target-environment-sign-off)
 before making deployment claims.
 
