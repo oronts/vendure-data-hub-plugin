@@ -30,6 +30,29 @@ function createContext(checkpointData: Record<string, string | number> = {}): Ex
 }
 
 describe('DatabaseExtractor pagination', () => {
+    it('keeps previews bounded when LIMIT appears inside the source query', async () => {
+        const query = vi.fn().mockResolvedValue({
+            rows: [{ label: 'LIMIT' }, { label: 'second' }],
+            rowCount: 2,
+        });
+        const close = vi.fn().mockResolvedValue(undefined);
+        vi.mocked(createDatabaseClient).mockResolvedValue({ query, close } as DatabaseClient);
+
+        const result = await new DatabaseExtractor().preview(createContext(), {
+            databaseType: DatabaseType.POSTGRESQL,
+            host: 'db.example.test',
+            database: 'catalog',
+            query: "SELECT 'LIMIT' AS label FROM products;",
+        }, 1);
+
+        expect(query).toHaveBeenCalledWith(
+            "SELECT * FROM (SELECT 'LIMIT' AS label FROM products) AS _dh_preview LIMIT 1",
+            undefined,
+        );
+        expect(result.records).toHaveLength(1);
+        expect(close).toHaveBeenCalledOnce();
+    });
+
     it.each([
         { label: 'absent', pagination: undefined },
         {

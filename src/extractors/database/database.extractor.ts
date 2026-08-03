@@ -28,7 +28,7 @@ import {
     DatabaseClient,
 } from './connection-pool';
 import {
-    hasLimitClause,
+    buildPreviewQuery,
     buildPaginatedQuery,
 } from './query-builder';
 import { resolveDatabaseExtractorConfig } from './database-config.resolver';
@@ -220,9 +220,7 @@ export class DatabaseExtractor implements DataExtractor<DatabaseExtractorConfig>
                     10,
                     TRANSFORM_LIMITS.MAX_PREVIEW_LIMIT,
                 );
-                const previewQuery = hasLimitClause(config.query)
-                    ? config.query
-                    : `${config.query} LIMIT ${safeLimit}`;
+                const previewQuery = buildPreviewQuery(config.query, safeLimit);
 
                 const result = await client.query(previewQuery, config.parameters as unknown[]);
 

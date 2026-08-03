@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DatabasePaginationType, DatabaseType } from '../../constants';
 import type { DatabasePaginationConfig } from './types';
-import { buildPaginatedQuery } from './query-builder';
+import { buildPaginatedQuery, buildPreviewQuery } from './query-builder';
 
 const cursorPagination: DatabasePaginationConfig = {
     enabled: true,
@@ -12,6 +12,21 @@ const cursorPagination: DatabasePaginationConfig = {
 };
 
 describe('database pagination query builder', () => {
+    it('always bounds previews with an outer limit', () => {
+        expect(buildPreviewQuery(
+            "SELECT 'LIMIT' AS label FROM products;",
+            10,
+        )).toBe(
+            "SELECT * FROM (SELECT 'LIMIT' AS label FROM products) AS _dh_preview LIMIT 10",
+        );
+        expect(buildPreviewQuery(
+            'SELECT id FROM products LIMIT 500',
+            10,
+        )).toBe(
+            'SELECT * FROM (SELECT id FROM products LIMIT 500) AS _dh_preview LIMIT 10',
+        );
+    });
+
     it.each([
         {
             databaseType: DatabaseType.POSTGRESQL,

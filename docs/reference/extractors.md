@@ -591,6 +591,9 @@ Configured TLS secrets must resolve before a pool is created. Client certificate
 and key Secret Codes must be configured together.
 Verified PostgreSQL/MySQL TLS therefore requires a DNS hostname; a literal IP
 is accepted only when `ssl.rejectUnauthorized` is explicitly disabled.
+Database previews always wrap the configured query in an outer query with the
+bounded preview limit. Existing inner limits are preserved, and SQL text or
+aliases containing the word `LIMIT` cannot disable the outer cap.
 
 ### Example
 

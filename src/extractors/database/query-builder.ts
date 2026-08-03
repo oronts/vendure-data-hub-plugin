@@ -42,6 +42,19 @@ export function hasLimitClause(query: string): boolean {
     return /\bLIMIT\b/i.test(query);
 }
 
+export function buildPreviewQuery(query: string, limit: number): string {
+    if (!query) {
+        throw new Error('Query is required');
+    }
+    const validation = validateQuery(query);
+    if (!validation.valid) {
+        throw new Error(`Invalid query: ${validation.errors.join(', ')}`);
+    }
+
+    const baseQuery = query.replace(/;\s*$/, '');
+    return `SELECT * FROM (${baseQuery}) AS _dh_preview LIMIT ${limit}`;
+}
+
 function escapeDatabaseIdentifier(identifier: string, databaseType: DatabaseType): string {
     return escapeSqlIdentifier(
         identifier,
