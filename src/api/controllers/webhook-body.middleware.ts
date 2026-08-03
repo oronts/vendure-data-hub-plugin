@@ -1,3 +1,4 @@
+import { HttpStatus } from '@nestjs/common';
 import { json } from 'express';
 import type { RequestHandler } from 'express';
 import type { IncomingMessage } from 'node:http';
@@ -12,6 +13,37 @@ const rawWebhookJsonBodyParser = json({
 const base64UploadJsonBodyParser = json({
     limit: FILE_STORAGE.MAX_BASE64_JSON_BODY_SIZE_BYTES,
 });
+
+interface UploadJsonParserError {
+    status: HttpStatus;
+    error: string;
+}
+
+export function resolveUploadJsonParserError(
+    error: unknown,
+): UploadJsonParserError | undefined {
+    if (!error || typeof error !== 'object') return undefined;
+    const type = Reflect.get(error, 'type');
+    if (type === 'entity.too.large') {
+        return {
+            status: HttpStatus.PAYLOAD_TOO_LARGE,
+            error: 'JSON upload body is too large',
+        };
+    }
+    if (type === 'entity.parse.failed' || type === 'request.size.invalid') {
+        return {
+            status: HttpStatus.BAD_REQUEST,
+            error: 'JSON upload body is malformed',
+        };
+    }
+    if (type === 'charset.unsupported' || type === 'encoding.unsupported') {
+        return {
+            status: HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+            error: 'JSON upload encoding is unsupported',
+        };
+    }
+    return undefined;
+}
 
 export type WebhookRawBodyRequest = IncomingMessage & {
     originalUrl?: string;
@@ -42,7 +74,21 @@ export const dataHubJsonBodyParser: RequestHandler = (request, response, next) =
         return;
     }
     if (isFileUploadRequest(request)) {
-        base64UploadJsonBodyParser(request, response, next);
+        base64UploadJsonBodyParser(request, response, error => {
+            if (!error) {
+                next();
+                return;
+            }
+            const inputError = resolveUploadJsonParserError(error);
+            if (!inputError) {
+                next(error);
+                return;
+            }
+            response.status(inputError.status).json({
+                success: false,
+                error: inputError.error,
+            });
+        });
         return;
     }
     next();

@@ -119,6 +119,8 @@ All managed-file routes require the corresponding Data Hub file permission and u
 
 Temporary uploads expire after 1,440 minutes by default. Set `expiresInMinutes` to an integer from 1 through 14,400, or set `persistent` to `true` to omit automatic expiry. These options are mutually exclusive. Multipart values are strings, while JSON accepts the matching number and boolean types.
 
+Malformed JSON or a mismatched `Content-Length` returns 400, an upload JSON envelope above the configured request limit returns 413, and an unsupported JSON charset or content encoding returns 415. These parser failures use the same `{ success: false, error }` response shape as upload validation failures.
+
 | Route | Parameters | Result |
 |-------|------------|--------|
 | `POST /data-hub/upload` | `file` or base64 body; optional expiry policy | Stores one validated CSV, JSON, XML, TXT, XLS, or XLSX file |
