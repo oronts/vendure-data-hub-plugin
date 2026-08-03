@@ -186,10 +186,18 @@ describe('importConfigToPipelineDefinition', () => {
             fields: [
                 { key: 'connectionCode', label: 'Connection Code', type: 'string', required: true },
                 { key: 'path', label: 'Watch Path', type: 'string', required: true },
+                { key: 'pattern', label: 'File Pattern', type: 'string' },
+                { key: 'recursive', label: 'Recursive', type: 'boolean' },
+                { key: 'minFileAge', label: 'Minimum File Age', type: 'number' },
+                { key: 'pollIntervalMs', label: 'Poll Interval', type: 'number' },
             ],
             configKeyMap: {
                 connectionCode: 'fileWatch.connectionCode',
                 path: 'fileWatch.path',
+                pattern: 'fileWatch.pattern',
+                recursive: 'fileWatch.recursive',
+                minFileAge: 'fileWatch.minFileAge',
+                pollIntervalMs: 'fileWatch.pollIntervalMs',
             },
         } satisfies TypedOptionValue]],
         ['fallback', undefined],
@@ -199,6 +207,10 @@ describe('importConfigToPipelineDefinition', () => {
             type: 'FILE',
             connectionCode: 'incoming-files',
             path: '/incoming/*.csv',
+            pattern: '*.csv',
+            recursive: false,
+            minFileAge: 0,
+            pollIntervalMs: 60_000,
         };
 
         const definition = importConfigToPipelineDefinition(
@@ -213,6 +225,10 @@ describe('importConfigToPipelineDefinition', () => {
             fileWatch: {
                 connectionCode: 'incoming-files',
                 path: '/incoming/*.csv',
+                pattern: '*.csv',
+                recursive: false,
+                minFileAge: 0,
+                pollIntervalMs: 60_000,
             },
         });
         expect(Object.prototype.hasOwnProperty.call(definition.steps[0].config, 'fileWatch.connectionCode')).toBe(false);

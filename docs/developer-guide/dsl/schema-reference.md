@@ -300,11 +300,16 @@ interface WebhookTriggerConfig {
 }
 
 interface FileWatchTriggerConfig {
+    /** Remote directory for FTP/SFTP or object prefix for S3 */
     path: string;
+    /** Optional glob matched against each discovered file name */
     pattern?: string;
+    /** Include subdirectories; defaults to true */
     recursive?: boolean;
+    /** Integer seconds from 0 to 604,800; defaults to 30 */
     minFileAge?: number;
     connectionCode: string;
+    /** Integer milliseconds from 30,000 to 86,400,000; defaults to 300,000 */
     pollIntervalMs?: number;
 }
 

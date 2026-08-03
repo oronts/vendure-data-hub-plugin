@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { FILE_WATCH } from '../../constants/defaults';
 import type { JsonObject, PipelineDefinition } from '../../types';
 import type { PipelineDefinitionIssue } from '../../validation/pipeline-definition-error';
 import { validateTrigger } from './trigger-validation';
@@ -58,7 +59,9 @@ describe('file trigger source validation', () => {
 
     it.each([
         ['pollIntervalMs', 30_000.5, 'invalid-poll-interval'],
+        ['pollIntervalMs', FILE_WATCH.MAX_POLL_INTERVAL_MS + 1, 'invalid-poll-interval'],
         ['minFileAge', -1, 'invalid-min-file-age'],
+        ['minFileAge', FILE_WATCH.MAX_FILE_AGE_SEC + 1, 'invalid-min-file-age'],
         ['recursive', 'yes', 'invalid-recursive'],
     ])('rejects invalid %s values', (field, value, errorCode) => {
         expect(validateFileSource('ftp', { [field]: value })).toContain(errorCode);

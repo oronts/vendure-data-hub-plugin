@@ -108,6 +108,10 @@ export interface ImportTriggerConfig {
     schedule?: string;
     connectionCode?: string;
     path?: string;
+    pattern?: string;
+    recursive?: boolean;
+    minFileAge?: number;
+    pollIntervalMs?: number;
 }
 
 export interface QueryConfig {

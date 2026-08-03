@@ -3,6 +3,7 @@
  */
 
 import * as path from 'path';
+import { TIME_UNITS } from '../../../shared/constants';
 import { IS_BROWSER } from '../../utils/environment';
 
 const getExportRoot = (): string => {
@@ -55,8 +56,14 @@ export const FILE_WATCH = {
     MIN_POLL_INTERVAL_MS: 30_000,
     /** Default polling interval in milliseconds (5 minutes) */
     DEFAULT_POLL_INTERVAL_MS: 5 * 60 * 1000,
-    /** Default minimum file age in milliseconds (30 seconds) */
-    DEFAULT_MIN_FILE_AGE_MS: 30_000,
+    /** Maximum polling interval (24 hours) */
+    MAX_POLL_INTERVAL_MS: TIME_UNITS.DAY,
+    /** Default minimum file age in seconds */
+    DEFAULT_MIN_FILE_AGE_SEC: 30,
+    /** Minimum accepted file age in seconds */
+    MIN_FILE_AGE_SEC: 0,
+    /** Maximum accepted file age in seconds (7 days) */
+    MAX_FILE_AGE_SEC: 7 * TIME_UNITS.DAY / TIME_UNITS.SECOND,
     /** Maximum number of active file watchers */
     MAX_WATCHERS: 500,
     /** Maximum directory depth traversed by recursive FTP/SFTP discovery */

@@ -124,6 +124,42 @@ for this condition; there is no Dashboard reset control.
 The schedule handler uses timers directly. Only the run it creates is handed to
 the `data-hub.run` queue.
 
+## File Watch Triggers
+
+File watch triggers poll an FTP, SFTP, or S3 connection and seed a run with a
+reference to each eligible remote file. Connect the trigger directly to the
+matching `ftp` or `s3` extractor so the runtime can fetch that reference.
+
+```ts
+.trigger('incoming-catalog', {
+    type: 'FILE',
+    fileWatch: {
+        connectionCode: 'supplier-sftp',
+        path: '/incoming',
+        pattern: '*.csv',
+        recursive: false,
+        minFileAge: 30,
+        pollIntervalMs: 300_000,
+    },
+})
+```
+
+`path` is a remote directory for FTP/SFTP and an object prefix for S3. The
+optional `pattern` is a glob matched against the discovered file name after
+listing. `recursive` defaults to `true`. `minFileAge` is an integer number of
+seconds from `0` to `604,800` and defaults to 30; zero processes files without
+an age delay. `pollIntervalMs` is an integer from `30,000` to `86,400,000` and
+defaults to `300,000`. Invalid persisted values disable that watcher instead of
+being silently clamped.
+
+The watcher stores a cursor and pending-run state per trigger, pins the
+published revision that discovered the file, and advances only after the run
+reaches a terminal success state. Stable file identity makes restart and
+duplicate discovery idempotent for seven days. In multi-process deployments,
+configure Redis or PostgreSQL distributed locking; memory locking is safe only
+for a single process. Remote listing is bounded by directory-depth, entry, and
+page limits, so split very large roots into narrower prefixes.
+
 ## Webhook Triggers
 
 ### Configuration

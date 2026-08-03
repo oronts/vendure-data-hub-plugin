@@ -148,10 +148,22 @@ function buildFallbackTriggerConfig(
         && typeof triggerValues.connectionCode === 'string'
         && typeof triggerValues.path === 'string'
     ) {
-        config.fileWatch = {
+        const fileWatch: JsonObject = {
             connectionCode: triggerValues.connectionCode,
             path: triggerValues.path,
         };
+        for (const field of [
+            'pattern',
+            'recursive',
+            'minFileAge',
+            'pollIntervalMs',
+        ] as const) {
+            const value = triggerValues[field];
+            if (value === undefined || value === null || value === '') continue;
+            const normalized = normalizeJsonValue(value, `trigger.${field}`);
+            if (normalized !== undefined) fileWatch[field] = normalized;
+        }
+        config.fileWatch = fileWatch;
     }
     if (
         triggerType === 'EVENT'

@@ -57,7 +57,7 @@ describe('file watcher configuration', () => {
         }]);
     });
 
-    it('normalizes limits and file-age units into a runtime config', () => {
+    it('preserves valid limits and file-age units in a runtime config', () => {
         const warn = vi.fn();
         const result = buildFileWatcherConfig(
             '7',
@@ -68,7 +68,7 @@ describe('file watcher configuration', () => {
                 connectionCode: 'warehouse-s3',
                 path: '/incoming',
                 pattern: '*.csv',
-                pollIntervalMs: FILE_WATCH.MIN_POLL_INTERVAL_MS - 1,
+                pollIntervalMs: FILE_WATCH.MIN_POLL_INTERVAL_MS,
                 minFileAge: 45,
                 recursive: false,
             },
@@ -89,6 +89,59 @@ describe('file watcher configuration', () => {
             autoStart: true,
         });
         expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('preserves an explicit zero minimum file age', () => {
+        const warn = vi.fn();
+        const result = buildFileWatcherConfig(
+            '7',
+            'catalog-import',
+            '11',
+            'incoming-file',
+            {
+                connectionCode: 'warehouse-s3',
+                path: '/incoming',
+                minFileAge: 0,
+            },
+            warn,
+        );
+
+        expect(result?.minFileAge).toBe(0);
+        expect(warn).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        [
+            { pollIntervalMs: FILE_WATCH.MIN_POLL_INTERVAL_MS - 1 },
+            'pollIntervalMs',
+        ],
+        [
+            { pollIntervalMs: FILE_WATCH.MAX_POLL_INTERVAL_MS + 1 },
+            'pollIntervalMs',
+        ],
+        [
+            { minFileAge: FILE_WATCH.MAX_FILE_AGE_SEC + 1 },
+            'minFileAge',
+        ],
+        [{ recursive: 'yes' }, 'recursive'],
+        [{ pattern: '' }, 'pattern'],
+    ])('rejects invalid runtime config %j', (overrides, expectedField) => {
+        const warn = vi.fn();
+        const result = buildFileWatcherConfig(
+            '7',
+            'catalog-import',
+            '11',
+            'incoming-file',
+            {
+                connectionCode: 'warehouse-s3',
+                path: '/incoming',
+                ...overrides,
+            } as never,
+            warn,
+        );
+
+        expect(result).toBeNull();
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining(expectedField));
     });
 
     it('rejects incomplete source configuration with an actionable warning', () => {

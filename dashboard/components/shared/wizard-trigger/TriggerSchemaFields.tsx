@@ -135,6 +135,8 @@ export function TriggerSchemaFields({ fields, values, onChange, optionSources }:
                                 id={inputId}
                                 type="number"
                                 value={numValue}
+                                min={field.min ?? undefined}
+                                max={field.max ?? undefined}
                                 onChange={(e) => {
                                     const parsed = Number(e.target.value);
                                     onChange(field.key, Number.isFinite(parsed) ? parsed : field.defaultValue ?? 0);

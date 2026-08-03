@@ -2,6 +2,7 @@ import { AckMode, TriggerType } from './enums';
 import type { OptionValue, TypedOptionValue } from './enum-metadata';
 import { GATE_LIMITS } from './defaults/core-defaults';
 import { QUEUE } from './defaults/runtime-defaults';
+import { FILE_WATCH } from './defaults/storage-defaults';
 import { DEFAULT_WEBHOOK_CONFIG } from './trigger-adapters';
 
 // ---------------------------------------------------------------------------
@@ -169,9 +170,20 @@ export const TRIGGER_TYPE_SCHEMAS: TypedOptionValue[] = [
         icon: 'folder-open',
         fields: [
             { key: 'connectionCode', label: 'Connection Code', type: 'connection', required: true, placeholder: 'my-sftp-connection' },
-            { key: 'path', label: 'Watch Path', type: 'string', required: true, placeholder: '/incoming/*.csv', description: 'Glob patterns supported (e.g., *.csv, **/*.json)' },
+            { key: 'path', label: 'Watch Path', type: 'string', required: true, placeholder: '/incoming', description: 'Remote directory for FTP/SFTP or object prefix for S3' },
+            { key: 'pattern', label: 'File Pattern', type: 'string', placeholder: '*.csv', description: 'Optional glob matched against each discovered file name' },
+            { key: 'recursive', label: 'Include Subdirectories', type: 'boolean', defaultValue: true },
+            { key: 'minFileAge', label: 'Minimum File Age (seconds)', type: 'number', defaultValue: FILE_WATCH.DEFAULT_MIN_FILE_AGE_SEC, min: FILE_WATCH.MIN_FILE_AGE_SEC, max: FILE_WATCH.MAX_FILE_AGE_SEC, description: 'Wait before processing a newly modified file' },
+            { key: 'pollIntervalMs', label: 'Poll Interval (ms)', type: 'number', defaultValue: FILE_WATCH.DEFAULT_POLL_INTERVAL_MS, min: FILE_WATCH.MIN_POLL_INTERVAL_MS, max: FILE_WATCH.MAX_POLL_INTERVAL_MS, description: 'Delay between remote source polls' },
         ],
-        configKeyMap: { connectionCode: 'fileWatch.connectionCode', path: 'fileWatch.path' },
+        configKeyMap: {
+            connectionCode: 'fileWatch.connectionCode',
+            path: 'fileWatch.path',
+            pattern: 'fileWatch.pattern',
+            recursive: 'fileWatch.recursive',
+            minFileAge: 'fileWatch.minFileAge',
+            pollIntervalMs: 'fileWatch.pollIntervalMs',
+        },
         wizardScopes: ['import'],
     },
     {
@@ -317,4 +329,3 @@ export const CRON_PRESETS: OptionValue[] = [
 export const ACK_MODE_OPTIONS: OptionValue[] = [
     { value: AckMode.MANUAL, label: 'Manual', description: 'Acknowledge only after the correlated pipeline run completes successfully' },
 ];
-

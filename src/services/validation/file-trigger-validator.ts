@@ -94,11 +94,16 @@ function validatePollInterval(
 ): void {
     const value = config.pollIntervalMs;
     if (value === undefined) return;
-    if (!Number.isSafeInteger(value) || Number(value) < FILE_WATCH.MIN_POLL_INTERVAL_MS) {
+    if (
+        typeof value !== 'number'
+        || !Number.isSafeInteger(value)
+        || value < FILE_WATCH.MIN_POLL_INTERVAL_MS
+        || value > FILE_WATCH.MAX_POLL_INTERVAL_MS
+    ) {
         addTriggerIssue(
             issues,
             stepKey,
-            `pollIntervalMs must be an integer of at least ${FILE_WATCH.MIN_POLL_INTERVAL_MS}`,
+            `pollIntervalMs must be an integer from ${FILE_WATCH.MIN_POLL_INTERVAL_MS} to ${FILE_WATCH.MAX_POLL_INTERVAL_MS}`,
             'invalid-poll-interval',
             'pollIntervalMs',
         );
@@ -112,11 +117,16 @@ function validateMinFileAge(
 ): void {
     const value = config.minFileAge;
     if (value === undefined) return;
-    if (!Number.isSafeInteger(value) || Number(value) < 0) {
+    if (
+        typeof value !== 'number'
+        || !Number.isSafeInteger(value)
+        || value < FILE_WATCH.MIN_FILE_AGE_SEC
+        || value > FILE_WATCH.MAX_FILE_AGE_SEC
+    ) {
         addTriggerIssue(
             issues,
             stepKey,
-            'minFileAge must be a non-negative integer number of seconds',
+            `minFileAge must be an integer from ${FILE_WATCH.MIN_FILE_AGE_SEC} to ${FILE_WATCH.MAX_FILE_AGE_SEC} seconds`,
             'invalid-min-file-age',
             'minFileAge',
         );

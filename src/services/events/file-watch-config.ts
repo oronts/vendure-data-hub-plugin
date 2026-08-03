@@ -7,6 +7,17 @@ import type {
     TriggerConfig,
 } from '../../types';
 
+function isBoundedInteger(
+    value: unknown,
+    minimum: number,
+    maximum: number,
+): value is number {
+    return typeof value === 'number'
+        && Number.isSafeInteger(value)
+        && value >= minimum
+        && value <= maximum;
+}
+
 export interface FileWatcherConfig {
     pipelineId: string;
     pipelineCode: string;
@@ -59,12 +70,58 @@ export function buildFileWatcherConfig(
     config: FileWatchTriggerConfig,
     warn: (message: string) => void,
 ): FileWatcherConfig | null {
-    if (!config.path) {
+    if (typeof config.path !== 'string' || config.path.trim().length === 0) {
         warn(`FILE trigger missing path for pipeline ${pipelineCode}`);
         return null;
     }
-    if (!config.connectionCode) {
+    if (
+        typeof config.connectionCode !== 'string'
+        || config.connectionCode.trim().length === 0
+    ) {
         warn(`FILE trigger missing connectionCode for pipeline ${pipelineCode}`);
+        return null;
+    }
+    if (
+        config.pattern !== undefined
+        && (
+            typeof config.pattern !== 'string'
+            || config.pattern.trim().length === 0
+        )
+    ) {
+        warn(`FILE trigger pattern must be a non-empty string for pipeline ${pipelineCode}`);
+        return null;
+    }
+    if (
+        config.recursive !== undefined
+        && typeof config.recursive !== 'boolean'
+    ) {
+        warn(`FILE trigger recursive must be a boolean for pipeline ${pipelineCode}`);
+        return null;
+    }
+
+    const pollIntervalMs = config.pollIntervalMs
+        ?? FILE_WATCH.DEFAULT_POLL_INTERVAL_MS;
+    if (!isBoundedInteger(
+        pollIntervalMs,
+        FILE_WATCH.MIN_POLL_INTERVAL_MS,
+        FILE_WATCH.MAX_POLL_INTERVAL_MS,
+    )) {
+        warn(
+            `FILE trigger pollIntervalMs must be an integer from ${FILE_WATCH.MIN_POLL_INTERVAL_MS} to ${FILE_WATCH.MAX_POLL_INTERVAL_MS} for pipeline ${pipelineCode}`,
+        );
+        return null;
+    }
+
+    const minFileAgeSec = config.minFileAge
+        ?? FILE_WATCH.DEFAULT_MIN_FILE_AGE_SEC;
+    if (!isBoundedInteger(
+        minFileAgeSec,
+        FILE_WATCH.MIN_FILE_AGE_SEC,
+        FILE_WATCH.MAX_FILE_AGE_SEC,
+    )) {
+        warn(
+            `FILE trigger minFileAge must be an integer from ${FILE_WATCH.MIN_FILE_AGE_SEC} to ${FILE_WATCH.MAX_FILE_AGE_SEC} seconds for pipeline ${pipelineCode}`,
+        );
         return null;
     }
 
@@ -76,13 +133,8 @@ export function buildFileWatcherConfig(
         connectionCode: config.connectionCode,
         path: config.path,
         pattern: config.pattern,
-        pollIntervalMs: Math.max(
-            config.pollIntervalMs ?? FILE_WATCH.DEFAULT_POLL_INTERVAL_MS,
-            FILE_WATCH.MIN_POLL_INTERVAL_MS,
-        ),
-        minFileAge: config.minFileAge
-            ? config.minFileAge * TIME_UNITS.SECOND
-            : FILE_WATCH.DEFAULT_MIN_FILE_AGE_MS,
+        pollIntervalMs,
+        minFileAge: minFileAgeSec * TIME_UNITS.SECOND,
         recursive: config.recursive ?? true,
         autoStart: true,
     };

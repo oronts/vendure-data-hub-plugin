@@ -1,4 +1,4 @@
-import { createElement, type ReactNode } from 'react';
+import { createElement, type ComponentPropsWithoutRef, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { TriggerSchemaFields } from './TriggerSchemaFields';
@@ -13,7 +13,7 @@ vi.mock('../ResourceReferenceSelector', () => ({
 }));
 
 vi.mock('@vendure/dashboard', () => ({
-    Input: () => createElement('input'),
+    Input: (props: ComponentPropsWithoutRef<'input'>) => createElement('input', props),
     Label: ({ children }: { children?: ReactNode }) => createElement('label', null, children),
     Switch: () => createElement('input', { type: 'checkbox' }),
     Select: ({ children }: { children?: ReactNode }) => createElement('div', { 'data-select': true }, children),
@@ -72,5 +72,26 @@ describe('TriggerSchemaFields', () => {
 
         expect(markup).toContain('data-select="true"');
         expect(markup).toContain('Redis Streams');
+    });
+
+    it('applies numeric bounds from dynamic metadata', () => {
+        const markup = renderToStaticMarkup(
+            <TriggerSchemaFields
+                fields={[{
+                    key: 'pollIntervalMs',
+                    label: 'Poll interval',
+                    type: 'number',
+                    defaultValue: 300_000,
+                    min: 30_000,
+                    max: 86_400_000,
+                }]}
+                values={{}}
+                onChange={vi.fn()}
+            />,
+        );
+
+        expect(markup).toContain('type="number"');
+        expect(markup).toContain('min="30000"');
+        expect(markup).toContain('max="86400000"');
     });
 });
