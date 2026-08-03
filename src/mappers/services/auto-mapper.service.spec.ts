@@ -1,6 +1,26 @@
 import { describe, expect, it } from 'vitest';
 import { AutoMapperService } from './auto-mapper.service';
 import { DEFAULT_AUTO_MAPPER_CONFIG } from '../types/auto-mapper-config.types';
+import type { LoaderRegistryService } from '../../loaders/registry';
+import type { SourceFieldAnalysis } from '../types/mapping-types';
+
+const SOURCE_FIELD: SourceFieldAnalysis = {
+    name: 'vendor_reference',
+    detectedType: 'string',
+    sampleValues: ['SKU-1'],
+    nullRatio: 0,
+    uniqueRatio: 1,
+};
+
+function createService(): AutoMapperService {
+    const registry = {
+        getFieldSchema: () => ({
+            entityType: 'PRODUCT',
+            fields: [{ key: 'sku', label: 'SKU', type: 'string' }],
+        }),
+    } as unknown as LoaderRegistryService;
+    return new AutoMapperService(registry);
+}
 
 describe('AutoMapperService configuration', () => {
     it('does not expose mutable internal configuration', () => {
@@ -62,5 +82,36 @@ describe('AutoMapperService configuration', () => {
         expect(config).toEqual(DEFAULT_AUTO_MAPPER_CONFIG);
         expect(config).not.toBe(DEFAULT_AUTO_MAPPER_CONFIG);
         expect(config.weights).not.toBe(DEFAULT_AUTO_MAPPER_CONFIG.weights);
+    });
+
+    it('uses custom aliases from a per-call configuration override', () => {
+        const suggestions = createService().suggestMappings(
+            [SOURCE_FIELD],
+            'PRODUCT',
+            {},
+            {
+                customAliases: { sku: ['vendor_reference'] },
+            },
+        );
+
+        expect(suggestions).toMatchObject([{
+            source: 'vendor_reference',
+            target: 'sku',
+            reason: expect.stringContaining('Known alias match'),
+        }]);
+    });
+
+    it('does not persist per-call aliases into later suggestions', () => {
+        const service = createService();
+        service.suggestMappings(
+            [SOURCE_FIELD],
+            'PRODUCT',
+            {},
+            {
+                customAliases: { sku: ['vendor_reference'] },
+            },
+        );
+
+        expect(service.suggestMappings([SOURCE_FIELD], 'PRODUCT')).toEqual([]);
     });
 });

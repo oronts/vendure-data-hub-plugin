@@ -62,14 +62,18 @@ Common option behavior is explicit:
 - value maps only match their own keys, and lookup tables use each transform's
   `fromField` and `toField`.
 
-Register lookup data on the mapper instance that will execute the mapping:
+Pass lookup data with the mapping execution. Tables are indexed once for a
+batch and never stored on the injected service, so concurrent pipelines and
+channels cannot replace each other's lookup state:
 
 ```typescript
-mapper.registerMapperLookupTable({
-    name: 'categories',
-    data: [
-        { externalCode: 'hardware', vendureCode: 'tools' },
-    ],
+const result = mapper.mapRecord(source, mappings, {
+    lookupTables: [{
+        name: 'categories',
+        data: [
+            { externalCode: 'hardware', vendureCode: 'tools' },
+        ],
+    }],
 });
 ```
 
@@ -102,7 +106,11 @@ export class CatalogIntegrationPlugin {}
 `AutoMapperService.getConfig()` returns a detached configuration object.
 `setConfig()` also copies nested caller values and rejects invalid confidence
 thresholds, weights, aliases, or excluded fields before changing the active
-configuration.
+configuration. Vendure injects AutoMapper as a transient provider, so each
+consumer receives isolated service configuration. For concurrent jobs within
+one consumer, pass the fourth `suggestMappings()` argument; per-call overrides
+are validated, executed by call-local alias/fuzzy strategies, and never
+persisted.
 
 ## Date Formats
 

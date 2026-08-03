@@ -1,4 +1,4 @@
-import { Injectable, Optional } from '@nestjs/common';
+import { Injectable, Optional, Scope } from '@nestjs/common';
 import { JsonValue, EntityFieldSchema, VendureEntityType } from '../../types/index';
 import { RecordObject } from '../../runtime/executor-types';
 import { MapperFieldMapping } from './field-mapper.service';
@@ -64,25 +64,16 @@ function assertValidConfig(config: AutoMapperConfig): void {
     }
 }
 
-@Injectable()
+@Injectable({ scope: Scope.TRANSIENT })
 export class AutoMapperService {
     /** Current configuration (defaults applied) */
     private config: AutoMapperConfig = cloneConfig(DEFAULT_AUTO_MAPPER_CONFIG);
 
     /** Matching strategies */
-    private exactMatchStrategy = new ExactMatchStrategy();
-    private normalizedMatchStrategy = new NormalizedMatchStrategy();
-    private partialMatchStrategy = new PartialMatchStrategy();
-    private fuzzyMatchStrategy: FuzzyMatchStrategy;
-    private aliasMatchStrategy: AliasMatchStrategy;
-
-    constructor(@Optional() private loaderRegistry?: LoaderRegistryService) {
-        this.fuzzyMatchStrategy = new FuzzyMatchStrategy(this.config.enableFuzzyMatching);
-        this.aliasMatchStrategy = new AliasMatchStrategy(
-            this.config.customAliases,
-            this.config.caseSensitive,
-        );
-    }
+    private readonly exactMatchStrategy = new ExactMatchStrategy();
+    private readonly normalizedMatchStrategy = new NormalizedMatchStrategy();
+    private readonly partialMatchStrategy = new PartialMatchStrategy();
+    constructor(@Optional() private loaderRegistry?: LoaderRegistryService) {}
 
     /**
      * Get entity schema from LoaderRegistry
@@ -106,7 +97,6 @@ export class AutoMapperService {
         const nextConfig = this.mergeConfig(this.config, config);
         assertValidConfig(nextConfig);
         this.config = nextConfig;
-        this.updateStrategies();
     }
 
     /**
@@ -114,18 +104,6 @@ export class AutoMapperService {
      */
     resetConfig(): void {
         this.config = cloneConfig(DEFAULT_AUTO_MAPPER_CONFIG);
-        this.updateStrategies();
-    }
-
-    /**
-     * Update strategies when config changes
-     */
-    private updateStrategies(): void {
-        this.fuzzyMatchStrategy.setEnabled(this.config.enableFuzzyMatching);
-        this.aliasMatchStrategy = new AliasMatchStrategy(
-            this.config.customAliases,
-            this.config.caseSensitive,
-        );
     }
 
     /**
@@ -479,13 +457,13 @@ export class AutoMapperService {
         const strategies = [
             this.exactMatchStrategy,
             this.normalizedMatchStrategy,
-            this.aliasMatchStrategy,
+            new AliasMatchStrategy(config.customAliases, config.caseSensitive),
             this.partialMatchStrategy,
         ];
 
         // Add fuzzy strategy if enabled
         if (config.enableFuzzyMatching) {
-            strategies.push(this.fuzzyMatchStrategy);
+            strategies.push(new FuzzyMatchStrategy(true));
         }
 
         for (const strategy of strategies) {

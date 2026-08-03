@@ -380,6 +380,7 @@ export type {
     MapperMappingResult,
     MapperMappingError,
     MapperLookupTable,
+    MapperExecutionOptions,
     AutoMapperConfig,
     AutoMapperConfigInput,
     AutoMapperConfigValidation,

@@ -132,6 +132,7 @@ import {
 } from '${packageName}';
 import type {
     DataHubPluginOptions,
+    MapperExecutionOptions,
     MapperFieldMapping,
 } from '${packageName}';
 import {
@@ -148,7 +149,10 @@ const pipelineFactory: typeof createPipeline = createSdkPipeline;
 const adapters: readonly QueueAdapter[] = queueAdapterRegistry.getAll();
 const mapper = new FieldMapperService();
 const mapperFields: MapperFieldMapping[] = [{ source: 'sku', target: 'code' }];
-const mapped = mapper.mapRecord({ sku: 'SKU-1' }, mapperFields);
+const mapperOptions: MapperExecutionOptions = {
+    lookupTables: [],
+};
+const mapped = mapper.mapRecord({ sku: 'SKU-1' }, mapperFields, mapperOptions);
 const autoMapper = new AutoMapperService();
 autoMapper.setConfig({ confidenceThreshold: 0.8 });
 const pimcore = PimcoreConnector({ connectionCode: 'pimcore-graphql' });

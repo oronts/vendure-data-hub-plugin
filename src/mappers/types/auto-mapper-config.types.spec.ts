@@ -39,4 +39,23 @@ describe('validateAutoMapperConfig', () => {
             'excludeFields must contain valid field-name strings',
         ]));
     });
+
+    it('rejects untyped booleans and padded field names', () => {
+        const result = validateAutoMapperConfig({
+            enableFuzzyMatching: 'yes',
+            enableTypeInference: 1,
+            caseSensitive: null,
+            customAliases: { ' sku ': ['external_sku'] },
+            excludeFields: [' internalNotes'],
+        } as never);
+
+        expect(result.valid).toBe(false);
+        expect(result.errors).toEqual(expect.arrayContaining([
+            'enableFuzzyMatching must be a boolean',
+            'enableTypeInference must be a boolean',
+            'caseSensitive must be a boolean',
+            'customAliases contains an invalid canonical field name:  sku ',
+            'excludeFields must contain valid field-name strings',
+        ]));
+    });
 });

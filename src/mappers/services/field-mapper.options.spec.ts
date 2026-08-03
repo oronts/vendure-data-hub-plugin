@@ -97,10 +97,6 @@ describe('FieldMapperService transform options', () => {
 
     it('uses the lookup fallback when the matched row has no output field', () => {
         const mapper = new FieldMapperService();
-        mapper.registerMapperLookupTable({
-            name: 'categories',
-            data: [{ code: 'hardware' }],
-        });
 
         const result = mapper.mapRecord(
             { category: 'hardware' },
@@ -117,6 +113,91 @@ describe('FieldMapperService transform options', () => {
                     },
                 }],
             }],
+            {
+                lookupTables: [{
+                    name: 'categories',
+                    data: [{ code: 'hardware' }],
+                }],
+            },
+        );
+
+        expect(result.data).toEqual({ categoryName: 'Unknown' });
+    });
+
+    it('isolates lookup tables per mapping execution', () => {
+        const mapper = new FieldMapperService();
+        const mappings = [{
+            source: 'category',
+            target: 'categoryName',
+            transforms: [{
+                type: 'lookup' as const,
+                lookup: {
+                    table: 'categories',
+                    fromField: 'code',
+                    toField: 'name',
+                },
+            }],
+        }];
+
+        const first = mapper.mapRecord(
+            { category: 'hardware' },
+            mappings,
+            {
+                lookupTables: [{
+                    name: 'categories',
+                    data: [{ code: 'hardware', name: 'Tools' }],
+                }],
+            },
+        );
+        const second = mapper.mapRecord(
+            { category: 'hardware' },
+            mappings,
+            {
+                lookupTables: [{
+                    name: 'categories',
+                    data: [{ code: 'hardware', name: 'Equipment' }],
+                }],
+            },
+        );
+
+        expect(first.data).toEqual({ categoryName: 'Tools' });
+        expect(second.data).toEqual({ categoryName: 'Equipment' });
+    });
+
+    it('rejects ambiguous lookup table names', () => {
+        const mapper = new FieldMapperService();
+        const tables = [
+            { name: 'categories', data: [] },
+            { name: 'categories', data: [] },
+        ];
+
+        expect(() => mapper.mapRecord({}, [], { lookupTables: tables }))
+            .toThrow('Duplicate lookup table name: categories');
+    });
+
+    it('does not resolve inherited lookup-table fields', () => {
+        const mapper = new FieldMapperService();
+        const result = mapper.mapRecord(
+            { category: 'hardware' },
+            [{
+                source: 'category',
+                target: 'categoryName',
+                transforms: [{
+                    type: 'lookup',
+                    lookup: {
+                        table: 'categories',
+                        fromField: 'code',
+                        toField: 'toString',
+                        default: 'Unknown',
+                    },
+                }],
+            }],
+            {
+                lookupTables: [{
+                    name: 'categories',
+                    data: [{ code: 'hardware' }],
+                }],
+            },
         );
 
         expect(result.data).toEqual({ categoryName: 'Unknown' });

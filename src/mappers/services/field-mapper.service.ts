@@ -37,6 +37,10 @@ export type {
     MapperLookupTable,
 };
 
+export interface MapperExecutionOptions {
+    readonly lookupTables?: readonly MapperLookupTable[];
+}
+
 /** Handler signature for mapper transform operations */
 type MapperTransformHandler = (value: JsonValue, config: MapperTransformConfig, record: RecordObject) => JsonValue;
 
@@ -45,7 +49,6 @@ const MAX_LOOKUP_TABLES = 200;
 
 @Injectable()
 export class FieldMapperService {
-    private lookupTables = new Map<string, MapperLookupTable>();
     private readonly transformHandlers: Map<MapperTransformType, MapperTransformHandler>;
 
     constructor() {
@@ -54,8 +57,6 @@ export class FieldMapperService {
         this.transformHandlers = new Map<MapperTransformType, MapperTransformHandler>([
             ['template', (value, config, record) =>
                 applyTemplateTransform(value, config.template ?? '', record, boundGetNestedValue)],
-            ['lookup', (value, config) =>
-                config.lookup ? this.applyLookupTransform(value, config.lookup) : value],
             ['convert', (value, config) =>
                 config.convert ? applyConvertTransform(value, config.convert) : value],
             ['split', (value, config) =>
@@ -90,28 +91,24 @@ export class FieldMapperService {
     }
 
     /**
-     * Register a lookup table for use in transformations
-     */
-    registerMapperLookupTable(table: MapperLookupTable): void {
-        if (!this.lookupTables.has(table.name) && this.lookupTables.size >= MAX_LOOKUP_TABLES) {
-            throw new Error(`Lookup table registry is full (max ${MAX_LOOKUP_TABLES}). Clear existing tables before registering new ones.`);
-        }
-        this.lookupTables.set(table.name, table);
-    }
-
-    /**
-     * Clear all registered lookup tables
-     */
-    clearMapperLookupTables(): void {
-        this.lookupTables.clear();
-    }
-
-    /**
      * Map a single record using the provided field mappings
      */
     mapRecord(
         source: RecordObject,
         mappings: MapperFieldMapping[],
+        options: MapperExecutionOptions = {},
+    ): MapperMappingResult {
+        return this.mapRecordWithLookupTables(
+            source,
+            mappings,
+            this.createLookupTableMap(options.lookupTables),
+        );
+    }
+
+    private mapRecordWithLookupTables(
+        source: RecordObject,
+        mappings: MapperFieldMapping[],
+        lookupTables: ReadonlyMap<string, MapperLookupTable>,
     ): MapperMappingResult {
         const errors: MapperMappingError[] = [];
         const warnings: string[] = [];
@@ -136,7 +133,12 @@ export class FieldMapperService {
                 if (mapping.transforms?.length && !isEmpty(value) && value !== undefined) {
                     for (const transform of mapping.transforms) {
                         try {
-                            value = this.applyTransform(value, transform, source);
+                            value = this.applyTransform(
+                                value,
+                                transform,
+                                source,
+                                lookupTables,
+                            );
                         } catch (err) {
                             errors.push({
                                 field: mapping.source,
@@ -172,8 +174,14 @@ export class FieldMapperService {
     mapRecords(
         sources: RecordObject[],
         mappings: MapperFieldMapping[],
+        options: MapperExecutionOptions = {},
     ): { results: MapperMappingResult[]; summary: { total: number; success: number; failed: number } } {
-        const results = sources.map(source => this.mapRecord(source, mappings));
+        const lookupTables = this.createLookupTableMap(options.lookupTables);
+        const results = sources.map(source => this.mapRecordWithLookupTables(
+            source,
+            mappings,
+            lookupTables,
+        ));
         const success = results.filter(r => r.success).length;
 
         return {
@@ -193,7 +201,13 @@ export class FieldMapperService {
         value: JsonValue,
         config: MapperTransformConfig,
         record: RecordObject,
+        lookupTables: ReadonlyMap<string, MapperLookupTable>,
     ): JsonValue {
+        if (config.type === 'lookup') {
+            return config.lookup
+                ? this.applyLookupTransform(value, config.lookup, lookupTables)
+                : value;
+        }
         const handler = this.transformHandlers.get(config.type);
         return handler ? handler(value, config, record) : value;
     }
@@ -201,18 +215,44 @@ export class FieldMapperService {
     private applyLookupTransform(
         value: JsonValue,
         config: NonNullable<MapperTransformConfig['lookup']>,
+        lookupTables: ReadonlyMap<string, MapperLookupTable>,
     ): JsonValue {
-        const table = this.lookupTables.get(config.table);
+        const table = lookupTables.get(config.table);
         if (!table) {
             return config.default ?? value;
         }
 
-        const found = table.data.find(row => row[config.fromField] === value);
-        if (found) {
+        const found = table.data.find(row => (
+            Object.prototype.hasOwnProperty.call(row, config.fromField)
+            && row[config.fromField] === value
+        ));
+        if (
+            found
+            && Object.prototype.hasOwnProperty.call(found, config.toField)
+        ) {
             return found[config.toField] ?? config.default ?? value;
         }
 
         return config.default ?? value;
+    }
+
+    private createLookupTableMap(
+        tables: readonly MapperLookupTable[] = [],
+    ): ReadonlyMap<string, MapperLookupTable> {
+        if (tables.length > MAX_LOOKUP_TABLES) {
+            throw new Error(`Lookup table count exceeds the maximum of ${MAX_LOOKUP_TABLES}`);
+        }
+        const lookupTables = new Map<string, MapperLookupTable>();
+        for (const table of tables) {
+            if (!table.name || table.name !== table.name.trim()) {
+                throw new Error('Lookup table names must be non-empty and trimmed');
+            }
+            if (lookupTables.has(table.name)) {
+                throw new Error(`Duplicate lookup table name: ${table.name}`);
+            }
+            lookupTables.set(table.name, table);
+        }
+        return lookupTables;
     }
 
     /**

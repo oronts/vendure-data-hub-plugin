@@ -97,6 +97,17 @@ export function validateAutoMapperConfig(config: Partial<AutoMapperConfigInput>)
     const errors: string[] = [];
     const warnings: string[] = [];
 
+    for (const field of [
+        'enableFuzzyMatching',
+        'enableTypeInference',
+        'caseSensitive',
+    ] as const) {
+        const value = config[field];
+        if (value !== undefined && typeof value !== 'boolean') {
+            errors.push(`${field} must be a boolean`);
+        }
+    }
+
     if (config.confidenceThreshold !== undefined) {
         if (!Number.isFinite(config.confidenceThreshold)
             || config.confidenceThreshold < 0
@@ -186,5 +197,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isValidFieldName(value: string): boolean {
     const length = value.trim().length;
-    return length > 0 && length <= TRUNCATION.MAX_AUTOMAPPER_FIELD_NAME_LENGTH;
+    return value === value.trim()
+        && length > 0
+        && length <= TRUNCATION.MAX_AUTOMAPPER_FIELD_NAME_LENGTH;
 }
