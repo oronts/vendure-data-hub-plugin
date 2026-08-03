@@ -64,7 +64,6 @@ export interface MapperTransformConfig {
     date?: {
         inputFormat?: string;
         outputFormat?: string;
-        timezone?: string;
     };
     replace?: {
         search: string;

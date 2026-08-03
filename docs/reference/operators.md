@@ -687,6 +687,10 @@ Format a date to a string.
 | `format` | string | Yes | Output format (e.g., `YYYY-MM-DD`) |
 | `inputFormat` | string | No | Input format if source is string |
 
+Custom formats use the exact UTC tokens `YYYY`, `MM`, `DD`, `HH`, `mm`, and
+`ss` and are limited to 128 characters. Separators must match and impossible
+calendar or clock values leave the target unchanged.
+
 ```typescript
 { op: 'dateFormat', args: { source: 'createdAt', target: 'dateStr', format: 'YYYY-MM-DD' } }
 { op: 'dateFormat', args: { source: 'timestamp', target: 'formatted', format: 'DD/MM/YYYY HH:mm' } }
@@ -701,6 +705,9 @@ Parse a string to a date.
 | `source` | string | Yes | Source field path |
 | `target` | string | Yes | Target field path |
 | `format` | string | Yes | Input format |
+
+The input format uses the same exact UTC token contract and 128-character
+limit. Invalid dates leave the target unchanged.
 
 ```typescript
 { op: 'dateParse', args: { source: 'dateStr', target: 'date', format: 'MM/DD/YYYY' } }

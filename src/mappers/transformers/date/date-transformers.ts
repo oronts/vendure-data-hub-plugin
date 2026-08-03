@@ -4,10 +4,10 @@
 
 import { JsonValue } from '../../../types/index';
 import { MapperTransformConfig } from '../../types/transform-config.types';
-import { formatDate as formatDateCanonical } from '../../../transforms/field/date-transforms';
-import { ISO_DATE_PATTERN } from '../../constants';
-
-export const formatDate = formatDateCanonical;
+import {
+    formatDate,
+    parseDateWithFormat,
+} from '../../../utils/date-format.utils';
 
 /**
  * Apply date transform
@@ -16,20 +16,24 @@ export function applyDateTransform(
     value: JsonValue,
     config: NonNullable<MapperTransformConfig['date']>,
 ): JsonValue {
-    let date: Date;
+    let date: Date | null;
 
     if (value instanceof Date) {
-        date = value;
+        date = Number.isNaN(value.getTime()) ? null : value;
     } else if (typeof value === 'string') {
-        // Try parsing with input format or auto-detect
-        date = new Date(value);
+        date = config.inputFormat
+            ? parseDateWithFormat(value, config.inputFormat)
+            : parseDate(value);
     } else if (typeof value === 'number') {
-        date = new Date(value);
+        date = parseDate(value);
     } else {
         return value;
     }
 
-    if (isNaN(date.getTime())) {
+    if (!date) {
+        if (config.inputFormat) {
+            throw new Error('Date value does not match the configured input format');
+        }
         return value;
     }
 
@@ -43,33 +47,7 @@ export function applyDateTransform(
 /**
  * Parse a date string to Date object
  */
-export function parseDate(value: string | number): Date | null {
+function parseDate(value: string | number): Date | null {
     const date = new Date(value);
     return isNaN(date.getTime()) ? null : date;
-}
-
-/**
- * Check if a value is a valid date string
- * Uses centralized ISO_DATE_PATTERN from constants
- */
-export function isDateString(value: string): boolean {
-    if (!ISO_DATE_PATTERN.test(value)) {
-        return false;
-    }
-    const date = new Date(value);
-    return !isNaN(date.getTime());
-}
-
-/**
- * Convert date to ISO string
- */
-export function toISOString(date: Date): string {
-    return date.toISOString();
-}
-
-/**
- * Get current timestamp
- */
-export function now(): Date {
-    return new Date();
 }

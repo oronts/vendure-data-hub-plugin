@@ -367,7 +367,27 @@ export {
     getRegistrySummary,
 } from './adapters/registry';
 
-export { FieldMapperService, AutoMapperService } from './mappers';
+export {
+    FieldMapperService,
+    AutoMapperService,
+    DEFAULT_AUTO_MAPPER_CONFIG,
+    validateAutoMapperConfig,
+} from './mappers';
+export type {
+    MapperTransformType,
+    MapperTransformConfig,
+    MapperFieldMapping,
+    MapperMappingResult,
+    MapperMappingError,
+    MapperLookupTable,
+    AutoMapperConfig,
+    AutoMapperConfigInput,
+    AutoMapperConfigValidation,
+    MatchConfidence,
+    MappingSuggestion,
+    SourceFieldAnalysis,
+    SuggestMappingsOptions,
+} from './mappers';
 
 export { FileParserService, registerParser } from './parsers/file-parser.service';
 export type { FormatParserFn } from './parsers/file-parser.service';

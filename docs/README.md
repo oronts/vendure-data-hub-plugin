@@ -55,6 +55,7 @@ For developers who want to use the code-first DSL or extend the plugin.
   - [Operators](./developer-guide/dsl/operators.md)
   - [Examples](./developer-guide/dsl/examples.md)
 - [Testing Guide](./developer-guide/testing.md) - Unit, integration, and E2E testing
+- [Programmatic Field Mapping](./developer-guide/field-mapping.md) - Typed mapping services for custom plugins
 - [Extending the Plugin](./developer-guide/extending/README.md)
   - [Custom Extractors](./developer-guide/extending/custom-extractors.md)
   - [Custom Loaders](./developer-guide/extending/custom-loaders.md)
@@ -99,6 +100,7 @@ Complete reference documentation for all adapters and operators.
 | Use code-first DSL | [Pipeline Builder](./developer-guide/dsl/pipeline-builder.md) |
 | DSL type reference | [Schema Reference](./developer-guide/dsl/schema-reference.md) |
 | Test your pipelines | [Testing Guide](./developer-guide/testing.md) |
+| Map records in a custom plugin | [Programmatic Field Mapping](./developer-guide/field-mapping.md) |
 | Create custom extractor | [Custom Extractors](./developer-guide/extending/custom-extractors.md) |
 | Register pipeline hooks | [Configuration](./deployment/configuration.md#scripts) |
 | Add custom templates | [Extending](./developer-guide/extending/README.md#template-registration) |

@@ -17,14 +17,15 @@ This guide covers the code-first DSL, architecture, and extending the Data Hub p
    - [Operators](./dsl/operators.md) - All transform operators
    - [Examples](./dsl/examples.md) - Real-world pipeline examples
 3. [Testing Guide](./testing.md) - Unit, integration, and end-to-end testing
-4. [Extending the Plugin](./extending/README.md)
+4. [Programmatic Field Mapping](./field-mapping.md) - Typed record mapping and auto-mapping services
+5. [Extending the Plugin](./extending/README.md)
    - [Custom Extractors](./extending/custom-extractors.md)
    - [Custom Loaders](./extending/custom-loaders.md)
    - [Custom Operators](./extending/custom-operators.md)
    - [Event Subscriptions](./extending/events.md) - Subscribe to pipeline lifecycle events
    - **Hook Scripts** - Register functions for data modification at the 18 data-processing stages
    - **Wizard Templates** - Add custom templates for import/export wizards
-5. [GraphQL API](./graphql-api.md) - API reference for integration
+6. [GraphQL API](./graphql-api.md) - API reference for integration
 
 ## When to Use Code-First
 
@@ -125,4 +126,5 @@ The DSL is fully typed. TypeScript will catch errors like:
 
 - [Architecture](./architecture.md) - Understand how it works
 - [Pipeline Builder](./dsl/pipeline-builder.md) - Start building with DSL
+- [Programmatic Field Mapping](./field-mapping.md) - Map records in custom plugins
 - [Examples](./dsl/examples.md) - See real-world patterns

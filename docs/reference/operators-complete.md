@@ -528,6 +528,10 @@ Format a date field to a string.
 | `format` | string | Yes | e.g. YYYY-MM-DD, DD/MM/YYYY HH:mm |
 | `inputFormat` | string | No | If source is string, specify its format |
 
+Formats use the exact UTC tokens `YYYY`, `MM`, `DD`, `HH`, `mm`, and `ss`, with
+a maximum length of 128 characters. Mismatched or impossible values leave the
+target unchanged.
+
 **Example:**
 
 ```typescript
@@ -547,6 +551,9 @@ Parse a string to a date.
 | `source` | string | Yes | Source field path |
 | `target` | string | Yes | Target field path |
 | `format` | string | Yes | Format of the source string |
+
+The input format uses the same exact UTC token contract and 128-character
+limit. Invalid values leave the target unchanged.
 
 **Example:**
 

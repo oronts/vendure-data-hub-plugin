@@ -124,8 +124,15 @@ async function verifyPackage(): Promise<void> {
         await writeFile(join(consumerDirectory, 'consumer.cjs'), runtimeCheck('require'));
         await writeFile(join(consumerDirectory, 'consumer.mjs'), runtimeCheck('import'));
         await writeFile(join(consumerDirectory, 'consumer.ts'), `
-import { DataHubPlugin, createPipeline } from '${packageName}';
-import type { DataHubPluginOptions } from '${packageName}';
+import {
+    DataHubPlugin,
+    FieldMapperService,
+    createPipeline,
+} from '${packageName}';
+import type {
+    DataHubPluginOptions,
+    MapperFieldMapping,
+} from '${packageName}';
 import {
     createPipeline as createSdkPipeline,
     queueAdapterRegistry,
@@ -138,6 +145,9 @@ import { PimcoreConnector } from '${packageName}/connectors/pimcore';
 const plugin: typeof DataHubPlugin = DataHubPlugin;
 const pipelineFactory: typeof createPipeline = createSdkPipeline;
 const adapters: readonly QueueAdapter[] = queueAdapterRegistry.getAll();
+const mapper = new FieldMapperService();
+const mapperFields: MapperFieldMapping[] = [{ source: 'sku', target: 'code' }];
+const mapped = mapper.mapRecord({ sku: 'SKU-1' }, mapperFields);
 const pimcore = PimcoreConnector({ connectionCode: 'pimcore-graphql' });
 const pluginOptions: DataHubPluginOptions = {
     connectors: [pimcore],
@@ -147,6 +157,7 @@ type Definition = PipelineDefinition;
 void plugin;
 void pipelineFactory;
 void adapters;
+void mapped;
 void pluginOptions;
 void (undefined as unknown as Definition);
 void defineConnector;

@@ -26,6 +26,10 @@ export const TRANSFORM_LIMITS = {
     MAX_PREVIEW_FILES: 5,
     /** Maximum decimal places for rounding operations (prevents Math.pow overflow) */
     MAX_DECIMAL_PLACES: 20,
+    /** Maximum custom date format length */
+    MAX_DATE_FORMAT_LENGTH: 128,
+    /** Maximum date input length considered by custom and ISO parsers */
+    MAX_DATE_VALUE_LENGTH: 256,
 } as const;
 
 /**

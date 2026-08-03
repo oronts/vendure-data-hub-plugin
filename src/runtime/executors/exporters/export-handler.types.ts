@@ -11,7 +11,7 @@ import { DataHubLogger } from '../../../services/logger';
 import type { FileStorageService } from '../../../services/storage/file-storage.service';
 import type { ExportDestinationService } from '../../../services/destinations/export-destination.service';
 import { OnRecordErrorCallback, RecordObject } from '../../executor-types';
-import { formatDate } from '../../../transforms/field/date-transforms';
+import { formatDate } from '../../../utils/date-format.utils';
 
 /**
  * Parameters passed to each export handler function

@@ -5,7 +5,8 @@
 import { EntityField } from '../../types/index';
 import { MapperTransformConfig } from '../types/transform-config.types';
 import { SourceFieldAnalysis } from '../types/mapping-types';
-import { BOOLEAN_MAPPINGS, BOOLEAN_DETECTOR_VALUES, ISO_DATE_PATTERN, SEPARATOR_PATTERN, CAMEL_CASE_PATTERN } from '../constants';
+import { isValidIsoDateString } from '../../utils/date-format.utils';
+import { BOOLEAN_MAPPINGS, BOOLEAN_DETECTOR_VALUES, SEPARATOR_PATTERN, CAMEL_CASE_PATTERN } from '../constants';
 
 /**
  * Normalize a field name for comparison
@@ -85,10 +86,7 @@ export function detectValueType(value: unknown): string {
     if (typeof value === 'object') return 'object';
 
     if (typeof value === 'string') {
-        if (ISO_DATE_PATTERN.test(value)) {
-            const date = new Date(value);
-            if (!isNaN(date.getTime())) return 'date';
-        }
+        if (isValidIsoDateString(value)) return 'date';
         if (value !== '' && !isNaN(Number(value))) {
             return 'number';
         }

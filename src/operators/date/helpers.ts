@@ -2,7 +2,7 @@ import { JsonObject, JsonValue } from '../types';
 import { getNestedValue, setNestedValue, deepClone } from '../helpers';
 import { DateUnit } from './types';
 import { TIME_UNITS } from '../../constants/time';
-import { formatDate } from '../../transforms/field/date-transforms';
+import { formatDate, parseDateWithFormat } from '../../utils/date-format.utils';
 
 function validDate(date: Date): Date | null {
     return Number.isNaN(date.getTime()) ? null : date;
@@ -30,101 +30,6 @@ function parseDate(value: JsonValue | undefined, format?: string): Date | null {
     }
 
     return null;
-}
-
-function parseDateWithFormat(value: string, format: string): Date | null {
-    try {
-        // Replace known tokens with capture groups, then escape remaining chars
-        // to prevent regex injection from format strings with special characters.
-        const TOKENS: Record<string, string> = {
-            'YYYY': '(\\d{4})',
-            'MM': '(\\d{2})',
-            'DD': '(\\d{2})',
-            'HH': '(\\d{2})',
-            'mm': '(\\d{2})',
-            'ss': '(\\d{2})',
-        };
-        const TOKEN_RE = /YYYY|MM|DD|HH|mm|ss/g;
-        const segments: string[] = [];
-        let lastIndex = 0;
-        let m: RegExpExecArray | null;
-        while ((m = TOKEN_RE.exec(format)) !== null) {
-            if (m.index > lastIndex) {
-                // Escape literal characters between tokens
-                segments.push(format.slice(lastIndex, m.index).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-            }
-            segments.push(TOKENS[m[0]]);
-            lastIndex = m.index + m[0].length;
-        }
-        if (lastIndex < format.length) {
-            segments.push(format.slice(lastIndex).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-        }
-        const pattern = segments.join('');
-
-        const regex = new RegExp(`^${pattern}$`);
-        const match = value.match(regex);
-
-        if (!match) {
-            return null;
-        }
-
-        // Extract parts based on format
-        const parts: Record<string, number> = {
-            year: 1970,
-            month: 0,
-            day: 1,
-            hour: 0,
-            minute: 0,
-            second: 0,
-        };
-
-        const formatParts = format.match(/(YYYY|MM|DD|HH|mm|ss)/g) || [];
-        let matchIndex = 1;
-
-        for (const part of formatParts) {
-            const val = parseInt(match[matchIndex++], 10);
-            switch (part) {
-                case 'YYYY':
-                    parts.year = val;
-                    break;
-                case 'MM':
-                    parts.month = val - 1;
-                    break;
-                case 'DD':
-                    parts.day = val;
-                    break;
-                case 'HH':
-                    parts.hour = val;
-                    break;
-                case 'mm':
-                    parts.minute = val;
-                    break;
-                case 'ss':
-                    parts.second = val;
-                    break;
-            }
-        }
-
-        const date = new Date(0);
-        date.setUTCFullYear(parts.year, parts.month, parts.day);
-        date.setUTCHours(parts.hour, parts.minute, parts.second, 0);
-
-        if (
-            date.getUTCFullYear() !== parts.year ||
-            date.getUTCMonth() !== parts.month ||
-            date.getUTCDate() !== parts.day ||
-            date.getUTCHours() !== parts.hour ||
-            date.getUTCMinutes() !== parts.minute ||
-            date.getUTCSeconds() !== parts.second
-        ) {
-            return null;
-        }
-
-        return date;
-    } catch {
-        // Date parsing failed - return null as fallback
-        return null;
-    }
 }
 
 export function applyDateFormat(

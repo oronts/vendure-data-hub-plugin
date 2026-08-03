@@ -311,6 +311,7 @@ import { HttpLookupLifecycleService } from './operators/enrichment/http-lookup-l
         ],
     },
     controllers: [DataHubWebhookController, DataHubFileUploadController],
+    exports: [FieldMapperService, AutoMapperService],
     dashboard: '../dashboard/index.tsx',
     configuration: config => {
         // Register custom permissions
