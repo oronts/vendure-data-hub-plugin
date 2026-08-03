@@ -113,6 +113,23 @@ These format-specific extractors read files managed by Data Hub storage. Upload 
 
 CSV, JSON, and XML also accept explicitly configured inline content. XLSX requires an uploaded file.
 
+### Managed file API
+
+All managed-file routes require the corresponding Data Hub file permission and use the active Vendure channel. `POST /data-hub/upload` accepts either multipart form data with a `file` field or JSON with `filename`, base64 `content`, and optional `mimeType` fields.
+
+Temporary uploads expire after 1,440 minutes by default. Set `expiresInMinutes` to an integer from 1 through 14,400, or set `persistent` to `true` to omit automatic expiry. These options are mutually exclusive. Multipart values are strings, while JSON accepts the matching number and boolean types.
+
+| Route | Parameters | Result |
+|-------|------------|--------|
+| `POST /data-hub/upload` | `file` or base64 body; optional expiry policy | Stores one validated CSV, JSON, XML, TXT, XLS, or XLSX file |
+| `GET /data-hub/files` | `limit` 1-500, `offset` 0-10,000, optional `mimeType` | Lists files in the active channel |
+| `GET /data-hub/files/:id` | Managed file ID | Returns file metadata |
+| `GET /data-hub/files/:id/download` | Managed file ID | Downloads the integrity-checked content |
+| `GET /data-hub/files/:id/preview` | Optional `rows` 1-500 | Returns detected fields and sample records |
+| `DELETE /data-hub/files/:id` | Managed file ID | Removes the content and metadata |
+
+Numeric parameters must contain an exact integer in range; malformed, fractional, negative, or oversized values return a client error instead of being rounded or clamped.
+
 ### Shared configuration
 
 | Field | Applies to | Description |

@@ -16,8 +16,12 @@
 import { Controller, Post, Get, Delete, Param, Query, Req, Res, HttpStatus } from '@nestjs/common';
 import { Request, Response } from 'express';
 import {
+    FileUploadInputError,
     fileUploadMiddleware,
     MulterErrorLike,
+    resolveFileListLimit,
+    resolveFileListOffset,
+    resolveFilePreviewRows,
     resolveUploadExpiry,
 } from './file-upload.config';
 import {
@@ -38,8 +42,6 @@ import {
 } from './file-upload.utils';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { toErrorOrUndefined } from '../../utils/error.utils';
-
-
 @Controller('data-hub')
 export class DataHubFileUploadController {
     private readonly logger: DataHubLogger;
@@ -52,14 +54,6 @@ export class DataHubFileUploadController {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.FILE_UPLOAD_CONTROLLER);
     }
 
-    // FILE UPLOAD
-
-    /**
-     * Upload a file
-     *
-     * Accepts multipart/form-data with a 'file' field or
-     * JSON body with base64-encoded content.
-     */
     @Post('upload')
     @Allow(ManageDataHubFilesPermission.Permission)
     async uploadFile(
@@ -89,36 +83,41 @@ export class DataHubFileUploadController {
         }
     }
 
-    // FILE LIST & METADATA
-
-    /**
-     * List uploaded files
-     */
     @Get('files')
     @Allow(ReadDataHubFilesPermission.Permission)
     async listFiles(
         @Ctx() ctx: RequestContext,
+        @Res() res: Response,
         @Query('limit') limit?: string,
         @Query('offset') offset?: string,
         @Query('mimeType') mimeType?: string,
     ) {
-        const parsedLimit = limit ? parseInt(limit, 10) : NaN;
-        const parsedOffset = offset ? parseInt(offset, 10) : NaN;
+        let pagination: { limit: number; offset: number };
+        try {
+            pagination = {
+                limit: resolveFileListLimit(limit),
+                offset: resolveFileListOffset(offset),
+            };
+        } catch (error) {
+            if (error instanceof FileUploadInputError) {
+                return res.status(HttpStatus.BAD_REQUEST).json({
+                    success: false,
+                    error: error.message,
+                });
+            }
+            throw error;
+        }
         const result = await this.fileStorage.listFiles(ctx, {
-            limit: Math.min(PAGINATION.MAX_QUERY_LIMIT, Math.max(1, isNaN(parsedLimit) ? PAGINATION.LIST_PAGE_SIZE : parsedLimit)),
-            offset: Math.max(0, isNaN(parsedOffset) ? 0 : parsedOffset),
+            ...pagination,
             filter: mimeType ? { mimeType } : undefined,
         });
 
-        return {
+        return res.json({
             items: result.files.map(f => formatFileResponse(f)),
             totalItems: result.totalItems,
-        };
+        });
     }
 
-    /**
-     * Get file metadata
-     */
     @Get('files/:id')
     @Allow(ReadDataHubFilesPermission.Permission)
     async getFile(
@@ -148,11 +147,6 @@ export class DataHubFileUploadController {
         });
     }
 
-    // FILE DOWNLOAD & PREVIEW
-
-    /**
-     * Download file
-     */
     @Get('files/:id/download')
     @Allow(ReadDataHubFilesPermission.Permission)
     async downloadFile(
@@ -197,9 +191,6 @@ export class DataHubFileUploadController {
         return res.send(content);
     }
 
-    /**
-     * Preview file with field detection
-     */
     @Get('files/:id/preview')
     @Allow(ReadDataHubFilesPermission.Permission)
     async previewFile(
@@ -212,6 +203,15 @@ export class DataHubFileUploadController {
             return res.status(HttpStatus.BAD_REQUEST).json({
                 success: false,
                 error: 'Invalid file ID format',
+            });
+        }
+        let previewRows: number;
+        try {
+            previewRows = resolveFilePreviewRows(rows);
+        } catch (error) {
+            return res.status(HttpStatus.BAD_REQUEST).json({
+                success: false,
+                error: error instanceof Error ? error.message : 'Invalid rows value',
             });
         }
 
@@ -244,10 +244,9 @@ export class DataHubFileUploadController {
         const format = detectFormat(file.mimeType, file.originalName);
 
         try {
-            // Use file parser to analyze the file
             const preview = await this.fileParser.preview(content, {
                 format,
-            }, Math.min(PAGINATION.MAX_QUERY_LIMIT, Math.max(1, parseInt(rows ?? '', 10) || PAGINATION.FILE_PREVIEW_ROWS)));
+            }, previewRows);
 
             return res.json({
                 success: true,
@@ -268,11 +267,6 @@ export class DataHubFileUploadController {
         }
     }
 
-    // FILE DELETE
-
-    /**
-     * Delete file
-     */
     @Delete('files/:id')
     @Allow(ManageDataHubFilesPermission.Permission)
     async deleteFile(
@@ -302,22 +296,12 @@ export class DataHubFileUploadController {
         });
     }
 
-    // STORAGE STATS
-
-    /**
-     * Get storage stats
-     */
     @Get('storage/stats')
     @Allow(ReadDataHubFilesPermission.Permission)
     async getStorageStats(@Ctx() ctx: RequestContext) {
         return this.fileStorage.getStorageStats(ctx);
     }
 
-    // HELPER METHODS
-
-    /**
-     * Handle multipart form-data upload using multer
-     */
     private handleMultipartUpload(
         ctx: RequestContext,
         req: Request,
@@ -382,6 +366,14 @@ export class DataHubFileUploadController {
                     }
                     resolve();
                 } catch (error) {
+                    if (error instanceof FileUploadInputError) {
+                        res.status(HttpStatus.BAD_REQUEST).json({
+                            success: false,
+                            error: error.message,
+                        });
+                        resolve();
+                        return;
+                    }
                     this.logger.error('Upload processing error', toErrorOrUndefined(error));
                     res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
                         success: false,
@@ -396,9 +388,6 @@ export class DataHubFileUploadController {
         });
     }
 
-    /**
-     * Handle base64 JSON upload
-     */
     private async handleBase64Upload(
         ctx: RequestContext,
         req: Request,
@@ -458,11 +447,15 @@ export class DataHubFileUploadController {
                 });
             }
         } catch (error) {
-            this.logger.error('Base64 upload error', toErrorOrUndefined(error));
+            if (!(error instanceof FileUploadInputError)) {
+                this.logger.error('Base64 upload error', toErrorOrUndefined(error));
+            }
             if (!res.headersSent) {
                 res.status(HttpStatus.BAD_REQUEST).json({
                     success: false,
-                    error: 'Failed to parse request body',
+                    error: error instanceof FileUploadInputError
+                        ? error.message
+                        : 'Failed to parse request body',
                 });
             }
         }
@@ -472,7 +465,7 @@ export class DataHubFileUploadController {
         return new Promise((resolve, reject) => {
             const chunks: Buffer[] = [];
             let totalSize = 0;
-            const maxBodySize = FILE_STORAGE.MAX_FILE_SIZE_BYTES * 2;
+            const maxBodySize = FILE_STORAGE.MAX_BASE64_JSON_BODY_SIZE_BYTES;
 
             req.on('data', (chunk: Buffer) => {
                 totalSize += chunk.length;

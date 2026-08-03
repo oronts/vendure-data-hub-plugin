@@ -2,7 +2,7 @@ import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { RequestContext } from '@vendure/core';
 import * as crypto from 'crypto';
 import * as path from 'path';
-import { FILE_STORAGE, LOGGER_CONTEXTS, SCHEDULER } from '../../constants/index';
+import { FILE_STORAGE, LOGGER_CONTEXTS, PAGINATION, SCHEDULER } from '../../constants/index';
 import { ensureError, getErrorMessage } from '../../utils/error.utils';
 import { generateTimestampedId } from '../../utils/id-generation.utils';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
@@ -103,12 +103,12 @@ export class FileStorageService implements OnModuleInit, OnModuleDestroy {
         let metadataPath: string | null = null;
         try {
             const channelId = this.getChannelId(ctx);
-            const maxSize = Math.min(
-                options.maxFileSize ?? FILE_STORAGE.MAX_FILE_SIZE_BYTES,
-                FILE_STORAGE.MAX_FILE_SIZE_BYTES,
-            );
-            if (!Number.isFinite(maxSize) || maxSize <= 0) {
-                throw new Error('Maximum file size must be a positive number');
+            const maxSize = options.maxFileSize ?? FILE_STORAGE.MAX_FILE_SIZE_BYTES;
+            if (!Number.isSafeInteger(maxSize) || maxSize < 1 ||
+                maxSize > FILE_STORAGE.MAX_FILE_SIZE_BYTES) {
+                throw new Error(
+                    `Maximum file size must be an integer from 1 to ${FILE_STORAGE.MAX_FILE_SIZE_BYTES} bytes`,
+                );
             }
             if (buffer.length > maxSize) {
                 return {
@@ -257,6 +257,21 @@ export class FileStorageService implements OnModuleInit, OnModuleDestroy {
             };
         },
     ): Promise<{ files: StoredFile[]; totalItems: number }> {
+        const offset = options?.offset ?? 0;
+        if (!Number.isSafeInteger(offset) || offset < 0 ||
+            offset > FILE_STORAGE.MAX_FILE_INDEX_SIZE) {
+            throw new Error(
+                `File list offset must be an integer from 0 to ${FILE_STORAGE.MAX_FILE_INDEX_SIZE}`,
+            );
+        }
+        const requestedLimit = options?.limit;
+        if (requestedLimit !== undefined &&
+            (!Number.isSafeInteger(requestedLimit) || requestedLimit < 1 ||
+                requestedLimit > PAGINATION.MAX_QUERY_LIMIT)) {
+            throw new Error(
+                `File list limit must be an integer from 1 to ${PAGINATION.MAX_QUERY_LIMIT}`,
+            );
+        }
         const channelId = this.getChannelId(ctx);
         await this.refreshChannelIndex(channelId);
         await this.cleanupExpiredFiles();
@@ -277,8 +292,7 @@ export class FileStorageService implements OnModuleInit, OnModuleDestroy {
 
         files.sort((a, b) => b.uploadedAt.getTime() - a.uploadedAt.getTime());
         const totalItems = files.length;
-        const offset = Math.max(0, options?.offset ?? 0);
-        const limit = options?.limit === undefined ? files.length : Math.max(0, options.limit);
+        const limit = requestedLimit ?? files.length;
         return {
             files: files.slice(offset, offset + limit).map(file => cloneStoredFile(file)),
             totalItems,

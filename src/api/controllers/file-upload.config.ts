@@ -1,10 +1,33 @@
 import multer from 'multer';
-import { FILE_STORAGE } from '../../constants/index';
+import { FILE_STORAGE, PAGINATION } from '../../constants/index';
 import { validateFileDescriptor } from '../../services/storage/file-storage-metadata';
 import { detectMimeType } from './file-upload.utils';
 
 export interface MulterErrorLike extends Error {
     code?: string;
+}
+
+export class FileUploadInputError extends Error {}
+
+const INTEGER_PATTERN = /^\d+$/;
+
+function parseRequestInteger(
+    value: unknown,
+    field: string,
+    minimum: number,
+    maximum: number,
+): number {
+    const parsed = typeof value === 'number'
+        ? value
+        : typeof value === 'string' && INTEGER_PATTERN.test(value)
+            ? Number(value)
+            : NaN;
+    if (!Number.isSafeInteger(parsed) || parsed < minimum || parsed > maximum) {
+        throw new FileUploadInputError(
+            `${field} must be an integer from ${minimum} to ${maximum}`,
+        );
+    }
+    return parsed;
 }
 
 export function resolveUploadExpiry(body: unknown): number | undefined {
@@ -13,15 +36,48 @@ export function resolveUploadExpiry(body: unknown): number | undefined {
     }
 
     const values = body as Record<string, unknown>;
-    if (values.persistent === true || values.persistent === 'true') {
+    const persistent = values.persistent;
+    if (persistent !== undefined && persistent !== true && persistent !== false &&
+        persistent !== 'true' && persistent !== 'false') {
+        throw new FileUploadInputError('persistent must be true or false');
+    }
+    const isPersistent = persistent === true || persistent === 'true';
+    if (isPersistent && values.expiresInMinutes !== undefined) {
+        throw new FileUploadInputError(
+            'persistent and expiresInMinutes cannot be used together',
+        );
+    }
+    if (isPersistent) {
         return undefined;
     }
 
-    const requestedMinutes = Number(values.expiresInMinutes);
-    if (!Number.isFinite(requestedMinutes) || requestedMinutes < 1) {
+    if (values.expiresInMinutes === undefined) {
         return FILE_STORAGE.EXPIRY_MINUTES;
     }
-    return Math.min(Math.floor(requestedMinutes), FILE_STORAGE.MAX_EXPIRY_MINUTES);
+    return parseRequestInteger(
+        values.expiresInMinutes,
+        'expiresInMinutes',
+        1,
+        FILE_STORAGE.MAX_EXPIRY_MINUTES,
+    );
+}
+
+export function resolveFileListLimit(value?: string): number {
+    return value === undefined
+        ? PAGINATION.LIST_PAGE_SIZE
+        : parseRequestInteger(value, 'limit', 1, PAGINATION.MAX_QUERY_LIMIT);
+}
+
+export function resolveFileListOffset(value?: string): number {
+    return value === undefined
+        ? 0
+        : parseRequestInteger(value, 'offset', 0, FILE_STORAGE.MAX_FILE_INDEX_SIZE);
+}
+
+export function resolveFilePreviewRows(value?: string): number {
+    return value === undefined
+        ? PAGINATION.FILE_PREVIEW_ROWS
+        : parseRequestInteger(value, 'rows', 1, PAGINATION.MAX_QUERY_LIMIT);
 }
 
 export const fileUploadMiddleware = multer({

@@ -111,9 +111,9 @@ export function validateFileSignature(content: Buffer, originalName: string): vo
 
 export function resolveFileExpiry(expiresInMinutes?: number): Date | undefined {
     if (expiresInMinutes === undefined) return undefined;
-    if (!Number.isFinite(expiresInMinutes) || expiresInMinutes < 1 ||
+    if (!Number.isSafeInteger(expiresInMinutes) || expiresInMinutes < 1 ||
         expiresInMinutes > FILE_STORAGE.MAX_EXPIRY_MINUTES) {
-        throw new Error(`File expiry must be between 1 and ${FILE_STORAGE.MAX_EXPIRY_MINUTES} minutes`);
+        throw new Error(`File expiry must be an integer from 1 to ${FILE_STORAGE.MAX_EXPIRY_MINUTES} minutes`);
     }
     return new Date(Date.now() + expiresInMinutes * TIME_UNITS.MINUTE);
 }

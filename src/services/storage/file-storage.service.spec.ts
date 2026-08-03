@@ -3,6 +3,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { RequestContext } from '@vendure/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { FILE_STORAGE, PAGINATION } from '../../constants';
 import { DataHubLoggerFactory } from '../logger';
 import { getMetadataPath } from './file-storage-metadata';
 import { FileStorageService } from './file-storage.service';
@@ -331,5 +332,36 @@ describe('FileStorageService security boundaries', () => {
             success: false,
             error: 'Data URI MIME type does not match the declared MIME type',
         });
+    });
+
+    it('rejects invalid direct storage limits instead of normalizing them', async () => {
+        const service = await createService();
+        const context = createContext('channel-a', 'user-17');
+        const content = Buffer.from('sku\nA-1');
+
+        await expect(service.storeFile(
+            context,
+            content,
+            'products.csv',
+            'text/csv',
+            { maxFileSize: FILE_STORAGE.MAX_FILE_SIZE_BYTES + 1 },
+        )).resolves.toMatchObject({
+            success: false,
+            error: expect.stringContaining('Maximum file size must be an integer'),
+        });
+        await expect(service.storeFile(
+            context,
+            content,
+            'products.csv',
+            'text/csv',
+            { expiresInMinutes: 1.5 },
+        )).resolves.toMatchObject({
+            success: false,
+            error: expect.stringContaining('File expiry must be an integer'),
+        });
+        await expect(service.listFiles(context, { limit: PAGINATION.MAX_QUERY_LIMIT + 1 }))
+            .rejects.toThrow('File list limit must be an integer');
+        await expect(service.listFiles(context, { offset: -1 }))
+            .rejects.toThrow('File list offset must be an integer');
     });
 });
