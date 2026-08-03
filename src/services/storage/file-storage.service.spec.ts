@@ -242,6 +242,36 @@ describe('FileStorageService security boundaries', () => {
         );
     });
 
+    it('removes dangling metadata after a partial deletion failure', async () => {
+        const context = createContext('channel-a', 'user-17');
+        const firstService = await createService();
+        const result = await firstService.storeFile(
+            context,
+            Buffer.from('sku\nA-1'),
+            'products.csv',
+            'text/csv',
+        );
+        const internals = firstService as unknown as FileStorageInternals;
+        const originalDelete = internals.backend.delete.bind(internals.backend);
+        vi.spyOn(internals.backend, 'delete')
+            .mockImplementationOnce(originalDelete)
+            .mockRejectedValueOnce(new Error('Metadata deletion failed'));
+
+        await expect(firstService.deleteFile(context, result.file!.id)).resolves.toBe(false);
+        await firstService.onModuleDestroy();
+        const metadataPath = getMetadataPath('channel-a', result.file!.id);
+        await expect(fs.promises.access(path.join(root, metadataPath))).resolves.toBeUndefined();
+
+        const recoveredService = await createService();
+
+        await expect(recoveredService.getFile(context, result.file!.id)).resolves.toBeNull();
+        await expect(fs.promises.access(path.join(root, metadataPath))).rejects.toThrow();
+        expect(logger.warn).toHaveBeenCalledWith(
+            'Removed file metadata whose content is missing',
+            expect.objectContaining({ fileId: result.file!.id, metadataPath }),
+        );
+    });
+
     it('fails closed when stored content no longer matches its persisted hash', async () => {
         const service = await createService();
         const context = createContext('channel-a', 'user-17');

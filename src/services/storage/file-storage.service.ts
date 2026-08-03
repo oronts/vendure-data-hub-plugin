@@ -358,8 +358,15 @@ export class FileStorageService implements OnModuleInit, OnModuleDestroy {
             return null;
         }
         if (!storedFile ||
-            getMetadataPath(storedFile.channelId, storedFile.id) !== metadataPath ||
-            !(await this.backend.exists(storedFile.storagePath))) {
+            getMetadataPath(storedFile.channelId, storedFile.id) !== metadataPath) return null;
+        if (!(await this.backend.exists(storedFile.storagePath))) {
+            if (!(await this.deleteStorageObject(metadataPath))) {
+                throw new Error(`Failed to remove dangling file metadata: ${metadataPath}`);
+            }
+            this.logger.warn('Removed file metadata whose content is missing', {
+                fileId: storedFile.id,
+                metadataPath,
+            });
             return null;
         }
         return storedFile;
