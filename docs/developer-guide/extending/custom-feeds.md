@@ -475,7 +475,7 @@ The returned URL uses the existing file download controller and requires
 `ReadDataHubFiles`; feed lifecycle operations and generation require
 `ManageDataHubFeeds`.
 
-### Use in Pipeline
+### Pipeline Feed Steps
 
 ```typescript
 import { createPipeline } from '@oronts/vendure-data-hub-plugin';
@@ -502,8 +502,13 @@ const amazonFeedPipeline = createPipeline()
     })
     .feed('generate-feed', {
         adapterCode: 'customFeed',
-        generatorCode: 'amazon-marketplace',
-        outputPath: 'feeds/amazon-${date}.txt',
+        format: 'TSV',
+        fieldMapping: {
+            sku: 'sku',
+            title: 'name',
+            price: 'priceWithTax',
+        },
+        outputPath: 'feeds/amazon.txt',
     })
     .trigger('schedule', {
         type: 'SCHEDULE',
@@ -515,7 +520,17 @@ const amazonFeedPipeline = createPipeline()
     .build();
 ```
 
-`outputPath` names the generated server-local file and must be relative to `DATA_HUB_EXPORT_ROOT`, for example `feeds/amazon-${date}.txt`. A configured remote connection does not make `outputPath` a URL or an absolute remote path; remote location fields belong to that destination's configuration.
+Registered `CustomFeedGenerator` instances are selected by persisted feed
+configuration using `format: 'custom'` and `customGeneratorCode`; pipeline
+`FEED` steps do not consume `generatorCode`. A pipeline uses the built-in
+`customFeed` adapter with `format` and `fieldMapping`, as above, or a separately
+registered SDK `FeedAdapter` whose adapter code is used directly.
+
+`outputPath` names the generated server-local file and must be relative to
+`DATA_HUB_EXPORT_ROOT`, for example `feeds/amazon.txt`. Feed paths are literal;
+the built-in feed handler does not interpolate filename placeholders. A configured
+remote connection does not make `outputPath` a URL or an absolute remote path;
+remote location fields belong to that destination's configuration.
 
 ## Feed Filters
 

@@ -221,6 +221,11 @@ Create feeds in any format for any platform.
 .feed('custom-json', {
     adapterCode: 'customFeed',
     format: 'JSON',
+    fieldMapping: {
+        sku: 'sku',
+        name: 'name',
+        price: 'variants.0.price',
+    },
     outputPath: 'feeds/products.json',
 })
 ```
@@ -231,11 +236,18 @@ Create feeds in any format for any platform.
 .feed('custom-xml', {
     adapterCode: 'customFeed',
     format: 'XML',
+    fieldMapping: {
+        sku: 'sku',
+        name: 'name',
+        price: 'variants.0.price',
+    },
     outputPath: 'feeds/products.xml',
-    rootElement: 'products',
-    itemElement: 'product',
 })
 ```
+
+Custom XML uses `<feed>` as its root and `<item>` for each mapped record.
+Every custom feed requires a non-empty `fieldMapping`; omitting it fails before
+any source fields are written.
 
 ## Feed Output
 

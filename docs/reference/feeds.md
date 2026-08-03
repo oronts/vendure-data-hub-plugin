@@ -274,6 +274,11 @@ mapping.
 
 Custom XML always uses `<feed>` as the root and `<item>` for each mapped record.
 CSV and TSV include a header row. JSON is a formatted array of mapped objects.
+The format is required and case-insensitive. Any value outside JSON, CSV, TSV,
+or XML fails before a file is created; unsupported values never fall back to a
+JSON payload with a misleading extension. `fieldMapping` must be a non-empty
+object of trimmed, non-empty output field names and source paths. Missing or
+invalid mappings fail before any source fields are written.
 
 ### Field Mapping
 
