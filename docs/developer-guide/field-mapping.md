@@ -50,6 +50,29 @@ if (!result.success) {
 `mapRecords()` applies the same mapping list to an array and returns every
 per-record result plus total, successful, and failed counts.
 
+Common option behavior is explicit:
+
+- `split.trim: true` trims each produced item before an optional index is
+  selected;
+- `replace.regex: true` treats `search` as a bounded safe regular
+  expression, while the default mode treats it as literal text;
+- `default.onlyIfEmpty` defaults to `true`; setting it to `false`
+  replaces every input with the configured value;
+- `join.fields` appends values without mutating arrays in the source record;
+- value maps only match their own keys, and lookup tables use each transform's
+  `fromField` and `toField`.
+
+Register lookup data on the mapper instance that will execute the mapping:
+
+```typescript
+mapper.registerMapperLookupTable({
+    name: 'categories',
+    data: [
+        { externalCode: 'hardware', vendureCode: 'tools' },
+    ],
+});
+```
+
 ## Vendure Dependency Injection
 
 The Data Hub plugin exports `FieldMapperService` and `AutoMapperService` from
@@ -75,6 +98,11 @@ class CatalogMappingService {
 })
 export class CatalogIntegrationPlugin {}
 ```
+
+`AutoMapperService.getConfig()` returns a detached configuration object.
+`setConfig()` also copies nested caller values and rejects invalid confidence
+thresholds, weights, aliases, or excluded fields before changing the active
+configuration.
 
 ## Date Formats
 

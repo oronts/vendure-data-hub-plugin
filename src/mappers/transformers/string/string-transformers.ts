@@ -10,6 +10,7 @@ import {
     applyLowercase as applyLowercaseCanonical,
     applyUppercase as applyUppercaseCanonical,
     applyReplace as applyReplaceCanonical,
+    applyRegexReplace as applyRegexReplaceCanonical,
     applySplit as applySplitCanonical,
     applyJoin as applyJoinCanonical,
     applyConcat as applyConcatCanonical,
@@ -65,6 +66,7 @@ export function applySplitTransform(
     return applySplitCanonical(value, {
         delimiter: config.delimiter,
         index: config.index,
+        trim: config.trim,
     });
 }
 
@@ -77,7 +79,7 @@ export function applyJoinTransform(
     record: JsonObject,
     getNestedValue: (obj: JsonObject, path: string) => JsonValue | undefined,
 ): string {
-    const values: JsonValue[] = Array.isArray(value) ? value : [value];
+    const values: JsonValue[] = Array.isArray(value) ? [...value] : [value];
 
     if (config.fields?.length) {
         for (const field of config.fields) {
@@ -99,6 +101,14 @@ export function applyReplaceTransform(
     config: NonNullable<MapperTransformConfig['replace']>,
 ): JsonValue {
     if (typeof value !== 'string') return value;
+
+    if (config.regex) {
+        return applyRegexReplaceCanonical(value, {
+            pattern: config.search,
+            replacement: config.replacement,
+            global: config.global !== false,
+        });
+    }
 
     return applyReplaceCanonical(value, {
         search: config.search,

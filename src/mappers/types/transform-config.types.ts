@@ -43,7 +43,6 @@ export interface MapperTransformConfig {
         default?: JsonValue;
     };
     convert?: {
-        from: 'string' | 'number' | 'boolean' | 'date' | 'json' | 'auto';
         to: 'string' | 'number' | 'boolean' | 'date' | 'json';
         format?: string;
     };
@@ -123,5 +122,4 @@ export interface MapperMappingError {
 export interface MapperLookupTable {
     name: string;
     data: RecordObject[];
-    keyField: string;
 }

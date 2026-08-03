@@ -5,6 +5,7 @@ import { MapperFieldMapping } from './field-mapper.service';
 import {
     AutoMapperConfig,
     DEFAULT_AUTO_MAPPER_CONFIG,
+    validateAutoMapperConfig,
 } from '../types/auto-mapper-config.types';
 import {
     MatchConfidence,
@@ -32,10 +33,41 @@ import { LoaderRegistryService } from '../../loaders/registry';
 
 export type { MatchConfidence, MappingSuggestion, SourceFieldAnalysis, SuggestMappingsOptions };
 
+function cloneConfig(config: AutoMapperConfig): AutoMapperConfig {
+    return {
+        ...config,
+        weights: { ...config.weights },
+        customAliases: Object.fromEntries(
+            Object.entries(config.customAliases).map(([key, aliases]) => [
+                key,
+                [...aliases],
+            ]),
+        ),
+        excludeFields: [...config.excludeFields],
+    };
+}
+
+function assertValidConfig(config: AutoMapperConfig): void {
+    const validation = validateAutoMapperConfig({
+        confidenceThreshold: config.confidenceThreshold,
+        enableFuzzyMatching: config.enableFuzzyMatching,
+        enableTypeInference: config.enableTypeInference,
+        caseSensitive: config.caseSensitive,
+        customAliases: config.customAliases,
+        excludeFields: config.excludeFields,
+        weightNameSimilarity: config.weights.nameSimilarity,
+        weightTypeCompatibility: config.weights.typeCompatibility,
+        weightDescriptionMatch: config.weights.descriptionMatch,
+    });
+    if (!validation.valid) {
+        throw new Error(`Invalid AutoMapper configuration: ${validation.errors.join('; ')}`);
+    }
+}
+
 @Injectable()
 export class AutoMapperService {
     /** Current configuration (defaults applied) */
-    private config: AutoMapperConfig = { ...DEFAULT_AUTO_MAPPER_CONFIG };
+    private config: AutoMapperConfig = cloneConfig(DEFAULT_AUTO_MAPPER_CONFIG);
 
     /** Matching strategies */
     private exactMatchStrategy = new ExactMatchStrategy();
@@ -64,26 +96,16 @@ export class AutoMapperService {
      * Get the current AutoMapper configuration
      */
     getConfig(): AutoMapperConfig {
-        return { ...this.config };
+        return cloneConfig(this.config);
     }
 
     /**
      * Update the AutoMapper configuration
      */
     setConfig(config: Partial<AutoMapperConfig>): void {
-        this.config = {
-            ...this.config,
-            ...config,
-            weights: {
-                ...this.config.weights,
-                ...(config.weights ?? {}),
-            },
-            customAliases: {
-                ...this.config.customAliases,
-                ...(config.customAliases ?? {}),
-            },
-            excludeFields: config.excludeFields ?? this.config.excludeFields,
-        };
+        const nextConfig = this.mergeConfig(this.config, config);
+        assertValidConfig(nextConfig);
+        this.config = nextConfig;
         this.updateStrategies();
     }
 
@@ -91,7 +113,7 @@ export class AutoMapperService {
      * Reset configuration to defaults
      */
     resetConfig(): void {
-        this.config = { ...DEFAULT_AUTO_MAPPER_CONFIG };
+        this.config = cloneConfig(DEFAULT_AUTO_MAPPER_CONFIG);
         this.updateStrategies();
     }
 
@@ -123,6 +145,7 @@ export class AutoMapperService {
         const effectiveConfig = configOverride
             ? this.mergeConfig(this.config, configOverride)
             : this.config;
+        assertValidConfig(effectiveConfig);
 
         const suggestions: MappingSuggestion[] = [];
         const usedTargets = new Set<string>();
@@ -334,7 +357,7 @@ export class AutoMapperService {
      * Merge base config with override
      */
     private mergeConfig(base: AutoMapperConfig, override: Partial<AutoMapperConfig>): AutoMapperConfig {
-        return {
+        return cloneConfig({
             ...base,
             ...override,
             weights: {
@@ -346,7 +369,7 @@ export class AutoMapperService {
                 ...(override.customAliases ?? {}),
             },
             excludeFields: override.excludeFields ?? base.excludeFields,
-        };
+        });
     }
 
     /**

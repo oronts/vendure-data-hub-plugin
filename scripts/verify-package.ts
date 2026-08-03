@@ -126,6 +126,7 @@ async function verifyPackage(): Promise<void> {
         await writeFile(join(consumerDirectory, 'consumer.ts'), `
 import {
     DataHubPlugin,
+    AutoMapperService,
     FieldMapperService,
     createPipeline,
 } from '${packageName}';
@@ -148,6 +149,8 @@ const adapters: readonly QueueAdapter[] = queueAdapterRegistry.getAll();
 const mapper = new FieldMapperService();
 const mapperFields: MapperFieldMapping[] = [{ source: 'sku', target: 'code' }];
 const mapped = mapper.mapRecord({ sku: 'SKU-1' }, mapperFields);
+const autoMapper = new AutoMapperService();
+autoMapper.setConfig({ confidenceThreshold: 0.8 });
 const pimcore = PimcoreConnector({ connectionCode: 'pimcore-graphql' });
 const pluginOptions: DataHubPluginOptions = {
     connectors: [pimcore],
@@ -158,6 +161,7 @@ void plugin;
 void pipelineFactory;
 void adapters;
 void mapped;
+void autoMapper;
 void pluginOptions;
 void (undefined as unknown as Definition);
 void defineConnector;

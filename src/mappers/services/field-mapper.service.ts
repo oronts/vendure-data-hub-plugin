@@ -209,7 +209,7 @@ export class FieldMapperService {
 
         const found = table.data.find(row => row[config.fromField] === value);
         if (found) {
-            return found[config.toField];
+            return found[config.toField] ?? config.default ?? value;
         }
 
         return config.default ?? value;

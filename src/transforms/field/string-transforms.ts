@@ -125,7 +125,9 @@ export function applyRegexExtract(value: JsonValue, config: TransformConfig): Js
  */
 export function applySplit(value: JsonValue, config: TransformConfig): JsonValue {
     if (typeof value === 'string' && config.delimiter) {
-        const parts = value.split(config.delimiter);
+        const parts = value
+            .split(config.delimiter)
+            .map(part => config.trim ? part.trim() : part);
         if (config.index !== undefined) {
             return parts[config.index] ?? null;
         }

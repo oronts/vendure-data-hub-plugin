@@ -157,6 +157,8 @@ export interface TransformConfig {
     group?: number;
     /** Delimiter for split/join operations */
     delimiter?: string;
+    /** Trim each value produced by a split operation */
+    trim?: boolean;
     /** Index for array element access */
     index?: number;
     /** Separator for join operations */

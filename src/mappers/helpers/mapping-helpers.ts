@@ -158,7 +158,7 @@ export function suggestTransforms(
     if (source.detectedType === 'string' && (target.type === 'number' || target.type === 'money')) {
         transforms.push({
             type: 'convert',
-            convert: { from: 'string', to: 'number' },
+            convert: { to: 'number' },
         });
     }
 
@@ -179,7 +179,7 @@ export function suggestTransforms(
         } else {
             transforms.push({
                 type: 'convert',
-                convert: { from: 'string', to: 'boolean' },
+                convert: { to: 'boolean' },
             });
         }
     }
@@ -188,7 +188,7 @@ export function suggestTransforms(
     if (source.detectedType === 'string' && target.type === 'date') {
         transforms.push({
             type: 'convert',
-            convert: { from: 'string', to: 'date' },
+            convert: { to: 'date' },
         });
     }
 
