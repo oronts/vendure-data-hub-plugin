@@ -31,13 +31,30 @@ describe('storage backend configuration', () => {
         expect(createStorageBackendFromEnv().type).toBe('s3');
     });
 
-    it.each(['0', '-1', '1.5', 'invalid'])('rejects invalid S3 URL expiry %s', value => {
+    it.each(['0', '-1', '1.5', '604801', 'invalid'])('rejects invalid S3 URL expiry %s', value => {
         vi.stubEnv('DATA_HUB_STORAGE_TYPE', 's3');
         vi.stubEnv('DATA_HUB_S3_BUCKET', 'data-hub-test');
         vi.stubEnv('DATA_HUB_S3_URL_EXPIRY', value);
 
         expect(() => createStorageBackendFromEnv()).toThrow(
-            'DATA_HUB_S3_URL_EXPIRY must be a positive integer',
+            'DATA_HUB_S3_URL_EXPIRY must be an integer from 1 to 604800 seconds',
+        );
+    });
+
+    it('accepts the maximum S3 URL expiry', () => {
+        vi.stubEnv('DATA_HUB_STORAGE_TYPE', 's3');
+        vi.stubEnv('DATA_HUB_S3_BUCKET', 'data-hub-test');
+        vi.stubEnv('DATA_HUB_S3_URL_EXPIRY', '604800');
+
+        expect(createStorageBackendFromEnv().type).toBe('s3');
+    });
+
+    it('rejects a blank S3 bucket', () => {
+        vi.stubEnv('DATA_HUB_STORAGE_TYPE', 's3');
+        vi.stubEnv('DATA_HUB_S3_BUCKET', '   ');
+
+        expect(() => createStorageBackendFromEnv()).toThrow(
+            'DATA_HUB_S3_BUCKET environment variable is required for S3 storage',
         );
     });
 

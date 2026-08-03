@@ -98,11 +98,14 @@ The value is resolved to an absolute root when the process starts. Configure a w
 | `DATA_HUB_S3_SECRET_ACCESS_KEY` | Optional static secret access key; must be paired with the access key | AWS SDK credential chain |
 | `DATA_HUB_S3_ENDPOINT` | Optional HTTP(S) endpoint for an S3-compatible service | AWS S3 |
 | `DATA_HUB_S3_PREFIX` | Optional object-key prefix | None |
-| `DATA_HUB_S3_URL_EXPIRY` | Positive integer signed-URL lifetime in seconds | `3600` |
+| `DATA_HUB_S3_URL_EXPIRY` | Signed-URL lifetime in seconds (`1-604800`) | `3600` |
 
 Prefer the AWS SDK credential chain (for example, a workload role) over static
 keys. Unknown storage types, incomplete static credential pairs, missing S3
 buckets, and invalid URL-expiry values fail startup.
+The seven-day maximum is the AWS SDK SigV4 limit; temporary credentials can
+expire sooner than the configured URL. See the
+[AWS presigned URL documentation](https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-presigned-url.html).
 
 ## Plugin Options
 

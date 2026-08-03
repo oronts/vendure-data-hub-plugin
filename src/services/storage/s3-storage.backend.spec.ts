@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PutObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { S3_STORAGE } from '../../constants/defaults';
 import { createPinnedAwsRequestHandler } from '../../utils/aws-request-handler.utils';
 import { S3StorageBackend } from './s3-storage.backend';
 
@@ -77,5 +79,47 @@ describe('S3StorageBackend lifecycle', () => {
         expect(destroy).toHaveBeenCalledOnce();
         await expect(backend.write('file.txt', Buffer.from('after-close')))
             .rejects.toThrow('has not been initialized');
+    });
+
+    it.each([
+        [{ bucket: '', region: 'eu-central-1' }, 'bucket is required'],
+        [{ bucket: 'uploads', region: '' }, 'region is required'],
+        [{ bucket: 'uploads', region: 'eu-central-1', accessKeyId: 'key' }, 'configured together'],
+        [{ bucket: 'uploads', region: 'eu-central-1', signedUrlExpiry: 0 }, 'integer from 1 to 604800'],
+        [{ bucket: 'uploads', region: 'eu-central-1', signedUrlExpiry: null }, 'integer from 1 to 604800'],
+        [{ bucket: 'uploads', region: 'eu-central-1', signedUrlExpiry: 604_801 }, 'integer from 1 to 604800'],
+    ])('rejects invalid direct options %j', (options, message) => {
+        expect(() => new S3StorageBackend(options as never)).toThrow(message);
+    });
+
+    it('uses bounded default and per-call signed URL expiry values', async () => {
+        vi.mocked(getSignedUrl).mockResolvedValue('https://objects.example.com/signed');
+        const backend = new S3StorageBackend({
+            bucket: 'uploads',
+            region: 'eu-central-1',
+        });
+        await backend.init();
+
+        await expect(backend.getUrl('default.txt')).resolves.toBe(
+            'https://objects.example.com/signed',
+        );
+        expect(getSignedUrl).toHaveBeenLastCalledWith(
+            expect.anything(),
+            expect.anything(),
+            { expiresIn: S3_STORAGE.SIGNED_URL_EXPIRY_SEC },
+        );
+
+        await backend.getUrl('maximum.txt', S3_STORAGE.MAX_SIGNED_URL_EXPIRY_SEC);
+        expect(getSignedUrl).toHaveBeenLastCalledWith(
+            expect.anything(),
+            expect.anything(),
+            { expiresIn: S3_STORAGE.MAX_SIGNED_URL_EXPIRY_SEC },
+        );
+        await expect(backend.getUrl('invalid.txt', 0)).rejects.toThrow(
+            'integer from 1 to 604800 seconds',
+        );
+        await expect(backend.getUrl('invalid.txt', null as never)).rejects.toThrow(
+            'integer from 1 to 604800 seconds',
+        );
     });
 });

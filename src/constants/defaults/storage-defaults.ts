@@ -44,8 +44,14 @@ export const FILE_STORAGE = {
  * S3 storage defaults
  */
 export const S3_STORAGE = {
+    /** Default AWS region */
+    DEFAULT_REGION: 'us-east-1',
+    /** Minimum signed URL expiry in seconds */
+    MIN_SIGNED_URL_EXPIRY_SEC: 1,
     /** Default signed URL expiry in seconds (1 hour) */
     SIGNED_URL_EXPIRY_SEC: 3600,
+    /** Maximum SigV4 signed URL expiry in seconds (7 days) */
+    MAX_SIGNED_URL_EXPIRY_SEC: 7 * TIME_UNITS.DAY / TIME_UNITS.SECOND,
 } as const;
 
 /**

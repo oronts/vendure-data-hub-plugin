@@ -15,6 +15,7 @@ import {
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { StorageBackend, S3StorageOptions } from './storage-backend.interface';
 import { createPinnedAwsRequestHandler } from '../../utils/aws-request-handler.utils';
+import { resolveS3SignedUrlExpiry } from './s3-storage-expiry';
 
 export class S3StorageBackend implements StorageBackend {
     readonly type = 's3' as const;
@@ -24,9 +25,23 @@ export class S3StorageBackend implements StorageBackend {
     private signedUrlExpiry: number;
 
     constructor(private options: S3StorageOptions) {
+        if (typeof options.bucket !== 'string' || options.bucket.trim().length === 0) {
+            throw new Error('S3 storage bucket is required');
+        }
+        if (typeof options.region !== 'string' || options.region.trim().length === 0) {
+            throw new Error('S3 storage region is required');
+        }
+        const hasAccessKey = typeof options.accessKeyId === 'string'
+            && options.accessKeyId.trim().length > 0;
+        const hasSecretKey = typeof options.secretAccessKey === 'string'
+            && options.secretAccessKey.trim().length > 0;
+        if (hasAccessKey !== hasSecretKey) {
+            throw new Error('S3 storage accessKeyId and secretAccessKey must be configured together');
+        }
+
         this.bucket = options.bucket;
-        this.prefix = options.prefix || '';
-        this.signedUrlExpiry = options.signedUrlExpiry || 3600;
+        this.prefix = options.prefix ?? '';
+        this.signedUrlExpiry = resolveS3SignedUrlExpiry(options.signedUrlExpiry);
 
         const clientConfig: ConstructorParameters<typeof S3Client>[0] = {
             region: options.region,
@@ -173,6 +188,9 @@ export class S3StorageBackend implements StorageBackend {
     }
 
     async getUrl(path: string, expiresInSeconds?: number): Promise<string | null> {
+        const expiresIn = expiresInSeconds === undefined
+            ? this.signedUrlExpiry
+            : resolveS3SignedUrlExpiry(expiresInSeconds);
         try {
             const command = new GetObjectCommand({
                 Bucket: this.bucket,
@@ -180,7 +198,7 @@ export class S3StorageBackend implements StorageBackend {
             });
 
             const url = await getSignedUrl(this.getClient(), command, {
-                expiresIn: expiresInSeconds || this.signedUrlExpiry,
+                expiresIn,
             });
 
             return url;

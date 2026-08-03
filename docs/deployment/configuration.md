@@ -660,7 +660,7 @@ Pipeline values stay relative to that root: use `path: 'catalog'` for a local ex
 | `DATA_HUB_S3_SECRET_ACCESS_KEY` | No | Static secret key; configure together with the access key |
 | `DATA_HUB_S3_ENDPOINT` | No | HTTP(S) endpoint for an S3-compatible service |
 | `DATA_HUB_S3_PREFIX` | No | Object-key prefix |
-| `DATA_HUB_S3_URL_EXPIRY` | No | Positive integer signed-URL lifetime; defaults to `3600` seconds |
+| `DATA_HUB_S3_URL_EXPIRY` | No | Signed-URL lifetime from `1` to `604800` seconds; defaults to `3600` |
 
 When static S3 credentials are omitted, the AWS SDK credential chain is used.
 Prefer a workload role in production.

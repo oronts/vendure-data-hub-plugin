@@ -10,6 +10,7 @@ import {
 import { LocalStorageBackend } from './local-storage.backend';
 import { S3StorageBackend } from './s3-storage.backend';
 import { S3_STORAGE } from '../../constants/defaults';
+import { validateS3SignedUrlExpiry } from './s3-storage-expiry';
 
 export function createStorageBackend(options: StorageBackendOptions): StorageBackend {
     switch (options.type) {
@@ -42,19 +43,19 @@ export function parseStorageType(value: string | undefined): StorageBackendOptio
 
 function readSignedUrlExpiry(value: string | undefined): number {
     if (value === undefined || value.trim() === '') return S3_STORAGE.SIGNED_URL_EXPIRY_SEC;
-    const expiry = Number(value);
-    if (!Number.isSafeInteger(expiry) || expiry <= 0) {
-        throw new Error('DATA_HUB_S3_URL_EXPIRY must be a positive integer');
-    }
-    return expiry;
+    return validateS3SignedUrlExpiry(
+        Number(value),
+        'DATA_HUB_S3_URL_EXPIRY',
+    );
 }
 
 export function createStorageBackendFromEnv(): StorageBackend {
     const storageType = parseStorageType(process.env.DATA_HUB_STORAGE_TYPE);
 
     if (storageType === 's3') {
-        const bucket = process.env.DATA_HUB_S3_BUCKET;
-        const region = process.env.DATA_HUB_S3_REGION || 'us-east-1';
+        const bucket = process.env.DATA_HUB_S3_BUCKET?.trim();
+        const region = process.env.DATA_HUB_S3_REGION?.trim()
+            || S3_STORAGE.DEFAULT_REGION;
         const accessKeyId = process.env.DATA_HUB_S3_ACCESS_KEY_ID?.trim() || undefined;
         const secretAccessKey = process.env.DATA_HUB_S3_SECRET_ACCESS_KEY?.trim() || undefined;
 
