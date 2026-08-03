@@ -59,6 +59,7 @@ async function run(
     adapterCode: string,
     config: Record<string, unknown>,
     input = records,
+    bulkSize = 100,
 ) {
     const entry = SINK_HANDLER_REGISTRY.get(adapterCode);
     if (!entry) throw new Error(`Missing sink ${adapterCode}`);
@@ -75,7 +76,7 @@ async function run(
         cfg: config,
         indexName: 'products',
         idField: 'id',
-        bulkSize: 100,
+        bulkSize,
         prepareDoc: record => record,
         onRecordError,
     };
@@ -167,6 +168,38 @@ describe('search sink completion accounting', () => {
         });
 
         expect(result).toEqual({ ok: 1, fail: 1 });
+    });
+
+    it('uses the validated executor batch size for webhook requests', async () => {
+        vi.mocked(secureFetch).mockResolvedValue(response('{}'));
+
+        const { result } = await run(
+            SINK_ADAPTER_CODES.WEBHOOK,
+            {
+                url: 'https://hooks.example.com/products',
+                batchSize: Number.POSITIVE_INFINITY,
+                retries: 0,
+            },
+            records,
+            1,
+        );
+
+        expect(result).toEqual({ ok: 2, fail: 0 });
+        expect(secureFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it.each([
+        ['timeoutMs', 0],
+        ['timeoutMs', Number.POSITIVE_INFINITY],
+        ['retries', -1],
+        ['retries', 1.5],
+        ['retries', 11],
+    ])('rejects invalid webhook %s before making a request', async (field, value) => {
+        await expect(run(SINK_ADAPTER_CODES.WEBHOOK, {
+            url: 'https://hooks.example.com/products',
+            [field]: value,
+        })).rejects.toThrow(`Webhook ${field} must be an integer`);
+        expect(secureFetch).not.toHaveBeenCalled();
     });
 
     it('waits for MeiliSearch task completion before reporting success', async () => {

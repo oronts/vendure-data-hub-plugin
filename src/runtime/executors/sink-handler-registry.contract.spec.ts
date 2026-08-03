@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
+import { BATCH, FIELD_LIMITS, HTTP } from '../../constants';
 import {
     handleAlgoliaDelete,
     handleElasticsearchDelete,
@@ -75,6 +76,34 @@ describe('sink handler registry contract', () => {
             .update(JSON.stringify(SINK_ADAPTERS))
             .digest('hex');
 
-        expect(digest).toBe('cb12aa72bac0aab057c5dbeff2ea97071400af391bc89c8b9f8a59dae829c4b7');
+        expect(digest).toBe('8891237cf7b510be498ba44f32ae5092f0ab48b4696a74079ed618586b1b1780');
+    });
+
+    it('publishes the enforced batch-size contract for every sink', () => {
+        for (const definition of SINK_ADAPTERS) {
+            const batchSize = definition.schema.fields.find(field => field.key === 'batchSize');
+            expect(batchSize).toEqual(expect.objectContaining({
+                type: 'number',
+                defaultValue: BATCH.BULK_SIZE,
+                validation: {
+                    min: FIELD_LIMITS.BATCH_SIZE_MIN,
+                    max: FIELD_LIMITS.BATCH_SIZE_MAX,
+                },
+            }));
+        }
+    });
+
+    it('publishes the webhook timeout and retry limits', () => {
+        const definition = SINK_HANDLER_REGISTRY.get(SINK_ADAPTER_CODES.WEBHOOK)?.definition;
+        const fields = new Map(definition?.schema.fields.map(field => [field.key, field]));
+
+        expect(fields.get('timeoutMs')).toEqual(expect.objectContaining({
+            defaultValue: HTTP.TIMEOUT_MS,
+            validation: { min: 1, max: HTTP.MAX_TIMEOUT_MS },
+        }));
+        expect(fields.get('retries')).toEqual(expect.objectContaining({
+            defaultValue: HTTP.MAX_RETRIES,
+            validation: { min: 0, max: HTTP.MAX_RETRY_ATTEMPTS },
+        }));
     });
 });

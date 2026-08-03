@@ -7,7 +7,7 @@ import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../executor-types';
 import { getPath } from '../utils';
 import { applyLocalization, resolveIndexName } from '../executor-helpers';
-import { BATCH, LOGGER_CONTEXTS, SINK } from '../../constants/index';
+import { LOGGER_CONTEXTS, SINK } from '../../constants/index';
 import { CircuitState, AdapterType } from '../../constants/enums';
 import { DataHubRegistryService } from '../../sdk/registry.service';
 import { SinkAdapter, SinkContext } from '../../sdk/types';
@@ -20,6 +20,7 @@ import {
     SinkHandlerContext,
     SinkServices,
 } from './sink-handler-registry';
+import { partitionSinkRecords, resolveSinkBatchSize } from './sink-execution-contract';
 
 /**
  * Common sink configuration
@@ -92,7 +93,7 @@ export class SinkExecutor {
         // Common config - use constants for default values
         const indexName = cfg.indexName ?? SINK.DEFAULT_INDEX_NAME;
         const idField = resolveSinkIdentityField(adapterCode, cfg);
-        const bulkSize = Number(cfg.batchSize ?? BATCH.BULK_SIZE) || BATCH.BULK_SIZE;
+        const bulkSize = resolveSinkBatchSize(cfg.batchSize);
 
         // Apply field selection
         const fields = cfg.fields;
@@ -124,18 +125,17 @@ export class SinkExecutor {
         const localizedInput = applyLocalization(input, { languageCode, translationsField, channelCode, channelField });
         const resolvedIndexName = resolveIndexName(indexName, languageCode);
 
-        const defaultOp = cfg.defaultOperation ?? 'UPSERT';
-        const upsertRecords: RecordObject[] = [];
-        const deleteRecords: RecordObject[] = [];
-        for (const rec of localizedInput) {
-            const op = String(rec.__operation ?? defaultOp).toUpperCase();
-            const { __operation: _op, ...cleanRec } = rec; // eslint-disable-line @typescript-eslint/no-unused-vars
-            if (op === 'DELETE') {
-                deleteRecords.push(cleanRec);
-            } else {
-                upsertRecords.push(cleanRec);
-            }
-        }
+        const configuredDefaultOperation = Object.prototype.hasOwnProperty.call(cfg, 'defaultOperation')
+            ? cfg.defaultOperation
+            : 'UPSERT';
+        const partitioned = await partitionSinkRecords(
+            localizedInput,
+            configuredDefaultOperation,
+            step.key,
+            onRecordError,
+        );
+        const { upsertRecords, deleteRecords } = partitioned;
+        fail += partitioned.invalid;
 
         // Try built-in handlers first
         const entry = adapterCode ? SINK_HANDLER_REGISTRY.get(adapterCode) : undefined;
@@ -207,11 +207,11 @@ export class SinkExecutor {
                     }
                 } else {
                     this.logger.warn(`Unknown sink adapter`, { stepKey: step.key, adapterCode });
-                    fail += localizedInput.length;
+                    fail += upsertRecords.length + deleteRecords.length;
                 }
             } else {
                 this.logger.warn(`Unknown sink adapter`, { stepKey: step.key, adapterCode });
-                fail += localizedInput.length;
+                fail += upsertRecords.length + deleteRecords.length;
             }
         }
 

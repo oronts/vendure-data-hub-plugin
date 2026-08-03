@@ -288,9 +288,15 @@ sent through the target's delete API. Queue DELETE messages carry the
 `x-datahub-operation: DELETE` header. Webhook DELETE batches use HTTP
 `DELETE` and contain identity-only objects.
 
-`batchSize` controls sequential request chunks. It does not enable parallel
-requests or add a per-second rate limiter. Choose it according to record size,
-target limits, and observed latency.
+`batchSize` controls sequential request chunks. It must be an integer from 1 to
+10,000 and defaults to 100. Invalid values fail before any target request is
+made. It does not enable parallel requests or add a per-second rate limiter.
+Choose it according to record size, target limits, and observed latency.
+
+`defaultOperation` and a record-level `__operation` accept only `UPSERT` or
+`DELETE` (case-insensitive). An invalid default fails the step before target
+requests begin. An invalid record operation fails and skips that record instead
+of treating it as an upsert.
 
 ---
 
@@ -385,8 +391,8 @@ SSRF protection, and a circuit breaker.
 | `apiKeySecretCode` | string | No | Secret code for API key authentication |
 | `apiKeyHeader` | string | No | Header name for API key (default: X-API-Key) |
 | `batchSize` | number | No | Records per request |
-| `timeoutMs` | number | No | Request timeout in milliseconds (default: 30000) |
-| `retries` | number | No | Maximum retry attempts on failure (default: 3) |
+| `timeoutMs` | number | No | Integer from 1 to 300000 milliseconds (default: 30000) |
+| `retries` | number | No | Retries after the first attempt; integer from 0 to 10 (default: 3) |
 | `hmacSecretCode` | string | No | Secret code for HMAC signing. When set, each request includes an HMAC-SHA256 signature computed over the request body |
 | `signatureHeaderName` | string | No | Header name for the HMAC signature (default: `X-DataHub-Signature`) |
 | `defaultOperation` | select | No | Operation used when a record has no `__operation` field: `UPSERT` or `DELETE` |

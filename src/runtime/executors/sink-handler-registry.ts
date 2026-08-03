@@ -1,5 +1,7 @@
 import type { AdapterDefinition } from '../../sdk/types';
 import { HTTP_METHOD_EXPORT_OPTIONS, LOCALIZATION_SCHEMA_FIELDS, PROTOCOL_OPTIONS, QUEUE_TYPE_OPTIONS, SINK_OPERATION_OPTIONS } from '../../constants/adapter-schema-options';
+import { FIELD_LIMITS } from '../../constants/validation';
+import { BATCH, HTTP } from '../../../shared/constants';
 import { handleAlgolia, handleElasticsearch, handleMeiliSearch, handleTypesense } from './search-sink-handlers';
 import { handleAlgoliaDelete, handleElasticsearchDelete, handleMeiliSearchDelete, handleTypesenseDelete } from './search-sink-delete-handlers';
 import { handleQueueProducer, handleQueueProducerDelete } from './queue-sink-handler';
@@ -7,6 +9,36 @@ import { handleWebhook, handleWebhookDelete } from './webhook-sink-handler';
 import { SINK_ADAPTER_CODES, type SinkDeleteHandler, type SinkHandler } from './sink-handler-types';
 export { SINK_ADAPTER_CODES } from './sink-handler-types';
 export type { SinkAdapterCode, SinkDeleteHandler, SinkHandler, SinkHandlerContext, SinkServices } from './sink-handler-types';
+
+const SINK_BATCH_SIZE_FIELD = {
+    key: 'batchSize',
+    label: 'Batch size',
+    type: 'number',
+    defaultValue: BATCH.BULK_SIZE,
+    validation: {
+        min: FIELD_LIMITS.BATCH_SIZE_MIN,
+        max: FIELD_LIMITS.BATCH_SIZE_MAX,
+    },
+    description: `Records per request (${FIELD_LIMITS.BATCH_SIZE_MIN}-${FIELD_LIMITS.BATCH_SIZE_MAX}).`,
+} as const;
+
+const WEBHOOK_TIMEOUT_FIELD = {
+    key: 'timeoutMs',
+    label: 'Timeout (ms)',
+    type: 'number',
+    defaultValue: HTTP.TIMEOUT_MS,
+    validation: { min: 1, max: HTTP.MAX_TIMEOUT_MS },
+    description: `Request timeout in milliseconds (1-${HTTP.MAX_TIMEOUT_MS}).`,
+} as const;
+
+const WEBHOOK_RETRIES_FIELD = {
+    key: 'retries',
+    label: 'Max retries',
+    type: 'number',
+    defaultValue: HTTP.MAX_RETRIES,
+    validation: { min: 0, max: HTTP.MAX_RETRY_ATTEMPTS },
+    description: `Retries after the first attempt (0-${HTTP.MAX_RETRY_ATTEMPTS}).`,
+} as const;
 
 // ─── Registry ────────────────────────────────────────────────────────
 
@@ -41,7 +73,7 @@ export const SINK_HANDLER_REGISTRY = new Map<string, SinkRegistryEntry>([
                     { key: 'indexName', label: 'Index name', type: 'string', required: true },
                     { key: 'primaryKey', label: 'Primary key field', type: 'string', required: true },
                     { key: 'defaultOperation', label: 'Default operation', type: 'select', options: SINK_OPERATION_OPTIONS, description: 'Fallback when records have no __operation field.' },
-                    { key: 'batchSize', label: 'Batch size', type: 'number' },
+                    SINK_BATCH_SIZE_FIELD,
                     { key: 'searchableFields', label: 'Searchable fields', type: 'json', description: 'Array of field names' },
                     { key: 'filterableFields', label: 'Filterable fields', type: 'json', description: 'Array of field names' },
                     { key: 'sortableFields', label: 'Sortable fields', type: 'json', description: 'Array of field names' },
@@ -69,7 +101,7 @@ export const SINK_HANDLER_REGISTRY = new Map<string, SinkRegistryEntry>([
                     { key: 'indexName', label: 'Index name', type: 'string', required: true },
                     { key: 'idField', label: 'Document ID field', type: 'string', required: true },
                     { key: 'defaultOperation', label: 'Default operation', type: 'select', options: SINK_OPERATION_OPTIONS, description: 'Fallback when records have no __operation field.' },
-                    { key: 'batchSize', label: 'Batch size', type: 'number' },
+                    SINK_BATCH_SIZE_FIELD,
                     ...LOCALIZATION_SCHEMA_FIELDS,
                 ],
             },
@@ -94,7 +126,7 @@ export const SINK_HANDLER_REGISTRY = new Map<string, SinkRegistryEntry>([
                     { key: 'indexName', label: 'Index name', type: 'string', required: true },
                     { key: 'idField', label: 'Document ID field', type: 'string', required: true },
                     { key: 'defaultOperation', label: 'Default operation', type: 'select', options: SINK_OPERATION_OPTIONS, description: 'Fallback when records have no __operation field.' },
-                    { key: 'batchSize', label: 'Batch size', type: 'number' },
+                    SINK_BATCH_SIZE_FIELD,
                     ...LOCALIZATION_SCHEMA_FIELDS,
                 ],
             },
@@ -117,7 +149,7 @@ export const SINK_HANDLER_REGISTRY = new Map<string, SinkRegistryEntry>([
                     { key: 'indexName', label: 'Index name', type: 'string', required: true },
                     { key: 'idField', label: 'Object ID field', type: 'string', required: true },
                     { key: 'defaultOperation', label: 'Default operation', type: 'select', options: SINK_OPERATION_OPTIONS, description: 'Fallback when records have no __operation field.' },
-                    { key: 'batchSize', label: 'Batch size', type: 'number' },
+                    SINK_BATCH_SIZE_FIELD,
                     ...LOCALIZATION_SCHEMA_FIELDS,
                 ],
             },
@@ -142,7 +174,7 @@ export const SINK_HANDLER_REGISTRY = new Map<string, SinkRegistryEntry>([
                     { key: 'collectionName', label: 'Collection name', type: 'string', required: true },
                     { key: 'idField', label: 'Document ID field', type: 'string', required: true },
                     { key: 'defaultOperation', label: 'Default operation', type: 'select', options: SINK_OPERATION_OPTIONS, description: 'Fallback when records have no __operation field.' },
-                    { key: 'batchSize', label: 'Batch size', type: 'number' },
+                    SINK_BATCH_SIZE_FIELD,
                     ...LOCALIZATION_SCHEMA_FIELDS,
                 ],
             },
@@ -199,12 +231,7 @@ export const SINK_HANDLER_REGISTRY = new Map<string, SinkRegistryEntry>([
                         type: 'string',
                         description: 'Field to use as message ID for deduplication.',
                     },
-                    {
-                        key: 'batchSize',
-                        label: 'Batch Size',
-                        type: 'number',
-                        description: 'Number of messages to send per batch.',
-                    },
+                    SINK_BATCH_SIZE_FIELD,
                     {
                         key: 'persistent',
                         label: 'Persistent',
@@ -305,26 +332,9 @@ export const SINK_HANDLER_REGISTRY = new Map<string, SinkRegistryEntry>([
                         options: SINK_OPERATION_OPTIONS,
                         description: 'Fallback when records have no __operation field.',
                     },
-                    {
-                        key: 'batchSize',
-                        label: 'Batch Size',
-                        type: 'number',
-                        description: 'Records per request.',
-                    },
-                    {
-                        key: 'timeoutMs',
-                        label: 'Timeout (ms)',
-                        type: 'number',
-                        placeholder: '30000',
-                        description: 'Request timeout in milliseconds.',
-                    },
-                    {
-                        key: 'retries',
-                        label: 'Max Retries',
-                        type: 'number',
-                        placeholder: '3',
-                        description: 'Maximum retry attempts on failure.',
-                    },
+                    SINK_BATCH_SIZE_FIELD,
+                    WEBHOOK_TIMEOUT_FIELD,
+                    WEBHOOK_RETRIES_FIELD,
                     ...LOCALIZATION_SCHEMA_FIELDS,
                 ],
             },

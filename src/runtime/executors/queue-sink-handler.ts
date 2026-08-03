@@ -1,6 +1,5 @@
 import * as crypto from 'crypto';
 import type { RequestContext } from '@vendure/core';
-import { SINK } from '../../constants/defaults';
 import { QueueType } from '../../constants/enums';
 import { queueAdapterRegistry } from '../../sdk/adapters/queue/queue-adapter.registry';
 import type { QueueConnectionConfig, QueueMessage } from '../../sdk/adapters/queue/queue-adapter.interface';
@@ -47,7 +46,7 @@ async function resolveQueueConnectionSecrets(
 
 
 export async function handleQueueProducer(hCtx: SinkHandlerContext, services: SinkServices): Promise<ExecutionResult> {
-    const { ctx, step, input, onRecordError } = hCtx;
+    const { ctx, step, input, onRecordError, bulkSize: batchSize } = hCtx;
     const cfg = step.config as QueueProducerSinkCfg;
     const queueType = String(cfg.queueType ?? QueueType.RABBITMQ).toLowerCase().replace(/_/g, '-');
     const connectionCode = cfg.connectionCode;
@@ -55,7 +54,6 @@ export async function handleQueueProducer(hCtx: SinkHandlerContext, services: Si
     const routingKey = cfg.routingKey;
     const headers = cfg.headers;
     const idField = cfg.idField;
-    const batchSize = Number(cfg.batchSize ?? SINK.QUEUE_BATCH_SIZE) || SINK.QUEUE_BATCH_SIZE;
     const persistent = cfg.persistent !== false;
     const priority = cfg.priority;
     const ttlMs = cfg.ttlMs;

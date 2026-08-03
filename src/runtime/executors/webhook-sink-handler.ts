@@ -12,6 +12,7 @@ import { secureFetch } from '../../utils/secure-fetch.utils';
 import { assertUrlSafe } from '../../utils/url-security.utils';
 import { chunk } from '../../utils/array.utils';
 import type { ExecutionResult, RecordObject } from '../executor-types';
+import { resolveBoundedInteger } from '../execution-config';
 import { checkCircuit, getCircuitKey, readSinkResponseText, resolveRequiredSecret } from './sink-handler-common';
 import { SINK_ADAPTER_CODES, type BaseSinkCfg, type SinkHandlerContext, type SinkServices, type WebhookSinkCfg } from './sink-handler-types';
 
@@ -124,13 +125,22 @@ async function resolveWebhookSecurity(
 
 
 export async function handleWebhook(hCtx: SinkHandlerContext, services: SinkServices): Promise<ExecutionResult> {
-    const { ctx, step, input, onRecordError } = hCtx;
+    const { ctx, step, input, onRecordError, bulkSize: batchSize } = hCtx;
     const cfg = hCtx.cfg as WebhookSinkCfg;
     const url = cfg.url;
     const method = (cfg.method ?? HttpMethod.POST).toUpperCase();
-    const batchSize = Number(cfg.batchSize ?? SINK.WEBHOOK_BATCH_SIZE) || SINK.WEBHOOK_BATCH_SIZE;
-    const timeoutMs = Number(cfg.timeoutMs ?? HTTP.TIMEOUT_MS) || HTTP.TIMEOUT_MS;
-    const maxRetries = Math.max(0, Number(cfg.retries ?? HTTP.MAX_RETRIES));
+    const timeoutMs = resolveBoundedInteger(cfg.timeoutMs, {
+        fieldName: 'Webhook timeoutMs',
+        defaultValue: HTTP.TIMEOUT_MS,
+        minimum: 1,
+        maximum: HTTP.MAX_TIMEOUT_MS,
+    });
+    const maxRetries = resolveBoundedInteger(cfg.retries, {
+        fieldName: 'Webhook retries',
+        defaultValue: HTTP.MAX_RETRIES,
+        minimum: 0,
+        maximum: HTTP.MAX_RETRY_ATTEMPTS,
+    });
 
     let ok = 0;
     let fail = 0;
