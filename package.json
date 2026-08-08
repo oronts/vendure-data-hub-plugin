@@ -114,7 +114,7 @@
     "test:infrastructure:external": "bash scripts/run-external-protocol-tests.sh",
     "test:infrastructure": "npm run test:infrastructure:redis && npm run test:infrastructure:otlp && npm run test:infrastructure:external",
     "verify:package": "ts-node scripts/verify-package.ts",
-    "verify:docs": "ts-node scripts/verify-doc-imports.ts",
+    "verify:docs": "npm run schema && ts-node scripts/verify-doc-imports.ts",
     "verify:i18n": "ts-node scripts/verify-i18n.ts",
     "prepack": "npm run build",
     "schema": "ts-node scripts/generate-schema.ts",
