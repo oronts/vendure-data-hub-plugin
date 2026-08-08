@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { access, mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
@@ -23,6 +23,35 @@ const forbiddenPackagePaths = [
 interface PackResult {
     filename?: string;
     files?: Array<{ path: string }>;
+}
+
+interface RootPackageManifest {
+    devDependencies?: Record<string, string>;
+    peerDependencies?: Record<string, string>;
+    peerDependenciesMeta?: Record<
+        string,
+        { optional?: boolean }
+    >;
+}
+
+async function getConsumerPeerSpecs(): Promise<string[]> {
+    const manifest = JSON.parse(
+        await readFile(join(packageRoot, 'package.json'), 'utf8'),
+    ) as RootPackageManifest;
+    const peerDependencies = manifest.peerDependencies ?? {};
+
+    return Object.keys(peerDependencies)
+        .filter(name => !manifest.peerDependenciesMeta?.[name]?.optional)
+        .map(name => {
+            const version = manifest.devDependencies?.[name];
+            if (!version) {
+                throw new Error(
+                    `Required peer dependency is not installed for package verification: ${name}`,
+                );
+            }
+
+            return `${name}@${version}`;
+        });
 }
 
 function parsePackResults(output: string): PackResult[] {
@@ -66,6 +95,7 @@ async function verifyPackage(): Promise<void> {
     const temporaryRoot = await mkdtemp(join(tmpdir(), 'data-hub-consumer-'));
     const consumerDirectory = join(temporaryRoot, 'consumer');
     try {
+        const consumerPeerSpecs = await getConsumerPeerSpecs();
         const pack = await execFileAsync('npm', [
             'pack',
             '--json',
@@ -88,10 +118,12 @@ async function verifyPackage(): Promise<void> {
         await execFileAsync('npm', [
             'install',
             '--ignore-scripts',
+            '--registry=https://registry.npmjs.org/',
             '--no-audit',
             '--no-fund',
             join(temporaryRoot, filename),
             'typescript@5.9.3',
+            ...consumerPeerSpecs,
         ], { cwd: consumerDirectory, ...commandOptions });
 
         await access(join(
