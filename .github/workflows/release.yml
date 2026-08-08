@@ -46,7 +46,7 @@ jobs:
         run: npm sbom --omit=dev --sbom-format=spdx --sbom-type=library > data-hub.spdx.json
 
       - name: Create tarball
-        run: npm pack --json > package-pack.json
+        run: npm pack --json --ignore-scripts > package-pack.json
 
       - name: Publish to npm
         run: |
