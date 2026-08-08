@@ -949,81 +949,6 @@ msgid "secretSource.databaseInactive"
 msgstr "Database row is inactive"
 
 #. js-lingui-explicit-id
-#: dashboard/constants/feed-labels.ts:2
-msgid "feeds.validation.jsonObject"
-msgstr "Enter a JSON object"
-
-#. js-lingui-explicit-id
-#: dashboard/constants/feed-labels.ts:3
-msgid "feeds.validation.invalidJson"
-msgstr "Enter valid JSON"
-
-#. js-lingui-explicit-id
-#: dashboard/constants/feed-labels.ts:4
-msgid "feeds.validation.minPrice"
-msgstr "minPrice must be a non-negative number"
-
-#. js-lingui-explicit-id
-#: dashboard/constants/feed-labels.ts:5
-msgid "feeds.validation.maxPrice"
-msgstr "maxPrice must be a non-negative number"
-
-#. js-lingui-explicit-id
-#: dashboard/constants/feed-labels.ts:6
-msgid "feeds.validation.priceRange"
-msgstr "minPrice cannot be greater than maxPrice"
-
-#. js-lingui-explicit-id
-#: dashboard/constants/feed-labels.ts:7
-msgid "feeds.validation.baseUrl"
-msgstr "baseUrl is required and must be a valid HTTP or HTTPS URL"
-
-#. js-lingui-explicit-id
-#: dashboard/constants/feed-labels.ts:8
-msgid "feeds.validation.codeRequired"
-msgstr "Code is required"
-
-#. js-lingui-explicit-id
-#: dashboard/constants/feed-labels.ts:9
-msgid "feeds.validation.codePattern"
-msgstr "Use lowercase letters, numbers, and single hyphens"
-
-#. js-lingui-explicit-id
-#: dashboard/constants/feed-labels.ts:10
-msgid "feeds.validation.codeLength"
-msgstr "Code must not exceed {count} characters"
-
-#. js-lingui-explicit-id
-#: dashboard/constants/feed-labels.ts:11
-msgid "feeds.validation.nameRequired"
-msgstr "Name is required"
-
-#. js-lingui-explicit-id
-#: dashboard/constants/feed-labels.ts:12
-msgid "feeds.validation.nameLength"
-msgstr "Name must not exceed {count} characters"
-
-#. js-lingui-explicit-id
-#: dashboard/constants/feed-labels.ts:13
-msgid "feeds.validation.formatRequired"
-msgstr "Format is required"
-
-#. js-lingui-explicit-id
-#: dashboard/constants/feed-labels.ts:14
-msgid "feeds.validation.customGenerator"
-msgstr "A registered custom generator code is required"
-
-#. js-lingui-explicit-id
-#: dashboard/constants/feed-labels.ts:15
-msgid "feeds.validation.cron"
-msgstr "Enter a valid five-field cron expression"
-
-#. js-lingui-explicit-id
-#: dashboard/constants/feed-labels.ts:16
-msgid "feeds.validation.timezone"
-msgstr "Enter a valid IANA timezone, such as Europe/Berlin"
-
-#. js-lingui-explicit-id
 #: dashboard/constants/navigation.ts:16
 msgid "Data Hub"
 msgstr "Data Hub"
@@ -1167,6 +1092,81 @@ msgstr "New schema version"
 #: dashboard/constants/navigation.ts:50
 msgid "New destination"
 msgstr "New destination"
+
+#. js-lingui-explicit-id
+#: dashboard/constants/feed-labels.ts:2
+msgid "feeds.validation.jsonObject"
+msgstr "Enter a JSON object"
+
+#. js-lingui-explicit-id
+#: dashboard/constants/feed-labels.ts:3
+msgid "feeds.validation.invalidJson"
+msgstr "Enter valid JSON"
+
+#. js-lingui-explicit-id
+#: dashboard/constants/feed-labels.ts:4
+msgid "feeds.validation.minPrice"
+msgstr "minPrice must be a non-negative number"
+
+#. js-lingui-explicit-id
+#: dashboard/constants/feed-labels.ts:5
+msgid "feeds.validation.maxPrice"
+msgstr "maxPrice must be a non-negative number"
+
+#. js-lingui-explicit-id
+#: dashboard/constants/feed-labels.ts:6
+msgid "feeds.validation.priceRange"
+msgstr "minPrice cannot be greater than maxPrice"
+
+#. js-lingui-explicit-id
+#: dashboard/constants/feed-labels.ts:7
+msgid "feeds.validation.baseUrl"
+msgstr "baseUrl is required and must be a valid HTTP or HTTPS URL"
+
+#. js-lingui-explicit-id
+#: dashboard/constants/feed-labels.ts:8
+msgid "feeds.validation.codeRequired"
+msgstr "Code is required"
+
+#. js-lingui-explicit-id
+#: dashboard/constants/feed-labels.ts:9
+msgid "feeds.validation.codePattern"
+msgstr "Use lowercase letters, numbers, and single hyphens"
+
+#. js-lingui-explicit-id
+#: dashboard/constants/feed-labels.ts:10
+msgid "feeds.validation.codeLength"
+msgstr "Code must not exceed {count} characters"
+
+#. js-lingui-explicit-id
+#: dashboard/constants/feed-labels.ts:11
+msgid "feeds.validation.nameRequired"
+msgstr "Name is required"
+
+#. js-lingui-explicit-id
+#: dashboard/constants/feed-labels.ts:12
+msgid "feeds.validation.nameLength"
+msgstr "Name must not exceed {count} characters"
+
+#. js-lingui-explicit-id
+#: dashboard/constants/feed-labels.ts:13
+msgid "feeds.validation.formatRequired"
+msgstr "Format is required"
+
+#. js-lingui-explicit-id
+#: dashboard/constants/feed-labels.ts:14
+msgid "feeds.validation.customGenerator"
+msgstr "A registered custom generator code is required"
+
+#. js-lingui-explicit-id
+#: dashboard/constants/feed-labels.ts:15
+msgid "feeds.validation.cron"
+msgstr "Enter a valid five-field cron expression"
+
+#. js-lingui-explicit-id
+#: dashboard/constants/feed-labels.ts:16
+msgid "feeds.validation.timezone"
+msgstr "Enter a valid IANA timezone, such as Europe/Berlin"
 
 #. js-lingui-explicit-id
 #: dashboard/constants/destination-labels.ts:2
@@ -2068,7 +2068,7 @@ msgstr "Base URL"
 msgid "Basic"
 msgstr "Basic"
 
-#: dashboard/components/shared/ExecutionContextFields.tsx:429
+#: dashboard/components/shared/ExecutionContextFields.tsx:430
 #: dashboard/components/wizards/import-wizard/ReviewStep.tsx:144
 #: dashboard/components/wizards/import-wizard/StrategyStep.tsx:262
 msgid "Batch size"
@@ -2198,7 +2198,7 @@ msgstr "catch-all"
 msgid "Channel"
 msgstr "Channel"
 
-#: dashboard/components/shared/ExecutionContextFields.tsx:303
+#: dashboard/components/shared/ExecutionContextFields.tsx:304
 msgid "Channel strategy"
 msgstr "Channel strategy"
 
@@ -2207,7 +2207,7 @@ msgstr "Channel strategy"
 msgid "Channel-scoped Data Hub events (refreshes every {0} seconds)"
 msgstr "Channel-scoped Data Hub events (refreshes every {0} seconds)"
 
-#: dashboard/components/shared/ExecutionContextFields.tsx:343
+#: dashboard/components/shared/ExecutionContextFields.tsx:344
 #: dashboard/components/shared/ManagedResourceChannels.tsx:101
 msgid "Channels"
 msgstr "Channels"
@@ -2249,7 +2249,7 @@ msgstr "Choose a template: {0}"
 msgid "Choose a trigger"
 msgstr "Choose a trigger"
 
-#: dashboard/components/common/SecretReferenceInput.tsx:40
+#: dashboard/components/common/SecretReferenceInput.tsx:43
 msgid "Choose an existing secret or type a new reference code."
 msgstr "Choose an existing secret or type a new reference code."
 
@@ -2392,7 +2392,7 @@ msgstr "Complete or correct the connection settings before saving."
 msgid "Completed today"
 msgstr "Completed today"
 
-#: dashboard/components/shared/ExecutionContextFields.tsx:441
+#: dashboard/components/shared/ExecutionContextFields.tsx:443
 msgid "Concurrency"
 msgstr "Concurrency"
 
@@ -2542,7 +2542,7 @@ msgstr "Console logging is always full"
 msgid "Consumers"
 msgstr "Consumers"
 
-#: dashboard/components/shared/ExecutionContextFields.tsx:369
+#: dashboard/components/shared/ExecutionContextFields.tsx:370
 msgid "Content language"
 msgstr "Content language"
 
@@ -2596,7 +2596,7 @@ msgstr "Could not create schema version"
 msgid "Could not delete schema version"
 msgstr "Could not delete schema version"
 
-#: dashboard/components/shared/ResourceReferenceSelector.tsx:81
+#: dashboard/components/shared/ResourceReferenceSelector.tsx:83
 msgid "Could not load connections. Try again."
 msgstr "Could not load connections. Try again."
 
@@ -2612,7 +2612,7 @@ msgstr "Could not load schema impact."
 msgid "Could not load schema versions."
 msgstr "Could not load schema versions."
 
-#: dashboard/components/shared/ResourceReferenceSelector.tsx:88
+#: dashboard/components/shared/ResourceReferenceSelector.tsx:90
 msgid "Could not load secrets. Try again."
 msgstr "Could not load secrets. Try again."
 
@@ -2949,7 +2949,7 @@ msgstr "Details"
 msgid "Direction"
 msgstr "Direction"
 
-#: dashboard/components/common/ConnectionSchemaFields.tsx:132
+#: dashboard/components/common/ConnectionSchemaFields.tsx:133
 #: dashboard/routes/destinations/DestinationsList.tsx:213
 #: dashboard/routes/queues/ConsumersTable.tsx:72
 msgid "Disabled"
@@ -3061,7 +3061,7 @@ msgstr "Edit this connection in deployed configuration. Removing the definition 
 msgid "Enable Parallel Steps"
 msgstr "Enable Parallel Steps"
 
-#: dashboard/components/common/ConnectionSchemaFields.tsx:132
+#: dashboard/components/common/ConnectionSchemaFields.tsx:133
 #: dashboard/components/shared/trigger-config/TriggerForm.tsx:405
 #: dashboard/routes/destinations/DestinationCreate.tsx:330
 #: dashboard/routes/destinations/DestinationsList.tsx:213
@@ -3108,11 +3108,11 @@ msgstr "Enter a JSON array of allowed values."
 msgid "Enter a name"
 msgstr "Enter a name"
 
-#: dashboard/components/shared/ExecutionContextFields.tsx:136
+#: dashboard/components/shared/ExecutionContextFields.tsx:137
 msgid "Enter a number from {minimum} to {maximum}."
 msgstr "Enter a number from {minimum} to {maximum}."
 
-#: dashboard/components/shared/ExecutionContextFields.tsx:140
+#: dashboard/components/shared/ExecutionContextFields.tsx:141
 msgid "Enter a number greater than or equal to {minimum}."
 msgstr "Enter a number greater than or equal to {minimum}."
 
@@ -3164,11 +3164,11 @@ msgstr "Enter a valid whole number for {0}."
 msgid "Enter a whole number"
 msgstr "Enter a whole number"
 
-#: dashboard/components/shared/ExecutionContextFields.tsx:134
+#: dashboard/components/shared/ExecutionContextFields.tsx:135
 msgid "Enter a whole number from {minimum} to {maximum}."
 msgstr "Enter a whole number from {minimum} to {maximum}."
 
-#: dashboard/components/shared/ExecutionContextFields.tsx:138
+#: dashboard/components/shared/ExecutionContextFields.tsx:139
 msgid "Enter a whole number greater than or equal to {minimum}."
 msgstr "Enter a whole number greater than or equal to {minimum}."
 
@@ -3279,7 +3279,7 @@ msgstr "Example configuration"
 msgid "Example cURL"
 msgstr "Example cURL"
 
-#: dashboard/components/shared/ExecutionContextFields.tsx:272
+#: dashboard/components/shared/ExecutionContextFields.tsx:273
 msgid "Execution channel"
 msgstr "Execution channel"
 
@@ -4019,7 +4019,7 @@ msgstr "How the secret value is resolved"
 msgid "ID"
 msgstr "ID"
 
-#: dashboard/components/shared/ExecutionContextFields.tsx:401
+#: dashboard/components/shared/ExecutionContextFields.tsx:402
 msgid "Idempotency key field"
 msgstr "Idempotency key field"
 
@@ -4201,7 +4201,7 @@ msgstr "Lifecycle"
 msgid "Load"
 msgstr "Load"
 
-#: dashboard/components/shared/SearchableReferenceSelector.tsx:168
+#: dashboard/components/shared/SearchableReferenceSelector.tsx:171
 msgid "Load {remaining} more"
 msgstr "Load {remaining} more"
 
@@ -4361,8 +4361,8 @@ msgstr "Loading visual editor..."
 
 #: dashboard/components/shared/feedback/LoadingState.tsx:20
 #: dashboard/components/shared/LoadMoreButton.tsx:24
-#: dashboard/components/shared/SearchableReferenceSelector.tsx:123
-#: dashboard/components/shared/SearchableReferenceSelector.tsx:167
+#: dashboard/components/shared/SearchableReferenceSelector.tsx:126
+#: dashboard/components/shared/SearchableReferenceSelector.tsx:170
 #: dashboard/routes/logs/components/RealtimeLogTab.tsx:62
 #: dashboard/routes/pipelines/components/VersionHistoryDialog.tsx:129
 #: dashboard/routes/queues/QueuesPage.tsx:349
@@ -4739,7 +4739,7 @@ msgstr "No configuration options available for this type."
 msgid "No configuration schema is available for the {destinationType} destination."
 msgstr "No configuration schema is available for the {destinationType} destination."
 
-#: dashboard/components/shared/ResourceReferenceSelector.tsx:80
+#: dashboard/components/shared/ResourceReferenceSelector.tsx:82
 msgid "No connections found."
 msgstr "No connections found."
 
@@ -4886,7 +4886,7 @@ msgstr "No retry audit entries"
 msgid "No schema versions found"
 msgstr "No schema versions found"
 
-#: dashboard/components/shared/ResourceReferenceSelector.tsx:87
+#: dashboard/components/shared/ResourceReferenceSelector.tsx:89
 msgid "No secrets found."
 msgstr "No secrets found."
 
@@ -4955,7 +4955,7 @@ msgid "Node Palette"
 msgstr "Node Palette"
 
 #: dashboard/components/common/HttpAuthenticationFields.tsx:325
-#: dashboard/components/shared/ResourceReferenceSelector.tsx:122
+#: dashboard/components/shared/ResourceReferenceSelector.tsx:124
 #: dashboard/components/wizards/export-wizard/FieldsStep.tsx:204
 #: dashboard/components/wizards/export-wizard/FieldsStep.tsx:209
 #: dashboard/components/wizards/import-wizard/StrategyStep.tsx:110
@@ -5171,7 +5171,7 @@ msgstr "Pipeline archived"
 msgid "Pipeline code copied to clipboard"
 msgstr "Pipeline code copied to clipboard"
 
-#: dashboard/components/shared/ExecutionContextFields.tsx:209
+#: dashboard/components/shared/ExecutionContextFields.tsx:210
 msgid "Pipeline default"
 msgstr "Pipeline default"
 
@@ -5440,7 +5440,7 @@ msgstr "Quick Start with a Template"
 msgid "Quick Start with a Template: {0}"
 msgstr "Quick Start with a Template: {0}"
 
-#: dashboard/components/shared/ExecutionContextFields.tsx:453
+#: dashboard/components/shared/ExecutionContextFields.tsx:456
 msgid "Rate limit"
 msgstr "Rate limit"
 
@@ -5529,7 +5529,7 @@ msgstr "Record errors"
 msgid "Record errors captured during this run"
 msgstr "Record errors captured during this run"
 
-#: dashboard/components/shared/ExecutionContextFields.tsx:411
+#: dashboard/components/shared/ExecutionContextFields.tsx:412
 msgid "Record field path"
 msgstr "Record field path"
 
@@ -5760,7 +5760,7 @@ msgstr "Required"
 msgid "Required fields"
 msgstr "Required fields"
 
-#: dashboard/components/shared/ExecutionContextFields.tsx:362
+#: dashboard/components/shared/ExecutionContextFields.tsx:363
 msgid "Required when the channel strategy is explicit or multi-channel."
 msgstr "Required when the channel strategy is explicit or multi-channel."
 
@@ -5820,7 +5820,7 @@ msgstr "Retained logs"
 msgid "Retention cleanup runs automatically. Older data is permanently deleted to free up database space."
 msgstr "Retention cleanup runs automatically. Older data is permanently deleted to free up database space."
 
-#: dashboard/components/shared/SearchableReferenceSelector.tsx:137
+#: dashboard/components/shared/SearchableReferenceSelector.tsx:140
 #: dashboard/routes/pipelines/RunErrorsList.tsx:177
 #: dashboard/routes/queues/QueuesPage.tsx:312
 #: dashboard/routes/schemas/SchemaDetail.tsx:224
@@ -6015,7 +6015,7 @@ msgstr "Runs this week"
 msgid "Runs today"
 msgstr "Runs today"
 
-#: dashboard/components/shared/ExecutionContextFields.tsx:210
+#: dashboard/components/shared/ExecutionContextFields.tsx:211
 msgid "Runtime default"
 msgstr "Runtime default"
 
@@ -6153,7 +6153,7 @@ msgstr "Schema versions could not be loaded"
 msgid "Search adapters..."
 msgstr "Search adapters..."
 
-#: dashboard/components/shared/ResourceReferenceSelector.tsx:79
+#: dashboard/components/shared/ResourceReferenceSelector.tsx:81
 msgid "Search connections..."
 msgstr "Search connections..."
 
@@ -6178,7 +6178,7 @@ msgstr "Search pipelines..."
 msgid "Search schema IDs"
 msgstr "Search schema IDs"
 
-#: dashboard/components/shared/ResourceReferenceSelector.tsx:86
+#: dashboard/components/shared/ResourceReferenceSelector.tsx:88
 msgid "Search secrets..."
 msgstr "Search secrets..."
 
@@ -6327,7 +6327,7 @@ msgstr "Select at least one lookup field"
 msgid "Select authentication method"
 msgstr "Select authentication method"
 
-#: dashboard/components/shared/ResourceReferenceSelector.tsx:78
+#: dashboard/components/shared/ResourceReferenceSelector.tsx:80
 #: dashboard/components/shared/schema-form/fields/SelectField.tsx:56
 #: dashboard/components/shared/trigger-config/TriggerForm.tsx:284
 msgid "Select connection..."
@@ -6371,7 +6371,7 @@ msgstr "Select pipeline..."
 msgid "Select provider"
 msgstr "Select provider"
 
-#: dashboard/components/shared/ResourceReferenceSelector.tsx:85
+#: dashboard/components/shared/ResourceReferenceSelector.tsx:87
 #: dashboard/components/shared/schema-form/fields/SelectField.tsx:55
 #: dashboard/components/shared/trigger-config/TriggerForm.tsx:283
 msgid "Select secret..."
@@ -6826,7 +6826,7 @@ msgstr "Testing..."
 msgid "The {0} configuration and its current artifact will be permanently deleted."
 msgstr "The {0} configuration and its current artifact will be permanently deleted."
 
-#: dashboard/components/shared/ExecutionContextFields.tsx:358
+#: dashboard/components/shared/ExecutionContextFields.tsx:359
 msgid "The active execution channel is inherited."
 msgstr "The active execution channel is inherited."
 
@@ -6981,11 +6981,11 @@ msgid "This will return the pipeline to draft status for further changes."
 msgstr "This will return the pipeline to draft status for further changes."
 
 #: dashboard/components/pipelines/PipelineEditorDetails.tsx:148
-#: dashboard/components/shared/ExecutionContextFields.tsx:423
+#: dashboard/components/shared/ExecutionContextFields.tsx:424
 msgid "Throughput"
 msgstr "Throughput"
 
-#: dashboard/components/shared/ExecutionContextFields.tsx:421
+#: dashboard/components/shared/ExecutionContextFields.tsx:422
 msgid "Throughput overrides"
 msgstr "Throughput overrides"
 
@@ -7230,16 +7230,16 @@ msgstr "Use a clear, descriptive name"
 msgid "Use a server-registered custom feed generator"
 msgstr "Use a server-registered custom feed generator"
 
-#: dashboard/components/shared/ExecutionContextFields.tsx:287
+#: dashboard/components/shared/ExecutionContextFields.tsx:288
 msgid "Use active channel"
 msgstr "Use active channel"
 
-#: dashboard/components/shared/ExecutionContextFields.tsx:389
+#: dashboard/components/shared/ExecutionContextFields.tsx:390
 msgid "Use inherited content language"
 msgstr "Use inherited content language"
 
-#: dashboard/components/shared/ExecutionContextFields.tsx:255
-#: dashboard/components/shared/ExecutionContextFields.tsx:328
+#: dashboard/components/shared/ExecutionContextFields.tsx:256
+#: dashboard/components/shared/ExecutionContextFields.tsx:329
 msgid "Use pipeline default"
 msgstr "Use pipeline default"
 
@@ -7317,7 +7317,7 @@ msgstr "Validation Issues"
 msgid "Validation rules"
 msgstr "Validation rules"
 
-#: dashboard/components/shared/ExecutionContextFields.tsx:239
+#: dashboard/components/shared/ExecutionContextFields.tsx:240
 msgid "Validation strictness"
 msgstr "Validation strictness"
 
@@ -7443,7 +7443,7 @@ msgstr "Yes"
 msgid "You do not have all permissions required to test this pipeline"
 msgstr "You do not have all permissions required to test this pipeline"
 
-#: dashboard/components/shared/ResourceReferenceSelector.tsx:82
+#: dashboard/components/shared/ResourceReferenceSelector.tsx:84
 msgid "You do not have permission to list Data Hub connections."
 msgstr "You do not have permission to list Data Hub connections."
 
@@ -7451,7 +7451,7 @@ msgstr "You do not have permission to list Data Hub connections."
 msgid "You do not have permission to list Data Hub pipelines."
 msgstr "You do not have permission to list Data Hub pipelines."
 
-#: dashboard/components/shared/ResourceReferenceSelector.tsx:89
+#: dashboard/components/shared/ResourceReferenceSelector.tsx:91
 msgid "You do not have permission to list Data Hub secrets."
 msgstr "You do not have permission to list Data Hub secrets."
 
