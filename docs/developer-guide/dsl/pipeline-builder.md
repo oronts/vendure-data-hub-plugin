@@ -6,6 +6,31 @@ The `createPipeline()` function returns a builder for constructing pipelines.
 
 ```typescript
 import { createPipeline } from '@oronts/vendure-data-hub-plugin';
+## Typed Loader Factories
+
+The typed factories expose every built-in loader under its canonical adapter
+code and enforce each loader's required configuration fields.
+
+```typescript
+import {
+    Loaders,
+    deriveCapabilities,
+    loadStep,
+} from '@oronts/vendure-data-hub-plugin';
+
+const steps = [
+    loadStep('products', Loaders.productUpsert({
+        strategy: 'UPSERT',
+        skuField: 'sku',
+        nameField: 'name',
+    })),
+];
+
+const capabilities = deriveCapabilities(steps);
+// { requires: ['UpdateCatalog'], writes: ['CATALOG'] }
+```
+
+Factory names match the adapter codes in the [Loaders Reference](../../reference/loaders.md).
 ```
 
 ## Builder Methods
@@ -29,18 +54,25 @@ createPipeline()
 
 ```typescript
 .context({
-    channel: 'default',
+    channel: '__default_channel__', // Vendure channel token
     contentLanguage: 'en',
     channelStrategy: 'EXPLICIT',  // 'EXPLICIT' | 'INHERIT' | 'MULTI'
+    channelIds: ['2'],            // Vendure channel IDs
     validationMode: 'STRICT',     // 'STRICT' | 'LENIENT'
-    runMode: 'BATCH',             // 'SYNC' | 'ASYNC' | 'BATCH' | 'STREAM'
 })
 .capabilities({
     writes: ['CATALOG'],     // 'CATALOG' | 'CUSTOMERS' | 'ORDERS' | 'PROMOTIONS' | 'INVENTORY' | 'CUSTOM'
     requires: [],            // Required permissions
-    streamSafe: true,        // Safe for streaming mode
 })
 ```
+
+Pipeline context values are defaults. Each step may define a `context` object
+with `contentLanguage`, `channelStrategy`, `channelIds`, `validationMode`, or
+`throughput` overrides. Resolution is step, then pipeline, then
+the active Vendure request context. Missing validation and execution values
+default to `STRICT`.
+`EXPLICIT` and `MULTI` channel strategies require at least one effective
+`channelIds` entry.
 
 ### .parallel(config)
 
@@ -49,7 +81,7 @@ Enables parallel step execution for the pipeline. When enabled, independent step
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| maxConcurrentSteps | number | No | Maximum steps to run concurrently (default: 4, range: 2-16) |
+| maxConcurrentSteps | number | No | Maximum steps to run concurrently (default: 4, range: 1-16) |
 | errorPolicy | string | No | `'FAIL_FAST'` \| `'CONTINUE'` \| `'BEST_EFFORT'`. Default: `'FAIL_FAST'` |
 
 **Error policies:**
@@ -77,7 +109,10 @@ createPipeline()
 .dependsOn('other-pipeline-code', 'another-pipeline')
 ```
 
-Pipelines that must complete before this one can run.
+`.dependsOn()` declares pipeline-code references used by dependency queries,
+publish-time existence and cycle validation, and rename/delete protection. It
+does not start, order, or wait for those pipelines. Use schedules, explicit
+orchestration, or `TRIGGER_PIPELINE` hooks for runtime sequencing.
 
 ### Hooks
 
@@ -160,6 +195,7 @@ array of `HookAction` objects. Six action types are supported: `INTERCEPTOR`, `S
     AFTER_LOAD: [{
         type: 'TRIGGER_PIPELINE',
         pipelineCode: 'post-import-sync',
+        triggerKey: 'hook',
     }],
     PIPELINE_STARTED: [{
         type: 'LOG',
@@ -200,9 +236,11 @@ Define how the pipeline starts:
 ```typescript
 .trigger('webhook', {
     type: 'WEBHOOK',
-    path: '/product-sync',
-    signature: 'hmac-sha256',
-    idempotencyKey: 'X-Request-ID',
+    authentication: 'HMAC',
+    secretCode: 'product-sync-webhook-secret',
+    hmacAlgorithm: 'SHA256',
+    requireIdempotencyKey: true,
+    idempotencyKeyHeader: 'X-Request-ID',
 })
 ```
 
@@ -211,9 +249,11 @@ Define how the pipeline starts:
 .trigger('on-order', {
     type: 'EVENT',
     event: 'OrderPlacedEvent',
-    filter: { state: 'ArrangingPayment' },
 })
 ```
+
+The event selector is an exact Vendure class name. Filter the seeded records in
+a downstream step when only some operations or states should continue.
 
 ### extract
 
@@ -225,6 +265,7 @@ Pull data from external sources:
     // Adapter-specific options...
     throughput?: Throughput,
     async?: boolean,
+    schemaRef?: { schemaId: string; version: string },
 })
 ```
 
@@ -232,7 +273,8 @@ Pull data from external sources:
 ```typescript
 .extract('fetch-api', {
     adapterCode: 'httpApi',
-    url: 'https://api.example.com/products',
+    connectionCode: 'catalog-api',
+    url: '/products',
     method: 'GET',
     headers: { 'Accept': 'application/json' },
     dataPath: 'data.items',
@@ -241,9 +283,17 @@ Pull data from external sources:
         limit: 100,
         maxPages: 10,
     },
-    bearerTokenSecretCode: 'api-key',
+    auth: {
+        type: 'BEARER',
+        secretCode: 'api-key',
+    },
 })
 ```
+
+Authenticated HTTP extractors require a saved connection with a base URL. The
+extractor accepts paths relative to that URL or absolute URLs on the same exact
+origin; cross-origin requests and redirects are rejected before credentials
+can be forwarded.
 
 **GraphQL:**
 ```typescript
@@ -255,14 +305,14 @@ Pull data from external sources:
 })
 ```
 
-**File:**
+**Uploaded CSV:**
 ```typescript
-.extract('parse-file', {
-    adapterCode: 'file',
-    path: '/uploads/products.csv',
-    format: 'CSV',
+.extract('parse-csv', {
+    adapterCode: 'csv',
+    fileId: 'products-upload-id',
     delimiter: ',',
     hasHeader: true,
+    schemaRef: { schemaId: 'catalog.product', version: '1.0.0' },
 })
 ```
 
@@ -271,7 +321,7 @@ Pull data from external sources:
 .extract('query-vendure', {
     adapterCode: 'vendureQuery',
     entity: 'PRODUCT',  // UPPERCASE: PRODUCT, COLLECTION, FACET, CUSTOMER, ORDER, etc.
-    relations: 'variants,featuredAsset,translations',
+    relations: ['variants', 'featuredAsset', 'translations'],
     languageCode: 'en',
     batchSize: 500,
 })
@@ -336,8 +386,8 @@ Validate records:
 .validate('step-key', {
     errorHandlingMode: 'FAIL_FAST' | 'ACCUMULATE',
     rules: ValidationRuleConfig[],
-    schemaRef?: SchemaRefConfig,
     throughput?: Throughput,
+    schemaRef?: { schemaId: string; version: string },
 })
 ```
 
@@ -345,12 +395,17 @@ Validate records:
 ```typescript
 .validate('check-data', {
     errorHandlingMode: 'ACCUMULATE',
+    schemaRef: { schemaId: 'catalog.product', version: '1.0.0' },
     rules: [
         { type: 'business', spec: { field: 'sku', required: true } },
         { type: 'business', spec: { field: 'price', min: 0 } },
     ],
 })
 ```
+
+`schemaRef` is stored on the pipeline step, not inside the adapter configuration.
+The referenced version must exist before publication. Dry runs, step tests, and
+live execution resolve the same immutable version.
 
 ### enrich
 
@@ -363,12 +418,19 @@ Add data from external lookups or static enrichment:
     set?: Record<string, JsonValue>,        // Always overwrite these fields
     computed?: Record<string, string>,      // Template expressions: '${field1} ${field2}'
     sourceType?: 'STATIC' | 'HTTP' | 'VENDURE',
-    endpoint?: string,             // HTTP endpoint URL (for HTTP source type)
-    matchField?: string,           // Field to match for lookups
-    entity?: string,               // Vendure entity type (for VENDURE source type)
-    config?: JsonObject,           // Additional adapter config
+    url?: string,                  // Required for HTTP; supports {{field.path}}
+    keyField?: string,             // Record field used in cache identity
+    target?: string,               // Field receiving the response
+    entityType?: string,           // Required registered loader entity type
+    sourceField?: string,          // Required input record field
+    lookupField?: string,          // Required Vendure entity lookup field
+    targetFields?: Record<string, string>,
 })
 ```
+
+Without `adapterCode`, STATIC requires a non-empty `defaults`, `set`, or
+`computed` object. HTTP requires `url`. VENDURE requires `entityType`,
+`sourceField`, and `lookupField`.
 
 **Static Enrichment (no adapter needed):**
 ```typescript
@@ -386,6 +448,7 @@ Split data flow based on conditions:
 ```typescript
 .route('step-key', {
     branches: RouteBranchConfig[],
+    /** Target step key for unmatched records; a matching edge is required. */
     defaultTo?: string,
 })
 ```
@@ -417,8 +480,8 @@ Create or update Vendure entities:
     strategy?: 'CREATE' | 'UPDATE' | 'UPSERT' | 'MERGE' | 'SOFT_DELETE' | 'HARD_DELETE',
     channel?: string,
     channelStrategy?: 'EXPLICIT' | 'INHERIT' | 'MULTI',
+    channelIds?: string[],
     validationMode?: ValidationMode,
-    matchField?: string,
     nameField?: string,
     slugField?: string,
     descriptionField?: string,
@@ -446,7 +509,7 @@ Create or update Vendure entities:
 .load('import-products', {
     adapterCode: 'productUpsert',
     strategy: 'UPSERT',
-    matchField: 'slug',
+    slugField: 'slug',
     conflictStrategy: 'SOURCE_WINS',
 })
 ```
@@ -456,7 +519,7 @@ Create or update Vendure entities:
 .load('import-variants', {
     adapterCode: 'variantUpsert',
     strategy: 'UPDATE',
-    matchField: 'sku',
+    skuField: 'sku',
 })
 ```
 
@@ -467,34 +530,46 @@ Send data to external destinations:
 ```typescript
 .export('step-key', {
     adapterCode: string,
-    target?: 'FILE' | 'API' | 'WEBHOOK' | 'S3' | 'SFTP' | 'EMAIL',
+    destinationType?: 'LOCAL' | 'HTTP' | 'S3' | 'SFTP' | 'FTP' | 'EMAIL',
     format?: 'CSV' | 'JSON' | 'XML' | 'XLSX' | 'NDJSON',
-    // Target-specific options...
+    // Destination-specific options...
 })
 ```
 
 **File Export:**
 ```typescript
 .export('write-file', {
-    adapterCode: 'file-export',
-    target: 'FILE',
-    format: 'CSV',
-    path: '/exports',
-    filename: 'products.csv',
+    adapterCode: 'csvExport',
+    destinationType: 'LOCAL',
+    directory: 'catalog',
+    filenamePattern: 'products.csv',
+    formulaMode: 'SPREADSHEET_SAFE',
 })
 ```
+
+CSV exports default to `SPREADSHEET_SAFE`, which prefixes formula-like cells
+for human viewing in spreadsheet applications. Use `PRESERVE` only for
+machine-to-machine exports that require byte-equivalent field values.
+
+For local exports, `directory` is relative to `DATA_HUB_EXPORT_ROOT`; feed
+`outputPath` uses the same root-relative contract. The root defaults to
+`<cwd>/exports`. Absolute local paths and URLs are not valid directory values.
 
 **S3 Export:**
 ```typescript
 .export('upload-s3', {
-    adapterCode: 's3-export',
-    target: 'S3',
+    adapterCode: 'jsonExport',
+    destinationType: 'S3',
     bucket: 'my-bucket',
+    region: 'eu-central-1',
     prefix: 'exports/',
-    format: 'JSON',
-    connectionCode: 'aws-s3',
+    accessKeyIdSecretCode: 'aws-access-key-id',
+    secretAccessKeySecretCode: 'aws-secret-access-key',
 })
 ```
+
+HTTP destinations use `url`. Put only non-sensitive values in `headers`; use
+`auth` or `headerSecretCodes` for credentials and sensitive header values.
 
 ### feed
 
@@ -515,7 +590,7 @@ Generate product feeds:
     adapterCode: 'googleMerchant',
     feedType: 'GOOGLE_SHOPPING',
     format: 'XML',
-    outputPath: '/feeds/google.xml',
+    outputPath: 'feeds/google.xml',
     targetCountry: 'US',
     contentLanguage: 'en',
     currency: 'USD',
@@ -532,9 +607,7 @@ Index data to search engines:
 
 ```typescript
 .sink('step-key', {
-    adapterCode: 'elasticsearch' | 'meilisearch' | 'algolia' | 'typesense',
-    sinkType?: 'ELASTICSEARCH' | 'OPENSEARCH' | 'MEILISEARCH' | 'ALGOLIA' | 'TYPESENSE' | 'CUSTOM',
-    indexName: string,
+    adapterCode: 'elasticsearch' | 'opensearch' | 'meilisearch' | 'algolia' | 'typesense',
     // Sink-specific options...
 })
 ```
@@ -543,12 +616,10 @@ Index data to search engines:
 ```typescript
 .sink('index-products', {
     adapterCode: 'elasticsearch',
-    sinkType: 'ELASTICSEARCH',
-    host: 'localhost',
-    port: 9200,
+    node: 'http://localhost:9200',
     indexName: 'products',
     idField: 'id',
-    bulkSize: 500,
+    batchSize: 500,
 })
 ```
 
@@ -572,11 +643,15 @@ threshold, or after a timeout.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `approvalType` | string | Yes | `'MANUAL'` \| `'THRESHOLD'` \| `'TIMEOUT'` |
-| `timeoutSeconds` | number | No | Auto-approve after N seconds (`TIMEOUT` mode) |
-| `errorThresholdPercent` | number | No | Auto-approve if error rate below threshold, 0-100 (`THRESHOLD` mode) |
-| `notifyWebhook` | string | No | Webhook URL for gate notifications |
-| `notifyEmail` | string | No | Email address for gate notifications |
-| `previewCount` | number | No | Number of records to preview (default: 10) |
+| `timeoutSeconds` | integer | TIMEOUT | Auto-approve after 1-31,536,000 seconds |
+| `errorThresholdPercent` | number | THRESHOLD | Auto-approve only when the error rate is strictly below 0-100 percent |
+| `notifyWebhook` | string | No | Absolute HTTP or HTTPS notification URL |
+| `notifyEmail` | string | No | Valid notification email address |
+| `previewCount` | integer | No | Records to preview, 1-100 (default: 10) |
+
+A threshold equal to the observed error rate pauses. Timeout approval is durable
+and is processed by the server's bounded gate maintenance cycle after the saved
+deadline.
 
 **Manual Gate:**
 ```typescript
@@ -623,7 +698,7 @@ Connect steps:
 ```typescript
 .edge('route', 'process-electronics', 'electronics')
 .edge('route', 'process-clothing', 'clothing')
-.edge('route', 'process-other')  // Default branch
+.edge('route', 'process-other', 'default')
 ```
 
 ### build
@@ -647,11 +722,11 @@ Control execution performance:
     throughput: {
         batchSize: 100,         // Records per batch
         concurrency: 4,         // Parallel batches
-        rateLimitRps: 10,       // Max requests per second
+        rateLimitRps: 10,       // Max aggregate load-batch starts per second
         drainStrategy: 'BACKOFF',  // 'BACKOFF' | 'SHED' | 'QUEUE'
         pauseOnErrorRate: {
-            threshold: 0.5,     // Pause if error rate exceeds 50%
-            intervalSec: 60,    // Check interval
+            threshold: 0.5,     // React at 50% failed records
+            intervalSec: 60,    // Rolling error window and recovery delay
         },
     },
     // Retry configuration (step-level, not in throughput)
@@ -660,6 +735,11 @@ Control execution performance:
     timeoutMs: 30000,
 }
 ```
+
+Throughput limits are batch size `1-10,000`, concurrency `1-16`, rate limit
+`0-1,000` batch starts per second, threshold greater than `0` and at most `1`,
+and interval `0.1-3,600` seconds. Omitting the interval uses 1 second for
+BACKOFF and 5 seconds for QUEUE.
 
 ## Complete Example
 
@@ -670,7 +750,7 @@ const productSync = createPipeline()
     .name('Daily Product Sync')
     .description('Sync products from ERP every day')
     .version(1)
-    .capabilities({ writes: ['CATALOG'], streamSafe: true })
+    .capabilities({ writes: ['CATALOG'] })
 
     .trigger('schedule', {
         type: 'SCHEDULE',
@@ -708,7 +788,7 @@ const productSync = createPipeline()
     .load('upsert-products', {
         adapterCode: 'productUpsert',
         strategy: 'UPSERT',
-        matchField: 'slug',
+        slugField: 'slug',
         conflictStrategy: 'SOURCE_WINS',
         throughput: { batchSize: 50, concurrency: 2 },
     })

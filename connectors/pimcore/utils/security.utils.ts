@@ -1,22 +1,33 @@
 type FilterObject = Record<string, unknown>;
 
+const MAX_PIMCORE_PATH_LENGTH = 2_048;
+
+function hasInvalidPathCharacter(path: string): boolean {
+    return [...path].some(character => {
+        const codePoint = character.codePointAt(0);
+        return character === '%' || codePoint === 127 || (codePoint !== undefined && codePoint < 32);
+    });
+}
+
 export function buildSafePathFilter(pathFilter: string | undefined): FilterObject | undefined {
-    if (!pathFilter) return undefined;
+    if (pathFilter === undefined) return undefined;
+    if (
+        !pathFilter.startsWith('/')
+        || pathFilter.length > MAX_PIMCORE_PATH_LENGTH
+        || hasInvalidPathCharacter(pathFilter)
+    ) {
+        throw new Error(
+            'Pimcore path filters must be absolute paths without control or wildcard characters',
+        );
+    }
 
-    const sanitized = pathFilter
-        .replace(/["\\']/g, '')
-        .replace(/[{}[\]]/g, '')
-        .replace(/[^a-zA-Z0-9/\-_.]/g, '');
-
-    if (!sanitized) return undefined;
-
-    return { path: { $like: `${sanitized}%` } };
+    return { fullpath: { $like: `${pathFilter}%` } };
 }
 
 export function buildSafeMimeTypeFilter(mimeTypes: string[] | undefined): FilterObject | undefined {
     if (!mimeTypes?.length) return undefined;
 
-    const valid = mimeTypes.filter(mt => /^[a-z]+\/[a-z0-9*+-]+$/i.test(mt));
+    const valid = mimeTypes.filter(mt => /^[a-z]+\/[a-z0-9*+.-]+$/i.test(mt));
     if (!valid.length) return undefined;
 
     return { mimetype: { $in: valid } };
@@ -29,72 +40,4 @@ export function combineFilters(filters: (FilterObject | undefined)[]): FilterObj
     if (valid.length === 1) return valid[0];
 
     return { $and: valid };
-}
-
-export function validateEndpointUrl(
-    endpoint: string,
-    options: {
-        requireHttps?: boolean;
-        allowLocalhost?: boolean;
-        allowPrivateIp?: boolean;
-    } = {},
-): { valid: boolean; errors: string[] } {
-    const isProd = process.env.NODE_ENV === 'production';
-    const {
-        requireHttps = isProd,
-        allowLocalhost = !isProd,
-        allowPrivateIp = !isProd,
-    } = options;
-
-    const errors: string[] = [];
-
-    try {
-        const url = new URL(endpoint);
-        const hostname = url.hostname.toLowerCase();
-
-        if (requireHttps && url.protocol !== 'https:') {
-            errors.push('Endpoint must use HTTPS in production');
-        }
-
-        if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-            errors.push('Endpoint must use HTTP or HTTPS');
-        }
-
-        if (!allowLocalhost) {
-            if (['localhost', '127.0.0.1', '::1'].includes(hostname) || hostname.endsWith('.localhost')) {
-                errors.push('Endpoint cannot point to localhost');
-            }
-        }
-
-        if (!allowPrivateIp && isPrivateIp(hostname)) {
-            errors.push('Endpoint cannot point to private IP');
-        }
-
-        if (!allowPrivateIp && !allowLocalhost) {
-            const internalSuffixes = ['.internal', '.local', '.corp', '.lan'];
-            if (internalSuffixes.some(s => hostname.endsWith(s))) {
-                errors.push('Endpoint cannot point to internal domains');
-            }
-        }
-    } catch {
-        errors.push('Invalid URL');
-    }
-
-    return { valid: errors.length === 0, errors };
-}
-
-function isPrivateIp(hostname: string): boolean {
-    const patterns = [
-        /^10\./,
-        /^172\.(1[6-9]|2[0-9]|3[01])\./,
-        /^192\.168\./,
-        /^169\.254\./,
-        /^127\./,
-        /^0\./,
-    ];
-
-    if (patterns.some(p => p.test(hostname))) return true;
-    if (hostname.startsWith('fe80:') || hostname.startsWith('fc') || hostname.startsWith('fd')) return true;
-
-    return false;
 }

@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { Trans, useLingui } from '@lingui/react/macro';
 import {
     Card,
     CardContent,
@@ -17,10 +18,11 @@ export function ConfigurationNameCard({
     description,
     onNameChange,
     onDescriptionChange,
-    namePlaceholder = 'Configuration name',
+    namePlaceholder,
     nameError,
-    nameHelperText = 'A descriptive name to identify this configuration',
+    nameHelperText,
 }: ConfigurationNameCardProps) {
+    const { t } = useLingui();
     return (
         <Card>
             <CardHeader>
@@ -28,28 +30,33 @@ export function ConfigurationNameCard({
             </CardHeader>
             <CardContent className="space-y-4">
                 <div>
-                    <Label htmlFor="config-name">Name *</Label>
+                    <Label htmlFor="config-name">
+                        <Trans>Name</Trans> *
+                    </Label>
                     <Input
                         id="config-name"
                         value={name}
                         onChange={e => onNameChange(e.target.value)}
-                        placeholder={namePlaceholder}
+                        placeholder={namePlaceholder ?? t`Enter a name`}
+                        aria-invalid={Boolean(nameError)}
                         className={nameError ? 'border-destructive focus-visible:ring-destructive' : ''}
                     />
                     <FieldError error={nameError} showImmediately />
                     {!nameError && (
                         <p className="mt-1 text-xs text-muted-foreground">
-                            {nameHelperText}
+                            {nameHelperText ?? t`Use a clear, descriptive name`}
                         </p>
                     )}
                 </div>
                 <div>
-                    <Label htmlFor="config-description">Description</Label>
+                    <Label htmlFor="config-description">
+                        <Trans>Description</Trans>
+                    </Label>
                     <Textarea
                         id="config-description"
                         value={description}
                         onChange={e => onDescriptionChange(e.target.value)}
-                        placeholder="Optional description..."
+                        placeholder={t`Describe this configuration`}
                         rows={2}
                     />
                 </div>

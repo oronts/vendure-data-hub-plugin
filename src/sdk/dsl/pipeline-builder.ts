@@ -7,7 +7,7 @@
  *   .name('Product Import')
  *   .description('Import products from CSV')
  *   .trigger('start', { type: 'MANUAL' })
- *   .extract('csv', { adapterCode: 'file', path: '/data/products.csv', format: 'CSV' })
+ *   .extract('csv', { adapterCode: 'csv', csvText: 'sku,name\\nSKU-1,Product' })
  *   .transform('map', {
  *     operators: [
  *       operators.map({ 'SKU': 'sku', 'Name': 'name' }),
@@ -33,6 +33,8 @@ import {
 } from '../../types/index';
 import type { StepType } from '../../../shared/types';
 import { STEP_TYPE } from '../../../shared/constants/enums';
+import { PARALLEL_EXECUTION } from '../../../shared/constants';
+import { validateEnrichmentConfig } from '../../validation/enrichment-config.validator';
 import {
     TriggerConfig,
     ExtractStepConfig,
@@ -48,6 +50,11 @@ import {
 } from './step-configs';
 import { DEFAULT_TRIGGER_TYPE } from '../constants';
 import { validateNonEmptyString, validateUniqueKey, validateVersion } from './validation-helpers';
+
+interface RouteDefaultTarget {
+    readonly routeStepKey: string;
+    readonly targetStepKey: string;
+}
 
 // PIPELINE BUILDER INTERFACE
 
@@ -79,6 +86,8 @@ export interface PipelineBuilder {
     build(): PipelineDefinition;
 }
 
+export { definePipeline, edge, step, steps } from './pipeline-primitives';
+
 // HELPER FUNCTIONS
 
 function createStep(
@@ -87,7 +96,13 @@ function createStep(
     config: JsonObject,
     extras?: Partial<Omit<PipelineStepDefinition, 'key' | 'type' | 'config'>>,
 ): PipelineStepDefinition {
-    return { key, type, config, ...(extras ?? {}) } as PipelineStepDefinition;
+    const step: Record<string, unknown> = { key, type, config };
+    for (const [field, value] of Object.entries(extras ?? {})) {
+        if (value !== undefined) {
+            step[field] = value;
+        }
+    }
+    return step as unknown as PipelineStepDefinition;
 }
 
 function createEdge(from: string, to: string, options?: { branch?: string; dependencyOnly?: boolean }): PipelineEdge {
@@ -149,10 +164,12 @@ export function createPipeline(): PipelineBuilder {
         hooks?: PipelineHooks;
         steps: PipelineStepDefinition[];
         edges: PipelineEdge[];
+        routeDefaultTargets: RouteDefaultTarget[];
     } = {
         version: 1,
         steps: [],
         edges: [],
+        routeDefaultTargets: [],
     };
 
     const builder: PipelineBuilder = {
@@ -189,8 +206,20 @@ export function createPipeline(): PipelineBuilder {
             return this;
         },
         parallel(config?: { maxConcurrentSteps?: number; errorPolicy?: 'FAIL_FAST' | 'CONTINUE' | 'BEST_EFFORT' }) {
-            if (config?.maxConcurrentSteps !== undefined && (typeof config.maxConcurrentSteps !== 'number' || config.maxConcurrentSteps < 1)) {
-                throw new Error('maxConcurrentSteps must be a positive number');
+            if (
+                config?.maxConcurrentSteps !== undefined
+                && (
+                    !Number.isSafeInteger(config.maxConcurrentSteps)
+                    || config.maxConcurrentSteps < PARALLEL_EXECUTION.MIN_CONCURRENT_STEPS
+                    || config.maxConcurrentSteps > PARALLEL_EXECUTION.MAX_CONCURRENT_STEPS
+                )
+            ) {
+                throw new Error(
+                    'maxConcurrentSteps must be an integer from '
+                    + PARALLEL_EXECUTION.MIN_CONCURRENT_STEPS
+                    + ' to '
+                    + PARALLEL_EXECUTION.MAX_CONCURRENT_STEPS,
+                );
             }
             const validPolicies = ['FAIL_FAST', 'CONTINUE', 'BEST_EFFORT'];
             if (config?.errorPolicy !== undefined && !validPolicies.includes(config.errorPolicy)) {
@@ -216,8 +245,13 @@ export function createPipeline(): PipelineBuilder {
             validateNonEmptyString(key, 'Step key');
             validateUniqueKey(state.steps, key);
             validateNonEmptyString(config.adapterCode, 'Adapter code');
-            const { throughput, async: asyncFlag, adapterCode, ...rest } = config;
-            state.steps.push(createStep(key, STEP_TYPE.EXTRACT, rest as unknown as JsonObject, { throughput, async: asyncFlag, adapterCode }));
+            const { throughput, async: asyncFlag, adapterCode, schemaRef, ...rest } = config;
+            state.steps.push(createStep(key, STEP_TYPE.EXTRACT, rest as unknown as JsonObject, {
+                throughput,
+                async: asyncFlag,
+                adapterCode,
+                schemaRef,
+            }));
             return this;
         },
         transform(key: string, config: TransformStepConfig) {
@@ -233,20 +267,40 @@ export function createPipeline(): PipelineBuilder {
         validate(key: string, config: ValidateStepConfig) {
             validateNonEmptyString(key, 'Step key');
             validateUniqueKey(state.steps, key);
-            const { throughput, ...rest } = config;
-            state.steps.push(createStep(key, STEP_TYPE.VALIDATE, rest as unknown as JsonObject, { throughput }));
+            const { throughput, schemaRef, ...rest } = config;
+            state.steps.push(createStep(key, STEP_TYPE.VALIDATE, rest as unknown as JsonObject, {
+                throughput,
+                schemaRef,
+            }));
             return this;
         },
         enrich(key: string, config: EnrichStepConfig) {
             validateNonEmptyString(key, 'Step key');
             validateUniqueKey(state.steps, key);
-            // adapterCode is optional - enrichment can use built-in config (defaults, set, computed, sourceType)
-            const hasBuiltInConfig = config.defaults || config.set || config.computed || config.sourceType;
-            if (!config.adapterCode && !hasBuiltInConfig) {
-                throw new Error('Enrich step requires either adapterCode or built-in config (defaults, set, computed, or sourceType)');
+            if (!config.adapterCode) {
+                const result = validateEnrichmentConfig(config);
+                if (result.issues.length > 0) {
+                    throw new Error(
+                        `Invalid ENRICH configuration: ${result.issues.map(issue => issue.message).join('; ')}`,
+                    );
+                }
             }
-            const { adapterCode, ...rest } = config;
-            state.steps.push(createStep(key, STEP_TYPE.ENRICH, rest as unknown as JsonObject, adapterCode ? { adapterCode } : undefined));
+            const {
+                adapterCode,
+                throughput,
+                async: asyncFlag,
+                ...rest
+            } = config;
+            state.steps.push(createStep(
+                key,
+                STEP_TYPE.ENRICH,
+                rest as unknown as JsonObject,
+                {
+                    adapterCode,
+                    throughput,
+                    async: asyncFlag,
+                },
+            ));
             return this;
         },
         route(key: string, config: RouteStepConfig) {
@@ -255,15 +309,45 @@ export function createPipeline(): PipelineBuilder {
             if (!config.branches || !Array.isArray(config.branches) || config.branches.length === 0) {
                 throw new Error('Route step requires at least one branch');
             }
-            state.steps.push(createStep(key, STEP_TYPE.ROUTE, config as unknown as JsonObject, { adapterCode: 'condition' }));
+            const { defaultTo, ...routeConfig } = config;
+            if (defaultTo !== undefined) {
+                validateNonEmptyString(defaultTo, 'Route default target');
+                state.routeDefaultTargets.push({
+                    routeStepKey: key,
+                    targetStepKey: defaultTo,
+                });
+            }
+            state.steps.push(createStep(key, STEP_TYPE.ROUTE, routeConfig as unknown as JsonObject, { adapterCode: 'condition' }));
             return this;
         },
         load(key: string, config: LoadStepConfig) {
             validateNonEmptyString(key, 'Step key');
             validateUniqueKey(state.steps, key);
             validateNonEmptyString(config.adapterCode, 'Adapter code');
-            const { throughput, async: asyncFlag, adapterCode, ...rest } = config;
-            state.steps.push(createStep(key, STEP_TYPE.LOAD, rest as unknown as JsonObject, { throughput, async: asyncFlag, adapterCode }));
+            const {
+                throughput,
+                async: asyncFlag,
+                adapterCode,
+                channelStrategy,
+                channelIds,
+                validationMode,
+                ...rest
+            } = config;
+            const context = channelStrategy !== undefined
+                || channelIds !== undefined
+                || validationMode !== undefined
+                ? {
+                    ...(channelStrategy === undefined ? {} : { channelStrategy }),
+                    ...(channelIds === undefined ? {} : { channelIds }),
+                    ...(validationMode === undefined ? {} : { validationMode }),
+                }
+                : undefined;
+            state.steps.push(createStep(key, STEP_TYPE.LOAD, rest as unknown as JsonObject, {
+                throughput,
+                async: asyncFlag,
+                adapterCode,
+                context,
+            }));
             return this;
         },
         export(key: string, config: ExportStepConfig) {
@@ -315,15 +399,6 @@ export function createPipeline(): PipelineBuilder {
                 throw new Error('Pipeline must have at least one step');
             }
 
-            // Warn if no trigger is defined (MANUAL trigger is the implicit default)
-            const hasTrigger = state.steps.some(s => s.type === STEP_TYPE.TRIGGER);
-            if (!hasTrigger) {
-                // eslint-disable-next-line no-console
-                console.warn(
-                    `[DataHub] Pipeline "${state.name}" has no trigger step defined. It will only be runnable manually.`,
-                );
-            }
-
             // Validate edge references
             const stepKeys = new Set(state.steps.map(s => s.key));
             for (const e of state.edges) {
@@ -335,103 +410,57 @@ export function createPipeline(): PipelineBuilder {
                 }
             }
 
+            const edges = state.edges.map(edge => {
+                if (edge.branch !== undefined) return edge;
+                const defaultTarget = state.routeDefaultTargets.find(candidate => (
+                    candidate.routeStepKey === edge.from
+                    && candidate.targetStepKey === edge.to
+                ));
+                return defaultTarget === undefined
+                    ? edge
+                    : { ...edge, branch: 'default' };
+            });
+            for (const defaultTarget of state.routeDefaultTargets) {
+                const hasDefaultEdge = edges.some(edge => (
+                    edge.from === defaultTarget.routeStepKey
+                    && edge.to === defaultTarget.targetStepKey
+                    && edge.branch === 'default'
+                ));
+                if (!hasDefaultEdge) {
+                    throw new Error(
+                        `Route "${defaultTarget.routeStepKey}" default target `
+                        + `"${defaultTarget.targetStepKey}" requires a matching edge`,
+                    );
+                }
+            }
+
             // Detect cycles in graph pipelines
-            if (state.edges.length > 0) {
-                const cycle = detectCycle(state.edges);
+            if (edges.length > 0) {
+                const cycle = detectCycle(edges);
                 if (cycle) {
                     throw new Error(`Pipeline "${state.name}" contains a cycle: ${cycle.join(' -> ')}`);
                 }
             }
 
-            // Warn about unreachable steps in graph mode
-            const warnings: string[] = [];
-            if (state.edges.length > 0) {
-                const reachable = new Set<string>();
-                const triggerKeys = state.steps.filter(s => s.type === STEP_TYPE.TRIGGER).map(s => s.key);
-                const queue = [...triggerKeys];
-                // Also add steps with no incoming edges as entry points
-                const hasIncoming = new Set(state.edges.map(e => e.to));
-                state.steps.forEach(s => {
-                    if (!hasIncoming.has(s.key) && s.type !== STEP_TYPE.TRIGGER) {
-                        queue.push(s.key);
-                    }
-                });
-                while (queue.length) {
-                    const key = queue.shift()!;
-                    if (reachable.has(key)) continue;
-                    reachable.add(key);
-                    state.edges.filter(e => e.from === key).forEach(e => {
-                        if (!reachable.has(e.to)) queue.push(e.to);
-                    });
-                }
-                const unreachable = state.steps.filter(s => !reachable.has(s.key));
-                if (unreachable.length > 0) {
-                    warnings.push(`Unreachable steps in graph: ${unreachable.map(s => s.key).join(', ')}. These steps will never execute.`);
-                }
-            }
-
-            if (warnings.length > 0) {
-                // eslint-disable-next-line no-console
-                console.warn(`[DataHub] Pipeline "${state.name}": ${warnings.join('; ')}`);
-            }
-
             return {
                 version: state.version,
                 name: state.name,
-                description: state.description,
+                ...(state.description !== undefined
+                    ? { description: state.description }
+                    : {}),
                 steps: state.steps,
-                edges: state.edges.length > 0 ? state.edges : undefined,
-                dependsOn: state.dependsOn,
-                capabilities: state.capabilities,
-                context: state.context,
-                hooks: state.hooks,
+                ...(edges.length > 0 ? { edges } : {}),
+                ...(state.dependsOn !== undefined
+                    ? { dependsOn: state.dependsOn }
+                    : {}),
+                ...(state.capabilities !== undefined
+                    ? { capabilities: state.capabilities }
+                    : {}),
+                ...(state.context !== undefined ? { context: state.context } : {}),
+                ...(state.hooks !== undefined ? { hooks: state.hooks } : {}),
             };
         },
     };
 
     return builder;
-}
-
-export function definePipeline<T extends PipelineDefinition>(definition: T): T {
-    return definition;
-}
-
-export function step(
-    key: string,
-    type: StepType,
-    config: JsonObject,
-    extras?: Partial<Omit<PipelineStepDefinition, 'key' | 'type' | 'config'>>,
-): PipelineStepDefinition {
-    validateNonEmptyString(key, 'Step key');
-    return createStep(key, type, config, extras);
-}
-
-export const steps = {
-    trigger: (key: string, config: JsonObject = {}, extras?: Partial<Omit<PipelineStepDefinition, 'key' | 'type' | 'config'>>) =>
-        step(key, STEP_TYPE.TRIGGER, config, extras),
-    extract: (key: string, config: JsonObject, extras?: Partial<Omit<PipelineStepDefinition, 'key' | 'type' | 'config'>>) =>
-        step(key, STEP_TYPE.EXTRACT, config, extras),
-    transform: (key: string, config: JsonObject, extras?: Partial<Omit<PipelineStepDefinition, 'key' | 'type' | 'config'>>) =>
-        step(key, STEP_TYPE.TRANSFORM, config, extras),
-    validate: (key: string, config: JsonObject, extras?: Partial<Omit<PipelineStepDefinition, 'key' | 'type' | 'config'>>) =>
-        step(key, STEP_TYPE.VALIDATE, config, extras),
-    enrich: (key: string, config: JsonObject, extras?: Partial<Omit<PipelineStepDefinition, 'key' | 'type' | 'config'>>) =>
-        step(key, STEP_TYPE.ENRICH, config, extras),
-    route: (key: string, config: JsonObject, extras?: Partial<Omit<PipelineStepDefinition, 'key' | 'type' | 'config'>>) =>
-        step(key, STEP_TYPE.ROUTE, config, extras),
-    load: (key: string, config: JsonObject, extras?: Partial<Omit<PipelineStepDefinition, 'key' | 'type' | 'config'>>) =>
-        step(key, STEP_TYPE.LOAD, config, extras),
-    export: (key: string, config: JsonObject, extras?: Partial<Omit<PipelineStepDefinition, 'key' | 'type' | 'config'>>) =>
-        step(key, STEP_TYPE.EXPORT, config, extras),
-    feed: (key: string, config: JsonObject, extras?: Partial<Omit<PipelineStepDefinition, 'key' | 'type' | 'config'>>) =>
-        step(key, STEP_TYPE.FEED, config, extras),
-    sink: (key: string, config: JsonObject, extras?: Partial<Omit<PipelineStepDefinition, 'key' | 'type' | 'config'>>) =>
-        step(key, STEP_TYPE.SINK, config, extras),
-    gate: (key: string, config: JsonObject, extras?: Partial<Omit<PipelineStepDefinition, 'key' | 'type' | 'config'>>) =>
-        step(key, STEP_TYPE.GATE, config, extras),
-};
-
-export function edge(from: string, to: string, options?: string | { branch?: string; dependencyOnly?: boolean }): PipelineEdge {
-    const opts = typeof options === 'string' ? { branch: options } : options;
-    return createEdge(from, to, opts);
 }

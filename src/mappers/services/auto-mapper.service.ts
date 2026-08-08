@@ -1,10 +1,11 @@
-import { Injectable, Optional } from '@nestjs/common';
+import { Injectable, Optional, Scope } from '@nestjs/common';
 import { JsonValue, EntityFieldSchema, VendureEntityType } from '../../types/index';
 import { RecordObject } from '../../runtime/executor-types';
 import { MapperFieldMapping } from './field-mapper.service';
 import {
     AutoMapperConfig,
     DEFAULT_AUTO_MAPPER_CONFIG,
+    validateAutoMapperConfig,
 } from '../types/auto-mapper-config.types';
 import {
     MatchConfidence,
@@ -32,25 +33,47 @@ import { LoaderRegistryService } from '../../loaders/registry';
 
 export type { MatchConfidence, MappingSuggestion, SourceFieldAnalysis, SuggestMappingsOptions };
 
-@Injectable()
+function cloneConfig(config: AutoMapperConfig): AutoMapperConfig {
+    return {
+        ...config,
+        weights: { ...config.weights },
+        customAliases: Object.fromEntries(
+            Object.entries(config.customAliases).map(([key, aliases]) => [
+                key,
+                [...aliases],
+            ]),
+        ),
+        excludeFields: [...config.excludeFields],
+    };
+}
+
+function assertValidConfig(config: AutoMapperConfig): void {
+    const validation = validateAutoMapperConfig({
+        confidenceThreshold: config.confidenceThreshold,
+        enableFuzzyMatching: config.enableFuzzyMatching,
+        enableTypeInference: config.enableTypeInference,
+        caseSensitive: config.caseSensitive,
+        customAliases: config.customAliases,
+        excludeFields: config.excludeFields,
+        weightNameSimilarity: config.weights.nameSimilarity,
+        weightTypeCompatibility: config.weights.typeCompatibility,
+        weightDescriptionMatch: config.weights.descriptionMatch,
+    });
+    if (!validation.valid) {
+        throw new Error(`Invalid AutoMapper configuration: ${validation.errors.join('; ')}`);
+    }
+}
+
+@Injectable({ scope: Scope.TRANSIENT })
 export class AutoMapperService {
     /** Current configuration (defaults applied) */
-    private config: AutoMapperConfig = { ...DEFAULT_AUTO_MAPPER_CONFIG };
+    private config: AutoMapperConfig = cloneConfig(DEFAULT_AUTO_MAPPER_CONFIG);
 
     /** Matching strategies */
-    private exactMatchStrategy = new ExactMatchStrategy();
-    private normalizedMatchStrategy = new NormalizedMatchStrategy();
-    private partialMatchStrategy = new PartialMatchStrategy();
-    private fuzzyMatchStrategy: FuzzyMatchStrategy;
-    private aliasMatchStrategy: AliasMatchStrategy;
-
-    constructor(@Optional() private loaderRegistry?: LoaderRegistryService) {
-        this.fuzzyMatchStrategy = new FuzzyMatchStrategy(this.config.enableFuzzyMatching);
-        this.aliasMatchStrategy = new AliasMatchStrategy(
-            this.config.customAliases,
-            this.config.caseSensitive,
-        );
-    }
+    private readonly exactMatchStrategy = new ExactMatchStrategy();
+    private readonly normalizedMatchStrategy = new NormalizedMatchStrategy();
+    private readonly partialMatchStrategy = new PartialMatchStrategy();
+    constructor(@Optional() private loaderRegistry?: LoaderRegistryService) {}
 
     /**
      * Get entity schema from LoaderRegistry
@@ -64,46 +87,23 @@ export class AutoMapperService {
      * Get the current AutoMapper configuration
      */
     getConfig(): AutoMapperConfig {
-        return { ...this.config };
+        return cloneConfig(this.config);
     }
 
     /**
      * Update the AutoMapper configuration
      */
     setConfig(config: Partial<AutoMapperConfig>): void {
-        this.config = {
-            ...this.config,
-            ...config,
-            weights: {
-                ...this.config.weights,
-                ...(config.weights ?? {}),
-            },
-            customAliases: {
-                ...this.config.customAliases,
-                ...(config.customAliases ?? {}),
-            },
-            excludeFields: config.excludeFields ?? this.config.excludeFields,
-        };
-        this.updateStrategies();
+        const nextConfig = this.mergeConfig(this.config, config);
+        assertValidConfig(nextConfig);
+        this.config = nextConfig;
     }
 
     /**
      * Reset configuration to defaults
      */
     resetConfig(): void {
-        this.config = { ...DEFAULT_AUTO_MAPPER_CONFIG };
-        this.updateStrategies();
-    }
-
-    /**
-     * Update strategies when config changes
-     */
-    private updateStrategies(): void {
-        this.fuzzyMatchStrategy.setEnabled(this.config.enableFuzzyMatching);
-        this.aliasMatchStrategy = new AliasMatchStrategy(
-            this.config.customAliases,
-            this.config.caseSensitive,
-        );
+        this.config = cloneConfig(DEFAULT_AUTO_MAPPER_CONFIG);
     }
 
     /**
@@ -123,6 +123,7 @@ export class AutoMapperService {
         const effectiveConfig = configOverride
             ? this.mergeConfig(this.config, configOverride)
             : this.config;
+        assertValidConfig(effectiveConfig);
 
         const suggestions: MappingSuggestion[] = [];
         const usedTargets = new Set<string>();
@@ -334,7 +335,7 @@ export class AutoMapperService {
      * Merge base config with override
      */
     private mergeConfig(base: AutoMapperConfig, override: Partial<AutoMapperConfig>): AutoMapperConfig {
-        return {
+        return cloneConfig({
             ...base,
             ...override,
             weights: {
@@ -346,7 +347,7 @@ export class AutoMapperService {
                 ...(override.customAliases ?? {}),
             },
             excludeFields: override.excludeFields ?? base.excludeFields,
-        };
+        });
     }
 
     /**
@@ -456,13 +457,13 @@ export class AutoMapperService {
         const strategies = [
             this.exactMatchStrategy,
             this.normalizedMatchStrategy,
-            this.aliasMatchStrategy,
+            new AliasMatchStrategy(config.customAliases, config.caseSensitive),
             this.partialMatchStrategy,
         ];
 
         // Add fuzzy strategy if enabled
         if (config.enableFuzzyMatching) {
-            strategies.push(this.fuzzyMatchStrategy);
+            strategies.push(new FuzzyMatchStrategy(true));
         }
 
         for (const strategy of strategies) {

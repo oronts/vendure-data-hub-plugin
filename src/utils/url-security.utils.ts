@@ -2,10 +2,7 @@
 
 import { URL } from 'url';
 import * as dns from 'dns/promises';
-import { lookup as dnsLookup } from 'dns';
 import * as net from 'net';
-import * as http from 'http';
-import * as https from 'https';
 import { getErrorMessage } from './error.utils';
 
 export interface UrlSecurityConfig {
@@ -23,7 +20,7 @@ export interface UrlSecurityConfig {
 let globalSsrfConfig: UrlSecurityConfig | undefined;
 
 /** Configure the global default SSRF config (called during plugin bootstrap) */
-export function configureGlobalSsrfProtection(config: UrlSecurityConfig): void {
+export function configureGlobalSsrfProtection(config?: UrlSecurityConfig): void {
     globalSsrfConfig = config;
 }
 
@@ -234,7 +231,7 @@ export async function validateUrlSafety(
         };
     }
 
-    const hostname = parsedUrl.hostname.toLowerCase();
+    const hostname = parsedUrl.hostname.toLowerCase().replace(/^\[|\]$/g, '');
 
     // Check if hostname is in allowed list (bypass further checks)
     if (config?.allowedHostnames?.some(allowed => allowed.toLowerCase() === hostname)) {
@@ -347,7 +344,7 @@ export function validateUrlSafetySync(
         };
     }
 
-    const hostname = parsedUrl.hostname.toLowerCase();
+    const hostname = parsedUrl.hostname.toLowerCase().replace(/^\[|\]$/g, '');
 
     // Check if hostname is in allowed list
     if (config?.allowedHostnames?.some(allowed => allowed.toLowerCase() === hostname)) {
@@ -408,48 +405,3 @@ export function validateResolvedIp(ip: string, explicitConfig?: UrlSecurityConfi
     }
     return true;
 }
-
-/**
- * Create an HTTP/HTTPS agent that validates resolved IPs at connection time,
- * preventing DNS rebinding TOCTOU attacks.
- *
- * The agent intercepts DNS resolution via the `lookup` option and rejects
- * connections to private/reserved IP addresses before the socket is established.
- *
- * Usage:
- *   const agent = createSafeAgent('https');
- *   await fetch(url, { agent });
- *   // or with axios: axios.get(url, { httpsAgent: agent })
- */
-export function createSafeAgent(protocol: 'http' | 'https' = 'https', explicitConfig?: UrlSecurityConfig): http.Agent | https.Agent {
-    const config = getEffectiveConfig(explicitConfig);
-
-    const lookup: net.LookupFunction = (hostname, options, callback) => {
-        dnsLookup(hostname, options, (err, address, family) => {
-            if (err) {
-                callback(err, address as string, family as number);
-                return;
-            }
-            // Skip validation if SSRF protection is disabled
-            if (config?.disableSsrfProtection || config?.allowPrivateIPs) {
-                callback(null, address as string, family as number);
-                return;
-            }
-            // Validate the resolved IP (single-address case)
-            const ip = typeof address === 'string' ? address : '';
-            if (ip && !validateResolvedIp(ip, config)) {
-                const ssrfError = new Error(
-                    `SSRF blocked: ${hostname} resolved to private/reserved IP ${ip}`,
-                ) as NodeJS.ErrnoException;
-                ssrfError.code = 'ECONNREFUSED';
-                callback(ssrfError, '', 0);
-                return;
-            }
-            callback(null, address as string, family as number);
-        });
-    };
-
-    const AgentClass = protocol === 'https' ? https.Agent : http.Agent;
-    return new AgentClass({ lookup, keepAlive: true });
-}
-

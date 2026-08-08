@@ -53,6 +53,8 @@ export const configOptionsSchema = `
         placeholder: String
         defaultValue: JSON
         description: String
+        min: Float
+        max: Float
         options: [DataHubOption!]
         "Reference to a dynamic option list served by configOptions (e.g. authTypes, queueTypes, vendureEvents)"
         optionsRef: String
@@ -160,6 +162,8 @@ export const configOptionsSchema = `
         supportsPreview: Boolean!
         "Whether frontend needs JavaScript parser (vs backend-only parsing)"
         requiresClientParser: Boolean!
+        "Whether the runtime has an import parser for this format"
+        parseable: Boolean!
         "Optional description for UI tooltips"
         description: String
     }
@@ -180,6 +184,10 @@ export const configOptionsSchema = `
         cleanupStrategies: [DataHubOptionValue!]!
         newRecordStrategies: [DataHubOptionValue!]!
         validationModes: [DataHubOptionValue!]!
+        "Validation strictness values used by pipeline and load contexts"
+        validationStrictnesses: [DataHubOptionValue!]!
+        "Channel selection strategies used by pipeline and step contexts"
+        channelStrategies: [DataHubOptionValue!]!
         queueTypes: [DataHubOptionValue!]!
         vendureEvents: [DataHubOptionValue!]!
         comparisonOperators: [DataHubComparisonOperator!]!
@@ -194,8 +202,6 @@ export const configOptionsSchema = `
         hookStages: [DataHubHookStage!]!
         hookStageCategories: [DataHubHookStageCategory!]!
         logLevels: [DataHubOptionValue!]!
-        runModes: [DataHubOptionValue!]!
-        checkpointStrategies: [DataHubOptionValue!]!
         parallelErrorPolicies: [DataHubOptionValue!]!
         logPersistenceLevels: [DataHubOptionValue!]!
         "Adapter type metadata for the adapters page tabs"

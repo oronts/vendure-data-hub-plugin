@@ -53,6 +53,8 @@ export interface FtpExtractorConfig extends ExtractorConfig {
 
     /** Passphrase for private key */
     passphraseSecretCode?: string;
+    /** OpenSSH SHA256 host-key fingerprint secret code */
+    hostKeyFingerprintSecretCode?: string;
 
     /** Remote directory path */
     remotePath: string;

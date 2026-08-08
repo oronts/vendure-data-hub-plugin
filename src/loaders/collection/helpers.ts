@@ -2,7 +2,7 @@ import { ID, RequestContext, CollectionService } from '@vendure/core';
 import { ConfigurableOperationInput } from '@vendure/common/lib/generated-types';
 import { CollectionInput, CollectionFilterInput } from './types';
 import { FiltersMode } from '../../../shared/types';
-import { DataHubLogger } from '../../services/logger';
+import { DataHubLogger } from '../../services/logger/datahub-logger';
 
 export { slugify, isRecoverableError, shouldUpdateField, buildConfigurableOperation } from '../shared-helpers';
 import { buildConfigurableOperation } from '../shared-helpers';
@@ -138,10 +138,42 @@ export async function handleCollectionFilters(
         }
 
         const existingFilters = collection.filters.map(f => ({ code: f.code, arguments: f.args }));
-        const merged = [...existingFilters, ...newFilters];
+        const merged = deduplicateFilters([...existingFilters, ...newFilters]);
         logger.debug(`Merged ${existingFilters.length} existing + ${newFilters.length} new filters = ${merged.length} total`);
         return merged;
     }
 
     return newFilters;
+}
+
+function deduplicateFilters(
+    filters: ConfigurableOperationInput[],
+): ConfigurableOperationInput[] {
+    const unique: ConfigurableOperationInput[] = [];
+    for (const filter of filters) {
+        if (!unique.some(existing => haveEquivalentArguments(existing, filter))) {
+            unique.push(filter);
+        }
+    }
+    return unique;
+}
+
+function haveEquivalentArguments(
+    left: ConfigurableOperationInput,
+    right: ConfigurableOperationInput,
+): boolean {
+    if (left.code !== right.code) {
+        return false;
+    }
+    return normalizedArguments(left) === normalizedArguments(right);
+}
+
+function normalizedArguments(filter: ConfigurableOperationInput): string {
+    const argumentsByName = new Map(
+        filter.arguments.map(argument => [argument.name, argument.value]),
+    );
+    if (!argumentsByName.has('combineWithAnd')) {
+        argumentsByName.set('combineWithAnd', 'true');
+    }
+    return JSON.stringify([...argumentsByName].sort(([left], [right]) => left.localeCompare(right)));
 }

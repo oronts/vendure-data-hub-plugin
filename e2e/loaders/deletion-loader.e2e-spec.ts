@@ -6,7 +6,7 @@
  * not-found handling, and variant-only deletion.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { ProductService, ProductVariantService } from '@vendure/core';
+import { ProductService } from '@vendure/core';
 import { createDataHubTestEnvironment } from '../test-config';
 import { ProductHandler } from '../../src/runtime/executors/loaders/product-handler';
 import { DeletionHandler } from '../../src/runtime/executors/loaders/deletion-handler';
@@ -17,7 +17,6 @@ describe('DeletionHandler e2e', () => {
     let productHandler: ProductHandler;
     let deletionHandler: DeletionHandler;
     let productService: ProductService;
-    let variantService: ProductVariantService;
     let ctx: import('@vendure/core').RequestContext;
 
     beforeAll(async () => {
@@ -29,7 +28,6 @@ describe('DeletionHandler e2e', () => {
         productHandler = server.app.get(ProductHandler);
         deletionHandler = server.app.get(DeletionHandler);
         productService = server.app.get(ProductService);
-        variantService = server.app.get(ProductVariantService);
         ctx = await getSuperadminContext(server.app);
 
         // Create test products for deletion tests
@@ -50,7 +48,6 @@ describe('DeletionHandler e2e', () => {
         const step = makeStep('test-delete-by-slug', {
             entityType: 'product',
             matchBy: 'slug',
-            cascadeVariants: true,
         });
         const input = [{ slug: 'delete-me-product' }];
 
@@ -71,7 +68,6 @@ describe('DeletionHandler e2e', () => {
         const step = makeStep('test-cascade-delete', {
             entityType: 'product',
             matchBy: 'slug',
-            cascadeVariants: true,
         });
         const input = [{ slug: 'delete-cascade-product' }];
 
@@ -105,10 +101,10 @@ describe('DeletionHandler e2e', () => {
         });
         const input = [{ slug: 'nonexistent-product-xyz' }];
 
-        // Should complete without throwing — handler warns and counts as ok (no-op)
         const result = await deletionHandler.execute(ctx, step, input);
-        expect(result.ok).toBe(1);
+        expect(result.ok).toBe(0);
         expect(result.fail).toBe(0);
+        expect(result.skipped).toBe(1);
     });
 
     it('reports error for missing identifier field', async () => {
@@ -136,7 +132,6 @@ describe('DeletionHandler e2e', () => {
         const step = makeStep('test-batch-delete', {
             entityType: 'product',
             matchBy: 'slug',
-            cascadeVariants: true,
         });
         const input = [
             { slug: 'batch-del-a' },

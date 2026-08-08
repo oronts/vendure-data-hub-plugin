@@ -5,10 +5,13 @@ import { EnricherAdapter, EnrichContext, EnrichResult, StepConfigSchema } from '
 import { JsonObject } from '../types';
 import { applyHttpLookupBatch, HttpLookupOperatorConfig } from '../operators/enrichment';
 import { HTTP_METHOD_GET_POST_OPTIONS } from '../constants/adapter-schema-options';
+import { createHttpLookupRuntimeNamespaces } from '../operators/enrichment/http-lookup-security';
 
 export interface HttpLookupEnricherConfig {
     /** HTTP endpoint URL. Use {{field}} for dynamic values from record */
     url: string;
+    /** Saved HTTP connection that binds credentials and redirects to one origin */
+    connectionCode?: string;
     /** Target field path to store the response data */
     target: string;
     /** HTTP method (default: GET) */
@@ -51,6 +54,7 @@ export interface HttpLookupEnricherConfig {
 
 const HTTP_LOOKUP_ENRICHER_SCHEMA: StepConfigSchema = {
     fields: [
+        { key: 'connectionCode', label: 'Connection', type: 'connection', description: 'Saved HTTP connection. Required when authentication is configured.' },
         { key: 'url', label: 'URL', type: 'string', required: true, description: 'HTTP endpoint URL. Use {{field}} for dynamic values.' },
         { key: 'target', label: 'Target Field', type: 'string', required: true, description: 'Field path to store the response data.' },
         { key: 'method', label: 'HTTP Method', type: 'select', options: HTTP_METHOD_GET_POST_OPTIONS },
@@ -95,6 +99,7 @@ export const httpLookupEnricher: EnricherAdapter<HttpLookupEnricherConfig> = {
 
         const operatorConfig: HttpLookupOperatorConfig = {
             url: config.url,
+            connectionCode: config.connectionCode,
             target: config.target,
             method: config.method,
             responsePath: config.responsePath,
@@ -116,7 +121,15 @@ export const httpLookupEnricher: EnricherAdapter<HttpLookupEnricherConfig> = {
             rateLimitPerSecond: config.rateLimitPerSecond,
         };
 
-        const result = await applyHttpLookupBatch(records, operatorConfig, secretResolver);
+        const result = await applyHttpLookupBatch(records, operatorConfig, {
+            secrets: secretResolver,
+            connections: context.connections,
+            ...createHttpLookupRuntimeNamespaces(
+                context.ctx.channelId,
+                context.pipelineId,
+                context.stepKey,
+            ),
+        });
 
         return {
             records: result.records,

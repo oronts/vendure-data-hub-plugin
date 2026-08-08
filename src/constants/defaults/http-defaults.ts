@@ -31,6 +31,13 @@ export const HTTP_STATUS = {
     SUCCESS_MAX: 300,
 } as const;
 
+export const OUTBOUND_RESPONSE_LIMITS = {
+    ASSET_DOWNLOAD_BYTES: 50 * 1024 * 1024,
+    CONNECTOR_EXTRACT_BYTES: 32 * 1024 * 1024,
+    ERROR_BODY_BYTES: 32 * 1024,
+    LOG_BODY_BYTES: 8 * 1024,
+} as const;
+
 /**
  * HTTP lookup operator defaults
  */
@@ -43,5 +50,6 @@ export const HTTP_LOOKUP = {
     DEFAULT_MAX_RETRIES: 2,
     /** Default batch size for bulk lookups */
     DEFAULT_BATCH_SIZE: 50,
+    /** Default maximum requests per second per origin */
+    DEFAULT_RATE_LIMIT_PER_SECOND: 100,
 } as const;
-

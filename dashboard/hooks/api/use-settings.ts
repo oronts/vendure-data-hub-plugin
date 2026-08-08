@@ -1,9 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@vendure/dashboard';
 import { graphql } from '../../gql';
-import { createMutationErrorHandler, createMutationSuccessHandler } from './mutation-helpers';
 import { createQueryKeys } from '../../utils/query-key-factory';
 import type { DataHubSettingsInput } from '../../types';
+import { toast } from 'sonner';
+import { getErrorMessage } from '../../../shared';
 
 const base = createQueryKeys('settings');
 const settingsKeys = {
@@ -40,16 +41,25 @@ export function useSettings() {
     });
 }
 
-export function useUpdateSettings() {
+interface SettingsMutationFeedback {
+    successMessage: string;
+    errorMessage: string;
+}
+
+export function useUpdateSettings(feedback: SettingsMutationFeedback) {
     const queryClient = useQueryClient();
 
     return useMutation({
         mutationFn: (input: DataHubSettingsInput) =>
             api.mutate(setSettingsDocument, { input }).then((res) => res.updateDataHubSettings),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: settingsKeys.detail() });
-            createMutationSuccessHandler('Settings updated')();
+        onSuccess: async () => {
+            await queryClient.invalidateQueries({ queryKey: settingsKeys.detail() });
+            toast.success(feedback.successMessage);
         },
-        onError: createMutationErrorHandler('update settings'),
+        onError: error => {
+            toast.error(feedback.errorMessage, {
+                description: getErrorMessage(error),
+            });
+        },
     });
 }

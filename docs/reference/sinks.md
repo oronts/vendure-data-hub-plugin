@@ -1,6 +1,6 @@
 # Sinks Reference
 
-Complete reference for all sink integrations including search engines, message queues, and webhooks.
+Complete reference for the seven built-in search, queue, and webhook sinks.
 
 ## Overview
 
@@ -22,7 +22,8 @@ Index records to MeiliSearch for fast, typo-tolerant search.
 | `apiKeySecretCode` | string | Yes | Secret code for API key |
 | `indexName` | string | Yes | Target index name |
 | `primaryKey` | string | Yes | Primary key field name |
-| `bulkSize` | number | No | Records per batch |
+| `batchSize` | number | No | Records per indexing request |
+| `defaultOperation` | select | No | Operation used when a record has no `__operation` field: `UPSERT` or `DELETE` |
 | `searchableFields` | json | No | Array of searchable field names |
 | `filterableFields` | json | No | Array of filterable field names |
 | `sortableFields` | json | No | Array of sortable field names |
@@ -36,7 +37,7 @@ Index records to MeiliSearch for fast, typo-tolerant search.
     apiKeySecretCode: 'meilisearch-api-key',
     indexName: 'products',
     primaryKey: 'id',
-    bulkSize: 500,
+    batchSize: 500,
     searchableFields: ['name', 'description', 'sku'],
     filterableFields: ['categoryId', 'price', 'inStock'],
     sortableFields: ['price', 'name', 'createdAt'],
@@ -77,31 +78,31 @@ DataHubPlugin.init({
 
 Code: `elasticsearch`
 
-Index records to Elasticsearch or OpenSearch.
+Index records to Elasticsearch.
 
 ### Configuration
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `host` | string | Yes | Host URL (e.g., http://localhost:9200) |
+| `node` | string | Yes | Node URL (e.g., https://search.example.com:9200) |
 | `apiKeySecretCode` | string | No | Secret code for API key auth |
-| `basicSecretCode` | string | No | Secret code for Basic auth (base64-encoded username:password) |
+| `usernameSecretCode` | string | No | Secret code resolving to the Basic-auth username |
+| `passwordSecretCode` | string | No | Secret code resolving to the Basic-auth password |
 | `indexName` | string | Yes | Target index name |
 | `idField` | string | Yes | Document ID field |
-| `bulkSize` | number | No | Records per batch |
-| `refresh` | boolean | No | Refresh index after indexing |
+| `batchSize` | number | No | Records per bulk request |
+| `defaultOperation` | select | No | Operation used when a record has no `__operation` field: `UPSERT` or `DELETE` |
 
 ### Example - API Key Auth
 
 ```typescript
 .sink('elasticsearch-products', {
     adapterCode: 'elasticsearch',
-    host: 'https://elasticsearch.example.com:9200',
+    node: 'https://elasticsearch.example.com:9200',
     apiKeySecretCode: 'elasticsearch-api-key',
     indexName: 'products',
     idField: 'id',
-    bulkSize: 1000,
-    refresh: true,
+    batchSize: 1000,
 })
 ```
 
@@ -110,8 +111,9 @@ Index records to Elasticsearch or OpenSearch.
 ```typescript
 .sink('elasticsearch-products', {
     adapterCode: 'elasticsearch',
-    host: 'http://localhost:9200',
-    basicSecretCode: 'es-basic-auth',
+    node: 'https://elasticsearch.example.com:9200',
+    usernameSecretCode: 'es-username',
+    passwordSecretCode: 'es-password',
     indexName: 'products',
     idField: 'id',
 })
@@ -136,9 +138,14 @@ Elasticsearch creates dynamic mappings. For production, create index mappings be
 }
 ```
 
-### OpenSearch Compatibility
+API-key authentication and Basic authentication are mutually exclusive. Basic
+authentication requires both Secret Codes; missing or empty referenced secrets
+fail before the first network request.
 
-Works with Amazon OpenSearch Service using the same configuration.
+### OpenSearch
+
+Use adapter code `opensearch` with the same fields. OpenSearch is a separate
+built-in sink that uses the Elasticsearch-compatible bulk API.
 
 ---
 
@@ -152,22 +159,23 @@ Index records to Algolia search service.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `applicationId` | string | Yes | Algolia Application ID |
+| `appId` | string | Yes | Algolia Application ID |
 | `apiKeySecretCode` | string | Yes | Secret code for Admin API key |
 | `indexName` | string | Yes | Target index name |
 | `idField` | string | Yes | Field for object ID |
-| `bulkSize` | number | No | Records per batch |
+| `batchSize` | number | No | Records per Algolia batch request |
+| `defaultOperation` | select | No | Operation used when a record has no `__operation` field: `UPSERT` or `DELETE` |
 
 ### Example
 
 ```typescript
 .sink('algolia-products', {
     adapterCode: 'algolia',
-    applicationId: 'YOUR_APP_ID',
+    appId: 'YOUR_APP_ID',
     apiKeySecretCode: 'algolia-admin-key',
     indexName: 'products',
     idField: 'id',
-    bulkSize: 1000,
+    batchSize: 1000,
 })
 ```
 
@@ -178,7 +186,7 @@ Algolia requires a unique `objectID` field. The `idField` specifies which record
 ```typescript
 .sink('algolia-products', {
     adapterCode: 'algolia',
-    applicationId: 'YOUR_APP_ID',
+    appId: 'YOUR_APP_ID',
     apiKeySecretCode: 'algolia-admin-key',
     indexName: 'products',
     idField: 'sku',  // Use SKU as the Algolia objectID
@@ -218,7 +226,8 @@ Index records to Typesense search engine.
 | `apiKeySecretCode` | string | Yes | Secret code for API key |
 | `collectionName` | string | Yes | Target collection name |
 | `idField` | string | Yes | Document ID field |
-| `bulkSize` | number | No | Records per batch |
+| `batchSize` | number | No | Records per Typesense import request |
+| `defaultOperation` | select | No | Operation used when a record has no `__operation` field: `UPSERT` or `DELETE` |
 
 ### Example
 
@@ -231,7 +240,7 @@ Index records to Typesense search engine.
     apiKeySecretCode: 'typesense-api-key',
     collectionName: 'products',
     idField: 'id',
-    bulkSize: 250,
+    batchSize: 250,
 })
 ```
 
@@ -255,197 +264,112 @@ Create collection with schema before indexing:
 
 ---
 
-## Common Patterns
+## Shared Sink Behavior
 
-### Full Product Sync
+All seven built-in sinks accept `batchSize`, `defaultOperation`,
+`languageCode`, `translationsField`, and `channelCode`. Search sinks also
+use the configured identity field when handling deletes: `primaryKey` for
+MeiliSearch and `idField` for the other search engines, queue producer, and
+webhook. A record-level `__operation: 'DELETE'` overrides
+`defaultOperation`; the runtime removes `__operation` before sending the
+record.
 
-```typescript
-createPipeline()
-    .name('sync-to-search')
-    .trigger('schedule', {
-        type: 'SCHEDULE',
-        cron: '0 */4 * * *',  // Every 4 hours
-    })
-    .extract('query-products', {
-        adapterCode: 'vendureQuery',
-        entity: 'PRODUCT',
-        relations: 'variants,featuredAsset,collections,facetValues,facetValues.facet,translations',
-        languageCode: 'en',
-        batchSize: 500,
-    })
-    .transform('prepare-search', {
-        operators: [
-            { op: 'template', args: { template: '/products/${slug}', target: 'url' } },
-            { op: 'copy', args: { source: 'featuredAsset.preview', target: 'image' } },
-            { op: 'copy', args: { source: 'variants.0.price', target: 'minPrice' } },
-        ],
-    })
-    .sink('meilisearch-products', {
-        adapterCode: 'meilisearch',
-        host: 'http://localhost:7700',
-        apiKeySecretCode: 'meilisearch-key',
-        indexName: 'products',
-        primaryKey: 'id',
-    })
-```
+| Field | Type | Behavior |
+|-------|------|----------|
+| `languageCode` | string | Flatten the matching translation onto each record and replace every `${languageCode}` placeholder in an index or collection name |
+| `translationsField` | string | Translation array field; defaults to `translations` |
+| `channelCode` | string | Keep records whose channel array contains this code; records without a channel array remain included |
+| `fields` | string[] | Code-first only: send only these source paths |
+| `excludeFields` | string[] | Code-first only: omit these root fields when `fields` is not set |
+| `channelField` | string | Code-first only: channel array field; defaults to `channels` |
 
-### Real-time Updates
+For search sinks, each DELETE record is reduced to its resolved identity and
+sent through the target's delete API. Queue DELETE messages carry the
+`x-datahub-operation: DELETE` header. Webhook DELETE batches use HTTP
+`DELETE` and contain identity-only objects.
 
-```typescript
-createPipeline()
-    .name('product-updated-sync')
-    .trigger('vendure-event', {
-        type: 'EVENT',
-        event: 'ProductEvent',
-    })
-    .extract('get-product', {
-        adapterCode: 'vendureQuery',
-        entity: 'PRODUCT',
-        relations: 'variants,featuredAsset',
-        batchSize: 1,
-    })
-    .sink('elasticsearch', {
-        adapterCode: 'elasticsearch',
-        host: 'http://localhost:9200',
-        indexName: 'products',
-        idField: 'id',
-    })
-```
+`batchSize` controls sequential request chunks. It must be an integer from 1 to
+10,000 and defaults to 100. Invalid values fail before any target request is
+made. It does not enable parallel requests or add a per-second rate limiter.
+Choose it according to record size, target limits, and observed latency.
 
-### Multi-Engine Sync
-
-```typescript
-createPipeline()
-    .name('multi-search-sync')
-    .extract('query-products', { /* ... */ })
-    .transform('prepare', { operators: [ /* ... */ ] })
-    // Primary search
-    .sink('meilisearch', {
-        adapterCode: 'meilisearch',
-        indexName: 'products',
-        // ...
-    })
-    // Analytics search
-    .sink('elasticsearch', {
-        adapterCode: 'elasticsearch',
-        indexName: 'products-analytics',
-        // ...
-    })
-```
+`defaultOperation` and a record-level `__operation` accept only `UPSERT` or
+`DELETE` (case-insensitive). An invalid default fails the step before target
+requests begin. An invalid record operation fails and skips that record instead
+of treating it as an upsert.
 
 ---
 
-## Performance Tuning
-
-### Batch Size
-
-Adjust batch size based on:
-- Record size (larger records = smaller batches)
-- Network latency
-- Search engine capacity
-
-```typescript
-{
-    batchSize: 500,  // Start here, adjust based on performance
-}
-```
-
-### Concurrency
-
-For large datasets, configure parallel processing per pipeline step:
-
-```typescript
-{
-    batchSize: 500,
-    rateLimitPerSecond: 100,  // Adjust based on target system capacity
-}
-```
-
-### Refresh Strategy
-
-For Elasticsearch, control index refresh:
-
-```typescript
-{
-    refresh: false,  // Faster, but documents not immediately searchable
-}
-```
-
-Run manual refresh after bulk indexing.
-
----
-
-## RabbitMQ Queue Producer
+## Queue Producer
 
 Code: `queueProducer`
 
-Publish records to RabbitMQ message queue via HTTP Management API (port 15672).
+Publish records through RabbitMQ AMQP, Amazon SQS, or Redis Streams. A deprecated
+RabbitMQ HTTP Management API producer remains available for compatibility.
 
 ### Configuration
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `queueType` | select | Yes | Queue type (currently: `rabbitmq`) |
-| `connectionCode` | string | Yes | Reference to queue connection configuration |
-| `queueName` | string | Yes | RabbitMQ queue name to publish to |
-| `routingKey` | string | No | Routing key for RabbitMQ exchanges |
-| `messageType` | string | No | Message type header for consumers |
-| `headers` | json | No | Static headers to include in messages |
-| `idField` | string | No | Field to use as message ID for deduplication |
-| `batchSize` | number | No | Number of messages to send per batch |
-| `persistent` | boolean | No | Persist messages to disk (delivery mode 2) |
-| `priority` | number | No | Message priority (1-10, higher = more urgent) |
-| `delayMs` | number | No | Delay before message is available for consumption |
-| `ttlMs` | number | No | Message time-to-live in milliseconds |
+| `queueType` | select | Yes | `RABBITMQ_AMQP`, `SQS`, `REDIS_STREAMS`, or deprecated `RABBITMQ` HTTP compatibility mode |
+| `connectionCode` | string | Yes | Saved queue connection code |
+| `queueName` | string | Yes | Queue name or Redis stream name |
+| `routingKey` | string | No | RabbitMQ routing key |
+| `headers` | json | No | Static string message headers |
+| `idField` | string | No | Record field used as the message ID; otherwise a UUID is generated |
+| `batchSize` | number | No | Records prepared and published per chunk; default: 100 |
+| `persistent` | boolean | No | RabbitMQ delivery persistence; default: true |
+| `priority` | number | No | RabbitMQ message priority |
+| `ttlMs` | number | No | RabbitMQ message expiration in milliseconds |
+| `defaultOperation` | select | No | `UPSERT` or `DELETE`; propagated as the `x-datahub-operation` header |
 
-### Example
+Fields with RabbitMQ-specific semantics are not portable broker guarantees.
+SQS and Redis Streams still receive the payload, ID, static headers, and
+`x-datahub-operation` header.
+
+### RabbitMQ AMQP example
 
 ```typescript
 .sink('rabbitmq-orders', {
     adapterCode: 'queueProducer',
-    queueType: 'rabbitmq',
+    queueType: 'RABBITMQ_AMQP',
     connectionCode: 'rabbitmq-connection',
     queueName: 'order-processing',
-    messageType: 'order.created',
+    routingKey: 'order.created',
     idField: 'orderId',
     persistent: true,
     batchSize: 100,
 })
 ```
 
-### With Routing Key
+The native AMQP adapter is the supported RabbitMQ transport for new deployments.
+Select the deprecated `RABBITMQ` HTTP mode only when a long-lived AMQP connection
+is impossible; RabbitMQ documents HTTP publishing as highly inefficient.
 
-```typescript
-.sink('rabbitmq-events', {
-    adapterCode: 'queueProducer',
-    queueType: 'rabbitmq',
-    connectionCode: 'rabbitmq-connection',
-    queueName: 'events',
-    routingKey: 'product.updated',
-    persistent: true,
-    priority: 5,
-})
-```
-
-### Connection Configuration
+### RabbitMQ connection
 
 ```typescript
 DataHubPlugin.init({
     connections: [
         {
             code: 'rabbitmq-connection',
-            type: 'rabbitmq',
-            config: {
-                host: 'localhost',
-                port: 15672,  // HTTP Management API port
-                usernameSecretCode: 'rabbitmq-user',
-                passwordSecretCode: 'rabbitmq-pass',
+            type: 'RABBITMQ',
+            settings: {
+                host: 'rabbitmq.example.com',
+                port: 5672,
+                username: 'data-hub',
+                passwordSecretCode: 'rabbitmq-password',
                 vhost: '/',
+                ssl: true,
             },
         },
     ],
 })
 ```
+
+The deprecated HTTP compatibility mode uses management port 15672. See
+[Queue & Messaging](../user-guide/queue-messaging.md) for SQS and Redis
+connection examples and their optional client dependencies.
 
 ---
 
@@ -453,7 +377,8 @@ DataHubPlugin.init({
 
 Code: `webhook`
 
-Send records to an HTTP endpoint via POST requests.
+Send record batches to an HTTP endpoint with retries, bounded error responses,
+SSRF protection, and a circuit breaker.
 
 ### Configuration
 
@@ -461,15 +386,16 @@ Send records to an HTTP endpoint via POST requests.
 |-------|------|----------|-------------|
 | `url` | string | Yes | HTTP endpoint to send records to |
 | `method` | select | No | HTTP method (POST, PUT, PATCH) |
-| `headers` | json | No | HTTP headers as JSON object |
+| `headers` | json | No | Non-sensitive static HTTP headers |
 | `bearerTokenSecretCode` | string | No | Secret code for Bearer authentication |
 | `apiKeySecretCode` | string | No | Secret code for API key authentication |
 | `apiKeyHeader` | string | No | Header name for API key (default: X-API-Key) |
 | `batchSize` | number | No | Records per request |
-| `timeoutMs` | number | No | Request timeout in milliseconds (default: 30000) |
-| `retries` | number | No | Maximum retry attempts on failure (default: 3) |
+| `timeoutMs` | number | No | Integer from 1 to 300000 milliseconds (default: 30000) |
+| `retries` | number | No | Retries after the first attempt; integer from 0 to 10 (default: 3) |
 | `hmacSecretCode` | string | No | Secret code for HMAC signing. When set, each request includes an HMAC-SHA256 signature computed over the request body |
 | `signatureHeaderName` | string | No | Header name for the HMAC signature (default: `X-DataHub-Signature`) |
+| `defaultOperation` | select | No | Operation used when a record has no `__operation` field: `UPSERT` or `DELETE` |
 
 ### Example - Single Records with Bearer Auth
 
@@ -478,11 +404,17 @@ Send records to an HTTP endpoint via POST requests.
     adapterCode: 'webhook',
     url: 'https://api.example.com/webhook/products',
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     bearerTokenSecretCode: 'webhook-bearer-token',
     batchSize: 1,
 })
 ```
+
+Configure at most one of `bearerTokenSecretCode` and
+`apiKeySecretCode`. `apiKeyHeader` requires `apiKeySecretCode`, and
+`signatureHeaderName` requires `hmacSecretCode`. Credential, cookie,
+signature, and routing-control headers are rejected from `headers`; use the
+Secret Code fields instead. Missing, empty, or invalid Secret Codes fail before
+the first request.
 
 ### Example - Batch Records with API Key
 

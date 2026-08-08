@@ -8,9 +8,10 @@ Best practices for deploying Data Hub in production.
 
 - [ ] Debug mode disabled (`debug: false`)
 - [ ] Appropriate retention settings configured
-- [ ] All secrets using environment variables (not inline)
+- [ ] All secrets use canonical environment-variable names without embedded fallback values
 - [ ] Connections configured for production systems
 - [ ] External config file secured (if used)
+- [ ] `DATA_HUB_EXPORT_ROOT` points to writable persistent storage for local outputs
 
 ### Security
 
@@ -25,10 +26,12 @@ Best practices for deploying Data Hub in production.
 - [ ] Database indexes verified
 - [ ] Log aggregation set up
 - [ ] Monitoring and alerting configured
+- [ ] Shared Redis, OTLP, storage, and remote-system topology rehearsed where configured
+- [ ] Database and artifact-storage restore drill completed with recorded RPO/RTO
 
 ## Environment Variables
 
-Use environment variables for all sensitive configuration:
+Use environment variables for deployment-specific configuration and secrets:
 
 ```bash
 # Database connections
@@ -43,7 +46,16 @@ GOOGLE_MERCHANT_API_KEY=...
 # AWS credentials (for S3)
 AWS_ACCESS_KEY_ID=AKIA...
 AWS_SECRET_ACCESS_KEY=...
+
+# Server-local Data Hub exports
+DATA_HUB_EXPORT_ROOT=/var/lib/vendure-data-hub/exports
 ```
+
+### Local output storage
+
+`DATA_HUB_EXPORT_ROOT` is resolved when each process starts and defaults to `<cwd>/exports`. Set it explicitly in production and provide a writable persistent mount. API servers and workers that must share local outputs need the same configured root and shared storage.
+
+Local exporter `path` and feed `outputPath` values remain relative, such as `catalog` and `feeds/google.xml`. Absolute paths, URLs, and traversal are invalid for local output fields; remote destinations keep their own `remotePath`, bucket/prefix, or URL settings.
 
 ## Plugin Configuration
 
@@ -62,16 +74,14 @@ DataHubPlugin.init({
     connections: [
         {
             code: 'erp-db',
-            type: 'postgres',
-            name: 'ERP Database',
+            type: 'POSTGRES',
             settings: {
                 host: '${ERP_DB_HOST}',
                 port: 5432,
                 database: 'erp',
                 username: '${ERP_DB_USER}',
-                password: '${ERP_DB_PASSWORD}',
+                passwordSecretCode: 'erp-db-password',
                 ssl: true,
-                poolSize: 5,
             },
         },
     ],
@@ -86,7 +96,13 @@ For smaller deployments, the default configuration works:
 
 ```typescript
 jobQueueOptions: {
-    activeQueues: ['default', 'data-hub.run', 'data-hub.schedule'],
+    activeQueues: [
+        'default',
+        'data-hub.event-trigger-outbox',
+        'data-hub.webhook-retry',
+        'data-hub.remote-source-acknowledgement',
+        'data-hub.run',
+    ],
 }
 ```
 
@@ -102,47 +118,101 @@ jobQueueOptions: {
 
 // Worker process - handles data hub jobs
 jobQueueOptions: {
-    activeQueues: ['data-hub.run', 'data-hub.schedule'],
+    activeQueues: [
+        'data-hub.event-trigger-outbox',
+        'data-hub.webhook-retry',
+        'data-hub.remote-source-acknowledgement',
+        'data-hub.run',
+    ],
 }
 ```
 
+EVENT and outgoing webhook delivery use database outboxes plus leased Vendure
+jobs. Configure a persistent strategy such as the database-backed
+`DefaultJobQueuePlugin`, and run workers that consume
+`data-hub.event-trigger-outbox`, `data-hub.webhook-retry`,
+`data-hub.remote-source-acknowledgement`, and `data-hub.run`. Event and webhook
+outbox rows recover expired or lost queue publications. Pipeline run rows retain
+a queue request and stale-dispatch claim until a worker owns execution, so
+startup reconciliation recovers a failed run-queue handoff. Completed S3 and
+FTP/SFTP delete-or-move acknowledgements remain in pipeline checkpoints until
+the remote action succeeds; bounded checkpoint reconciliation republishes that
+work to the remote-source queue. Reconciliation has one renewable distributed
+leader across API and worker replicas, while each pipeline's remote operations
+use a separately renewed lease. A bounded token-protected dispatch lease keeps
+repeated scans from amplifying the queue while Vendure retries a failed remote
+system; successful jobs and failed publications release it, and process loss is
+recovered after expiry. Recovery resolves the persisted Vendure channel ID to
+the current Channel entity, so channel-token rotation does not redirect or
+strand queued cleanup. A persistent queue avoids recovery delays and is required
+for normal multi-process worker operation. Every worker that handles webhooks or
+remote acknowledgements needs the same `DATAHUB_MASTER_KEY` and Secret Code
+providers as the API process.
+
+Every API server and worker must also receive identical code-first `pipelines`,
+`connections`, and `configPath` configuration. One API server reconciles those
+database rows under a distributed lock. Workers verify the resulting shared
+state read-only and delay schedule, message-consumer, and file-watcher discovery
+until it matches. A mismatch aborts worker startup instead of running with stale
+connection or pipeline configuration.
+
 ### Worker Script
+
+Data Hub follows Vendure's scheduler process ownership. With Vendure's default
+`schedulerOptions.runTasksInWorkerOnly: true`, scheduled pipeline discovery and
+triggering run in the worker process. A single-process deployment must set
+`runTasksInWorkerOnly: false` explicitly; do not start schedule polling in both
+API and worker roles.
 
 ```typescript
 // worker.ts
-import { bootstrapWorker } from '@vendure/core';
+import { bootstrapWorker, Logger } from '@vendure/core';
 import config from './vendure-config';
 
 bootstrapWorker({
     ...config,
     jobQueueOptions: {
-        activeQueues: ['data-hub.run', 'data-hub.schedule'],
+        activeQueues: [
+            'data-hub.event-trigger-outbox',
+            'data-hub.webhook-retry',
+            'data-hub.remote-source-acknowledgement',
+            'data-hub.run',
+        ],
         pollInterval: 1000,
     },
 })
     .then(worker => worker.startJobQueue())
+    .then(worker => worker.startHealthCheckServer({ port: 3020 }))
     .catch(err => {
-        console.error('Worker failed to start:', err);
-        process.exit(1);
+        Logger.error(
+            `Worker failed to start: ${err instanceof Error ? err.message : String(err)}`,
+            'DataHubWorker',
+        );
+        process.exitCode = 1;
     });
 ```
+
+The scheduler uses process timers and occurrence-scoped distributed leases.
+Each cron minute or fixed-interval bucket is claimed once across Data Hub processes,
+and scheduled starts are handed to `data-hub.run`.
 
 ## Database Considerations
 
 ### Connection Pooling
 
-Limit connection pool size to prevent exhausting database connections:
+Set the database extractor pool explicitly to avoid exhausting database
+connections:
 
 ```typescript
-connections: [
-    {
-        code: 'external-db',
-        type: 'postgres',
-        settings: {
-            poolSize: 5,  // Limit concurrent connections
-        },
+.extract('read-external-products', {
+    adapterCode: 'database',
+    connectionCode: 'erp-db',
+    databaseType: 'POSTGRESQL',
+    query: 'SELECT * FROM products ORDER BY id',
+    pool: {
+        max: 5,
     },
-]
+})
 ```
 
 ### Read Replicas
@@ -153,9 +223,14 @@ For read-heavy operations, configure read replicas:
 connections: [
     {
         code: 'erp-db-read',
-        type: 'postgres',
+        type: 'POSTGRES',
         settings: {
-            host: '${ERP_DB_READ_HOST}',  // Read replica
+            host: '${ERP_DB_READ_HOST}',
+            port: 5432,
+            database: 'erp',
+            username: '${ERP_DB_READ_USER}',
+            passwordSecretCode: 'erp-db-password',
+            ssl: true,
         },
     },
 ]
@@ -170,59 +245,70 @@ Set the minimum level to persist:
 ```graphql
 mutation {
     updateDataHubSettings(input: {
-        logPersistenceLevel: "info"  # debug, info, warn, error
+        logPersistenceLevel: PIPELINE
     }) {
         logPersistenceLevel
     }
 }
 ```
 
-- `debug` - All logs (high storage)
-- `info` - Info and above (recommended)
-- `warn` - Warnings and errors
-- `error` - Errors only
+- `ERROR_ONLY` persists errors.
+- `PIPELINE` persists pipeline lifecycle events and errors and is the default.
+- `STEP` also persists step lifecycle events.
+- `DEBUG` persists all supported events and has the highest storage cost.
 
-### Log Aggregation
+### Vendure Application Logging
 
-Send logs to external systems:
+Vendure writes through the logger configured on `VendureConfig.logger`. The
+built-in logger can be configured explicitly:
 
-```typescript
-// Custom log handler (example)
-import { LoggingService } from '@vendure/core';
+```ts
+import { DefaultLogger, LogLevel, type VendureConfig } from '@vendure/core';
 
-class CustomLogger extends LoggingService {
-    log(level: string, message: string, context?: any) {
-        // Send to CloudWatch, Datadog, etc.
-        externalLogger.log({ level, message, context });
-    }
-}
+export const config: VendureConfig = {
+    // ...
+    logger: new DefaultLogger({
+        level: LogLevel.Info,
+        timestamp: true,
+    }),
+};
 ```
+
+For CloudWatch, Datadog, or another structured backend, either collect the
+application's stdout or provide an implementation of Vendure's
+`VendureLogger` interface. There is no `LoggingService` base class in the
+current Vendure API. Keep log redaction at both the Data Hub and application
+logger boundaries.
 
 ## Monitoring
 
 ### Key Metrics
 
-Monitor these metrics:
+The plugin does not install alert rules or expose a Prometheus endpoint. Derive
+deployment-specific signals from the Admin API, persisted logs, the database,
+and infrastructure monitoring. Example signals are:
 
-| Metric | Description | Alert Threshold |
-|--------|-------------|-----------------|
-| Pipeline success rate | % of successful runs | < 95% |
-| Average run duration | Execution time | > baseline + 50% |
-| Record error rate | % of failed records | > 5% |
-| Queue depth | Pending jobs | > 100 |
-| Worker health | Active workers | < expected |
+| Signal | Source |
+|--------|--------|
+| Pipeline success and failure trend | Pipeline run statuses |
+| Run duration | Run start/finish timestamps and metrics |
+| Record-error trend | Quarantined record-error rows |
+| Queue depth and recent failures | `dataHubQueueStats` |
+| Worker health | Vendure worker health endpoint and infrastructure probes |
 
 ### Health Checks
 
-Add health check endpoints:
+Vendure servers expose `/health`. Add deployment-critical dependencies through
+`systemOptions.healthChecks` with Vendure `HealthCheckStrategy` implementations;
+when replacing that array, retain `TypeORMHealthCheckStrategy`. Vendure workers
+expose `/health` after `startHealthCheckServer()` is called, as in the worker
+example above. Data Hub does not register a separate `DataHubHealthService` or
+plugin-specific health endpoint.
 
-```typescript
-// Check Data Hub status
-app.use('/health/data-hub', async (req, res) => {
-    const isHealthy = await checkDataHubHealth();
-    res.status(isHealthy ? 200 : 503).json({ healthy: isHealthy });
-});
-```
+Use authenticated Admin API checks for `dataHubQueueStats`, representative run
+queries, and message-consumer status when deeper readiness evidence is needed.
+Do not expose those Admin API operations as unauthenticated health routes. See
+Vendure's [deployment health-check guidance](https://docs.vendure.io/current/core/deployment/using-docker).
 
 ### Alerting
 
@@ -236,40 +322,124 @@ Set up alerts for:
 
 ## Backup and Recovery
 
-### Data to Backup
+Treat the host database, persistent artifact storage, application build, and
+secret material as one recovery unit.
 
-- Pipeline definitions (if not code-first)
-- Connection configurations
-- Secret metadata (not values)
-- Run history (optional)
+### Required recovery material
 
-### Recovery Procedures
+- a consistent backup or snapshot of the complete Vendure database, including
+  Data Hub definitions, revisions, runs, logs, checkpoints, record errors,
+  settings, connections, encrypted INLINE secret values, outboxes, deliveries,
+  destinations, feeds, and schema registry rows;
+- the exact application artifact, plugin and Vendure versions, configuration,
+  lockfile, and reviewed host migrations used by that database;
+- `DATAHUB_MASTER_KEY`, environment-backed secret values, and external secret
+  provider configuration stored separately from the database backup;
+- the persistent local or object-storage state used for uploads, exports, feed
+  artifacts, and other Data Hub files; and
+- the queue-backend recovery material required by the selected Vendure job
+  queue strategy.
 
-1. **Code-first pipelines**: Automatically restored from code
-2. **UI-created pipelines**: Restore from database backup
-3. **Secrets**: Recreate from secure storage
-4. **Connections**: Recreate from documentation
+A definition export is a useful secondary aid, but it is not a backup. Code-first
+configuration also does not reconstruct revision history, active run state,
+checkpoints, encrypted database values, or delivery outboxes.
+
+### Recovery procedure
+
+1. Quiesce API servers, workers, schedules, webhooks, event producers, file
+   watchers, and message consumers before taking or restoring a coordinated
+   recovery point.
+2. Restore database and persistent artifact storage to the same logical point.
+   A rewound checkpoint can replay a remote read or pending move/delete intent;
+   compare restored checkpoint state with the remote system before re-enabling
+   sources.
+3. Deploy the matching application artifact, configuration, lockfile, reviewed
+   migrations, master key, and secret-provider values.
+4. Start one controlled API/worker pair first. Verify decryption, migration
+   state, channel ownership, queue state, artifact reads, and representative
+   authenticated queries.
+5. Reconcile nonterminal runs, outbox rows, remote pending intents, and job
+   queues before scaling out or re-enabling producers.
+6. Run one controlled end-to-end pipeline per critical integration, then record
+   actual recovery time and recovered data point against the deployment RTO/RPO.
+
+Do not routinely recreate database connections or INLINE secrets from
+documentation after a restore; restoring the database and the matching master
+key preserves them. ENV-backed secret values still come from the external
+secret store and are never contained in the database.
+
+## Target-Environment Sign-Off
+
+Repository acceptance tests prove code paths against disposable local services;
+they do not certify a customer's network, credentials, HA topology, or remote
+product configuration. Record an owner, endpoint/topology, CA and key source,
+credential rotation plan, allowlist/firewall rule, expected volume, timeout and
+retry policy, failover scenario, evidence timestamp, rollback trigger, and
+pass/fail result for every configured dependency.
+
+| Dependency | Repository evidence | Required production evidence |
+| --- | --- | --- |
+| PostgreSQL/MySQL extractor | Disposable mTLS query, active-session proof, untrusted CA/hostname/client-cert rejection, and PostgreSQL new-install migration apply/revert | Target TLS/CA or mTLS, least privilege, query plan, stable failover DNS/proxy, timeout, upgrade from the actual prior schema, and recovery |
+| Redis | Atomic counters, locks, address-pinned Streams clients, process crash, outage/reconnect against one server, and automatic primary-loss election with two replicas and a three-Sentinel quorum | Automatic election or managed failover in the exact target topology, TLS/server-name policy, persistence policy, partition and split-brain controls, promotion time, and accepted data-loss behavior |
+| RabbitMQ | Disposable-broker publisher/consumer round trip, broker-enforced prefetch, cancellation/redelivery, plus DNS/address pinning, bounded setup, publisher confirms, manual settlement, pool cleanup, and partial-setup/shutdown failure tests | Target TLS/CA, credentials/vhost permissions, firewall/DNS policy, acknowledgement timeout, quorum/durability policy, broker failover, load, and redelivery behavior |
+| SQS | Batch-result correlation, manual settlement and lease renewal, URL credential rejection, and bounded DNS-pinned custom endpoint transports | Target AWS account/region, IAM or workload identity, KMS policy, DLQ/redrive policy, endpoint/VPC policy, throttling, retention, load, and regional failure behavior |
+| OTLP | Real Collector metrics/traces export and outage recovery | Target collector authentication, TLS, capacity, retention, alert routing, and collector/egress failure |
+| S3 | MinIO object round trip and signed URL | Target AWS/S3-compatible IAM, region, HTTPS/CA, bucket policy, encryption, large-object, and interruption behavior |
+| FTP/FTPS/SFTP | FTP and password-SFTP round trip with SFTP host-key pinning | FTPS certificate validation where used, private-key/passphrase rotation, firewall/passive ports, transfer interruption, and reconnect |
+| Pimcore | Synthetic local HTTP server covering authentication headers, pagination, retry, and checkpoint contracts | Active target Data Hub GraphQL configuration, supported Pimcore/schema version, real auth, deterministic pagination, rate limiting, and representative data |
 
 ## Scaling
 
 ### Horizontal Scaling
 
-Data Hub supports running multiple instances with automatic coordination:
+Data Hub coordinates schedule triggers, message consumers, and individual run
+jobs across multiple processes when a shared lock backend is configured:
 
 **Distributed Locking:**
 
 ```bash
-# Option 1: Redis (recommended for production)
+# Option 1a: standalone or managed Redis endpoint
 DATAHUB_REDIS_URL=redis://redis.production.internal:6379
 
-# Option 2: Force PostgreSQL (no additional infrastructure)
+# Option 1b: Redis Sentinel discovery
+DATAHUB_REDIS_SENTINELS=redis-sentinel-1.internal:26379,redis-sentinel-2.internal:26379,redis-sentinel-3.internal:26379
+DATAHUB_REDIS_SENTINEL_NAME=vendure-primary
+DATAHUB_REDIS_TLS=true
+DATAHUB_REDIS_SENTINEL_TLS=true
+
+# Option 2: force PostgreSQL (no additional infrastructure)
 DATAHUB_LOCK_BACKEND=postgres
 ```
 
+Provide Sentinel and data-node ACL credentials through the deployment secret
+manager when the target requires them. TLS uses the Node.js trust store; add a
+private CA with `NODE_EXTRA_CA_CERTS` before startup. Use the same discovery,
+database, TLS, and authentication settings on every API server and worker.
+
+Either Redis discovery mode also enables atomic shared rate-limit counters for
+incoming webhooks. Without Redis, those counters are process-local. If Redis
+becomes unavailable after startup, webhook admission fails closed with `503`;
+the limiter never weakens itself to per-process counters in a multi-instance
+deployment.
+
+A configured Redis topology also auto-selects Redis for distributed locks unless a
+different valid backend is forced. Redis lock initialization is fail-closed, so
+an unavailable lock backend can prevent application bootstrap. On PostgreSQL,
+set `DATAHUB_LOCK_BACKEND=POSTGRES` to keep locking independent of Redis.
+
+The disposable repository topology proves automatic election after an external
+`SIGKILL` of the primary, with two replicas, three Sentinels, and surviving
+lock/quota state through existing and fresh application clients. Production
+sign-off must repeat the failure in the exact target topology and record
+election time, application reconnect time, surviving state, partition behavior,
+and the target's persistence/data-loss result. Global Sentinel settings do not
+configure Redis Streams; each Streams trigger or sink uses its saved connection.
+
 **What's Protected:**
 - **Scheduled Triggers** - Only one instance executes each schedule
-- **Message Consumers** - Only one instance consumes from each queue/pipeline combination
+- **Message Consumers** - Only one instance owns each published pipeline/trigger-key consumer; replicas provide failover
 - **Pipeline Runs** - Prevents duplicate execution of the same run
+- **Incoming Webhook Limits** - Redis counters enforce one fixed-window limit across API replicas
 
 **Deployment Architecture:**
 
@@ -290,20 +460,20 @@ DATAHUB_LOCK_BACKEND=postgres
         ┌────────────────────┼────────────────────┐
         ▼                    ▼                    ▼
 ┌───────────────┐    ┌───────────────┐    ┌───────────────┐
-│   PostgreSQL  │    │     Redis     │    │  Message Queue│
-│   (required)  │    │   (optional)  │    │   (optional)  │
+│ Primary DB    │    │     Redis     │    │  Message Queue│
+│               │    │ (conditional) │    │   (optional)  │
 └───────────────┘    └───────────────┘    └───────────────┘
 ```
 
 **Without Redis:**
-- Distributed locks use PostgreSQL (works but slightly slower)
-- All features remain functional
-- Suitable for smaller deployments (2-5 instances)
+- PostgreSQL Vendure deployments use PostgreSQL advisory locks.
+- Other database engines must configure Redis for multi-process safety.
+- Process-local memory locking must be selected explicitly and is safe only for
+  one process.
 
 **With Redis:**
 - Faster lock acquisition/release
-- Better for high-throughput scenarios
-- Recommended for 5+ instances
+- Required for shared locking when the Vendure database is not PostgreSQL
 
 ### Additional Scaling Tips
 
@@ -317,17 +487,22 @@ DATAHUB_LOCK_BACKEND=postgres
 - Increase concurrency for parallel processing
 - Tune database connection pools
 
-### Rate Limiting
+### Load Rate Limiting
 
-Protect external APIs:
+Limit aggregate loader batch starts across the pipeline run:
 
 ```typescript
-.extract('api-call', {
+.load('write-products', {
+    adapterCode: 'productUpsert',
     throughput: {
-        rateLimitRps: 10,  // Max 10 requests per second
+        rateLimitRps: 10,
     },
 })
 ```
+
+This setting controls load execution; it does not rate-limit extractor HTTP
+requests. Configure external API throttling in the extractor or connection
+adapter that owns those requests.
 
 ## Security Best Practices
 

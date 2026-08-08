@@ -6,7 +6,7 @@
  * parent-child relationships, and error handling.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { FacetService, FacetValueService, CollectionService, LanguageCode } from '@vendure/core';
+import { FacetService, CollectionService, LanguageCode } from '@vendure/core';
 import { createDataHubTestEnvironment } from '../test-config';
 import { FacetHandler, FacetValueHandler } from '../../src/runtime/executors/loaders/facet-handler';
 import { CollectionHandler } from '../../src/runtime/executors/loaders/collection-handler';
@@ -18,7 +18,6 @@ describe('Catalog Loaders e2e', () => {
     let facetValueHandler: FacetValueHandler;
     let collectionHandler: CollectionHandler;
     let facetService: FacetService;
-    let facetValueService: FacetValueService;
     let collectionService: CollectionService;
     let ctx: import('@vendure/core').RequestContext;
 
@@ -32,7 +31,6 @@ describe('Catalog Loaders e2e', () => {
         facetValueHandler = server.app.get(FacetValueHandler);
         collectionHandler = server.app.get(CollectionHandler);
         facetService = server.app.get(FacetService);
-        facetValueService = server.app.get(FacetValueService);
         collectionService = server.app.get(CollectionService);
         ctx = await getSuperadminContext(server.app);
     });
@@ -82,13 +80,14 @@ describe('Catalog Loaders e2e', () => {
         it('skips existing facet with CREATE strategy', async () => {
             const step = makeStep('test-facet-create-only', {
                 strategy: 'CREATE',
+                skipDuplicates: true,
                 codeField: 'code',
                 nameField: 'name',
             });
             const input = [{ code: 'material', name: 'Should Not Update' }];
 
             const result = await facetHandler.execute(ctx, step, input);
-            expect(result.ok).toBe(1);
+            expect(result).toEqual({ ok: 0, fail: 0, skipped: 1 });
 
             const facet = await facetService.findByCode(ctx, 'material', LanguageCode.en);
             expect(facet!.name).toBe('Material Type'); // Unchanged

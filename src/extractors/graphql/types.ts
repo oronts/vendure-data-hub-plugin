@@ -17,7 +17,7 @@ export interface GraphQLExtractorConfig extends ExtractorConfig {
     /** GraphQL variables (JSON object) */
     variables?: Record<string, unknown>;
 
-    /** Path to records array in response (e.g., "data.products.items") */
+    /** Full path to records array in the GraphQL response (e.g., "data.products.items") */
     dataPath?: string;
 
     /** Additional HTTP headers */
@@ -54,10 +54,10 @@ export interface GraphQLPaginationConfig extends Omit<PaginationConfig, 'type'> 
     /** Path to page info for Relay connections */
     pageInfoPath?: string;
 
-    /** Path to hasNextPage for Relay */
+    /** Path to hasNextPage relative to pageInfoPath */
     hasNextPagePath?: string;
 
-    /** Path to endCursor for Relay */
+    /** Path to endCursor relative to pageInfoPath */
     endCursorPath?: string;
 
     /** Path to totalCount in response */

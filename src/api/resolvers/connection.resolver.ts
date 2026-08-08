@@ -1,23 +1,26 @@
-import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
-import { Allow, Ctx, ID, ListQueryBuilder, ListQueryOptions, PaginatedList, RequestContext, Transaction, TransactionalConnection } from '@vendure/core';
+import { Args, Mutation, Parent, Query, ResolveField, Resolver } from '@nestjs/graphql';
+import { Allow, Channel, Ctx, ID, ListQueryBuilder, ListQueryOptions, PaginatedList, RequestContext, Transaction } from '@vendure/core';
 import { DeletionResponse, DeletionResult } from '@vendure/common/lib/generated-types';
-import type { FindOptionsWhere } from 'typeorm';
 import type { JsonObject } from '../../types/index';
 import { DataHubConnection } from '../../entities/config';
 import { ManageDataHubConnectionsPermission } from '../../permissions';
-import { ConnectionType } from '../../constants/enums';
 import { RESOLVER_ERROR_MESSAGES, LOGGER_CONTEXTS } from '../../constants/index';
 import { getErrorMessage } from '../../utils/error.utils';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
+import { ConnectionService } from '../../services/config/connection.service';
+import { ResourceInUseError } from '../../services/config/resource-reference.service';
+import { CodeFirstConfigurationError } from '../../services/config/configuration-ownership';
+import { ManagedResourceChannelService } from '../../services/config/managed-resource-channel.service';
 
-@Resolver()
+@Resolver('DataHubConnection')
 export class DataHubConnectionAdminResolver {
     private readonly logger: DataHubLogger;
 
     constructor(
-        private connection: TransactionalConnection,
         private listQueryBuilder: ListQueryBuilder,
+        private connectionService: ConnectionService,
         loggerFactory: DataHubLoggerFactory,
+        private managedResourceChannels: ManagedResourceChannelService,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.CONNECTION_RESOLVER);
     }
@@ -28,7 +31,10 @@ export class DataHubConnectionAdminResolver {
         @Ctx() ctx: RequestContext,
         @Args() args: { options?: ListQueryOptions<DataHubConnection> },
     ): Promise<PaginatedList<DataHubConnection>> {
-        const qb = this.listQueryBuilder.build(DataHubConnection, args.options ?? undefined, { ctx });
+        const qb = this.listQueryBuilder.build(DataHubConnection, args.options ?? undefined, {
+            ctx,
+            channelId: ctx.channelId,
+        });
         const [items, totalItems] = await qb.getManyAndCount();
         return { items, totalItems };
     }
@@ -36,7 +42,20 @@ export class DataHubConnectionAdminResolver {
     @Query()
     @Allow(ManageDataHubConnectionsPermission.Permission)
     async dataHubConnection(@Ctx() ctx: RequestContext, @Args() args: { id: ID }): Promise<DataHubConnection | null> {
-        return this.connection.getRepository(ctx, DataHubConnection).findOne({ where: { id: args.id } as FindOptionsWhere<DataHubConnection> });
+        return this.connectionService.getById(ctx, args.id);
+    }
+
+    @ResolveField()
+    @Allow(ManageDataHubConnectionsPermission.Permission)
+    channels(
+        @Ctx() ctx: RequestContext,
+        @Parent() connection: DataHubConnection,
+    ): Promise<Channel[]> {
+        return this.channelManager.getAssignedChannels(
+            ctx,
+            DataHubConnection,
+            connection.id,
+        );
     }
 
     @Mutation()
@@ -46,21 +65,11 @@ export class DataHubConnectionAdminResolver {
         @Ctx() ctx: RequestContext,
         @Args() args: { input: { code: string; type?: string; config?: JsonObject } },
     ): Promise<DataHubConnection> {
-        const repo = this.connection.getRepository(ctx, DataHubConnection);
-        const entity = new DataHubConnection();
-        entity.code = args.input.code;
-        const typeValue = args.input.type?.toUpperCase() ?? 'HTTP';
-        if (!Object.values(ConnectionType).includes(typeValue as ConnectionType)) {
-            throw new Error(`Invalid connection type: "${args.input.type}". Valid types: ${Object.values(ConnectionType).join(', ')}`);
-        }
-        entity.type = typeValue as ConnectionType;
-        entity.config = args.input.config ?? {};
-        const saved = await repo.save(entity);
-        const result = await repo.findOne({ where: { id: saved.id } });
-        if (!result) {
-            throw new Error(RESOLVER_ERROR_MESSAGES.CONNECTION_CREATE_FAILED);
-        }
-        return result;
+        return this.connectionService.create(ctx, {
+            code: args.input.code,
+            type: args.input.type ?? 'HTTP',
+            config: args.input.config ?? {},
+        });
     }
 
     @Mutation()
@@ -70,19 +79,8 @@ export class DataHubConnectionAdminResolver {
         @Ctx() ctx: RequestContext,
         @Args() args: { input: { id: ID; code?: string; type?: string; config?: JsonObject } },
     ): Promise<DataHubConnection> {
-        const repo = this.connection.getRepository(ctx, DataHubConnection);
-        const entity = await this.connection.getEntityOrThrow(ctx, DataHubConnection, args.input.id);
-        if (typeof args.input.code === 'string') entity.code = args.input.code;
-        if (typeof args.input.type === 'string') {
-            const typeValue = args.input.type.toUpperCase();
-            if (!Object.values(ConnectionType).includes(typeValue as ConnectionType)) {
-                throw new Error(`Invalid connection type: "${args.input.type}". Valid types: ${Object.values(ConnectionType).join(', ')}`);
-            }
-            entity.type = typeValue as ConnectionType;
-        }
-        if (args.input.config !== undefined) entity.config = args.input.config ?? {};
-        await repo.save(entity);
-        const result = await repo.findOne({ where: { id: entity.id } });
+        const { id, ...input } = args.input;
+        const result = await this.connectionService.update(ctx, id, input);
         if (!result) {
             throw new Error(RESOLVER_ERROR_MESSAGES.CONNECTION_UPDATE_FAILED);
         }
@@ -93,16 +91,65 @@ export class DataHubConnectionAdminResolver {
     @Transaction()
     @Allow(ManageDataHubConnectionsPermission.Permission)
     async deleteDataHubConnection(@Ctx() ctx: RequestContext, @Args() args: { id: ID }): Promise<DeletionResponse> {
-        const repo = this.connection.getRepository(ctx, DataHubConnection);
-        const entity = await this.connection.getEntityOrThrow(ctx, DataHubConnection, args.id);
         try {
-            await repo.remove(entity);
-            return { result: DeletionResult.DELETED };
+            const deleted = await this.connectionService.delete(ctx, args.id);
+            return deleted
+                ? { result: DeletionResult.DELETED }
+                : {
+                    result: DeletionResult.NOT_DELETED,
+                    message: RESOLVER_ERROR_MESSAGES.CONNECTION_NOT_FOUND,
+                };
         } catch (e) {
+            if (
+                e instanceof ResourceInUseError
+                || e instanceof CodeFirstConfigurationError
+            ) {
+                return {
+                    result: DeletionResult.NOT_DELETED,
+                    message: e.message,
+                };
+            }
             this.logger.error(
                 `Failed to delete connection: ${getErrorMessage(e)}`,
             );
-            return { result: DeletionResult.NOT_DELETED, message: 'Failed to delete connection due to an internal error' };
+            return {
+                result: DeletionResult.NOT_DELETED,
+                message: RESOLVER_ERROR_MESSAGES.CONNECTION_DELETE_FAILED,
+            };
         }
+    }
+
+    @Mutation()
+    @Transaction()
+    @Allow(ManageDataHubConnectionsPermission.Permission)
+    assignDataHubConnectionsToChannel(
+        @Ctx() ctx: RequestContext,
+        @Args() args: { input: { connectionIds: ID[]; channelId: ID } },
+    ): Promise<DataHubConnection[]> {
+        return this.channelManager.assignToChannel(
+            ctx,
+            DataHubConnection,
+            { ids: args.input.connectionIds, channelId: args.input.channelId },
+            [ManageDataHubConnectionsPermission.Permission],
+        );
+    }
+
+    @Mutation()
+    @Transaction()
+    @Allow(ManageDataHubConnectionsPermission.Permission)
+    removeDataHubConnectionsFromChannel(
+        @Ctx() ctx: RequestContext,
+        @Args() args: { input: { connectionIds: ID[]; channelId: ID } },
+    ): Promise<DataHubConnection[]> {
+        return this.channelManager.removeFromChannel(
+            ctx,
+            DataHubConnection,
+            { ids: args.input.connectionIds, channelId: args.input.channelId },
+            [ManageDataHubConnectionsPermission.Permission],
+        );
+    }
+
+    private get channelManager(): ManagedResourceChannelService {
+        return this.managedResourceChannels;
     }
 }

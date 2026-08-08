@@ -93,30 +93,19 @@ export function buildPaginatedRequest(
             );
             url.searchParams.set(
                 pagination.pageSizeParam || PAGINATION_PARAMS.PAGE_SIZE,
-                String(pagination.pageSize || HTTP_DEFAULTS.pageLimit),
+                String(pagination.limit || HTTP_DEFAULTS.pageLimit),
             );
             break;
 
         case PaginationType.LINK_HEADER:
-            // Link header pagination doesn't modify the initial URL
-            break;
+            if (state.nextUrl) {
+                paginatedConfig.url = state.nextUrl;
+            }
+            return paginatedConfig;
     }
 
     paginatedConfig.url = url.toString();
     return paginatedConfig;
-}
-
-/**
- * Build GraphQL request body
- */
-export function buildGraphqlBody(
-    query: string,
-    variables?: Record<string, unknown>,
-): { query: string; variables?: Record<string, unknown> } {
-    return {
-        query,
-        variables,
-    };
 }
 
 /**
@@ -140,11 +129,6 @@ export function getMethod(config: HttpApiExtractorConfig): HttpMethod {
  * Prepare request body
  */
 export function prepareRequestBody(config: HttpApiExtractorConfig): string | undefined {
-    if (config.graphqlQuery) {
-        const body = buildGraphqlBody(config.graphqlQuery, config.graphqlVariables);
-        return JSON.stringify(body);
-    }
-
     if (config.body) {
         return JSON.stringify(config.body);
     }

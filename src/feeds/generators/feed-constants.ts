@@ -75,6 +75,10 @@ export const FEED_LIMITS = {
     JSON_INDENT_SPACES: 2,
     /** Maximum number of custom labels supported (0-4) */
     MAX_CUSTOM_LABELS: 5,
+    /** Maximum retained warnings or errors for one generated feed */
+    MAX_DIAGNOSTIC_ENTRIES: 100,
+    /** Maximum length of one retained feed diagnostic */
+    MAX_DIAGNOSTIC_MESSAGE_LENGTH: 4_096,
 } as const;
 
 /**

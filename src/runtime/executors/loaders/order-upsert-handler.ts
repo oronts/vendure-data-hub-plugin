@@ -8,13 +8,14 @@
 import { Injectable } from '@nestjs/common';
 import { RequestContext } from '@vendure/core';
 import { PipelineStepDefinition, ErrorHandlingConfig, JsonObject } from '../../../types/index';
-import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
+import { RecordObject, OnRecordErrorCallback, LoaderExecutionResult } from '../../executor-types';
 import { buildSandboxLoaderContext, SandboxHandlerConfig } from '../../executor-helpers';
 import { LoaderHandler } from './types';
 import { LoadStrategy } from '../../../constants/enums';
 import { OrderLoader } from '../../../loaders/order';
 import { OrderInput } from '../../../loaders/order/types';
 import { getStringValue, getArrayValue, getObjectValue } from '../../../loaders/shared-helpers';
+import type { LinesMode } from '../../../../shared/types';
 
 /**
  * Configuration for the order upsert handler step (mirrors loader-handler-registry.ts schema)
@@ -31,6 +32,7 @@ interface OrderUpsertHandlerConfig extends SandboxHandlerConfig {
     orderPlacedAtField?: string;
     customFieldsField?: string;
     strategy?: LoadStrategy;
+    linesMode?: LinesMode;
     /** Target state to transition to after creation */
     state?: string;
     /** Payment method code for migration state transitions (auto-resolved if not set) */
@@ -56,9 +58,12 @@ export class OrderUpsertHandler implements LoaderHandler {
         input: RecordObject[],
         onRecordError?: OnRecordErrorCallback,
         _errorHandling?: ErrorHandlingConfig,
-    ): Promise<ExecutionResult> {
+    ): Promise<LoaderExecutionResult> {
         const cfg = getConfig(step.config);
         const loaderContext = buildSandboxLoaderContext(ctx, cfg, ['code']);
+        if (cfg.linesMode) {
+            loaderContext.options.config = { linesMode: cfg.linesMode };
+        }
 
         // Remap input records using configurable field names
         const records = input.map(rec => this.remapRecord(rec, cfg)) as OrderInput[];
@@ -75,6 +80,7 @@ export class OrderUpsertHandler implements LoaderHandler {
         return {
             ok: result.succeeded,
             fail: result.failed,
+            skipped: result.skipped,
         };
     }
 

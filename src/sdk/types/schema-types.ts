@@ -35,9 +35,9 @@ export interface FieldValidation {
     readonly min?: number;
     /** Maximum value for number fields */
     readonly max?: number;
-    /** Minimum length for string fields */
+    /** Minimum length for string or array fields */
     readonly minLength?: number;
-    /** Maximum length for string fields */
+    /** Maximum length for string or array fields */
     readonly maxLength?: number;
     /** Regular expression pattern for validation */
     readonly pattern?: string;

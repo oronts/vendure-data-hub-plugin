@@ -27,21 +27,7 @@ export const ASSET_LOADER_METADATA = {
     name: 'Asset Loader',
     description: 'Imports media assets (images, files) from URLs',
     adapterCode: 'assetImport',
-    supportedOperations: ['CREATE', 'UPDATE', 'UPSERT', 'DELETE'] as TargetOperation[],
+    supportedOperations: ['CREATE', 'UPDATE', 'UPSERT'] as TargetOperation[],
     lookupFields: ['name', 'id', 'source'],
     requiredFields: ['sourceUrl'],
-} as const;
-
-export const MIME_TYPES: Record<string, string> = {
-    '.jpg': 'image/jpeg',
-    '.jpeg': 'image/jpeg',
-    '.png': 'image/png',
-    '.gif': 'image/gif',
-    '.webp': 'image/webp',
-    '.svg': 'image/svg+xml',
-    '.pdf': 'application/pdf',
-    '.mp4': 'video/mp4',
-    '.webm': 'video/webm',
-    '.mp3': 'audio/mpeg',
-    '.wav': 'audio/wav',
 } as const;

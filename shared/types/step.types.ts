@@ -6,6 +6,7 @@
  */
 
 import { JsonObject, JsonValue } from './json.types';
+import type { SchemaReference } from './schema.types';
 
 /**
  * Type of pipeline step.
@@ -124,7 +125,7 @@ export interface Throughput {
     batchSize?: number;
     pauseOnErrorRate?: {
         threshold: number;
-        intervalSec: number;
+        intervalSec?: number;
     };
     drainStrategy?: DrainStrategy;
 }
@@ -147,6 +148,8 @@ export interface PipelineStepDefinition {
     description?: string;
     /** Configuration for the adapter */
     config: JsonObject;
+    /** Named, versioned record schema enforced for extract and validate steps */
+    schemaRef?: SchemaReference;
     /** Execution order (for sequential steps) */
     order?: number;
     /** Whether the step is disabled */
@@ -155,10 +158,10 @@ export interface PipelineStepDefinition {
     parallel?: boolean;
     /** Whether to run asynchronously */
     async?: boolean;
-    /** Number of concurrent operations */
-    concurrency?: number;
     /** Throughput/rate limiting configuration */
     throughput?: Throughput;
+    /** Per-step execution context overrides */
+    context?: StepContextOverride;
     /** Number of retry attempts */
     retries?: number;
     /** Delay between retries in milliseconds */
@@ -247,7 +250,7 @@ export interface StepContextOverride {
     channelStrategy?: ChannelStrategy;
     channelIds?: string[];
     validationMode?: ValidationModeType;
-    runMode?: 'SYNC' | 'ASYNC' | 'BATCH' | 'STREAM';
+    throughput?: Throughput;
 }
 
 /**
@@ -291,5 +294,4 @@ export interface OperatorConfig {
 export interface PipelineCapabilities {
     writes?: PipelineCapabilityDomain[];
     requires?: string[];
-    streamSafe?: boolean;
 }

@@ -4,7 +4,7 @@ This document describes all configurable options for the DataHub plugin.
 
 ## Environment Variables
 
-The following environment variables can be used to configure external service URLs:
+The following environment variables configure external services and server-local output:
 
 ### Search Services
 
@@ -14,30 +14,98 @@ The following environment variables can be used to configure external service UR
 | `DATAHUB_ELASTICSEARCH_URL` | Elasticsearch server URL | `http://localhost:9200` |
 | `DATAHUB_TYPESENSE_URL` | Typesense server URL | `http://localhost:8108` |
 
+### Secret Encryption
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DATAHUB_MASTER_KEY` | Durable key for AES-256-GCM encryption of database-backed INLINE secrets; use at least 32 characters and configure the same value on every API and worker | Unset; INLINE database storage and resolution are disabled |
+
+ENV-backed secrets do not require the master key. Code-first INLINE values are
+still plaintext in source and are rejected in production; use ENV references
+for deployed code-first configuration.
+
 ### Horizontal Scaling / Distributed Locks
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `DATAHUB_REDIS_URL` | Redis URL for distributed locks | `redis://localhost:6379` |
-| `DATAHUB_LOCK_BACKEND` | Force lock backend (`redis`, `postgres`, `memory`) | Auto-detect |
+| `DATAHUB_REDIS_URL` | Redis URL for distributed locks and shared incoming-webhook rate limits; `REDIS_URL` is also recognized | Unset |
+| `DATAHUB_REDIS_SENTINELS` | Comma-separated Sentinel `host[:port]` nodes; requires `DATAHUB_REDIS_SENTINEL_NAME` | Unset |
+| `DATAHUB_REDIS_SENTINEL_NAME` | Sentinel monitored-master name | Unset |
+| `DATAHUB_REDIS_DB` | Non-negative Redis database number used in Sentinel mode | `0` |
+| `DATAHUB_REDIS_USERNAME` | Optional Redis data-node ACL username in Sentinel mode | Unset |
+| `DATAHUB_REDIS_PASSWORD` | Optional Redis data-node password in Sentinel mode | Unset |
+| `DATAHUB_REDIS_SENTINEL_USERNAME` | Optional Sentinel ACL username | Unset |
+| `DATAHUB_REDIS_SENTINEL_PASSWORD` | Optional Sentinel password | Unset |
+| `DATAHUB_REDIS_TLS` | Require TLS from Sentinel-discovered clients to Redis data nodes | `false` |
+| `DATAHUB_REDIS_SENTINEL_TLS` | Require TLS for Sentinel discovery connections | `false` |
+| `DATAHUB_LOCK_BACKEND` | Force lock backend (`redis`, `postgres`, `memory`) | Unset; select configured Redis, otherwise PostgreSQL for a PostgreSQL Vendure database |
 
 > **Horizontal Scaling Notes:**
 >
 > When running multiple instances of Vendure with DataHub, distributed locks ensure:
-> - Only one instance executes a scheduled pipeline trigger at a time
-> - Only one instance runs a message queue consumer for a given pipeline
-> - Pipeline runs don't duplicate across instances
+> - Only one instance handles a given pipeline/trigger schedule occurrence
+> - Only one instance owns a message consumer for a given published pipeline and trigger key
+> - The same pipeline run job is not executed concurrently by several workers
 >
-> **Fallback Order:**
-> 1. **Redis** - Used if `DATAHUB_REDIS_URL` is set or Redis is detected at localhost:6379
-> 2. **PostgreSQL** - Automatic fallback using the Vendure database
-> 3. **Memory** - Single-instance only (used when no external store available)
+> **Selection Order:**
+> 1. `DATAHUB_LOCK_BACKEND` forces a backend and fails startup when its requirements are not met.
+> 2. A configured standalone Redis URL or complete Sentinel configuration selects Redis.
+> 3. A PostgreSQL Vendure database selects PostgreSQL advisory locking.
+> 4. Other databases fail startup unless `DATAHUB_LOCK_BACKEND=memory` is selected explicitly for a single-process deployment.
+>
+> Redis is not probed automatically on localhost, and memory locking is never an automatic production fallback.
 
-### File Upload / API
+Configure either `DATAHUB_REDIS_URL` or the Sentinel node/name pair, never both.
+`REDIS_URL` is only a standalone fallback when no Data Hub-specific standalone
+or Sentinel configuration is present. Sentinel nodes default to port `26379`.
+Use the same topology, database, and credentials on every API server and worker.
+TLS uses the Node.js trust store; add a private CA with `NODE_EXTRA_CA_CERTS`
+before process startup when required. Certificate verification remains enabled.
+
+Incoming webhook admission independently uses the selected standalone or
+Sentinel Redis configuration. Its fixed-window counters are atomic and shared
+by all API instances. Without Redis, the limiter stays process-local and is safe
+only for one API instance unless an ingress supplies the cluster-wide limit.
+When configured Redis cannot be reached or a bounded command times out, webhook
+admission returns `503 Service Unavailable`; it does not silently fall back to
+per-process counters.
+
+The same Redis configuration auto-selects Redis for distributed locks unless another valid lock
+backend is forced. Lock initialization remains fail-closed; on PostgreSQL, use
+`DATAHUB_LOCK_BACKEND=POSTGRES` when locks must remain independent of Redis.
+
+These global settings serve Data Hub locks and incoming-webhook rate limits.
+Redis Streams sources and sinks remain connection-scoped and use their saved
+connection settings; they do not inherit the global Sentinel environment.
+
+### Server-local exports
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `DATAHUB_API_UPLOAD` | File upload endpoint | `/data-hub/upload` |
+| `DATA_HUB_EXPORT_ROOT` | Root directory for server-local exporter and feed files | `<cwd>/exports` |
+
+The value is resolved to an absolute root when the process starts. Configure a writable persistent directory in production. Pipeline-local exporter `path` values and feed `outputPath` values remain relative to this root.
+
+### Storage Backend
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DATA_HUB_STORAGE_TYPE` | Asset storage backend: `local` or `s3` | `local` |
+| `DATA_HUB_STORAGE_PATH` | Base directory for the local backend | `data-hub-uploads` |
+| `DATA_HUB_S3_BUCKET` | S3 bucket; required when the backend is `s3` | None |
+| `DATA_HUB_S3_REGION` | S3 region | `us-east-1` |
+| `DATA_HUB_S3_ACCESS_KEY_ID` | Optional static access key; must be paired with the secret access key | AWS SDK credential chain |
+| `DATA_HUB_S3_SECRET_ACCESS_KEY` | Optional static secret access key; must be paired with the access key | AWS SDK credential chain |
+| `DATA_HUB_S3_ENDPOINT` | Optional HTTP(S) endpoint for an S3-compatible service | AWS S3 |
+| `DATA_HUB_S3_PREFIX` | Optional object-key prefix | None |
+| `DATA_HUB_S3_URL_EXPIRY` | Signed-URL lifetime in seconds (`1-604800`) | `3600` |
+
+Prefer the AWS SDK credential chain (for example, a workload role) over static
+keys. Unknown storage types, incomplete static credential pairs, missing S3
+buckets, and invalid URL-expiry values fail startup.
+The seven-day maximum is the AWS SDK SigV4 limit; temporary credentials can
+expire sooner than the configured URL. See the
+[AWS presigned URL documentation](https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-presigned-url.html).
 
 ## Plugin Options
 
@@ -52,22 +120,14 @@ DataHubPlugin.init({
     retentionDaysRuns: 30,
     retentionDaysErrors: 90,
 
+    telemetry: process.env.OTEL_EXPORTER_OTLP_ENDPOINT ? {
+        endpoint: process.env.OTEL_EXPORTER_OTLP_ENDPOINT,
+        serviceName: 'vendure-data-hub',
+        environment: process.env.NODE_ENV,
+    } : undefined,
+
     // Runtime configuration
     runtime: {
-        batch: {
-            size: 50,           // Default batch size for processing
-            bulkSize: 100,      // Bulk operation size
-            maxInFlight: 5,     // Maximum concurrent operations
-            rateLimitRps: 10,   // Rate limit (requests per second)
-        },
-        http: {
-            timeoutMs: 30000,       // Request timeout
-            maxRetries: 3,          // Maximum retry attempts
-            retryDelayMs: 1000,     // Initial retry delay
-            retryMaxDelayMs: 30000, // Maximum retry delay
-            exponentialBackoff: true,
-            backoffMultiplier: 2,
-        },
         circuitBreaker: {
             enabled: true,
             failureThreshold: 5,    // Failures before opening circuit
@@ -75,21 +135,13 @@ DataHubPlugin.init({
             resetTimeoutMs: 30000,  // Time before attempting reset
             failureWindowMs: 60000, // Time window for counting failures
         },
-        connectionPool: {
-            min: 1,
-            max: 10,
-            idleTimeoutMs: 30000,
-            acquireTimeoutMs: 10000,
-        },
-        pagination: {
-            maxPages: 100,
-            pageSize: 100,
-            databasePageSize: 1000,
-        },
         scheduler: {
             checkIntervalMs: 30000,
             refreshIntervalMs: 60000,
             minIntervalMs: 1000,
+            maxPipelineDiscovery: 1000,
+            maxTrackingEntries: 1000,
+            maxConsecutiveFailures: 5,
         },
     },
 
@@ -101,6 +153,10 @@ DataHubPlugin.init({
 
     // Code-first connections
     connections: [],
+
+    // Custom executable adapters and dependency-injection factories
+    adapters: [],
+    adapterFactories: [],
 });
 ```
 
@@ -113,25 +169,19 @@ DataHubPlugin.init({
 | `retentionDaysRuns` | 30 | Days to retain pipeline run history |
 | `retentionDaysErrors` | 90 | Days to retain error records |
 
-### Batch Processing
+### OpenTelemetry Export
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `batch.size` | 50 | Default batch size for processing |
-| `batch.bulkSize` | 100 | Bulk operation size |
-| `batch.maxInFlight` | 5 | Maximum concurrent in-flight operations |
-| `batch.rateLimitRps` | 10 | Rate limit (requests per second) |
+The optional `telemetry` plugin option sends process-local cumulative metrics
+and completed spans to an OpenTelemetry Collector over OTLP/HTTP JSON. Its
+`endpoint` is a base URL; `/v1/metrics` and `/v1/traces` are appended.
+Export is disabled when the option is omitted. See the
+[complete configuration reference](docs/deployment/configuration.md#telemetry).
+Private collector CAs and mutual TLS use the scoped `telemetry.tls` file
+settings; no process-wide certificate-verification bypass is supported.
 
-### HTTP Configuration
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `http.timeoutMs` | 30000 | Request timeout in milliseconds |
-| `http.maxRetries` | 3 | Maximum retry attempts |
-| `http.retryDelayMs` | 1000 | Initial retry delay |
-| `http.retryMaxDelayMs` | 30000 | Maximum retry delay |
-| `http.exponentialBackoff` | true | Enable exponential backoff |
-| `http.backoffMultiplier` | 2 | Backoff multiplier |
+Retention maintenance runs in the Vendure server process under the configured
+distributed lock. Each statement handles at most 1,000 rows and each entity is
+limited to 10,000 rows per daily cycle; larger backlogs continue in later cycles.
 
 ### Circuit Breaker
 
@@ -143,23 +193,6 @@ DataHubPlugin.init({
 | `circuitBreaker.resetTimeoutMs` | 30000 | Time before attempting reset |
 | `circuitBreaker.failureWindowMs` | 60000 | Time window for counting failures |
 
-### Connection Pool
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `connectionPool.min` | 1 | Minimum connections |
-| `connectionPool.max` | 10 | Maximum connections |
-| `connectionPool.idleTimeoutMs` | 30000 | Idle timeout |
-| `connectionPool.acquireTimeoutMs` | 10000 | Acquire timeout |
-
-### Pagination
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `pagination.maxPages` | 100 | Maximum pages to fetch from APIs |
-| `pagination.pageSize` | 100 | Default page size |
-| `pagination.databasePageSize` | 1000 | Page size for database queries |
-
 ### Scheduler
 
 | Setting | Default | Description |
@@ -167,6 +200,9 @@ DataHubPlugin.init({
 | `scheduler.checkIntervalMs` | 30000 | Interval for checking schedules |
 | `scheduler.refreshIntervalMs` | 60000 | Interval for refreshing cache |
 | `scheduler.minIntervalMs` | 1000 | Minimum allowed interval |
+| `scheduler.maxPipelineDiscovery` | 1000 | Maximum enabled, published pipelines inspected per refresh |
+| `scheduler.maxTrackingEntries` | 1000 | Maximum active schedules and in-memory tracking entries |
+| `scheduler.maxConsecutiveFailures` | 5 | Trigger failures before a schedule is paused |
 
 ### Webhook Configuration
 
@@ -197,19 +233,33 @@ Configure authentication for incoming webhook requests in the pipeline trigger c
 | `hmacHeaderName` | `x-datahub-signature` | Header name for HMAC signature |
 | `hmacAlgorithm` | `SHA256` | Hash algorithm (`SHA256` or `SHA512`) |
 | `jwtHeaderName` | `authorization` | Header name for JWT token |
+| `jwtIssuer` | Unset | Required `iss` claim when configured |
+| `jwtAudience` | Unset | Required `aud` claim when configured |
 | `requireIdempotencyKey` | `false` | Require X-Idempotency-Key header |
 
-### File Storage
+JWT authentication accepts HS256 only and requires a valid numeric `exp`
+claim. Optional `nbf` and `iat` claims must also be valid numeric dates.
+
+The plugin registers an early `*splat` JSON middleware. It delegates non-webhook
+JSON requests to the normal Express parser and uses raw-byte capture plus the
+10 MiB plugin limit for `/data-hub/webhook/*`. Vendure's `beforeListen` ordering
+places it ahead of the automatic parser; no separate Nest raw-body bootstrap
+option is required.
+
+### File Limits
 
 | Setting | Default | Description |
 |---------|---------|-------------|
 | Max File Size | 100MB | Maximum upload file size |
 | Max Files | 10 | Maximum files per upload |
 | Expiry | 24 hours | File expiration time |
+| Export Root | `<cwd>/exports` | Root directory for server-local exporter and feed output |
+
+Exporter `path` values and feed `outputPath` values are relative to the export root. Absolute paths, URLs, directory traversal, and symbolic-link escapes are rejected for local output.
 
 ## Constants Reference
 
-All default values are defined in `src/constants/defaults.ts`. Key constant groups include:
+Default values are split across the modules in `src/constants/defaults/`. Key constant groups include:
 
 - `RETENTION` - Data retention settings
 - `PAGINATION` - Pagination limits

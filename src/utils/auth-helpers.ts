@@ -1,5 +1,6 @@
 import { ConnectionAuthType, HTTP_HEADERS, AUTH_SCHEMES } from '../constants/index';
 import { SecretResolver as SharedSecretResolver, AuthConfig as SharedAuthConfig } from '../../shared/types';
+import { getHttpHeaderNameError } from '../../shared';
 
 /**
  * AuthConfig used by auth-helpers.
@@ -8,7 +9,26 @@ export type AuthConfig = Omit<SharedAuthConfig, 'type'> & { type: ConnectionAuth
 
 type SecretResolverFn = (secretCode: string) => Promise<string | undefined>;
 
-/** Supports: Bearer, API key, and Basic auth. */
+async function resolveRequiredCredential(
+    authType: ConnectionAuthType,
+    secretCode: string | undefined,
+    secretResolver: SecretResolverFn | undefined,
+    credentialName: string,
+): Promise<string> {
+    if (!secretCode) {
+        throw new Error(`${authType} authentication requires ${credentialName} secretCode`);
+    }
+    if (!secretResolver) {
+        throw new Error(`${authType} authentication cannot resolve ${credentialName} secret "${secretCode}"`);
+    }
+    const value = await secretResolver(secretCode);
+    if (!value) {
+        throw new Error(`${authType} authentication ${credentialName} secret "${secretCode}" is empty or unavailable`);
+    }
+    return value;
+}
+
+/** Supports Bearer, API key, and Basic authentication and fails closed for incomplete credentials. */
 export async function applyAuthentication(
     headers: Record<string, string>,
     auth: AuthConfig | undefined,
@@ -20,42 +40,33 @@ export async function applyAuthentication(
 
     switch (auth.type) {
         case ConnectionAuthType.BEARER: {
-            const token = auth.secretCode && secretResolver
-                ? await secretResolver(auth.secretCode)
-                : auth.token;
-            if (token) {
-                headers[HTTP_HEADERS.AUTHORIZATION] = `${AUTH_SCHEMES.BEARER} ${token}`;
-            }
-            break;
+            const token = await resolveRequiredCredential(auth.type, auth.secretCode, secretResolver, 'token');
+            headers[HTTP_HEADERS.AUTHORIZATION] = `${AUTH_SCHEMES.BEARER} ${token}`;
+            return;
         }
-
         case ConnectionAuthType.API_KEY: {
-            const apiKey = auth.secretCode && secretResolver
-                ? await secretResolver(auth.secretCode)
-                : auth.token;
-            if (apiKey) {
-                const headerName = auth.headerName || HTTP_HEADERS.X_API_KEY;
-                headers[headerName] = apiKey;
+            const headerName = auth.headerName || HTTP_HEADERS.X_API_KEY;
+            if (getHttpHeaderNameError(headerName, 'AUTHENTICATION') !== null) {
+                throw new Error(`API_KEY authentication headerName is invalid: ${headerName}`);
             }
-            break;
+            const apiKey = await resolveRequiredCredential(auth.type, auth.secretCode, secretResolver, 'API key');
+            headers[headerName] = apiKey;
+            return;
         }
-
         case ConnectionAuthType.BASIC: {
-            const password = auth.secretCode && secretResolver
-                ? await secretResolver(auth.secretCode)
-                : auth.password || '';
-
-            let username = auth.username || '';
-            if (!username && auth.usernameSecretCode && secretResolver) {
-                username = await secretResolver(auth.usernameSecretCode) || '';
+            const username = auth.usernameSecretCode
+                ? await resolveRequiredCredential(auth.type, auth.usernameSecretCode, secretResolver, 'username')
+                : auth.username;
+            if (!username) {
+                throw new Error(`${auth.type} authentication requires username credentials`);
             }
-
-            if (username || password) {
-                const credentials = Buffer.from(`${username}:${password}`).toString('base64');
-                headers[HTTP_HEADERS.AUTHORIZATION] = `${AUTH_SCHEMES.BASIC} ${credentials}`;
-            }
-            break;
+            const password = await resolveRequiredCredential(auth.type, auth.secretCode, secretResolver, 'password');
+            const credentials = Buffer.from(`${username}:${password}`).toString('base64');
+            headers[HTTP_HEADERS.AUTHORIZATION] = `${AUTH_SCHEMES.BASIC} ${credentials}`;
+            return;
         }
+        default:
+            throw new Error(`Unsupported connection authentication type: ${String(auth.type)}`);
     }
 }
 

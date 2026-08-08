@@ -268,7 +268,7 @@ export const versioningSchema = `
         riskAssessment: DataHubRiskAssessment!
         sampleRecords: [DataHubSampleRecordFlow!]!
         estimatedDuration: DataHubDurationEstimate!
-        resourceUsage: DataHubResourceEstimate!
+        resourceUsage: DataHubResourceEstimate
         analyzedAt: DateTime!
         sampleSize: Int!
         fullDatasetSize: Int
@@ -282,6 +282,7 @@ export const versioningSchema = `
         entityType: String!
         operation: DataHubRecordOperation!
         currentState: JSON
+        "Normalized loader input preview; final persistence can differ"
         proposedState: JSON!
         diff: JSON
         validationErrors: [String!]!
@@ -293,6 +294,8 @@ export const versioningSchema = `
         UPDATE
         DELETE
         SKIP
+        ERROR
+        UNKNOWN
     }
 
     """
@@ -340,7 +343,7 @@ export const versioningSchema = `
 
 export const versioningQueries = `
     extend type Query {
-        "Get timeline of revisions for a pipeline"
+        "Get the latest 1 to 500 revisions for a pipeline (default: 50)"
         dataHubPipelineTimeline(pipelineId: ID!, limit: Int): [DataHubTimelineEntry!]!
 
         "Get diff between two revisions"

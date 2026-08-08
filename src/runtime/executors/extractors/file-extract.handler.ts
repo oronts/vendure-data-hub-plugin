@@ -1,24 +1,19 @@
 /**
  * File Extract Handler
  *
- * Extracts records from file sources:
- * - CSV files (uploaded, inline text, or local path)
- * - JSON files (uploaded, inline text, or local path)
- * - XML files
+ * Extracts records from uploaded files or explicitly configured inline data.
  *
  * @module runtime/executors/extractors
  */
 
-import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
 import { Injectable } from '@nestjs/common';
 import { RecordObject, ExecutorContext } from '../../executor-types';
 import { FileStorageService } from '../../../services/storage/file-storage.service';
+import { FileParserService } from '../../../parsers/file-parser.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
 import { parseCsv, arrayToObject, getPath } from '../../utils';
-import { LOGGER_CONTEXTS } from '../../../constants/index';
-import { JsonValue } from '../../../types/index';
+import { LOGGER_CONTEXTS, PAGINATION } from '../../../constants/index';
+import { ExtractorPreviewResult, JsonValue } from '../../../types/index';
 import {
     ExtractHandler,
     ExtractHandlerContext,
@@ -34,7 +29,6 @@ interface CsvExtractConfig {
     adapterCode?: string;
     fileId?: string;
     csvText?: string;
-    csvPath?: string;
     rows?: unknown[];
     delimiter?: string;
     hasHeader?: boolean;
@@ -44,7 +38,6 @@ interface JsonExtractConfig {
     adapterCode?: string;
     fileId?: string;
     jsonText?: string;
-    jsonPath?: string;
     itemsPath?: string;
 }
 
@@ -52,9 +45,19 @@ interface XmlExtractConfig {
     adapterCode?: string;
     fileId?: string;
     xmlText?: string;
-    xmlPath?: string;
     recordPath?: string;
     attributePrefix?: string;
+}
+
+interface XlsxExtractConfig {
+    adapterCode?: string;
+    fileId?: string;
+    sheetName?: string | number;
+    hasHeader?: boolean;
+}
+
+export class FileExtractionError extends Error {
+    readonly name = 'FileExtractionError';
 }
 
 @Injectable()
@@ -64,25 +67,15 @@ export class FileExtractHandler implements ExtractHandler {
     constructor(
         private fileStorageService: FileStorageService,
         loggerFactory: DataHubLoggerFactory,
+        private fileParserService: FileParserService,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.EXTRACT_EXECUTOR);
     }
 
-    private validateLocalPath(filePath: string): void {
-        let resolved = path.resolve(filePath);
-        try { resolved = fs.realpathSync(resolved); } catch { /* file may not exist yet */ }
-        const cwdPrefix = process.cwd() + path.sep;
-        const tmpDir = os.tmpdir();
-        const tmpPrefix = tmpDir + path.sep;
-        if (!resolved.startsWith(cwdPrefix) && resolved !== process.cwd() &&
-            !resolved.startsWith(tmpPrefix) && resolved !== tmpDir) {
-            throw new Error(`Path traversal blocked: "${filePath}" resolves outside the working directory`);
-        }
-    }
 
     async extract(context: ExtractHandlerContext): Promise<RecordObject[]> {
         const { step } = context;
-        const cfg = getExtractConfig<CsvExtractConfig | JsonExtractConfig | XmlExtractConfig>(step);
+        const cfg = getExtractConfig<CsvExtractConfig | JsonExtractConfig | XmlExtractConfig | XlsxExtractConfig>(step);
         const adapterCode = step.adapterCode ?? cfg.adapterCode;
 
         if (adapterCode === EXTRACTOR_CODE.CSV) {
@@ -94,9 +87,61 @@ export class FileExtractHandler implements ExtractHandler {
         if (adapterCode === EXTRACTOR_CODE.XML) {
             return this.extractXml(context);
         }
+        if (adapterCode === EXTRACTOR_CODE.XLSX) {
+            return this.extractXlsx(context);
+        }
 
-        this.logger.warn('Unknown file extractor type', { stepKey: step.key, adapterCode });
-        return [];
+        throw new FileExtractionError(
+            `Unknown file extractor type for step ${step.key}: ${String(adapterCode ?? '(none)')}`,
+        );
+    }
+
+    async preview(
+        context: ExtractHandlerContext,
+        limit: number,
+    ): Promise<ExtractorPreviewResult> {
+        const cfg = getExtractConfig<
+            CsvExtractConfig | JsonExtractConfig | XmlExtractConfig | XlsxExtractConfig
+        >(context.step);
+        await this.assertPreviewSourceSize(context.ctx, cfg);
+        const previewContext: ExtractHandlerContext = {
+            ...context,
+            executorCtx: { ...context.executorCtx, recordLimit: limit },
+        };
+        const records = (await this.extract(previewContext)).slice(0, limit);
+
+        return { records: records.map(data => ({ data })) };
+    }
+
+    private async assertPreviewSourceSize(
+        ctx: ExtractHandlerContext['ctx'],
+        cfg: CsvExtractConfig | JsonExtractConfig | XmlExtractConfig | XlsxExtractConfig,
+    ): Promise<void> {
+        if (cfg.fileId) {
+            const file = await this.fileStorageService.getFile(ctx, cfg.fileId);
+            if (!file) {
+                throw new Error(`Uploaded file not found: ${cfg.fileId}`);
+            }
+            this.assertPreviewBytes(file.size);
+        }
+
+        for (const value of [
+            (cfg as CsvExtractConfig).csvText,
+            (cfg as JsonExtractConfig).jsonText,
+            (cfg as XmlExtractConfig).xmlText,
+        ]) {
+            if (typeof value === 'string') {
+                this.assertPreviewBytes(Buffer.byteLength(value, 'utf8'));
+            }
+        }
+    }
+
+    private assertPreviewBytes(size: number): void {
+        if (size > PAGINATION.FILE_PREVIEW_MAX_BYTES) {
+            throw new Error(
+                `File preview source exceeds ${PAGINATION.FILE_PREVIEW_MAX_BYTES} bytes`,
+            );
+        }
     }
 
     async extractCsv(context: ExtractHandlerContext): Promise<RecordObject[]> {
@@ -108,11 +153,12 @@ export class FileExtractHandler implements ExtractHandler {
         const resetCheckpoint = (cfg as Record<string, unknown>).resetCheckpoint === true;
         const offset = resetCheckpoint ? 0 : getCheckpointValue(executorCtx, step.key, 'offset', 0);
 
-        const records = await this.loadCsvRecords(cfg, step.key, delimiter, hasHeader);
+        const records = await this.loadCsvRecords(context.ctx, cfg, step.key, delimiter, hasHeader);
         return this.applyOffsetAndCheckpoint(records, offset, executorCtx, step.key);
     }
 
     private async loadCsvRecords(
+        ctx: ExtractHandlerContext['ctx'],
         cfg: CsvExtractConfig,
         stepKey: string,
         delimiter: string,
@@ -120,7 +166,7 @@ export class FileExtractHandler implements ExtractHandler {
     ): Promise<RecordObject[]> {
         // Priority 1: fileId - uploaded file
         if (cfg.fileId) {
-            return this.loadCsvFromUpload(cfg.fileId, stepKey, delimiter, hasHeader);
+            return this.loadCsvFromUpload(ctx, cfg.fileId, stepKey, delimiter, hasHeader);
         }
 
         // Priority 2: rows - inline array (handle both direct and nested config shapes)
@@ -135,36 +181,33 @@ export class FileExtractHandler implements ExtractHandler {
             return parseCsv(cfg.csvText, delimiter, hasHeader) as RecordObject[];
         }
 
-        // Priority 4: csvPath - local file
-        if (cfg.csvPath) {
-            return this.loadCsvFromPath(cfg.csvPath, stepKey, delimiter, hasHeader);
-        }
 
-        return [];
+        throw new FileExtractionError(`CSV extractor step ${stepKey} has no configured data source`);
     }
 
     private async loadCsvFromUpload(
+        ctx: ExtractHandlerContext['ctx'],
         fileId: string,
         stepKey: string,
         delimiter: string,
         hasHeader: boolean,
     ): Promise<RecordObject[]> {
         try {
-            const content = await this.fileStorageService.readFileAsString(fileId);
-            if (!content) {
-                this.logger.warn('Uploaded file not found or empty', { stepKey, fileId });
-                return [];
+            const content = await this.fileStorageService.readFileAsString(ctx, fileId);
+            if (content === null || content === undefined) {
+                throw new FileExtractionError(`Uploaded CSV file not found: ${fileId}`);
             }
             const records = parseCsv(content, delimiter, hasHeader);
             this.logger.debug('Extracted records from uploaded file', { stepKey, fileId, count: records.length });
             return records as RecordObject[];
         } catch (err) {
-            this.logger.warn('Failed to read uploaded file', {
+            if (err instanceof FileExtractionError) throw err;
+            this.logger.warn('Failed to read uploaded CSV file', {
                 stepKey,
                 fileId,
                 error: getErrorMessage(err),
             });
-            return [];
+            throw new FileExtractionError(`Failed to read uploaded CSV file for step ${stepKey}`);
         }
     }
 
@@ -179,33 +222,6 @@ export class FileExtractHandler implements ExtractHandler {
         return rows as RecordObject[];
     }
 
-    private async loadCsvFromPath(
-        csvPath: string,
-        stepKey: string,
-        delimiter: string,
-        hasHeader: boolean,
-    ): Promise<RecordObject[]> {
-        try {
-            this.validateLocalPath(csvPath);
-            await fs.promises.access(csvPath);
-            const content = await fs.promises.readFile(csvPath, 'utf8');
-            return parseCsv(content, delimiter, hasHeader) as RecordObject[];
-        } catch (err) {
-            if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-                this.logger.warn(`File not found: "${csvPath}" - returning 0 records`, {
-                    stepKey,
-                    path: csvPath,
-                });
-            } else {
-                this.logger.warn(`Failed to parse CSV file: "${csvPath}"`, {
-                    stepKey,
-                    path: csvPath,
-                    error: getErrorMessage(err),
-                });
-            }
-            return [];
-        }
-    }
 
     async extractJson(context: ExtractHandlerContext): Promise<RecordObject[]> {
         const { step, executorCtx } = context;
@@ -213,10 +229,9 @@ export class FileExtractHandler implements ExtractHandler {
         const resetCheckpoint = (cfg as Record<string, unknown>).resetCheckpoint === true;
         const offset = resetCheckpoint ? 0 : getCheckpointValue(executorCtx, step.key, 'offset', 0);
 
-        const data = await this.loadJsonData(cfg, step.key);
+        const data = await this.loadJsonData(context.ctx, cfg, step.key);
         if (data === null) {
-            this.logger.warn('JSON extractor: no data source provided', { stepKey: step.key });
-            return [];
+            throw new FileExtractionError(`JSON extractor step ${step.key} has no configured data source`);
         }
 
         const items = this.extractJsonItems(data, cfg.itemsPath);
@@ -225,10 +240,10 @@ export class FileExtractHandler implements ExtractHandler {
         return this.applyOffsetAndCheckpoint(items, offset, executorCtx, step.key);
     }
 
-    private async loadJsonData(cfg: JsonExtractConfig, stepKey: string): Promise<unknown | null> {
+    private async loadJsonData(ctx: ExtractHandlerContext['ctx'], cfg: JsonExtractConfig, stepKey: string): Promise<unknown | null> {
         // Priority 1: fileId - uploaded file
         if (cfg.fileId) {
-            return this.loadJsonFromUpload(cfg.fileId, stepKey);
+            return this.loadJsonFromUpload(ctx, cfg.fileId, stepKey);
         }
 
         // Priority 2: jsonText - inline string
@@ -236,60 +251,34 @@ export class FileExtractHandler implements ExtractHandler {
             return this.parseJsonSafe(cfg.jsonText, stepKey, 'inline JSON');
         }
 
-        // Priority 3: jsonPath - local file
-        if (cfg.jsonPath) {
-            return this.loadJsonFromPath(cfg.jsonPath, stepKey);
-        }
 
         return null;
     }
 
-    private async loadJsonFromUpload(fileId: string, stepKey: string): Promise<unknown | null> {
+    private async loadJsonFromUpload(ctx: ExtractHandlerContext['ctx'], fileId: string, stepKey: string): Promise<unknown | null> {
         try {
-            const content = await this.fileStorageService.readFileAsString(fileId);
-            if (!content) {
-                this.logger.warn('Uploaded JSON file not found or empty', { stepKey, fileId });
-                return null;
+            const content = await this.fileStorageService.readFileAsString(ctx, fileId);
+            if (content === null || content === undefined) {
+                throw new FileExtractionError(`Uploaded JSON file not found: ${fileId}`);
             }
             const data = JSON.parse(content);
             this.logger.debug('Parsed JSON from uploaded file', { stepKey, fileId });
             return data;
         } catch (err) {
-            this.logger.warn('Failed to read/parse uploaded JSON file', {
+            if (err instanceof FileExtractionError) throw err;
+            this.logger.warn('Failed to read or parse uploaded JSON file', {
                 stepKey,
                 fileId,
                 error: getErrorMessage(err),
             });
-            return null;
+            throw new FileExtractionError(
+                `Failed to read or parse uploaded JSON file for step ${stepKey}`,
+            );
         }
     }
 
-    private async loadJsonFromPath(jsonPath: string, stepKey: string): Promise<unknown | null> {
-        try {
-            this.validateLocalPath(jsonPath);
-            await fs.promises.access(jsonPath);
-            const content = await fs.promises.readFile(jsonPath, 'utf8');
-            const data = JSON.parse(content);
-            this.logger.debug('Parsed JSON from file path', { stepKey, jsonPath });
-            return data;
-        } catch (err) {
-            if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-                this.logger.warn(`File not found: "${jsonPath}" - returning 0 records`, {
-                    stepKey,
-                    path: jsonPath,
-                });
-            } else {
-                this.logger.warn(`Failed to read/parse JSON file: "${jsonPath}"`, {
-                    stepKey,
-                    path: jsonPath,
-                    error: getErrorMessage(err),
-                });
-            }
-            return null;
-        }
-    }
 
-    private parseJsonSafe(content: string, stepKey: string, source: string): unknown | null {
+    private parseJsonSafe(content: string, stepKey: string, source: string): unknown {
         try {
             return JSON.parse(content);
         } catch (err) {
@@ -297,7 +286,7 @@ export class FileExtractHandler implements ExtractHandler {
                 stepKey,
                 error: getErrorMessage(err),
             });
-            return null;
+            throw new FileExtractionError(`Failed to parse ${source} for step ${stepKey}`);
         }
     }
 
@@ -322,10 +311,9 @@ export class FileExtractHandler implements ExtractHandler {
         const resetCheckpoint = (cfg as Record<string, unknown>).resetCheckpoint === true;
         const offset = resetCheckpoint ? 0 : getCheckpointValue(executorCtx, step.key, 'offset', 0);
 
-        const content = await this.loadXmlContent(cfg, step.key);
+        const content = await this.loadXmlContent(context.ctx, cfg, step.key);
         if (!content) {
-            this.logger.warn('XML extractor: no data source provided', { stepKey: step.key });
-            return [];
+            throw new FileExtractionError(`XML extractor step ${step.key} has no valid data source`);
         }
 
         const result = parseXml(content, {
@@ -335,25 +323,25 @@ export class FileExtractHandler implements ExtractHandler {
 
         if (!result.success) {
             this.logger.warn('XML parsing failed', { stepKey: step.key, errors: result.errors });
-            return [];
+            throw new FileExtractionError(`Failed to parse XML for step ${step.key}`);
         }
 
         this.logger.debug('Extracted XML records', { stepKey: step.key, count: result.records.length });
         return this.applyOffsetAndCheckpoint(result.records as RecordObject[], offset, executorCtx, step.key);
     }
 
-    private async loadXmlContent(cfg: XmlExtractConfig, stepKey: string): Promise<string | null> {
+    private async loadXmlContent(ctx: ExtractHandlerContext['ctx'], cfg: XmlExtractConfig, stepKey: string): Promise<string | null> {
         if (cfg.fileId) {
             try {
-                const content = await this.fileStorageService.readFileAsString(cfg.fileId);
-                if (!content) {
-                    this.logger.warn('Uploaded XML file not found or empty', { stepKey, fileId: cfg.fileId });
-                    return null;
+                const content = await this.fileStorageService.readFileAsString(ctx, cfg.fileId);
+                if (content === null || content === undefined) {
+                    throw new FileExtractionError(`Uploaded XML file not found: ${cfg.fileId}`);
                 }
                 return content;
             } catch (err) {
+                if (err instanceof FileExtractionError) throw err;
                 this.logger.warn('Failed to read uploaded XML file', { stepKey, fileId: cfg.fileId, error: getErrorMessage(err) });
-                return null;
+                throw new FileExtractionError(`Failed to read uploaded XML file for step ${stepKey}`);
             }
         }
 
@@ -361,22 +349,59 @@ export class FileExtractHandler implements ExtractHandler {
             return cfg.xmlText;
         }
 
-        if (cfg.xmlPath) {
-            try {
-                this.validateLocalPath(cfg.xmlPath);
-                await fs.promises.access(cfg.xmlPath);
-                return await fs.promises.readFile(cfg.xmlPath, 'utf8');
-            } catch (err) {
-                if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-                    this.logger.warn(`File not found: "${cfg.xmlPath}" - returning 0 records`, { stepKey, path: cfg.xmlPath });
-                } else {
-                    this.logger.warn(`Failed to read XML file: "${cfg.xmlPath}"`, { stepKey, path: cfg.xmlPath, error: getErrorMessage(err) });
-                }
-                return null;
-            }
-        }
 
         return null;
+    }
+
+    async extractXlsx(context: ExtractHandlerContext): Promise<RecordObject[]> {
+        const { step, executorCtx } = context;
+        const cfg = getExtractConfig<XlsxExtractConfig>(step);
+        const resetCheckpoint = (cfg as Record<string, unknown>).resetCheckpoint === true;
+        const offset = resetCheckpoint ? 0 : getCheckpointValue(executorCtx, step.key, 'offset', 0);
+        const content = await this.loadXlsxContent(context.ctx, cfg, step.key);
+        if (!content || content.length === 0) {
+            throw new FileExtractionError(`XLSX extractor step ${step.key} has no valid data source`);
+        }
+
+        const sheet = typeof cfg.sheetName === 'string' && /^\d+$/.test(cfg.sheetName)
+            ? Number(cfg.sheetName)
+            : cfg.sheetName;
+        const result = await this.fileParserService.parse(content, {
+            format: 'XLSX',
+            xlsx: {
+                sheet,
+                header: cfg.hasHeader !== false,
+                preview: executorCtx.recordLimit === undefined
+                    ? undefined
+                    : offset + executorCtx.recordLimit,
+            },
+        });
+        if (!result.success) {
+            this.logger.warn('XLSX parsing failed', { stepKey: step.key, errors: result.errors });
+            throw new FileExtractionError(`Failed to parse XLSX for step ${step.key}`);
+        }
+        return this.applyOffsetAndCheckpoint(result.records as RecordObject[], offset, executorCtx, step.key);
+    }
+
+    private async loadXlsxContent(ctx: ExtractHandlerContext['ctx'], cfg: XlsxExtractConfig, stepKey: string): Promise<Buffer | null> {
+        if (!cfg.fileId) {
+            return null;
+        }
+        try {
+            const content = await this.fileStorageService.readFile(ctx, cfg.fileId);
+            if (content === null || content === undefined) {
+                throw new FileExtractionError(`Uploaded XLSX file not found: ${cfg.fileId}`);
+            }
+            return content;
+        } catch (error) {
+            if (error instanceof FileExtractionError) throw error;
+            this.logger.warn('Failed to read uploaded XLSX file', {
+                stepKey,
+                fileId: cfg.fileId,
+                error: getErrorMessage(error),
+            });
+            throw new FileExtractionError(`Failed to read uploaded XLSX file for step ${stepKey}`);
+        }
     }
 
     private applyOffsetAndCheckpoint(
@@ -385,7 +410,10 @@ export class FileExtractHandler implements ExtractHandler {
         executorCtx: ExecutorContext,
         stepKey: string,
     ): RecordObject[] {
-        const sliced = records.slice(Math.max(0, offset));
+        const available = records.slice(Math.max(0, offset));
+        const sliced = executorCtx.recordLimit === undefined
+            ? available
+            : available.slice(0, executorCtx.recordLimit);
         updateCheckpoint(executorCtx, stepKey, { offset: offset + sliced.length });
         return sliced;
     }

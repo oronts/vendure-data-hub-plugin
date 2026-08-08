@@ -1,16 +1,55 @@
 export const destinationSchema = `
     """
-    Export Destinations API - S3, SFTP, HTTP, etc.
+    Export destinations resolve credential values from Data Hub Secret Codes only.
     """
     enum DataHubDestinationType {
-        DOWNLOAD
         S3
         SFTP
         FTP
         HTTP
         LOCAL
         EMAIL
-        GCS
+    }
+
+    enum DataHubDestinationAuthType {
+        NONE
+        BASIC
+        BEARER
+        API_KEY
+    }
+
+    type DataHubDestinationAuth {
+        type: DataHubDestinationAuthType!
+        secretCode: String
+        headerName: String
+        username: String
+        usernameSecretCode: String
+    }
+
+    input DataHubDestinationAuthInput {
+        type: DataHubDestinationAuthType!
+        secretCode: String
+        headerName: String
+        username: String
+        usernameSecretCode: String
+    }
+
+    type DataHubDestinationSmtp {
+        host: String!
+        port: Int!
+        secure: Boolean
+        username: String
+        usernameSecretCode: String
+        passwordSecretCode: String
+    }
+
+    input DataHubDestinationSmtpInput {
+        host: String!
+        port: Int!
+        secure: Boolean
+        username: String
+        usernameSecretCode: String
+        passwordSecretCode: String
     }
 
     type DataHubExportDestination {
@@ -18,25 +57,36 @@ export const destinationSchema = `
         name: String!
         type: DataHubDestinationType!
         enabled: Boolean!
-        # S3 fields
         bucket: String
         region: String
+        accessKeyIdSecretCode: String
+        secretAccessKeySecretCode: String
         prefix: String
         endpoint: String
-        # SFTP/FTP fields
+        acl: String
         host: String
         port: Int
         username: String
+        passwordSecretCode: String
+        privateKeySecretCode: String
+        passphraseSecretCode: String
+        hostKeyFingerprintSecretCode: String
         remotePath: String
-        # HTTP fields
+        timeout: Int
+        secure: Boolean
         url: String
         method: String
-        authType: String
-        # Local fields
+        headers: JSON
+        headerSecretCodes: JSON
+        auth: DataHubDestinationAuth
         directory: String
-        # Email fields
         to: [String!]
+        cc: [String!]
+        bcc: [String!]
+        from: String
         subject: String
+        body: String
+        smtp: DataHubDestinationSmtp
     }
 
     type DataHubDestinationTestResult {
@@ -67,35 +117,36 @@ export const destinationSchema = `
         name: String!
         type: DataHubDestinationType!
         enabled: Boolean
-        # S3 fields
         bucket: String
         region: String
-        accessKeyId: String
-        secretAccessKey: String
+        accessKeyIdSecretCode: String
+        secretAccessKeySecretCode: String
         prefix: String
         endpoint: String
         acl: String
-        # SFTP/FTP fields
         host: String
         port: Int
         username: String
-        password: String
-        privateKey: String
+        passwordSecretCode: String
+        privateKeySecretCode: String
+        passphraseSecretCode: String
+        hostKeyFingerprintSecretCode: String
         remotePath: String
+        timeout: Int
         secure: Boolean
-        # HTTP fields
         url: String
         method: String
         headers: JSON
-        authType: String
-        authConfig: JSON
-        # Local fields
+        headerSecretCodes: JSON
+        auth: DataHubDestinationAuthInput
         directory: String
-        # Email fields
         to: [String!]
         cc: [String!]
+        bcc: [String!]
+        from: String
         subject: String
         body: String
+        smtp: DataHubDestinationSmtpInput
     }
 `;
 
@@ -109,6 +160,7 @@ export const destinationQueries = `
 export const destinationMutations = `
     extend type Mutation {
         dataHubRegisterExportDestination(input: DataHubExportDestinationInput!): DataHubRegisterDestinationResult!
+        dataHubDeleteExportDestination(id: String!): DeletionResponse!
         dataHubTestExportDestination(id: String!): DataHubDestinationTestResult!
         dataHubDeliverToDestination(destinationId: String!, content: String!, filename: String!, mimeType: String): DataHubDeliveryResult!
     }

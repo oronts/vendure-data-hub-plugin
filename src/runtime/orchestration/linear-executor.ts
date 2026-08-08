@@ -1,14 +1,10 @@
-/**
- * Linear Executor
- *
- * Sequential pipeline execution where steps are executed in
- * the order they are defined (no graph edges).
- *
- * Uses the Strategy pattern for step execution.
- */
-
 import { RequestContext, ID } from '@vendure/core';
-import { PipelineDefinition, PipelineStepDefinition, StepType } from '../../types/index';
+import {
+    JsonObject,
+    PipelineDefinition,
+    PipelineStepDefinition,
+    StepType,
+} from '../../types/index';
 import { StepType as StepTypeEnum, RunStatus } from '../../constants/enums';
 import {
     RecordObject,
@@ -48,17 +44,17 @@ import { GateStepStrategy } from './step-strategies/gate-step.strategy';
 import { getErrorMessage } from '../../utils/error.utils';
 import { LOGGER_CONTEXTS } from '../../constants/core';
 import { DataHubLoggerFactory } from '../../services/logger';
+import { resolveEffectiveStepContext } from './effective-context';
+import { reconcileCompletionOutcomes } from './outcome-metrics';
 
 const logger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.LINEAR_EXECUTOR);
 
-/**
- * Linear execution result
- */
 export interface LinearExecutionResult {
     processed: number;
     succeeded: number;
     failed: number;
-    details: Array<import('../../types/index').JsonObject>;
+    skipped: number;
+    details: JsonObject[];
     counters: Record<string, number>;
     /** True when pipeline paused at a GATE step awaiting approval */
     paused?: boolean;
@@ -68,9 +64,6 @@ export interface LinearExecutionResult {
     cancelled?: boolean;
 }
 
-/**
- * Parameters for linear executor
- */
 export interface LinearExecutorParams {
     ctx: RequestContext;
     definition: PipelineDefinition;
@@ -94,9 +87,6 @@ export interface LinearExecutorParams {
     stepLog?: StepLogCallback;
 }
 
-/**
- * Strategy registry for step types
- */
 class StepStrategyRegistry {
     private strategies: Map<string, StepStrategy> = new Map();
 
@@ -106,10 +96,6 @@ class StepStrategyRegistry {
 
     get(stepType: string): StepStrategy | undefined {
         return this.strategies.get(stepType);
-    }
-
-    has(stepType: string): boolean {
-        return this.strategies.has(stepType);
     }
 }
 
@@ -139,32 +125,29 @@ function buildStrategyRegistry(params: LinearExecutorParams): StepStrategyRegist
     return registry;
 }
 
-/**
- * Execution state for pipeline run
- */
 interface ExecutionState {
     records: RecordObject[];
     processed: number;
     succeeded: number;
     failed: number;
-    details: Array<import('../../types/index').JsonObject>;
+    skipped: number;
+    details: JsonObject[];
     counters: Record<string, number>;
     cancelled: boolean;
+    cancelledAtStep?: string;
     /** True when pipeline is paused at a GATE step */
     paused: boolean;
     /** The step key where the pipeline paused */
     pausedAtStep?: string;
 }
 
-/**
- * Create initial execution state
- */
 function createInitialState(): ExecutionState {
     return {
         records: [],
         processed: 0,
         succeeded: 0,
         failed: 0,
+        skipped: 0,
         details: [],
         counters: {
             extracted: 0,
@@ -180,9 +163,6 @@ function createInitialState(): ExecutionState {
     };
 }
 
-/**
- * Build step execution context
- */
 function buildStepContext(
     params: LinearExecutorParams,
     step: PipelineStepDefinition,
@@ -192,6 +172,11 @@ function buildStepContext(
         ctx: params.ctx,
         definition: params.definition,
         step,
+        pipelineContext: resolveEffectiveStepContext(
+            params.ctx,
+            params.definition.context,
+            step.context,
+        ),
         records,
         executorCtx: params.executorCtx,
         hookService: params.hookService,
@@ -203,18 +188,17 @@ function buildStepContext(
     };
 }
 
-/**
- * Check if cancellation was requested
- */
 async function checkCancellation(
     params: LinearExecutorParams,
     state: ExecutionState,
     step: PipelineStepDefinition,
+    stepSkipped: boolean,
 ): Promise<boolean> {
     if (!params.onCancelRequested) return false;
     if (!(await params.onCancelRequested())) return false;
 
     state.cancelled = true;
+    state.cancelledAtStep = step.key;
     state.details.push({
         stepKey: step.key,
         type: step.type,
@@ -222,29 +206,14 @@ async function checkCancellation(
         durationMs: 0,
     });
 
-    publishCancellationEvents(params.domainEvents, params.pipelineId, step.key);
+    if (stepSkipped) {
+        safePublish(params.domainEvents, 'PipelineStepSkipped', {
+            pipelineId: params.pipelineId,
+            stepKey: step.key,
+            reason: 'cancelled',
+        }, logger);
+    }
     return true;
-}
-
-/**
- * Publish cancellation events
- */
-function publishCancellationEvents(
-    domainEvents: DomainEventsService,
-    pipelineId: ID | undefined,
-    stepKey: string,
-): void {
-    safePublish(domainEvents, 'PipelineRunCancelled', {
-        pipelineId,
-        stepKey,
-        cancelledAt: new Date().toISOString(),
-    }, logger);
-
-    safePublish(domainEvents, 'PipelineStepSkipped', {
-        pipelineId,
-        stepKey,
-        reason: 'cancelled',
-    }, logger);
 }
 
 /**
@@ -270,37 +239,12 @@ function handleTriggerStep(
     }, logger);
 }
 
-/**
- * Handle unsupported step type
- */
-function handleUnsupportedStep(
-    domainEvents: DomainEventsService,
-    pipelineId: ID | undefined,
-    step: PipelineStepDefinition,
-    state: ExecutionState,
-): void {
-    state.details.push({
-        stepKey: step.key,
-        type: step.type,
-        skipped: true,
-        durationMs: 0,
-    });
-
-    safePublish(domainEvents, 'PipelineStepSkipped', {
-        pipelineId,
-        stepKey: step.key,
-        reason: 'unsupported-step',
-    }, logger);
-}
-
-/**
- * Apply strategy result to execution state
- */
 function applyResultToState(state: ExecutionState, result: StepStrategyResult): void {
     state.records = result.records;
     state.processed += result.processed;
     state.succeeded += result.succeeded;
     state.failed += result.failed;
+    state.skipped += result.skipped ?? 0;
     state.details.push(result.detail);
 
     for (const [key, value] of Object.entries(result.counters)) {
@@ -308,53 +252,72 @@ function applyResultToState(state: ExecutionState, result: StepStrategyResult): 
     }
 }
 
-/**
- * Execute a single step using strategy pattern
- */
 async function executeStep(
     params: LinearExecutorParams,
     registry: StepStrategyRegistry,
     step: PipelineStepDefinition,
     state: ExecutionState,
-): Promise<void> {
-    // Handle TRIGGER steps specially
-    if (step.type === StepType.TRIGGER) {
-        handleTriggerStep(params.domainEvents, params.pipelineId, step, state);
-        return;
-    }
-
-    // Get strategy for step type
-    const strategy = registry.get(step.type);
-    if (!strategy) {
-        handleUnsupportedStep(params.domainEvents, params.pipelineId, step, state);
-        return;
-    }
-
+): Promise<StepStrategyResult | undefined> {
     const pipelineIdStr = params.pipelineId?.toString();
     const runIdStr = params.runId?.toString();
-
-    // Publish StepStarted event (typed helper already wraps in try/catch)
+    const startedAt = Date.now();
     params.domainEvents.publishStepStarted(pipelineIdStr, runIdStr, step.key, step.type);
 
     try {
-        // Build context and execute strategy
+        if (step.type === StepType.TRIGGER) {
+            handleTriggerStep(params.domainEvents, params.pipelineId, step, state);
+            params.domainEvents.publishStepCompleted(
+                pipelineIdStr,
+                runIdStr,
+                step.key,
+                step.type,
+                0,
+            );
+            return undefined;
+        }
+
+        const strategy = registry.get(step.type);
+        if (!strategy) {
+            throw new Error(
+                `Unsupported step type "${String(step.type)}" for step "${step.key}"`,
+            );
+        }
+
         const context = buildStepContext(params, step, state.records);
         const result = await strategy.execute(context);
-
-        // Apply result to state
         applyResultToState(state, result);
 
-        // Publish record-level domain event (e.g. RECORD_EXTRACTED, RECORD_TRANSFORMED)
         if (result.event) {
             safePublish(params.domainEvents, result.event.type, result.event.data, logger);
         }
 
-        // Publish StepCompleted event (typed helper already wraps in try/catch)
         params.domainEvents.publishStepCompleted(pipelineIdStr, runIdStr, step.key, step.type, result.processed);
+        return result;
     } catch (error) {
-        // Publish StepFailed event (typed helper already wraps in try/catch)
-        params.domainEvents.publishStepFailed(pipelineIdStr, runIdStr, step.key, step.type, getErrorMessage(error));
-        throw error;
+        const executionError = error instanceof Error
+            ? error
+            : new Error(getErrorMessage(error));
+        params.domainEvents.publishStepFailed(
+            pipelineIdStr,
+            runIdStr,
+            step.key,
+            step.type,
+            executionError.message,
+        );
+        try {
+            await params.stepLog?.onStepFailed?.(
+                params.ctx,
+                step.key,
+                step.type,
+                executionError,
+                Date.now() - startedAt,
+            );
+        } catch (loggingError) {
+            logger.warn(
+                `Failed to persist failure log for step "${step.key}": ${getErrorMessage(loggingError)}`,
+            );
+        }
+        throw executionError;
     }
 }
 
@@ -363,14 +326,13 @@ async function executeStep(
  */
 function checkGatePause(
     step: PipelineStepDefinition,
+    result: StepStrategyResult | undefined,
     state: ExecutionState,
     params: LinearExecutorParams,
 ): boolean {
     if (step.type !== StepType.GATE) return false;
 
-    // The most recent detail entry is the one just pushed by the GATE step
-    const lastDetail = state.details[state.details.length - 1];
-    if (lastDetail && lastDetail['shouldPause'] === true) {
+    if (result?.detail['shouldPause'] === true) {
         state.paused = true;
         state.pausedAtStep = step.key;
 
@@ -419,9 +381,6 @@ function publishRunProgress(
     }
 }
 
-/**
- * Main orchestration loop
- */
 async function executeSteps(
     params: LinearExecutorParams,
     registry: StepStrategyRegistry,
@@ -431,16 +390,19 @@ async function executeSteps(
 
     for (let i = 0; i < params.definition.steps.length; i++) {
         const step = params.definition.steps[i];
-        if (await checkCancellation(params, state, step)) {
+        if (await checkCancellation(params, state, step, true)) {
             break;
         }
 
-        await executeStep(params, registry, step, state);
+        const result = await executeStep(params, registry, step, state);
 
         publishRunProgress(params, state, i, totalSteps, step.key);
 
-        // Check if a GATE step requested a pause
-        if (checkGatePause(step, state, params)) {
+        if (await checkCancellation(params, state, step, false)) {
+            break;
+        }
+
+        if (checkGatePause(step, result, state, params)) {
             break;
         }
     }
@@ -457,9 +419,14 @@ async function publishPipelineStarted(params: LinearExecutorParams): Promise<voi
 /**
  * Publish pipeline cancelled event
  */
-function publishPipelineCancelled(params: LinearExecutorParams): void {
+function publishPipelineCancelled(
+    params: LinearExecutorParams,
+    state: ExecutionState,
+): void {
     safePublish(params.domainEvents, 'PipelineRunCancelled', {
         pipelineId: params.pipelineId,
+        runId: params.runId,
+        stepKey: state.cancelledAtStep,
         cancelledAt: new Date().toISOString(),
     }, logger);
 }
@@ -475,188 +442,20 @@ export async function executeLinear(params: LinearExecutorParams): Promise<Linea
     await executeSteps(params, registry, state);
 
     if (state.cancelled) {
-        publishPipelineCancelled(params);
+        publishPipelineCancelled(params, state);
     }
+
+    reconcileCompletionOutcomes(state);
 
     return {
         processed: state.processed,
         succeeded: state.succeeded,
         failed: state.failed,
+        skipped: state.skipped,
         details: state.details,
         counters: state.counters,
         paused: state.paused ? true : undefined,
         pausedAtStep: state.pausedAtStep,
         cancelled: state.cancelled ? true : undefined,
-    };
-}
-
-/**
- * Parameters for seeded execution
- */
-export interface SeededExecutionParams {
-    ctx: RequestContext;
-    definition: PipelineDefinition;
-    seed: RecordObject[];
-    executorCtx: ExecutorContext;
-    transformExecutor: TransformExecutor;
-    loadExecutor: LoadExecutor;
-    exportExecutor: ExportExecutor;
-    feedExecutor: FeedExecutor;
-    sinkExecutor: SinkExecutor;
-    onCancelRequested?: () => Promise<boolean>;
-    onRecordError?: OnRecordErrorCallback;
-}
-
-/**
- * Seeded execution state
- */
-interface SeededExecutionState {
-    records: RecordObject[];
-    processed: number;
-    succeeded: number;
-    failed: number;
-}
-
-/**
- * Step execution result for metrics collection
- */
-interface StepExecutionMetrics {
-    ok: number;
-    fail: number;
-    recordCount: number;
-}
-
-/**
- * Prepare initial state for seeded execution
- */
-function prepareSeededExecution(seed: RecordObject[]): SeededExecutionState {
-    return {
-        records: [...seed],
-        processed: 0,
-        succeeded: 0,
-        failed: 0,
-    };
-}
-
-/**
- * Collect and apply step metrics to execution state
- */
-function collectStepMetrics(
-    state: SeededExecutionState,
-    metrics: StepExecutionMetrics,
-): void {
-    state.succeeded += metrics.ok;
-    state.failed += metrics.fail;
-    state.processed += metrics.recordCount;
-}
-
-/**
- * Execute a transform-type step (TRANSFORM, ENRICH, VALIDATE, ROUTE)
- */
-async function executeTransformStep(
-    params: SeededExecutionParams,
-    step: PipelineStepDefinition,
-    state: SeededExecutionState,
-): Promise<void> {
-    const { ctx, executorCtx, transformExecutor, onRecordError } = params;
-
-    switch (step.type) {
-        case StepType.TRANSFORM:
-            state.records = await transformExecutor.executeOperator(ctx, step, state.records, executorCtx);
-            break;
-        case StepType.ENRICH:
-            state.records = await transformExecutor.executeEnrich(ctx, step, state.records, executorCtx);
-            break;
-        case StepType.VALIDATE:
-            state.records = await transformExecutor.executeValidate(ctx, step, state.records, onRecordError);
-            break;
-        case StepType.ROUTE:
-            state.records = await transformExecutor.executeRoute(ctx, step, state.records, onRecordError);
-            break;
-    }
-}
-
-/**
- * Execute a load-type step (LOAD, EXPORT, FEED, SINK)
- */
-async function executeLoadStep(
-    params: SeededExecutionParams,
-    step: PipelineStepDefinition,
-    state: SeededExecutionState,
-): Promise<void> {
-    const { ctx, loadExecutor, exportExecutor, feedExecutor, sinkExecutor, onRecordError } = params;
-    let result: { ok: number; fail: number };
-
-    switch (step.type) {
-        case StepType.LOAD:
-            result = await loadExecutor.execute(ctx, step, state.records, onRecordError);
-            break;
-        case StepType.EXPORT:
-            result = await exportExecutor.execute(ctx, step, state.records, onRecordError);
-            break;
-        case StepType.FEED:
-            result = await feedExecutor.execute(ctx, step, state.records, onRecordError);
-            break;
-        case StepType.SINK:
-            result = await sinkExecutor.execute(ctx, step, state.records, onRecordError);
-            break;
-        default:
-            return;
-    }
-
-    collectStepMetrics(state, { ok: result.ok, fail: result.fail, recordCount: state.records.length });
-}
-
-/**
- * Execute a single step with error recovery in seeded execution
- */
-async function executeStepWithRecovery(
-    params: SeededExecutionParams,
-    step: PipelineStepDefinition,
-    state: SeededExecutionState,
-): Promise<void> {
-    // Skip trigger, extract, and gate steps - using seed records
-    if (step.type === StepType.TRIGGER || step.type === StepType.EXTRACT || step.type === StepType.GATE) {
-        return;
-    }
-
-    // Handle transform-type steps
-    if ([StepType.TRANSFORM, StepType.ENRICH, StepType.VALIDATE, StepType.ROUTE].includes(step.type as StepType)) {
-        await executeTransformStep(params, step, state);
-        return;
-    }
-
-    // Handle load-type steps
-    if ([StepType.LOAD, StepType.EXPORT, StepType.FEED, StepType.SINK].includes(step.type as StepType)) {
-        await executeLoadStep(params, step, state);
-        return;
-    }
-
-    // Unhandled step type
-    logger.warn(`executeWithSeed: Unhandled step type "${step.type}" for step "${step.key}" - passing through ${state.records.length} records`);
-}
-
-/**
- * Execute pipeline with seed records (skip extract steps)
- */
-export async function executeWithSeed(
-    params: SeededExecutionParams,
-): Promise<{ processed: number; succeeded: number; failed: number }> {
-    const { definition, onCancelRequested } = params;
-
-    const state = prepareSeededExecution(params.seed);
-
-    for (const step of definition.steps) {
-        if (onCancelRequested && (await onCancelRequested())) {
-            break;
-        }
-
-        await executeStepWithRecovery(params, step, state);
-    }
-
-    return {
-        processed: state.processed,
-        succeeded: state.succeeded,
-        failed: state.failed,
     };
 }

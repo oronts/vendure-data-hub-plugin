@@ -5,9 +5,14 @@
  * previously copy-pasted across RestPostHandler and GraphqlMutationHandler.
  */
 import { CircuitBreakerService } from '../../../services/runtime/circuit-breaker.service';
-import { sleep } from '../../utils';
-import { HTTP_STATUS, HTTP } from '../../../constants/index';
-import { DataHubLogger } from '../../../services/logger';
+import { sleep } from '../../../utils/retry.utils';
+import { HTTP_STATUS, HTTP } from '../../../constants/defaults/http-defaults';
+import { HttpMethod } from '../../../constants/enums';
+import { DataHubLogger } from '../../../services/logger/datahub-logger';
+import { secureFetch } from '../../../utils/secure-fetch.utils';
+import { PIPELINE_RETRY } from '../../../../shared/constants';
+import { FIELD_LIMITS } from '../../../constants/validation';
+import { resolveBoundedInteger, resolveBoundedNumber } from '../../execution-config';
 
 /** Result of a single HTTP fetch attempt */
 export type HttpFetchResult = { ok: true } | { ok: false; error: string; isCircuitOpen?: boolean };
@@ -22,7 +27,7 @@ export interface HttpFetchOptions {
     headers: Record<string, string>;
     /** Serialised request body */
     body: string;
-    /** Request timeout in ms (0 = no timeout) */
+    /** Request timeout in milliseconds */
     timeoutMs: number;
     /** Circuit breaker key (derived from endpoint host) */
     circuitKey: string;
@@ -64,6 +69,37 @@ export interface ResolvedHttpConfig extends HttpRetryOptions {
     maxBatchSize: number;
 }
 
+export type RestBatchMode = 'single' | 'array';
+export type GraphqlBatchMode = 'single' | 'batch';
+
+export function resolveRestWriteMethod(value: unknown): HttpMethod.POST | HttpMethod.PUT {
+    const method = value === undefined ? HttpMethod.POST : value;
+    if (typeof method !== 'string') {
+        throw new Error('REST loader method must be POST or PUT');
+    }
+    const normalized = method.toUpperCase();
+    if (normalized !== HttpMethod.POST && normalized !== HttpMethod.PUT) {
+        throw new Error('REST loader method must be POST or PUT');
+    }
+    return normalized;
+}
+
+export function resolveRestBatchMode(value: unknown): RestBatchMode {
+    if (value === undefined) return 'single';
+    if (value !== 'single' && value !== 'array') {
+        throw new Error('REST loader batchMode must be single or array');
+    }
+    return value;
+}
+
+export function resolveGraphqlBatchMode(value: unknown): GraphqlBatchMode {
+    if (value === undefined) return 'single';
+    if (value !== 'single' && value !== 'batch') {
+        throw new Error('GraphQL loader batchMode must be single or batch');
+    }
+    return value;
+}
+
 /**
  * Resolve retry/timeout/batch config from step config with pipeline error handling fallbacks.
  * Single source of truth for both RestPostHandler and GraphqlMutationHandler.
@@ -72,13 +108,64 @@ export function resolveHttpRetryConfig(
     cfg: RetryConfigSource,
     errorHandling?: { maxRetries?: number; retryDelayMs?: number; maxRetryDelayMs?: number; backoffMultiplier?: number },
 ): ResolvedHttpConfig {
+    const retries = resolveBoundedInteger(
+        cfg.retries === undefined ? errorHandling?.maxRetries : cfg.retries,
+        {
+            fieldName: 'HTTP loader retries',
+            defaultValue: PIPELINE_RETRY.DEFAULT_MAX_RETRIES,
+            minimum: 0,
+            maximum: PIPELINE_RETRY.MAX_RETRIES,
+        },
+    );
+    const retryDelayMs = resolveBoundedInteger(
+        cfg.retryDelayMs === undefined ? errorHandling?.retryDelayMs : cfg.retryDelayMs,
+        {
+            fieldName: 'HTTP loader retryDelayMs',
+            defaultValue: PIPELINE_RETRY.DEFAULT_DELAY_MS,
+            minimum: 0,
+            maximum: PIPELINE_RETRY.MAX_DELAY_MS,
+        },
+    );
+    const maxRetryDelayMs = resolveBoundedInteger(
+        cfg.maxRetryDelayMs === undefined ? errorHandling?.maxRetryDelayMs : cfg.maxRetryDelayMs,
+        {
+            fieldName: 'HTTP loader maxRetryDelayMs',
+            defaultValue: PIPELINE_RETRY.DEFAULT_MAX_DELAY_MS,
+            minimum: 0,
+            maximum: PIPELINE_RETRY.MAX_DELAY_MS,
+        },
+    );
+    const backoffMultiplier = resolveBoundedNumber(
+        cfg.backoffMultiplier === undefined
+            ? errorHandling?.backoffMultiplier
+            : cfg.backoffMultiplier,
+        {
+            fieldName: 'HTTP loader backoffMultiplier',
+            defaultValue: PIPELINE_RETRY.DEFAULT_BACKOFF_MULTIPLIER,
+            minimum: 1,
+            maximum: PIPELINE_RETRY.MAX_BACKOFF_MULTIPLIER,
+        },
+    );
+    if (maxRetryDelayMs < retryDelayMs) {
+        throw new Error('HTTP loader maxRetryDelayMs cannot be less than retryDelayMs');
+    }
     return {
-        retries: Math.max(0, Number(cfg.retries ?? errorHandling?.maxRetries ?? 0) || 0),
-        retryDelayMs: Math.max(0, Number(cfg.retryDelayMs ?? errorHandling?.retryDelayMs ?? 0) || 0),
-        maxRetryDelayMs: Math.max(0, Number(cfg.maxRetryDelayMs ?? errorHandling?.maxRetryDelayMs ?? HTTP.RETRY_MAX_DELAY_MS) || HTTP.RETRY_MAX_DELAY_MS),
-        backoffMultiplier: Number(cfg.backoffMultiplier ?? errorHandling?.backoffMultiplier ?? HTTP.BACKOFF_MULTIPLIER) || HTTP.BACKOFF_MULTIPLIER,
-        timeoutMs: Math.max(0, Number(cfg.timeoutMs ?? HTTP.TIMEOUT_MS) || HTTP.TIMEOUT_MS),
-        maxBatchSize: Math.max(0, Number(cfg.maxBatchSize ?? 0) || 0),
+        retries,
+        retryDelayMs,
+        maxRetryDelayMs,
+        backoffMultiplier,
+        timeoutMs: resolveBoundedInteger(cfg.timeoutMs, {
+            fieldName: 'HTTP loader timeoutMs',
+            defaultValue: HTTP.TIMEOUT_MS,
+            minimum: 1,
+            maximum: HTTP.MAX_TIMEOUT_MS,
+        }),
+        maxBatchSize: resolveBoundedInteger(cfg.maxBatchSize, {
+            fieldName: 'HTTP loader maxBatchSize',
+            defaultValue: 0,
+            minimum: 0,
+            maximum: FIELD_LIMITS.BATCH_SIZE_MAX,
+        }),
     };
 }
 
@@ -88,25 +175,21 @@ export function resolveHttpRetryConfig(
  */
 export async function doHttpFetch(opts: HttpFetchOptions): Promise<HttpFetchResult> {
     const { endpoint, method, headers, body, timeoutMs, circuitKey, circuitBreaker, logger, stepKey, onResponse } = opts;
-    const fetchImpl = globalThis.fetch;
 
     // Circuit breaker guard
     if (circuitBreaker && !circuitBreaker.canExecute(circuitKey)) {
         return { ok: false, error: 'Circuit breaker is open - endpoint temporarily unavailable', isCircuitOpen: true };
     }
 
-    const controller = timeoutMs > 0 ? new AbortController() : undefined;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    if (controller && timeoutMs > 0) {
-        timer = setTimeout(() => controller.abort(), timeoutMs);
-    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-        const res = await fetchImpl(endpoint, {
+        const res = await secureFetch(endpoint, {
             method,
             headers,
             body,
-            signal: controller?.signal,
+            signal: controller.signal,
         });
 
         if (res?.ok) {
@@ -142,7 +225,7 @@ export async function doHttpFetch(opts: HttpFetchOptions): Promise<HttpFetchResu
         circuitBreaker?.recordFailure(circuitKey);
         return { ok: false, error: errorMsg };
     } finally {
-        if (timer) clearTimeout(timer);
+        clearTimeout(timer);
     }
 }
 

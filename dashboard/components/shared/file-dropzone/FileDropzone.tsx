@@ -1,8 +1,9 @@
 import * as React from 'react';
+import { Trans, useLingui } from '@lingui/react/macro';
 import { useCallback, memo } from 'react';
 import { Button } from '@vendure/dashboard';
 import { Upload, RefreshCw, CheckCircle2, X, File } from 'lucide-react';
-import type { FileType, FileDropzoneProps } from '../../../types';
+import type { FileDropzoneProps } from '../../../types';
 import { formatFileSize } from '../../../utils';
 import { DROPZONE_DIMENSIONS, ICON_SIZES, buildAcceptString } from '../../../constants';
 import { useOptionValues } from '../../../hooks/api/use-config-options';
@@ -13,13 +14,14 @@ function FileDropzoneComponent({
     allowedTypes,
     accept,
     loading = false,
-    loadingMessage = 'Parsing file...',
+    loadingMessage,
     selectedFile,
     onClear,
     showFileIcons = true,
     compact = false,
     className = '',
 }: FileDropzoneProps) {
+    const { t } = useLingui();
     const [dragOver, setDragOver] = React.useState(false);
     const inputRef = React.useRef<HTMLInputElement>(null);
     const { options: fileFormatOptions } = useOptionValues('fileFormats');
@@ -36,19 +38,6 @@ function FileDropzoneComponent({
         if (file) onFileSelect(file);
     }, [onFileSelect]);
 
-    const handleClick = useCallback(() => {
-        if (!selectedFile) {
-            inputRef.current?.click();
-        }
-    }, [selectedFile]);
-
-    const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-        if ((e.key === 'Enter' || e.key === ' ') && !selectedFile) {
-            e.preventDefault();
-            inputRef.current?.click();
-        }
-    }, [selectedFile]);
-
     const handleDragOver = useCallback((e: React.DragEvent) => {
         e.preventDefault();
         setDragOver(true);
@@ -58,13 +47,11 @@ function FileDropzoneComponent({
         setDragOver(false);
     }, []);
 
-    const handleClearClick = useCallback((e: React.MouseEvent) => {
-        e.stopPropagation();
+    const handleClearClick = useCallback(() => {
         onClear?.();
     }, [onClear]);
 
-    const handleBrowseClick = useCallback((e: React.MouseEvent) => {
-        e.stopPropagation();
+    const handleBrowseClick = useCallback(() => {
         inputRef.current?.click();
     }, []);
 
@@ -81,15 +68,11 @@ function FileDropzoneComponent({
 
     return (
         <div
-            role="button"
-            tabIndex={0}
-            aria-label="Upload file"
-            className={`border-2 border-dashed rounded-lg ${padding} text-center transition-colors cursor-pointer ${borderClass} ${className}`}
+            aria-label={t`Upload file`}
+            className={`rounded-lg border-2 border-dashed ${padding} text-center transition-colors ${borderClass} ${className}`}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
-            onClick={handleClick}
-            onKeyDown={handleKeyDown}
             data-testid="datahub-filedropzone-dropzone"
         >
             <input
@@ -98,13 +81,15 @@ function FileDropzoneComponent({
                 accept={acceptString}
                 onChange={handleChange}
                 className="hidden"
-                aria-hidden="true"
+                aria-label={t`Upload file`}
             />
 
             {loading ? (
                 <div className="flex flex-col items-center gap-4">
                     <RefreshCw className={`${iconSize} text-primary animate-spin`} />
-                    <p className="text-lg font-medium">{loadingMessage}</p>
+                    <p className="text-lg font-medium">
+                        {loadingMessage ?? t`Parsing file...`}
+                    </p>
                 </div>
             ) : selectedFile ? (
                 <div className="flex flex-col items-center gap-2">
@@ -122,7 +107,7 @@ function FileDropzoneComponent({
                             data-testid="datahub-filedropzone-remove"
                         >
                             <X className={`${ICON_SIZES.SM} mr-2`} />
-                            Remove
+                            <Trans>Remove</Trans>
                         </Button>
                     )}
                 </div>
@@ -131,7 +116,6 @@ function FileDropzoneComponent({
                     {showFileIcons && allowedTypes && allowedTypes.length > 0 && (
                         <div className="flex justify-center gap-4 mb-4">
                             {allowedTypes.map(type => {
-                                if (!type) return null;
                                 const formatOpt = fileFormatOptions.find(f => f.value === type.toUpperCase());
                                 const Icon = resolveIconName(formatOpt?.icon) ?? File;
                                 const hexColor = formatOpt?.color ?? undefined;
@@ -143,11 +127,11 @@ function FileDropzoneComponent({
                         <Upload className={`${iconSize} mx-auto mb-4 text-muted-foreground`} />
                     )}
                     <p className={`font-medium ${compact ? 'text-base' : 'text-lg'} mb-2`}>
-                        Drop your file here or click to browse
+                        <Trans>Drop your file here or click to browse</Trans>
                     </p>
                     {allowedTypes && allowedTypes.length > 0 && (
                         <p className="text-sm text-muted-foreground mb-4">
-                            Supports: {allowedTypes.filter((t): t is FileType => Boolean(t)).map(t => t.toUpperCase()).join(', ')}
+                            {t`Supports: ${allowedTypes.map(type => type.toUpperCase()).join(', ')}`}
                         </p>
                     )}
                     <Button
@@ -156,7 +140,7 @@ function FileDropzoneComponent({
                         data-testid="datahub-filedropzone-browse"
                     >
                         <Upload className={`${ICON_SIZES.SM} mr-2`} />
-                        Browse Files
+                        <Trans>Browse files</Trans>
                     </Button>
                 </>
             )}

@@ -33,7 +33,11 @@ export async function findVariantBySku(
 ): Promise<ProductVariant | undefined> {
     const result = await productVariantService.findAll(ctx, {
         filter: { sku: { eq: sku } },
+        take: 2,
     } as ListQueryOptions<ProductVariant>);
+    if (result.items.length > 1) {
+        throw new Error(`Multiple product variants use SKU "${sku}"`);
+    }
     return result.items[0];
 }
 
@@ -44,19 +48,21 @@ export async function resolveTaxCategoryId(
     logger: LookupLogger = noopLogger,
 ): Promise<ID | undefined> {
     if (!name) return undefined;
-    try {
-        const list = await taxCategoryService.findAll(ctx, {
-            filter: { name: { eq: name } },
-            take: 1,
-        } as ListQueryOptions<TaxCategory>);
-        return list.items[0]?.id;
-    } catch (error) {
-        logger.warn('Failed to resolve tax category by name', {
-            taxCategoryName: name,
-            error: getErrorMessage(error),
-        });
-        return undefined;
+    const list = await taxCategoryService.findAll(ctx, {
+        filter: { name: { eq: name } },
+        take: 2,
+    } as ListQueryOptions<TaxCategory>);
+    if (list.items.length === 0) {
+        const error = new Error(`Tax category not found: ${name}`);
+        logger.warn(error.message, { taxCategoryName: name });
+        throw error;
     }
+    if (list.items.length > 1) {
+        const error = new Error(`Multiple tax categories use name "${name}"`);
+        logger.warn(error.message, { taxCategoryName: name });
+        throw error;
+    }
+    return list.items[0].id;
 }
 
 /**
@@ -68,12 +74,40 @@ export interface OptionGroupCache {
     productGroups: Map<string, Map<string, { id: ID; options: Map<string, ID> }>>;
     /** Products whose existing option groups have been loaded from DB */
     loadedProducts: Set<string>;
-    /** Flat option code→ID cache for resolveOptionCodes */
-    optionsByCode: Map<string, ID>;
 }
 
 export function createOptionGroupCache(): OptionGroupCache {
-    return { productGroups: new Map(), loadedProducts: new Set(), optionsByCode: new Map() };
+    return { productGroups: new Map(), loadedProducts: new Set() };
+}
+
+type CachedOptionGroup = { id: ID; options: Map<string, ID> };
+
+async function getProductOptionGroups(
+    productOptionGroupService: ProductOptionGroupService,
+    ctx: RequestContext,
+    productId: ID,
+    cache: OptionGroupCache,
+): Promise<Map<string, CachedOptionGroup>> {
+    const productKey = String(productId);
+    if (!cache.loadedProducts.has(productKey)) {
+        const groups = await productOptionGroupService.getOptionGroupsByProductId(ctx, productId);
+        cache.productGroups.set(
+            productKey,
+            new Map(groups.map(group => [
+                group.code,
+                {
+                    id: group.id,
+                    options: new Map(group.options.map(option => [option.code, option.id])),
+                },
+            ])),
+        );
+        cache.loadedProducts.add(productKey);
+    }
+    const groups = cache.productGroups.get(productKey);
+    if (!groups) {
+        throw new Error(`Option groups could not be loaded for product ${productKey}`);
+    }
+    return groups;
 }
 
 /**
@@ -100,90 +134,52 @@ export async function resolveOptionGroups(
     productId: ID,
     optionsMap: Record<string, string>,
     cache: OptionGroupCache,
-    logger: LookupLogger = noopLogger,
 ): Promise<ID[]> {
     const optionIds: ID[] = [];
     const langCode = (ctx.languageCode ?? 'en') as LanguageCode;
-    const productKey = String(productId);
 
-    // 1. Load existing option groups for this product (once per product per batch)
-    if (!cache.loadedProducts.has(productKey)) {
-        try {
-            const product = await productService.findOne(ctx, productId,
-                ['optionGroups', 'optionGroups.options'] as never);
-            if (product) {
-                const groupMap = new Map<string, { id: ID; options: Map<string, ID> }>();
-                const optionGroups = (product as unknown as {
-                    optionGroups?: Array<{ id: ID; code: string; options?: Array<{ id: ID; code: string }> }>;
-                }).optionGroups;
-                if (Array.isArray(optionGroups)) {
-                    for (const group of optionGroups) {
-                        const options = new Map<string, ID>();
-                        if (Array.isArray(group.options)) {
-                            for (const opt of group.options) {
-                                options.set(opt.code, opt.id);
-                            }
-                        }
-                        groupMap.set(group.code, { id: group.id, options });
-                    }
-                }
-                cache.productGroups.set(productKey, groupMap);
-            }
-        } catch (error) {
-            logger.warn(`Failed to load existing option groups for product ${productId}`, {
-                error: getErrorMessage(error),
-            });
-        }
-        cache.loadedProducts.add(productKey);
-    }
-
-    if (!cache.productGroups.has(productKey)) {
-        cache.productGroups.set(productKey, new Map());
-    }
-    const groupMap = cache.productGroups.get(productKey)!;
+    const groupMap = await getProductOptionGroups(
+        productOptionGroupService,
+        ctx,
+        productId,
+        cache,
+    );
 
     for (const [key, value] of Object.entries(optionsMap)) {
         if (!key || value == null || value === '') continue;
 
         const groupCode = toOptionCode(key);
-        const optionCode = toOptionCode(String(value));
+        const optionCode = toOptionCode(value);
 
-        try {
-            // 2. Find or create the option group FOR THIS PRODUCT
-            let groupEntry = groupMap.get(groupCode);
-            if (!groupEntry) {
-                // Create a NEW group for this product (Vendure 3.x: groups are per-product, not shared)
-                const created = await productOptionGroupService.create(ctx, {
-                    code: groupCode,
-                    translations: [{ languageCode: langCode, name: key.charAt(0).toUpperCase() + key.slice(1) }],
-                });
-                await productService.addOptionGroupToProduct(ctx, productId, created.id);
-                groupEntry = { id: created.id, options: new Map() };
-                groupMap.set(groupCode, groupEntry);
-            }
-
-            // 3. Find or create the option within the group
-            let optionId = groupEntry.options.get(optionCode);
-            if (!optionId) {
-                const allOptions = await productOptionService.findAll(ctx, {}, groupEntry.id);
-                const existingOption = allOptions.items.find(o => o.code === optionCode);
-
-                if (existingOption) {
-                    optionId = existingOption.id;
-                } else {
-                    const createdOption = await productOptionService.create(ctx, groupEntry.id, {
-                        code: optionCode,
-                        translations: [{ languageCode: langCode, name: String(value) }],
-                    });
-                    optionId = createdOption.id;
-                }
-                groupEntry.options.set(optionCode, optionId);
-            }
-
-            optionIds.push(optionId);
-        } catch (error) {
-            logger.warn(`Failed to resolve option group "${key}": ${getErrorMessage(error)}`);
+        let groupEntry = groupMap.get(groupCode);
+        if (!groupEntry) {
+            const created = await productOptionGroupService.create(ctx, {
+                code: groupCode,
+                translations: [{ languageCode: langCode, name: key.charAt(0).toUpperCase() + key.slice(1) }],
+            });
+            await productService.addOptionGroupToProduct(ctx, productId, created.id);
+            groupEntry = { id: created.id, options: new Map() };
+            groupMap.set(groupCode, groupEntry);
         }
+
+        let optionId = groupEntry.options.get(optionCode);
+        if (!optionId) {
+            const allOptions = await productOptionService.findAll(ctx, {}, groupEntry.id);
+            const existingOption = allOptions.items.find(o => o.code === optionCode);
+
+            if (existingOption) {
+                optionId = existingOption.id;
+            } else {
+                const createdOption = await productOptionService.create(ctx, groupEntry.id, {
+                    code: optionCode,
+                    translations: [{ languageCode: langCode, name: value }],
+                });
+                optionId = createdOption.id;
+            }
+            groupEntry.options.set(optionCode, optionId);
+        }
+
+        optionIds.push(optionId);
     }
 
     return optionIds;
@@ -191,46 +187,40 @@ export async function resolveOptionGroups(
 
 /**
  * Resolve option codes (e.g. ['size-s', 'color-blue']) to Vendure option IDs.
- * Looks up existing options by code. Uses flat cache for batch efficiency.
+ * Limits lookups to the parent product and rejects ambiguous codes.
  */
 export async function resolveOptionCodes(
-    productOptionService: ProductOptionService,
+    productOptionGroupService: ProductOptionGroupService,
     ctx: RequestContext,
+    productId: ID,
     codes: string[],
     cache: OptionGroupCache,
-    logger: LookupLogger = noopLogger,
 ): Promise<ID[]> {
-    const optionIds: ID[] = [];
-
-    for (const code of codes) {
-        if (!code) continue;
-
-        // Check flat code cache
-        const cached = cache.optionsByCode.get(code);
-        if (cached) {
-            optionIds.push(cached);
-            continue;
-        }
-
-        try {
-            const result = await productOptionService.findAll(ctx, {
-                filter: { code: { eq: code } },
-                take: 1,
-            } as never);
-
-            if (result.items.length > 0) {
-                const option = result.items[0];
-                optionIds.push(option.id);
-                cache.optionsByCode.set(code, option.id);
-            } else {
-                logger.warn(`Option code "${code}" not found - skipped`);
-            }
-        } catch (error) {
-            logger.warn(`Failed to resolve option code "${code}": ${getErrorMessage(error)}`);
+    const groups = await getProductOptionGroups(
+        productOptionGroupService,
+        ctx,
+        productId,
+        cache,
+    );
+    const optionsByCode = new Map<string, ID[]>();
+    for (const group of groups.values()) {
+        for (const [code, id] of group.options) {
+            const matches = optionsByCode.get(code) ?? [];
+            matches.push(id);
+            optionsByCode.set(code, matches);
         }
     }
 
-    return optionIds;
+    return codes.map(code => {
+        const matches = optionsByCode.get(code) ?? [];
+        if (matches.length === 0) {
+            throw new Error(`Option code "${code}" was not found for product ${String(productId)}`);
+        }
+        if (matches.length > 1) {
+            throw new Error(`Option code "${code}" is ambiguous for product ${String(productId)}`);
+        }
+        return matches[0];
+    });
 }
 
 export async function resolveStockLevels(
@@ -244,27 +234,28 @@ export async function resolveStockLevels(
     if (locNames.length === 0) return undefined;
 
     try {
-        // Single query for all locations
         const list = await stockLocationService.findAll(ctx, {
             filter: { name: { in: locNames } },
         } as ListQueryOptions<StockLocation>);
 
         const locationMap = new Map(list.items.map(l => [l.name, l.id]));
+        const missingLocations = locNames.filter(name => !locationMap.has(name));
+        if (missingLocations.length > 0) {
+            throw new Error(`Stock location${missingLocations.length === 1 ? '' : 's'} not found: ${missingLocations.join(', ')}`);
+        }
         const result: StockLevelInput[] = [];
 
         for (const [name, qty] of Object.entries(stockByLocation)) {
             const locationId = locationMap.get(name);
-            if (locationId) {
-                result.push({ stockLocationId: locationId, stockOnHand: Math.max(0, Math.floor(qty)) });
-            }
+            result.push({ stockLocationId: locationId as ID, stockOnHand: Math.max(0, Math.floor(qty)) });
         }
-        return result.length > 0 ? result : undefined;
+        return result;
     } catch (error) {
         logger.warn('Failed to resolve stock locations', {
             locationNames: locNames,
             error: getErrorMessage(error),
         });
-        return undefined;
+        throw error;
     }
 }
 
@@ -278,23 +269,82 @@ export async function resolveStockLevels(
 export function parseTranslationsInput(
     raw: unknown,
 ): Array<Record<string, unknown> & { languageCode: string }> {
+    const entries: Array<Record<string, unknown> & { languageCode: string }> = [];
     if (Array.isArray(raw)) {
-        return raw
-            .filter((t): t is Record<string, unknown> => t != null && typeof t === 'object')
-            .filter(t => typeof t.languageCode === 'string')
-            .map(t => ({ ...t, languageCode: String(t.languageCode) }));
+        for (let index = 0; index < raw.length; index++) {
+            const value = raw[index];
+            if (!value || typeof value !== 'object' || Array.isArray(value)) {
+                throw new Error(`Translation at index ${index} must be an object`);
+            }
+            const entry = value as Record<string, unknown>;
+            entries.push({
+                ...entry,
+                languageCode: parseTranslationLanguageCode(
+                    entry.languageCode,
+                    `translation at index ${index}`,
+                ),
+            });
+        }
+    } else if (raw && typeof raw === 'object') {
+        for (const [languageCode, value] of Object.entries(raw as Record<string, unknown>)) {
+            if (!value || typeof value !== 'object' || Array.isArray(value)) {
+                throw new Error(`Translation "${languageCode}" must be an object`);
+            }
+            entries.push({
+                ...(value as Record<string, unknown>),
+                languageCode: parseTranslationLanguageCode(
+                    languageCode,
+                    `translation map key "${languageCode}"`,
+                ),
+            });
+        }
+    } else {
+        throw new Error('Translations must be an array or language map');
     }
 
-    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
-        return Object.entries(raw as Record<string, unknown>)
-            .filter(([, v]) => v != null && typeof v === 'object')
-            .map(([langCode, v]) => ({
-                ...(v as Record<string, unknown>),
-                languageCode: langCode,
-            }));
+    const seen = new Set<string>();
+    for (const entry of entries) {
+        if (seen.has(entry.languageCode)) {
+            throw new Error(`Duplicate translation language "${entry.languageCode}"`);
+        }
+        seen.add(entry.languageCode);
     }
+    return entries;
+}
 
-    return [];
+function parseTranslationLanguageCode(value: unknown, source: string): string {
+    if (typeof value !== 'string' || value.trim() === '') {
+        throw new Error(`Language code for ${source} must be a non-empty string`);
+    }
+    const languageCode = value.trim();
+    if (!Object.values(LanguageCode).includes(languageCode as LanguageCode)) {
+        throw new Error(`Unsupported translation language code "${languageCode}"`);
+    }
+    return languageCode;
+}
+
+export function getTranslationString(
+    translation: Record<string, unknown>,
+    field: string,
+): string | undefined;
+export function getTranslationString(
+    translation: Record<string, unknown>,
+    field: string,
+    fallback: string,
+): string;
+export function getTranslationString(
+    translation: Record<string, unknown>,
+    field: string,
+    fallback?: string,
+): string | undefined {
+    const value = translation[field];
+    if (value == null) {
+        return fallback;
+    }
+    if (typeof value !== 'string') {
+        throw new Error(`Translation field "${field}" must be a string`);
+    }
+    return value;
 }
 
 /**
@@ -340,23 +390,25 @@ export async function resolveChannelIds(
 ): Promise<ID[]> {
     let codes: string[];
     if (Array.isArray(rawValue)) {
-        codes = rawValue.map(String).filter(Boolean);
+        codes = rawValue.map((value, index) => {
+            if (typeof value !== 'string' || value.trim() === '') {
+                throw new Error(`Channel code at index ${index} must be a non-empty string`);
+            }
+            return value.trim();
+        });
     } else if (typeof rawValue === 'string') {
         codes = rawValue.split(',').map(s => s.trim()).filter(Boolean);
     } else {
-        return [];
+        throw new Error('Channel assignment must be a channel code or an array of channel codes');
     }
 
+    codes = [...new Set(codes)];
     if (codes.length === 0) return [];
 
-    const result: ID[] = [];
     const uncached: string[] = [];
 
     for (const code of codes) {
-        const cached = cache.get(code);
-        if (cached) {
-            result.push(cached);
-        } else {
+        if (!cache.has(code)) {
             uncached.push(code);
         }
     }
@@ -370,23 +422,21 @@ export async function resolveChannelIds(
             for (const channel of allChannels.items) {
                 cache.set(channel.code, channel.id);
             }
-
-            // Re-resolve uncached codes now that we've loaded them
-            for (const code of uncached) {
-                const id = cache.get(code);
-                if (id) {
-                    result.push(id);
-                } else {
-                    logger.warn(`Channel code "${code}" not found - skipped`);
-                }
-            }
         } catch (error) {
             logger.warn('Failed to resolve channel codes', {
                 codes: uncached,
                 error: getErrorMessage(error),
             });
+            throw error;
         }
     }
 
-    return result;
+    const missingCodes = codes.filter(code => !cache.has(code));
+    if (missingCodes.length > 0) {
+        const error = new Error(`Channel code${missingCodes.length === 1 ? '' : 's'} not found: ${missingCodes.join(', ')}`);
+        logger.warn(error.message, { codes: missingCodes });
+        throw error;
+    }
+
+    return codes.map(code => cache.get(code) as ID);
 }

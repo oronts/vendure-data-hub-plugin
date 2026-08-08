@@ -5,13 +5,15 @@
  */
 
 import { PipelineRun, Pipeline } from '../../entities/pipeline';
-import { RunStatus } from '../../types/index';
 import { PipelinePerformance } from './analytics.types';
 import {
     percentile,
     calculateSuccessRate,
     calculateAverage,
     extractRunMetrics,
+    isFailedRunStatus,
+    isOutcomeRunStatus,
+    isSuccessfulRunStatus,
 } from './metrics.helpers';
 
 /**
@@ -22,6 +24,8 @@ interface AggregatedPipelineMetrics {
     totalRecordsProcessed: number;
     totalRecordsFailed: number;
     successfulRuns: number;
+    failedRuns: number;
+    outcomeRuns: number;
 }
 
 /**
@@ -42,6 +46,8 @@ export function aggregatePipelineMetrics(runs: PipelineRun[]): AggregatedPipelin
     let totalRecordsProcessed = 0;
     let totalRecordsFailed = 0;
     let successfulRuns = 0;
+    let failedRuns = 0;
+    let outcomeRuns = 0;
 
     for (const run of runs) {
         const metrics = extractRunMetrics(run.metrics);
@@ -50,12 +56,25 @@ export function aggregatePipelineMetrics(runs: PipelineRun[]): AggregatedPipelin
         }
         totalRecordsProcessed += metrics.recordsProcessed;
         totalRecordsFailed += metrics.recordsFailed;
-        if (run.status === RunStatus.COMPLETED) {
+        if (isSuccessfulRunStatus(run.status)) {
             successfulRuns++;
+        }
+        if (isFailedRunStatus(run.status)) {
+            failedRuns++;
+        }
+        if (isOutcomeRunStatus(run.status)) {
+            outcomeRuns++;
         }
     }
 
-    return { durations, totalRecordsProcessed, totalRecordsFailed, successfulRuns };
+    return {
+        durations,
+        totalRecordsProcessed,
+        totalRecordsFailed,
+        successfulRuns,
+        failedRuns,
+        outcomeRuns,
+    };
 }
 
 /**
@@ -87,8 +106,11 @@ export function buildPerformanceReport(
         pipelineName: pipeline.name,
         totalRuns: runs.length,
         successfulRuns: aggregatedMetrics.successfulRuns,
-        failedRuns: runs.length - aggregatedMetrics.successfulRuns,
-        successRate: calculateSuccessRate(aggregatedMetrics.successfulRuns, runs.length),
+        failedRuns: aggregatedMetrics.failedRuns,
+        successRate: calculateSuccessRate(
+            aggregatedMetrics.successfulRuns,
+            aggregatedMetrics.outcomeRuns,
+        ),
         avgDurationMs: trends.avgDurationMs,
         p50DurationMs: trends.p50DurationMs,
         p95DurationMs: trends.p95DurationMs,

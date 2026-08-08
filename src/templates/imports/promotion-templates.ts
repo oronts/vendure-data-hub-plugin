@@ -3,6 +3,7 @@
  */
 
 import { ImportTemplate } from './types';
+import { createCsvFileSource } from './csv-file-source';
 
 /**
  * Discount Coupons CSV Template
@@ -26,19 +27,7 @@ export const couponsTemplate: ImportTemplate = {
     definition: {
         version: 1,
         type: 'IMPORT',
-        source: {
-            type: 'FILE_UPLOAD',
-            format: {
-                format: 'CSV',
-                csv: {
-                    delimiter: ',',
-                    headerRow: true,
-                },
-            },
-            config: {
-                type: 'FILE_UPLOAD',
-            },
-        },
+        source: createCsvFileSource(),
         target: {
             entity: 'PROMOTION',
             operation: 'UPSERT',

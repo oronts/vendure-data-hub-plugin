@@ -1,10 +1,8 @@
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { api } from '@vendure/dashboard';
 import { graphql } from '../../gql';
-import { createMutationErrorHandler } from './mutation-helpers';
 import { createQueryKeys } from '../../utils/query-key-factory';
 import { POLLING_INTERVALS } from '../../constants';
-import type { JsonObject } from '../../types';
 
 const base = createQueryKeys('pipelineHooks');
 const hookKeys = {
@@ -20,7 +18,18 @@ const hooksDocument = graphql(`
 
 const hookTestDocument = graphql(`
     mutation RunDataHubHookTestApi($pipelineId: ID!, $stage: String!, $payload: JSON) {
-        runDataHubHookTest(pipelineId: $pipelineId, stage: $stage, payload: $payload)
+        runDataHubHookTest(pipelineId: $pipelineId, stage: $stage, payload: $payload) {
+            status
+            configured
+            executed
+            skipped
+            failed
+            errors {
+                action
+                type
+                error
+            }
+        }
     }
 `);
 
@@ -60,9 +69,8 @@ export function useTestHook() {
         }: {
             pipelineId: string;
             stage: string;
-            payload?: JsonObject;
+            payload?: Record<string, unknown>;
         }) =>
-            api.mutate(hookTestDocument, { pipelineId, stage, payload }).then((res) => res.runDataHubHookTest),
-        onError: createMutationErrorHandler('test hook'),
+            api.mutate(hookTestDocument, { pipelineId, stage, payload }).then(res => res.runDataHubHookTest),
     });
 }

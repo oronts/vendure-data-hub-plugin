@@ -3,6 +3,7 @@
  */
 
 import { ImportTemplate } from './types';
+import { createCsvFileSource } from './csv-file-source';
 
 /**
  * Stock Update CSV Template
@@ -27,19 +28,7 @@ export const stockUpdateTemplate: ImportTemplate = {
     definition: {
         version: 1,
         type: 'IMPORT',
-        source: {
-            type: 'FILE_UPLOAD',
-            format: {
-                format: 'CSV',
-                csv: {
-                    delimiter: ',',
-                    headerRow: true,
-                },
-            },
-            config: {
-                type: 'FILE_UPLOAD',
-            },
-        },
+        source: createCsvFileSource(),
         target: {
             entity: 'INVENTORY',
             operation: 'UPDATE',
@@ -85,19 +74,7 @@ export const multiLocationInventoryTemplate: ImportTemplate = {
     definition: {
         version: 1,
         type: 'IMPORT',
-        source: {
-            type: 'FILE_UPLOAD',
-            format: {
-                format: 'CSV',
-                csv: {
-                    delimiter: ',',
-                    headerRow: true,
-                },
-            },
-            config: {
-                type: 'FILE_UPLOAD',
-            },
-        },
+        source: createCsvFileSource(),
         target: {
             entity: 'INVENTORY',
             operation: 'UPSERT',

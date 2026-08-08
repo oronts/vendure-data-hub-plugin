@@ -1,349 +1,239 @@
 # Event Subscriptions
 
-Subscribe to Data Hub domain events to build monitoring dashboards, send notifications, collect metrics, or integrate with external systems.
+Data Hub publishes process-local domain events for observability and extension
+code. External Vendure plugins should subscribe through Vendure's `EventBus`.
 
-## Overview
+## Delivery Contract
 
-Data Hub emits domain events at every stage of the pipeline lifecycle. These events are **fire-and-forget** -- subscribers cannot modify pipeline execution, but can react to events asynchronously.
+Each call to `DomainEventsService.publish()` does three things in the process
+that emitted the event:
 
-There are two ways to subscribe:
+1. publishes a `DataHubDomainEvent` to Vendure's `EventBus`;
+2. appends the event to an in-memory buffer containing at most 200 entries;
+3. emits the same event through the service's internal RxJS `events$` subject.
 
-1. **Vendure EventBus** (recommended for plugins) -- standard Vendure pattern, works with any `@VendurePlugin`
-2. **DomainEventsService.events$** (internal) -- RxJS Observable for advanced use cases within the Data Hub module
+These paths are observational and are not a durable message queue:
 
-## Available Events
+- API and worker processes have separate event streams and buffers;
+- restart clears the buffer;
+- `dataHubEvents(limit)` reads only the process serving that Admin API request;
+- the publisher does not wait for subscriber work before pipeline execution
+  continues;
+- a subscriber cannot change an already-published pipeline result.
 
-### Pipeline Lifecycle
+Use the Vendure `JobQueueService` or an external durable transport when the
+reaction must survive a crash. See Vendure's
+[EventBus reference](https://docs.vendure.io/current/core/reference/typescript-api/events/event-bus)
+and [JobQueueService reference](https://docs.vendure.io/current/core/reference/typescript-api/job-queue/job-queue-service).
 
-| Event | Payload | Description |
-|-------|---------|-------------|
-| `PipelineCreated` | `{ pipelineId, pipelineCode, createdAt }` | Pipeline definition created |
-| `PipelineUpdated` | `{ pipelineId, pipelineCode, updatedAt }` | Pipeline definition updated |
-| `PipelineDeleted` | `{ pipelineId, pipelineCode, deletedAt }` | Pipeline definition deleted |
-| `PipelinePublished` | `{ pipelineId, pipelineCode, publishedAt }` | Pipeline published (made active) |
-| `PipelineArchived` | `{ pipelineId, pipelineCode, archivedAt }` | Pipeline archived |
-| `PipelinePaused` | `{ pipelineId, runId, stepKey }` | Pipeline paused at a gate step |
+`DomainEventsService.events$` is an internal implementation surface. Although
+its TypeScript class is exported, the Data Hub Nest module does not export the
+provider for injection into another plugin. Use `EventBus` for a consumer
+plugin.
 
-### Run Lifecycle
+## Runtime Event Catalog
 
-| Event | Payload | Description |
-|-------|---------|-------------|
-| `PipelineRunStarted` | `{ runId, pipelineCode, pipelineId, startedAt }` | Pipeline run started |
-| `PipelineRunProgress` | `{ runId, pipelineCode, progressPercent, progressMessage, recordsProcessed, recordsFailed, currentStep }` | Run progress update |
-| `PipelineRunCompleted` | `{ runId, pipelineCode, finishedAt, recordsProcessed, recordsFailed, metrics }` | Run completed successfully |
-| `PipelineRunFailed` | `{ runId, pipelineCode, finishedAt, error }` | Run failed with error |
-| `PipelineRunCancelled` | `{ runId, pipelineCode }` | Run cancelled by user |
+The tables below list events emitted by current call sites. Optional values can
+be absent when the executing path does not have that context.
 
-### Step Lifecycle
+### Pipeline Definitions
 
-| Event | Payload | Description |
-|-------|---------|-------------|
-| `StepStarted` | `{ runId, stepKey, stepType }` | Step execution started |
-| `StepProgress` | `{ runId, stepKey, progressPercent }` | Step progress update [^1] |
-| `StepCompleted` | `{ runId, stepKey, stepType, recordsIn, recordsOut, durationMs }` | Step completed |
-| `StepFailed` | `{ runId, stepKey, stepType, error }` | Step failed with error |
+| Name | Payload |
+| --- | --- |
+| `PipelineCreated` | `{ pipelineId, pipelineCode, createdAt }` |
+| `PipelineUpdated` | `{ pipelineId, pipelineCode, updatedAt }` |
+| `PipelineDeleted` | `{ pipelineId, pipelineCode, deletedAt }` |
+| `PipelinePublished` | `{ pipelineId, pipelineCode, publishedAt }` |
+| `PipelineArchived` | `{ pipelineId, pipelineCode, archivedAt }` |
 
-### Record-Level Events
+### Runs
 
-| Event | Payload | Description |
-|-------|---------|-------------|
-| `RECORD_EXTRACTED` | `{ runId, stepKey }` | Record extracted from source |
-| `RECORD_TRANSFORMED` | `{ runId, stepKey }` | Record transformed |
-| `RECORD_VALIDATED` | `{ runId, stepKey }` | Record validated |
-| `RECORD_LOADED` | `{ runId, stepKey }` | Record loaded to target |
-| `RECORD_REJECTED` | `{ runId, stepKey, message }` | Record rejected (validation failure) |
-| `RECORD_DEAD_LETTERED` | `{ id, stepKey }` | Record sent to dead letter queue |
+| Name | Payload |
+| --- | --- |
+| `PipelineRunStarted` | `{ runId, pipelineCode, pipelineId?, startedAt }` |
+| `PipelineRunProgress` | `{ runId, pipelineCode, progressPercent, progressMessage?, recordsProcessed?, recordsFailed?, currentStep? }` |
+| `PipelineRunCompleted` | `{ runId, pipelineCode, finishedAt, recordsProcessed, recordsFailed, metrics }` |
+| `PipelineRunFailed` | `{ runId, pipelineCode, finishedAt, error }` |
+| `PipelineRunCancelled` | `{ pipelineId?, runId?, stepKey?, cancelledBy?, cancelledAt }` |
 
-### Gate Events
+Cancellation is emitted by both the run service and executor paths. `runId`,
+`stepKey`, `cancelledBy`, and the timestamp representation therefore depend on
+which path observed cancellation.
 
-| Event | Payload | Description |
-|-------|---------|-------------|
-| `GateApprovalRequested` | `{ runId, stepKey, pipelineCode, gateType }` | Gate step waiting for approval |
-| `GateApproved` | `{ runId, stepKey, pipelineCode, approvedBy }` | Gate approval granted |
-| `GateRejected` | `{ runId, stepKey, pipelineCode, rejectedBy, reason }` | Gate approval rejected |
-| `GateTimeout` | `{ runId, stepKey, pipelineCode, timeoutMs }` | Gate approval timed out |
+### Steps and Gates
 
-### Trigger Events
+| Name | Payload |
+| --- | --- |
+| `StepStarted` | `{ pipelineId?, runId?, stepKey, stepType, timestamp }` |
+| `StepCompleted` | `{ pipelineId?, runId?, stepKey, stepType, recordsProcessed?, timestamp }` |
+| `StepFailed` | `{ pipelineId?, runId?, stepKey, stepType, error, timestamp }` |
+| `GateApprovalRequested` | `{ pipelineId?, runId?, stepKey, timestamp }` |
+| `GateApproved` | `{ pipelineId?, runId?, stepKey, approver?, timestamp }` |
+| `GateRejected` | `{ pipelineId?, runId?, stepKey, reason?, timestamp }` |
+| `GateTimeout` | `{ pipelineId?, runId?, stepKey, timestamp }` |
 
-| Event | Payload | Description |
-|-------|---------|-------------|
-| `TriggerFired` | `{ pipelineCode, triggerType, triggerId }` | Trigger activated a pipeline run |
-| `ScheduleActivated` | `{ pipelineId, pipelineCode, scheduleCount, timestamp }` | Cron schedule activated |
-| `ScheduleDeactivated` | `{ pipelineId, pipelineCode, timestamp }` | Cron schedule deactivated |
+`GateTimeout` is emitted only after the atomic timeout approval has committed.
+An event-observer failure is logged but does not roll back or repeat approval.
 
-### Webhook Delivery
+### Trigger and Delivery Events
 
-| Event | Payload | Description |
-|-------|---------|-------------|
-| `WebhookDeliveryAttempted` | `{ deliveryId, webhookId, lastAttemptAt }` | Webhook delivery attempted [^2] |
-| `WebhookDeliverySucceeded` | `{ deliveryId, webhookId, lastAttemptAt, attempts, responseStatus }` | Webhook delivered successfully |
-| `WebhookDeliveryFailed` | `{ deliveryId, webhookId, lastAttemptAt, attempts, responseStatus, error }` | Webhook delivery failed |
-| `WebhookDeliveryRetrying` | `{ deliveryId, webhookId, lastAttemptAt, attempts }` | Webhook delivery being retried |
-| `WebhookDeliveryDeadLetter` | `{ deliveryId, webhookId, lastAttemptAt, attempts, error }` | Webhook delivery exhausted retries |
+| Name | Payload |
+| --- | --- |
+| `TriggerFired` | `{ pipelineId?, triggerType, details?, timestamp }` |
+| `ScheduleActivated` | `{ pipelineId?, pipelineCode, scheduleCount, timestamp }` |
+| `ScheduleDeactivated` | `{ pipelineId?, pipelineCode, reason?, timestamp }` |
+| `WebhookDeliverySucceeded` | `{ deliveryId, webhookId, lastAttemptAt, attempts?, responseStatus? }` |
+| `WebhookDeliveryFailed` | `{ deliveryId, webhookId, lastAttemptAt, attempts?, responseStatus?, error? }` |
+| `WebhookDeliveryRetrying` | `{ deliveryId, webhookId, lastAttemptAt, attempts?, responseStatus?, error? }` |
+| `WebhookDeliveryDeadLetter` | `{ deliveryId, webhookId, lastAttemptAt, attempts?, responseStatus?, error? }` |
 
-### Internal Pipeline Events
+An unsuccessful outgoing webhook attempt emits `WebhookDeliveryFailed` plus
+either `WebhookDeliveryRetrying` or `WebhookDeliveryDeadLetter`. A successful
+attempt emits `WebhookDeliverySucceeded`.
 
-| Event | Payload | Description |
-|-------|---------|-------------|
-| `PIPELINE_STARTED` | `{ pipelineId }` | Internal pipeline execution started |
-| `PIPELINE_COMPLETED` | `{ pipelineId, processed, succeeded, failed }` | Internal pipeline execution completed |
-| `PIPELINE_FAILED` | `{ pipelineId, processed, succeeded, failed }` | Internal pipeline execution failed |
+### Record and Executor Events
 
-### Log Events
+| Name | Payload |
+| --- | --- |
+| `RECORD_REJECTED` | `{ runId, stepKey, message }` |
+| `RECORD_DEAD_LETTERED` | `{ id, stepKey }` |
+| `RECORD_EXTRACTED` | `{ stepKey, count }` |
+| `RECORD_TRANSFORMED` | `{ stepKey, count, stage? }` |
+| `RECORD_VALIDATED` | `{ stepKey, count }` |
+| `RECORD_LOADED` | `{ stepKey, ok, fail }` |
+| `RECORD_EXPORTED` | `{ stepKey, ok, fail, pipelineId?, runId? }` |
+| `RECORD_INDEXED` | `{ stepKey, ok, fail, pipelineId?, runId? }` |
+| `FEED_GENERATED` | `{ stepKey, ok, fail, outputPath?, pipelineId?, runId? }` |
+| `PIPELINE_STARTED` | `{ pipelineId }` |
+| `PIPELINE_COMPLETED` | `{ pipelineId, processed, succeeded, failed }` |
+| `PIPELINE_FAILED` | `{ pipelineId, processed, succeeded, failed }` |
+| `PipelinePaused` | `{ pipelineId?, runId?, stepKey, pausedAt }` |
+| `PipelineStepSkipped` | `{ pipelineId?, stepKey, reason }` |
 
-| Event | Payload | Description |
-|-------|---------|-------------|
-| `LogAdded` | `{ id, timestamp, level, message, pipelineCode?, runId?, stepKey?, metadata? }` | Log entry added |
+The uppercase executor events are lower-level runtime signals. Prefer the run
+lifecycle events for external operational integration because their payloads
+include the run ID and pipeline code.
 
-### Custom Hook Events
+### Custom Events
 
-Hooks configured with `type: 'EMIT'` can publish arbitrary custom events:
+An `EMIT` hook publishes the configured event name with:
 
-| Event | Payload | Description |
-|-------|---------|-------------|
-| *(custom name)* | `{ stage, payload, record, runId }` | Custom event emitted from a hook action |
+```ts
+{
+    stage,
+    payload,
+    record,
+    runId,
+}
+```
 
-## Subscribing via Vendure EventBus
+A custom step result can also supply an event name and payload. Custom event
+schemas are owned by that hook or step implementation and are not validated as
+one of the built-in event payloads.
 
-This is the recommended approach for external plugins. The `DataHubDomainEvent` class wraps all Data Hub events and is published to the standard Vendure `EventBus`.
+### Unsupported Event Names
 
-```typescript
-import { Injectable, OnModuleInit } from '@nestjs/common';
-import { EventBus } from '@vendure/core';
+`StepProgress`, `WebhookDeliveryAttempted`, and `LogAdded` are not Data Hub
+runtime event names. Use `PipelineRunProgress`, the documented webhook delivery
+events, and persisted logs respectively.
+
+## Subscribe from a Vendure Plugin
+
+`DataHubDomainEvent` wraps every built-in and custom Data Hub event:
+
+```ts
+class DataHubDomainEvent<T = Record<string, unknown>> {
+    readonly createdAt: Date
+    readonly name: string
+    readonly payload?: T
+}
+```
+
+Register a normal Vendure provider and retain the RxJS subscription for clean
+shutdown:
+
+```ts
+import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+    EventBus,
+    Logger,
+    PluginCommonModule,
+    VendurePlugin,
+} from '@vendure/core';
+import { Subscription } from 'rxjs';
+import { filter } from 'rxjs/operators';
 import { DataHubDomainEvent } from '@oronts/vendure-data-hub-plugin';
 
 @Injectable()
-export class PipelineNotificationService implements OnModuleInit {
-    constructor(private eventBus: EventBus) {}
+class PipelineFailureSubscriber implements OnModuleInit, OnModuleDestroy {
+    private subscription?: Subscription;
 
-    onModuleInit() {
-        this.eventBus.ofType(DataHubDomainEvent).subscribe(event => {
-            switch (event.name) {
-                case 'PipelineRunCompleted':
-                    this.sendSlackNotification(
-                        `Pipeline "${event.payload?.pipelineCode}" completed. ` +
-                        `Processed: ${event.payload?.recordsProcessed}, ` +
-                        `Failed: ${event.payload?.recordsFailed}`,
-                    );
-                    break;
+    constructor(private readonly eventBus: EventBus) {}
 
-                case 'PipelineRunFailed':
-                    this.sendPagerDutyAlert(
-                        `Pipeline "${event.payload?.pipelineCode}" failed: ${event.payload?.error}`,
-                    );
-                    break;
-            }
-        });
+    onModuleInit(): void {
+        this.subscription = this.eventBus
+            .ofType(DataHubDomainEvent)
+            .pipe(filter(event => event.name === 'PipelineRunFailed'))
+            .subscribe(event => {
+                Logger.error(
+                    `Pipeline ${String(event.payload?.pipelineCode ?? 'unknown')} failed`,
+                    'PipelineFailureSubscriber',
+                );
+            });
     }
 
-    private sendSlackNotification(message: string): void {
-        // Your Slack integration
-    }
-
-    private sendPagerDutyAlert(message: string): void {
-        // Your PagerDuty integration
+    onModuleDestroy(): void {
+        this.subscription?.unsubscribe();
     }
 }
-```
-
-### DataHubDomainEvent Shape
-
-```typescript
-class DataHubDomainEvent<T = Record<string, unknown>> {
-    readonly createdAt: Date;
-    readonly name: string;        // Event name (e.g. 'PipelineRunCompleted')
-    readonly payload?: T;         // Event-specific payload
-}
-```
-
-### Filtering by Event Name
-
-```typescript
-import { filter } from 'rxjs/operators';
-
-this.eventBus.ofType(DataHubDomainEvent).pipe(
-    filter(event => event.name === 'PipelineRunCompleted'),
-).subscribe(event => {
-    // Only receives PipelineRunCompleted events
-});
-```
-
-### Full Plugin Example
-
-```typescript
-import { VendurePlugin, OnModuleInit, PluginCommonModule } from '@vendure/core';
-import { DataHubPlugin, DataHubDomainEvent } from '@oronts/vendure-data-hub-plugin';
 
 @VendurePlugin({
-    imports: [PluginCommonModule, DataHubPlugin],
-    providers: [MetricsCollectorService],
+    imports: [PluginCommonModule],
+    providers: [PipelineFailureSubscriber],
 })
-export class MetricsPlugin {}
-
-@Injectable()
-class MetricsCollectorService implements OnModuleInit {
-    constructor(private eventBus: EventBus) {}
-
-    onModuleInit() {
-        this.eventBus.ofType(DataHubDomainEvent).subscribe(event => {
-            // Track all pipeline events in your metrics system
-            this.recordMetric('datahub.event', {
-                name: event.name,
-                timestamp: event.createdAt.toISOString(),
-                ...event.payload,
-            });
-        });
-    }
-
-    private recordMetric(name: string, data: Record<string, unknown>): void {
-        // Your metrics system (Prometheus, Datadog, etc.)
-    }
-}
+export class PipelineFailurePlugin {}
 ```
 
-## Subscribing via DomainEventsService
+Configure `DataHubPlugin` and the consumer plugin independently in the host
+`VendureConfig`. Do not import `DataHubPlugin` into the consumer plugin's Nest
+module.
 
-For services running inside the Data Hub module, you can inject `DomainEventsService` directly and subscribe to the `events$` RxJS Observable.
+The subscriber callback should remain small. Enqueue notification, metrics, or
+audit work when it can block, retry, or fail independently.
 
-```typescript
-import { Injectable, OnModuleInit } from '@nestjs/common';
-import { DomainEventsService, DataHubEvent } from '@oronts/vendure-data-hub-plugin';
+Data Hub consumes a rejected `EventBus.publish()` promise so an observer failure
+does not create an unhandled rejection or prevent delivery to the local event
+buffer. This is failure isolation, not durability; subscribers still own retry
+and durable handoff for their work.
 
-@Injectable()
-export class AuditLogService implements OnModuleInit {
-    constructor(private domainEvents: DomainEventsService) {}
+## Inspect the In-Memory Buffer
 
-    onModuleInit() {
-        this.domainEvents.events$.subscribe((event: DataHubEvent) => {
-            this.writeAuditLog({
-                eventType: event.type,
-                payload: event.payload,
-                timestamp: event.createdAt,
-            });
-        });
-    }
+The permission-protected Admin API exposes recent buffered events:
 
-    private writeAuditLog(entry: Record<string, unknown>): void {
-        // Write to audit log table, file, or external service
+```graphql
+query RecentDataHubEvents {
+    dataHubEvents(limit: 50) {
+        name
+        createdAt
+        payload
     }
 }
 ```
 
-### DataHubEvent Shape (Observable)
+Results are newest first and capped by the 200-entry process-local buffer. This
+query is useful for recent diagnostics and the Hooks page; it is not an audit
+log or cluster-wide event history.
 
-The `events$` Observable emits `DataHubEvent` objects, which have a slightly different shape from `DataHubDomainEvent`:
+## Hooks Versus Events
 
-```typescript
-interface DataHubEvent<T = Record<string, unknown>> {
-    type: string;       // Event name (same as DataHubDomainEvent.name)
-    payload: T;         // Event-specific payload (always defined, defaults to {})
-    createdAt: Date;
-}
-```
+| Concern | Pipeline hooks | Domain events |
+| --- | --- | --- |
+| Configuration | Per pipeline definition | Subscriber code |
+| Timing | Inline with pipeline execution | Observer notification |
+| Can modify a record | Interceptor hooks can | No |
+| Failure isolation | Hook failure can affect the run | Event path is intended for observation |
+| Durability | Part of the active run only | Process-local unless subscriber enqueues durable work |
 
-### Querying the Event Buffer
-
-`DomainEventsService` maintains an in-memory buffer of recent events (up to 200 by default). You can query it directly:
-
-```typescript
-// Get the last 50 events (most recent first)
-const recentEvents = this.domainEvents.list(50);
-
-// Get the total event count in the buffer
-const count = this.domainEvents.count;
-```
-
-## Hooks vs Events
-
-Data Hub has two systems for reacting to pipeline activity. Choose the right one for your use case.
-
-| Feature | Hooks | Events |
-|---------|-------|--------|
-| **Scope** | Per-pipeline configuration | Global (all pipelines) |
-| **Execution** | Inline during pipeline execution | Asynchronous, fire-and-forget |
-| **Can modify records** | Yes (interceptor scripts) | No |
-| **Can halt pipeline** | Yes (throw error or filter all records) | No |
-| **Performance impact** | Adds latency to pipeline execution | Negligible |
-| **Configuration** | Pipeline definition `hooks` section | Code in `onModuleInit` |
-| **Stages** | 24 specific stages (BEFORE/AFTER for all 9 step types + 6 global) | All event types listed above |
-| **Use case** | Data validation, transformation, enrichment | Monitoring, notifications, analytics |
-
-### When to Use Hooks
-
-- Validate or filter records at specific pipeline stages
-- Enrich records with external data during processing
-- **Modify records before search indexing** (add computed fields, normalize text, build facets)
-- **Transform records before file export** (format currencies, dates, flatten nested data)
-- **Customize feed output** (add custom attributes, filter products per channel)
-- Send per-pipeline webhooks at specific stages
-- Trigger other pipelines from hook actions
-
-### When to Use Events
-
-- Send Slack/email notifications on pipeline completion or failure
-- Collect metrics and build monitoring dashboards
-- Write audit logs for compliance
-- Sync pipeline state to external project management tools
-- Trigger external workflows (CI/CD, data quality checks)
-
-## Practical Examples
-
-### Send Email on Pipeline Failure
-
-```typescript
-this.eventBus.ofType(DataHubDomainEvent).pipe(
-    filter(event => event.name === 'PipelineRunFailed'),
-).subscribe(event => {
-    this.emailService.send({
-        to: 'ops-team@example.com',
-        subject: `Data Hub Pipeline Failed: ${event.payload?.pipelineCode}`,
-        body: `Pipeline run ${event.payload?.runId} failed at ${event.createdAt.toISOString()}.\n` +
-              `Error: ${event.payload?.error}`,
-    });
-});
-```
-
-### Track Pipeline Duration Metrics
-
-```typescript
-private runStartTimes = new Map<string, Date>();
-
-onModuleInit() {
-    this.eventBus.ofType(DataHubDomainEvent).subscribe(event => {
-        if (event.name === 'PipelineRunStarted') {
-            this.runStartTimes.set(String(event.payload?.runId), event.createdAt);
-        }
-
-        if (event.name === 'PipelineRunCompleted' || event.name === 'PipelineRunFailed') {
-            const runId = String(event.payload?.runId);
-            const startTime = this.runStartTimes.get(runId);
-            if (startTime) {
-                const durationMs = event.createdAt.getTime() - startTime.getTime();
-                this.prometheus.histogram('datahub_pipeline_duration_ms', durationMs, {
-                    pipeline: String(event.payload?.pipelineCode),
-                    status: event.name === 'PipelineRunCompleted' ? 'success' : 'failure',
-                });
-                this.runStartTimes.delete(runId);
-            }
-        }
-    });
-}
-```
-
-### Webhook Delivery Monitoring
-
-```typescript
-this.eventBus.ofType(DataHubDomainEvent).pipe(
-    filter(event => event.name.startsWith('WebhookDelivery')),
-).subscribe(event => {
-    this.prometheus.counter('datahub_webhook_deliveries_total', 1, {
-        status: event.name.replace('WebhookDelivery', '').toLowerCase(),
-        webhookId: String(event.payload?.webhookId),
-    });
-});
-```
-
----
-
-[^1]: `StepProgress` is planned for a future release. The event type is defined but not yet emitted by the runtime.
-[^2]: `WebhookDeliveryAttempted` is defined but not currently emitted. It is redundant with `WebhookDeliverySucceeded`, `WebhookDeliveryFailed`, and `WebhookDeliveryRetrying`, which already cover all delivery attempt outcomes.
+Use hooks for pipeline-local interception or actions. Use domain events for
+monitoring and to hand work to a durable integration. Neither process-local
+event delivery nor the recent-event buffer replaces a database audit trail.

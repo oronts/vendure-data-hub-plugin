@@ -18,6 +18,8 @@ export {
     webhookNotifySchema,
     customAdaptersConfig,
     allCustomAdapters,
+    allCustomAdapterDefinitions,
+    customAdapterFactories,
     customOperatorsPipelineExample,
     customExtractorsPipelineExample,
     customLoadersPipelineExample,

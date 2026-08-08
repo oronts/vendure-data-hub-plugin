@@ -2,8 +2,6 @@
  * Trigger Types
  */
 
-import { JsonValue, JsonObject } from './json.types';
-
 /**
  * Types of triggers that can start a pipeline execution
  */
@@ -21,34 +19,31 @@ export type TriggerType =
 export type WebhookAuthType =
     | 'NONE'
     | 'BASIC'
-    | 'BEARER'
     | 'API_KEY'
-    | 'OAUTH2'
     | 'HMAC'
     | 'JWT';
 
 /** HMAC algorithm options for webhook signature verification */
-export type HmacAlgorithm = 'SHA256' | 'SHA512' | 'SHA1';
+export type HmacAlgorithm = 'SHA256' | 'SHA512';
 
-/**
- * Operators for trigger condition evaluation
- *
- * Values are lowercase/camelCase (serialized to DB, changing requires migration)
- */
-export type TriggerConditionOperator =
-    | 'eq' | 'ne' | 'gt' | 'gte' | 'lt' | 'lte' | 'contains' | 'in' | 'exists';
+/** Vendure 3.5 domain events supported by EVENT pipeline triggers. */
+export const VENDURE_EVENT_TYPES = [
+    'ProductEvent',
+    'ProductVariantEvent',
+    'ProductVariantPriceEvent',
+    'CollectionModificationEvent',
+    'AssetEvent',
+    'StockMovementEvent',
+    'OrderStateTransitionEvent',
+    'OrderPlacedEvent',
+    'RefundStateTransitionEvent',
+    'PaymentStateTransitionEvent',
+    'CustomerEvent',
+    'AccountRegistrationEvent',
+    'CustomerAddressEvent',
+] as const;
 
-/**
- * Condition for filtering trigger events
- */
-export interface TriggerCondition {
-    /** Field path to evaluate in the event payload */
-    field: string;
-    /** Comparison operator */
-    operator: TriggerConditionOperator;
-    /** Value to compare against */
-    value: JsonValue;
-}
+export type VendureEventType = (typeof VENDURE_EVENT_TYPES)[number];
 
 /**
  * Configuration for schedule-based triggers
@@ -60,24 +55,12 @@ export interface ScheduleTriggerConfig {
     intervalSec?: number;
     /** Timezone for cron expressions (e.g., "Europe/Berlin") */
     timezone?: string;
-    /** Start time for the schedule (ISO 8601) */
-    startTime?: string;
-    /** End time for the schedule (ISO 8601) */
-    endTime?: string;
-    /** Maximum concurrent executions allowed */
-    maxConcurrent?: number;
 }
 
 /**
  * Configuration for webhook-based triggers
  */
 export interface WebhookTriggerConfig {
-    /** Custom path for the webhook endpoint */
-    webhookPath?: string;
-    /** Unique code for the webhook (auto-generated from pipeline code) */
-    webhookCode?: string;
-    /** HTTP method to accept */
-    method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
     /** Authentication type for the webhook */
     authentication?: WebhookAuthType;
     /** Secret code for HMAC authentication */
@@ -90,12 +73,14 @@ export interface WebhookTriggerConfig {
     apiKeyPrefix?: string;
     /** Secret code for Basic auth credentials */
     basicSecretCode?: string;
-    /** Secret code for Bearer token */
-    bearerSecretCode?: string;
     /** Secret code for JWT verification */
     jwtSecretCode?: string;
     /** Header name for JWT token (default: authorization) */
     jwtHeaderName?: string;
+    /** Required JWT issuer claim */
+    jwtIssuer?: string;
+    /** Required JWT audience claim */
+    jwtAudience?: string;
     /** Header name for HMAC signature (default: x-datahub-signature) */
     hmacHeaderName?: string;
     /** HMAC algorithm for signature verification */
@@ -110,58 +95,35 @@ export interface WebhookTriggerConfig {
     idempotencyKeyHeader?: string;
     /** TTL for idempotency key in seconds */
     idempotencyTtlSec?: number;
-    /** Validate payload against schema */
-    validatePayload?: boolean;
-    /** JSON Schema for payload validation */
-    payloadSchema?: JsonObject;
 }
 
 /**
  * Configuration for event-based triggers (Vendure events)
  */
 export interface EventTriggerConfig {
-    /** Event type to listen for (e.g., "ProductEvent", "OrderStateTransitionEvent") */
-    event: string;
-    /** Entity type filter (optional) */
-    entityType?: string;
-    /** Conditions to filter events */
-    conditions?: TriggerCondition[];
-    /** Debounce time in milliseconds for rapid events */
-    debounceMs?: number;
-    /** Batch multiple events together */
-    batchSize?: number;
-    /** Maximum wait time for batch in milliseconds */
-    batchTimeoutMs?: number;
+    /** Exact Vendure event class name to subscribe to. */
+    event: VendureEventType;
 }
 
 /**
  * Queue type values for message triggers
  */
-export type QueueTypeValue = 'RABBITMQ_AMQP' | 'RABBITMQ' | 'SQS' | 'REDIS_STREAMS' | 'INTERNAL';
-
-/**
- * File watch events that can trigger a pipeline
- */
-export type FileWatchEvent = 'CREATE' | 'MODIFY' | 'DELETE';
+export type QueueTypeValue = 'RABBITMQ_AMQP' | 'SQS' | 'REDIS_STREAMS' | 'INTERNAL';
 
 /**
  * Configuration for file watch triggers
  */
 export interface FileWatchTriggerConfig {
-    /** Path to watch (local or remote) */
+    /** Remote directory or object-prefix path to poll */
     path: string;
     /** Glob pattern to filter files */
     pattern?: string;
     /** Watch subdirectories recursively */
     recursive?: boolean;
-    /** File events to watch for */
-    events?: FileWatchEvent[];
-    /** Debounce time in milliseconds */
-    debounceMs?: number;
     /** Minimum file age in seconds before processing */
     minFileAge?: number;
-    /** Connection code for remote file systems */
-    connectionCode?: string;
+    /** Connection code for the FTP, SFTP, or S3 source */
+    connectionCode: string;
     /** Polling interval for remote file systems */
     pollIntervalMs?: number;
 }
@@ -169,7 +131,7 @@ export interface FileWatchTriggerConfig {
 /**
  * Message acknowledgment mode
  */
-export type AckMode = 'AUTO' | 'MANUAL';
+export type AckMode = 'MANUAL';
 
 /**
  * Configuration for message queue triggers
@@ -177,32 +139,28 @@ export type AckMode = 'AUTO' | 'MANUAL';
 export interface MessageTriggerConfig {
     /** Type of message queue */
     queueType: QueueTypeValue;
-    /** Connection code for queue credentials */
-    connectionCode: string;
+    /** Connection code for queue credentials; omitted only for INTERNAL queues */
+    connectionCode?: string;
     /** Queue name to consume from */
     queueName: string;
-    /** Consumer group/tag for identification */
+    /** Redis Streams consumer group; rejected for other queue types */
     consumerGroup?: string;
-    /** Number of messages to process at once */
+    /** Number of messages requested per poll (1-100) */
     batchSize?: number;
     /** Message acknowledgment mode */
     ackMode?: AckMode;
-    /** Maximum retries before dead-lettering */
+    /** Retry attempts after the initial pipeline-run enqueue failure (maximum 10) */
     maxRetries?: number;
     /** Dead-letter queue name */
     deadLetterQueue?: string;
-    /** Polling interval in milliseconds */
+    /** Polling interval in milliseconds (1000-300000) */
     pollIntervalMs?: number;
-    /** Parallel message processing limit */
+    /** Parallel message processing limit (1-32) */
     concurrency?: number;
     /** Start consuming when pipeline is published */
     autoStart?: boolean;
-    /** Number of messages to prefetch */
+    /** Number of messages to prefetch (1-1000) */
     prefetch?: number;
-    /** Additional binding arguments for RabbitMQ */
-    bindingArgs?: Record<string, JsonValue>;
-    /** Expression to filter messages before processing */
-    filterExpression?: string;
 }
 
 /**
@@ -213,24 +171,12 @@ export interface TriggerConfig {
     type: TriggerType;
     /** Whether the trigger is enabled */
     enabled?: boolean;
-    /** Schedule trigger configuration */
-    schedule?: ScheduleTriggerConfig;
-    /** Webhook trigger configuration */
-    webhook?: WebhookTriggerConfig;
-    /** Event trigger configuration */
-    event?: EventTriggerConfig;
+    /** Exact Vendure event class name (event triggers) */
+    event?: VendureEventType;
     /** Message trigger configuration */
     message?: MessageTriggerConfig;
     /** File watch trigger configuration */
     fileWatch?: FileWatchTriggerConfig;
-    /** Conditions to filter trigger events */
-    conditions?: TriggerCondition[];
-    /** Maximum retries on failure */
-    maxRetries?: number;
-    /** Delay between retries in milliseconds */
-    retryDelayMs?: number;
-    /** Timeout for trigger execution in milliseconds */
-    timeoutMs?: number;
 }
 
 /**
@@ -246,16 +192,8 @@ export interface PipelineTrigger extends TriggerConfig {
     timezone?: string;
     /** Interval in seconds (schedule triggers) */
     intervalSec?: number;
-    /** Webhook path (webhook triggers) */
-    webhookPath?: string;
-    /** Webhook code (webhook triggers) */
-    webhookCode?: string;
-    /** HTTP method (webhook triggers) */
-    method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
     /** Authentication type (webhook triggers) */
     authentication?: WebhookAuthType;
-    /** Bearer token secret code (webhook triggers) */
-    bearerSecretCode?: string;
     /** Secret code for auth (webhook triggers) */
     secretCode?: string;
     /** API key secret code (webhook triggers) */
@@ -270,12 +208,22 @@ export interface PipelineTrigger extends TriggerConfig {
     jwtSecretCode?: string;
     /** JWT header name (webhook triggers) */
     jwtHeaderName?: string;
+    /** Required JWT issuer claim (webhook triggers) */
+    jwtIssuer?: string;
+    /** Required JWT audience claim (webhook triggers) */
+    jwtAudience?: string;
     /** HMAC header name (webhook triggers) */
     hmacHeaderName?: string;
     /** HMAC algorithm (webhook triggers) */
     hmacAlgorithm?: HmacAlgorithm;
     /** Rate limit (webhook triggers) */
     rateLimit?: number;
+    /** Rate-limit window in seconds (webhook triggers) */
+    rateLimitWindow?: number;
+    /** Custom idempotency header name (webhook triggers) */
+    idempotencyKeyHeader?: string;
+    /** Idempotency retention in seconds (webhook triggers) */
+    idempotencyTtlSec?: number;
     /** Require idempotency key (webhook triggers) */
     requireIdempotencyKey?: boolean;
 }

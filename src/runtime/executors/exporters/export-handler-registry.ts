@@ -13,6 +13,7 @@ import { AdapterDefinition } from '../../../sdk/types';
 import {
     HTTP_METHOD_EXPORT_OPTIONS,
     CSV_DELIMITER_OPTIONS,
+    CSV_FORMULA_MODE_OPTIONS,
     JSON_EXPORT_FORMAT_OPTIONS,
     LOCALIZATION_SCHEMA_FIELDS,
 } from '../../../constants/adapter-schema-options';
@@ -21,6 +22,65 @@ import { csvExportHandler } from './csv-export.handler';
 import { jsonExportHandler } from './json-export.handler';
 import { xmlExportHandler } from './xml-export.handler';
 import { httpExportHandler } from './http-export.handler';
+import { FIELD_LIMITS, VALIDATION_PATTERNS } from '../../../constants/validation';
+import { BATCH, HTTP } from '../../../../shared/constants';
+
+const HTTP_EXPORT_COMMON_FIELDS = [
+    {
+        key: 'batchSize',
+        label: 'Batch size',
+        type: 'number',
+        defaultValue: BATCH.BULK_SIZE,
+        validation: { min: FIELD_LIMITS.BATCH_SIZE_MIN, max: FIELD_LIMITS.BATCH_SIZE_MAX },
+        description: `Records per request (${FIELD_LIMITS.BATCH_SIZE_MIN}-${FIELD_LIMITS.BATCH_SIZE_MAX}).`,
+    },
+    {
+        key: 'timeoutMs',
+        label: 'Timeout (ms)',
+        type: 'number',
+        defaultValue: HTTP.TIMEOUT_MS,
+        validation: { min: 1, max: HTTP.MAX_TIMEOUT_MS },
+        description: `Request timeout in milliseconds (1-${HTTP.MAX_TIMEOUT_MS}).`,
+    },
+    {
+        key: 'retryCount',
+        label: 'Retry count',
+        type: 'number',
+        defaultValue: 0,
+        validation: { min: 0, max: HTTP.MAX_RETRY_ATTEMPTS },
+        description: `Retries after the first attempt (0-${HTTP.MAX_RETRY_ATTEMPTS}).`,
+    },
+    {
+        key: 'retryDelayMs',
+        label: 'Initial retry delay (ms)',
+        type: 'number',
+        defaultValue: 0,
+        validation: { min: 0, max: HTTP.MAX_TIMEOUT_MS },
+    },
+    {
+        key: 'maxRetryDelayMs',
+        label: 'Maximum retry delay (ms)',
+        type: 'number',
+        defaultValue: HTTP.RETRY_MAX_DELAY_MS,
+        validation: { min: 0, max: HTTP.MAX_TIMEOUT_MS },
+    },
+    {
+        key: 'backoffMultiplier',
+        label: 'Backoff multiplier',
+        type: 'number',
+        defaultValue: HTTP.BACKOFF_MULTIPLIER,
+        validation: { min: 1, max: HTTP.MAX_BACKOFF_MULTIPLIER },
+    },
+    { key: 'bearerTokenSecretCode', label: 'Bearer token secret', type: 'secret' },
+    {
+        key: 'basicSecretCode',
+        label: 'Basic authentication secret',
+        type: 'secret',
+        description: 'Secret containing username:password.',
+    },
+    { key: 'headers', label: 'Static headers', type: 'json', description: 'Non-sensitive headers only.' },
+    { key: 'headerSecretCodes', label: 'Secret-backed headers', type: 'json', description: 'Map header names to Secret Codes.' },
+] as const;
 
 /**
  * Registry entry carrying both the handler function and its adapter definition.
@@ -48,10 +108,11 @@ export const EXPORT_HANDLER_REGISTRY = new Map<string, ExportRegistryEntry>([
             formatType: 'CSV',
             schema: {
                 fields: [
-                    { key: 'path', label: 'Output directory', type: 'string', required: true, description: 'Directory path for output (e.g., ./exports)' },
+                    { key: 'path', label: 'Direct local output directory', type: 'string', defaultValue: '.', description: 'Used only when destinationType is omitted' },
                     { key: 'filenamePattern', label: 'Filename pattern', type: 'string', description: 'Filename with placeholders: ${date:YYYY-MM-DD}, ${timestamp}, ${uuid}' },
                     { key: 'delimiter', label: 'Delimiter', type: 'select', options: CSV_DELIMITER_OPTIONS, group: 'format-options' },
                     { key: 'includeHeader', label: 'Include header row', type: 'boolean', group: 'format-options' },
+                    { key: 'formulaMode', label: 'Formula handling', type: 'select', options: CSV_FORMULA_MODE_OPTIONS, defaultValue: 'SPREADSHEET_SAFE', description: 'Spreadsheet-safe prefixes formula-like cells. Preserve values for machine-to-machine CSV.', group: 'format-options' },
                     ...LOCALIZATION_SCHEMA_FIELDS,
                 ],
             },
@@ -70,7 +131,7 @@ export const EXPORT_HANDLER_REGISTRY = new Map<string, ExportRegistryEntry>([
             formatType: 'JSON',
             schema: {
                 fields: [
-                    { key: 'path', label: 'Output directory', type: 'string', required: true, description: 'Directory path for output' },
+                    { key: 'path', label: 'Direct local output directory', type: 'string', defaultValue: '.', description: 'Used only when destinationType is omitted' },
                     { key: 'filenamePattern', label: 'Filename pattern', type: 'string', description: 'Filename with placeholders: ${date:YYYY-MM-DD}, ${timestamp}, ${uuid}' },
                     { key: 'format', label: 'Format', type: 'select', options: JSON_EXPORT_FORMAT_OPTIONS, group: 'format-options' },
                     { key: 'pretty', label: 'Pretty print', type: 'boolean', group: 'format-options' },
@@ -92,10 +153,10 @@ export const EXPORT_HANDLER_REGISTRY = new Map<string, ExportRegistryEntry>([
             formatType: 'XML',
             schema: {
                 fields: [
-                    { key: 'path', label: 'Output directory', type: 'string', required: true, description: 'Directory path for output' },
+                    { key: 'path', label: 'Direct local output directory', type: 'string', defaultValue: '.', description: 'Used only when destinationType is omitted' },
                     { key: 'filenamePattern', label: 'Filename pattern', type: 'string', description: 'Filename with placeholders: ${date:YYYY-MM-DD}, ${timestamp}, ${uuid}' },
-                    { key: 'rootElement', label: 'Root element', type: 'string', defaultValue: 'feed', description: 'e.g., products', group: 'format-options' },
-                    { key: 'itemElement', label: 'Item element', type: 'string', defaultValue: 'item', description: 'e.g., product', group: 'format-options' },
+                    { key: 'rootElement', label: 'Root element', type: 'string', defaultValue: 'feed', description: 'e.g., products', group: 'format-options', validation: { pattern: VALIDATION_PATTERNS.XML_ELEMENT_NAME.source, patternMessage: 'Enter a valid XML element name' } },
+                    { key: 'itemElement', label: 'Item element', type: 'string', defaultValue: 'item', description: 'e.g., product', group: 'format-options', validation: { pattern: VALIDATION_PATTERNS.XML_ELEMENT_NAME.source, patternMessage: 'Enter a valid XML element name' } },
                     { key: 'declaration', label: 'Include XML declaration', type: 'boolean', group: 'format-options' },
                     ...LOCALIZATION_SCHEMA_FIELDS,
                 ],
@@ -116,9 +177,7 @@ export const EXPORT_HANDLER_REGISTRY = new Map<string, ExportRegistryEntry>([
                 fields: [
                     { key: 'url', label: 'Endpoint URL', type: 'string', required: true },
                     { key: 'method', label: 'HTTP Method', type: 'select', options: HTTP_METHOD_EXPORT_OPTIONS },
-                    { key: 'batchSize', label: 'Batch size', type: 'number', description: 'Records per batch request' },
-                    { key: 'bearerTokenSecretCode', label: 'Bearer token secret', type: 'string' },
-                    { key: 'retryCount', label: 'Retry count', type: 'number' },
+                    ...HTTP_EXPORT_COMMON_FIELDS,
                     ...LOCALIZATION_SCHEMA_FIELDS,
                 ],
             },
@@ -137,9 +196,8 @@ export const EXPORT_HANDLER_REGISTRY = new Map<string, ExportRegistryEntry>([
             schema: {
                 fields: [
                     { key: 'url', label: 'Webhook URL', type: 'string', required: true },
-                    { key: 'headers', label: 'Custom headers', type: 'json' },
-                    { key: 'retryCount', label: 'Retry count', type: 'number' },
-                    { key: 'timeoutMs', label: 'Timeout (ms)', type: 'number' },
+                    { key: 'method', label: 'HTTP Method', type: 'select', options: HTTP_METHOD_EXPORT_OPTIONS },
+                    ...HTTP_EXPORT_COMMON_FIELDS,
                     ...LOCALIZATION_SCHEMA_FIELDS,
                 ],
             },

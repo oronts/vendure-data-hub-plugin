@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { useLingui } from '@lingui/react/macro';
 import {
     Button,
     Badge,
@@ -15,12 +16,14 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '../../utils';
-import { UI_DEFAULTS, TEXTAREA_HEIGHTS, TOAST_ADAPTER } from '../../constants';
+import { UI_DEFAULTS, TEXTAREA_HEIGHTS } from '../../constants';
 import { resolveIconName } from '../../utils/icon-resolver';
 import { guessExampleValue } from './AdapterConstants';
 import type { DataHubAdapter } from '../../types';
+import { AdapterLifecycleBadges } from './AdapterLifecycleBadges';
 
 export function AdapterDetail({ adapter }: Readonly<{ adapter: DataHubAdapter }>) {
+    const { t } = useLingui();
     const [copied, setCopied] = React.useState(false);
     const copyTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
     const Icon = resolveIconName(adapter.icon);
@@ -48,13 +51,13 @@ export function AdapterDetail({ adapter }: Readonly<{ adapter: DataHubAdapter }>
         try {
             await navigator.clipboard.writeText(exampleConfig);
             setCopied(true);
-            toast.success(TOAST_ADAPTER.CONFIG_COPIED);
+            toast.success(t`Configuration copied to clipboard`);
             if (copyTimeoutRef.current) {
                 clearTimeout(copyTimeoutRef.current);
             }
             copyTimeoutRef.current = setTimeout(() => setCopied(false), UI_DEFAULTS.COPY_FEEDBACK_TIMEOUT_MS);
         } catch {
-            toast.error(TOAST_ADAPTER.COPY_ERROR);
+            toast.error(t`Failed to copy`);
         }
     };
 
@@ -63,6 +66,15 @@ export function AdapterDetail({ adapter }: Readonly<{ adapter: DataHubAdapter }>
 
     return (
         <div className="p-5 space-y-6">
+            <AdapterLifecycleBadges
+                version={adapter.version}
+                deprecated={adapter.deprecated}
+            />
+            {adapter.deprecated && (
+                <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+                    {adapter.deprecatedMessage}
+                </div>
+            )}
             {/* Quick info cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div className="flex items-center gap-3 p-3 rounded-xl bg-muted/30 border">
@@ -70,7 +82,9 @@ export function AdapterDetail({ adapter }: Readonly<{ adapter: DataHubAdapter }>
                         {Icon ? <Icon className="w-4 h-4" /> : <Puzzle className="w-4 h-4" />}
                     </div>
                     <div>
-                        <div className="text-[11px] text-muted-foreground uppercase tracking-wider">Type</div>
+                        <div className="text-[11px] text-muted-foreground uppercase tracking-wider">
+                            {t`Type`}
+                        </div>
                         <div className="font-medium text-sm">{adapter.type}</div>
                     </div>
                 </div>
@@ -82,8 +96,12 @@ export function AdapterDetail({ adapter }: Readonly<{ adapter: DataHubAdapter }>
                         <Zap className="w-4 h-4" />
                     </div>
                     <div>
-                        <div className="text-[11px] text-muted-foreground uppercase tracking-wider">Pure</div>
-                        <div className="font-medium text-sm">{adapter.pure ? 'Yes' : 'No'}</div>
+                        <div className="text-[11px] text-muted-foreground uppercase tracking-wider">
+                            {t`Pure`}
+                        </div>
+                        <div className="font-medium text-sm">
+                            {adapter.pure ? t`Yes` : t`No`}
+                        </div>
                     </div>
                 </div>
                 <div className="flex items-center gap-3 p-3 rounded-xl bg-muted/30 border">
@@ -91,9 +109,13 @@ export function AdapterDetail({ adapter }: Readonly<{ adapter: DataHubAdapter }>
                         <Link2 className="w-4 h-4" />
                     </div>
                     <div>
-                        <div className="text-[11px] text-muted-foreground uppercase tracking-wider">Deps</div>
+                        <div className="text-[11px] text-muted-foreground uppercase tracking-wider">
+                            {t`Dependencies`}
+                        </div>
                         <div className="font-medium text-sm">
-                            {adapter.requires?.length ? adapter.requires.join(', ') : 'None'}
+                            {adapter.requires?.length
+                                ? adapter.requires.join(', ')
+                                : t`None`}
                         </div>
                     </div>
                 </div>
@@ -103,19 +125,20 @@ export function AdapterDetail({ adapter }: Readonly<{ adapter: DataHubAdapter }>
             <div>
                 <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
                     <Settings2 className="w-4 h-4 text-muted-foreground" />
-                    Configuration Fields
+                    {t`Configuration fields`}
                     <Badge variant="secondary" className="text-xs ml-auto">
-                        {adapter.schema.fields.length} total
+                        {t`${adapter.schema.fields.length} total`}
                     </Badge>
                 </h4>
-                <div className="border rounded-xl overflow-hidden">
+                <div className="border rounded-xl overflow-x-auto">
                     <table className="w-full text-sm">
+                        <caption className="sr-only">{t`Adapter configuration fields`}</caption>
                         <thead>
                             <tr className="bg-muted/50">
-                                <th className="text-left px-3 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">Field</th>
-                                <th className="text-left px-3 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">Type</th>
-                                <th className="text-left px-3 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
-                                <th className="text-left px-3 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">Description</th>
+                                <th scope="col" className="text-left px-3 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">{t`Field`}</th>
+                                <th scope="col" className="text-left px-3 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">{t`Type`}</th>
+                                <th scope="col" className="text-left px-3 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">{t`Status`}</th>
+                                <th scope="col" className="text-left px-3 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">{t`Description`}</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -136,7 +159,7 @@ export function AdapterDetail({ adapter }: Readonly<{ adapter: DataHubAdapter }>
                                     </td>
                                     <td className="px-3 py-2.5">
                                         <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
-                                            Required
+                                            {t`Required`}
                                         </Badge>
                                     </td>
                                     <td className="px-3 py-2.5 text-muted-foreground text-xs">
@@ -161,7 +184,7 @@ export function AdapterDetail({ adapter }: Readonly<{ adapter: DataHubAdapter }>
                                     </td>
                                     <td className="px-3 py-2.5">
                                         <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                                            Optional
+                                            {t`Optional`}
                                         </Badge>
                                     </td>
                                     <td className="px-3 py-2.5 text-muted-foreground text-xs">
@@ -172,7 +195,7 @@ export function AdapterDetail({ adapter }: Readonly<{ adapter: DataHubAdapter }>
                             {adapter.schema.fields.length === 0 && (
                                 <tr>
                                     <td colSpan={4} className="px-3 py-6 text-center text-muted-foreground text-sm">
-                                        No configuration fields
+                                        {t`No configuration fields`}
                                     </td>
                                 </tr>
                             )}
@@ -186,7 +209,7 @@ export function AdapterDetail({ adapter }: Readonly<{ adapter: DataHubAdapter }>
                 <div className="flex items-center justify-between mb-3">
                     <h4 className="text-sm font-medium flex items-center gap-2">
                         <Code2 className="w-4 h-4 text-muted-foreground" />
-                        Example Configuration
+                        {t`Example configuration`}
                     </h4>
                     <Button variant="outline" size="sm" onClick={copyConfig} data-testid="datahub-adapter-config-copy-button">
                         {copied ? (
@@ -194,7 +217,7 @@ export function AdapterDetail({ adapter }: Readonly<{ adapter: DataHubAdapter }>
                         ) : (
                             <Copy className="w-4 h-4 mr-1" />
                         )}
-                        {copied ? 'Copied!' : 'Copy'}
+                        {copied ? t`Copied!` : t`Copy`}
                     </Button>
                 </div>
                 <Textarea

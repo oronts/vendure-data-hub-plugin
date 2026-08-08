@@ -62,11 +62,13 @@ Extract steps pull data from sources.
 1. Drag an **Extract** node
 2. Select an adapter:
    - **HTTP API** (`httpApi`) - REST API endpoints with pagination, authentication, and retry support
-   - **File** (`file`) - Parse CSV, JSON, XML, XLSX, NDJSON, TSV files
+   - **CSV / JSON / XML / XLSX** (`csv`, `json`, `xml`, `xlsx`) - Parse Data Hub uploads or the inline fields supported by the selected format
    - **GraphQL** (`graphql`) - External GraphQL endpoints
    - **Vendure Query** (`vendureQuery`) - Vendure entity data
 3. Configure the adapter settings
-4. Connect to the trigger
+4. Optionally select an immutable **Registry schema** version to validate
+   extracted records
+5. Connect to the trigger
 
 ### Transform Step
 
@@ -122,6 +124,13 @@ Click a step to open its configuration panel:
 
 Each adapter has specific settings. See [Reference](../reference/README.md) for details.
 
+### Registry Schema
+
+Extract and Validate steps can bind to a named version from **Data Hub >
+Schemas**. A strict or backward-compatible mismatch rejects the record;
+permissive mode records a warning and accepts it. Step tests and dry runs use the
+same binding as live execution. See [Schema Registry](./schemas.md).
+
 ## Branching with Route
 
 Route steps split data flow based on conditions:
@@ -154,7 +163,15 @@ Fix all issues before saving.
 
 1. Click **Save** in the toolbar
 2. The pipeline is saved to the database
-3. Code-first pipelines cannot be edited via UI (read-only)
+3. Code-first pipelines show a **Code-first** badge and cannot be edited,
+   archived, reactivated, imported into, or restored through the UI or API
+4. Review, publish, run, export, history, and comparison remain available for a
+   code-first pipeline
+
+Removing its deployed definition releases the persisted pipeline to Dashboard
+ownership on the next API startup without deleting revisions or run history.
+Review its schedules, triggers, references, and current published state before
+editing, enabling, or deleting the released pipeline.
 
 ## Running Pipelines
 
@@ -176,10 +193,18 @@ Some pipelines accept input parameters:
 
 | State | Description |
 |-------|-------------|
-| Draft | Not yet saved or validated |
-| Enabled | Ready to run, schedules active |
-| Disabled | Cannot be run, schedules inactive |
-| Running | Currently executing |
+| `DRAFT` | Editable working definition; runs the previous published revision when one exists and the pipeline is enabled |
+| `REVIEW` | Submitted working definition; runs the previous published revision when one exists and the pipeline is enabled |
+| `PUBLISHED` | Working definition matches the selected published revision |
+| `ARCHIVED` | Retired definition; cannot run |
+
+Lifecycle status and the `enabled` switch are separate. A pipeline must be both
+enabled and have a selected published revision before it can run, and it must
+not be archived. Draft and review edits never enter production execution until
+they are published. Pipeline codes become immutable after the first
+publication so webhook URLs and cross-pipeline dependencies remain stable.
+Execution state such as `RUNNING`, `COMPLETED`, or `FAILED` belongs to an
+individual pipeline run, not the pipeline.
 
 ## Duplicating Pipelines
 
@@ -251,7 +276,7 @@ Interceptors run JavaScript code that can modify the records array:
         code: `
             return records.map(r => ({
                 ...r,
-                extractedAt: new Date().toISOString(),
+                extractedAtEpochMs: Date.now(),
                 source: 'supplier-api',
             }));
         `,
@@ -298,7 +323,7 @@ Interceptors run JavaScript code that can modify the records array:
             return records.map(r => ({
                 ...r,
                 price: (r.price / 100).toFixed(2),
-                createdAt: new Date(r.createdAt).toISOString(),
+                createdAtEpochMs: Date.parse(r.createdAt),
             }));
         `,
     }],
@@ -306,10 +331,15 @@ Interceptors run JavaScript code that can modify the records array:
 ```
 
 **Available in interceptor code:**
-- `records` - The current records array
-- `context` - Hook context with `pipelineId`, `runId`, `stage`
-- Standard JavaScript: `Array`, `Object`, `String`, `Number`, `Date`, `JSON`, `Math`
-- `console.log/warn/error` - Logged to pipeline logs
+- `records` - A deep-cloned current record array
+- `context` - A deep-cloned hook context with `pipelineId`, `runId`, `stage`, and `records`
+- Restricted wrappers for selected `Array`, `Object`, `String`, `Number`, `JSON`, and `Math` members
+- `Date.now()` and `Date.parse()`; `Date` is not available as a constructor
+- URI encoding helpers, `isNaN`, `isFinite`, and sandboxed `console.log/warn/error`
+
+Network access, module loading, `new Date()`, promises, timers, and async syntax
+are not supported. Use a registered `SCRIPT` hook for trusted TypeScript logic
+that needs host APIs.
 
 #### Script Hooks
 
@@ -418,7 +448,7 @@ Send HTTP notifications to external systems:
     PIPELINE_FAILED: [{
         type: 'WEBHOOK',
         url: 'https://pagerduty.example.com/alert',
-        secret: 'webhook-signing-secret',  // HMAC signature
+        secretCode: 'webhook-signing-secret',  // HMAC signing Secret Code
         signatureHeader: 'X-Signature',
         retryConfig: {
             maxAttempts: 5,
@@ -451,19 +481,30 @@ Start another pipeline with the current records:
     AFTER_LOAD: [{
         type: 'TRIGGER_PIPELINE',
         pipelineCode: 'reindex-search',
+        triggerKey: 'hook',
     }],
 })
 ```
 
+The action creates and queues a pending child run asynchronously. The parent
+does not wait for child completion or inherit the child outcome. A
+`failOnError` setting covers only immediate child creation and queue-request
+failure.
+
 ### Testing Hooks
 
-Test hooks without running the full pipeline:
+Test configured observation actions without running the full pipeline:
 
 1. Go to **Data Hub > Hooks**
 2. Select a pipeline
 3. Choose a hook stage
 4. Click **Test**
-5. View the result and any modifications
+5. Review the executed, skipped, and failed action counts and any per-action errors
+
+The Hooks page is an observability and side-effect test surface. `WEBHOOK`,
+`EMIT`, `TRIGGER_PIPELINE`, and `LOG` actions execute. `INTERCEPTOR` and
+`SCRIPT` actions require the real record-processing lifecycle and are reported
+as skipped; use a pipeline dry run to inspect their record modifications.
 
 ### Hook Best Practices
 
@@ -494,9 +535,21 @@ The Data Hub provides guided wizards for creating import and export pipelines:
 Wizards offer pre-configured templates for common scenarios:
 
 **Import Templates:** REST API Sync, JSON Import, Magento CSV, XML Feed, ERP Inventory, CRM Customer Sync
-**Export Templates:** Google Shopping, Meta Catalog, Amazon Feed, Product CSV/JSON, Order Analytics, Customer GDPR, Inventory Report
+**Export Templates:** Product XML/CSV/JSON, Order Analytics/CSV, Customer GDPR/CSV
+
+Marketplace feeds are configured from **Data Hub > Feeds**, where Google, Meta,
+and Amazon formats use their dedicated generators and catalog data contract.
 
 Custom templates registered via plugin options or connectors appear alongside built-in templates.
+
+---
+
+## Version History
+
+Open **Version history** from a pipeline detail page to inspect revisions, run
+counts, and the most recent run outcome for each published revision. The dialog
+shows the latest 20 revisions. The Admin API accepts an integer limit from 1 to
+500 and defaults to 50.
 
 ---
 
@@ -511,7 +564,11 @@ Test pipelines without persisting changes:
    - **Step Details** - Timing and record flow per step
 3. Fix any issues before running the real pipeline
 
-Dry run executes the full pipeline logic but doesn't commit changes to the database.
+Dry run executes extract, transform, validate, route, and loader simulation
+paths without loader writes. ENRICH, EXPORT, FEED, SINK, and GATE side effects
+are deliberately not executed; the result marks each such step as skipped and
+preserves its input records. Use a controlled staging run to verify external
+delivery, credentials, approval behavior, and production write constraints.
 
 ---
 

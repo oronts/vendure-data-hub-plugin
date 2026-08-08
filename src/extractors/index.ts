@@ -32,14 +32,9 @@ export { S3ExtractorConfig } from './s3';
 export { FtpExtractor } from './ftp';
 export { FtpExtractorConfig } from './ftp';
 
-export { FileExtractor } from './file';
-export { FileExtractorConfig } from './file';
 
 export { VendureQueryExtractor } from './vendure-query';
 export { VendureQueryExtractorConfig, VendureQueryFilter } from './vendure-query';
-
-export { WebhookExtractor } from './webhook';
-export { WebhookExtractorConfig } from './webhook';
 
 export { GraphQLExtractor } from './graphql';
 export { GraphQLExtractorConfig, GraphQLPaginationConfig } from './graphql';

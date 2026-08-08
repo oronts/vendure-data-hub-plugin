@@ -1,10 +1,12 @@
 import { RequestContextService } from '@vendure/core';
 import { ConnectionService } from '../config/connection.service';
 import { DistributedLockService } from '../runtime/distributed-lock.service';
-import { DISTRIBUTED_LOCK } from '../../constants/index';
+import { AckMode, DISTRIBUTED_LOCK, QUEUE } from '../../constants/index';
 import { DataHubLogger } from '../logger';
 import { getErrorMessage, toErrorOrUndefined } from '../../utils/error.utils';
 import { MessageConsumerConfig, getConsumerKey } from './consumer-discovery';
+import { sleep } from '../../utils/retry.utils';
+import { queueAdapterRegistry } from '../../sdk/adapters/queue';
 
 /**
  * Active consumer state
@@ -19,10 +21,32 @@ export interface ActiveConsumer {
     startedAt: Date;
     /** Number of messages currently being processed */
     inFlightCount: number;
+    /** Number of broker poll operations awaiting a response */
+    activePollCount?: number;
     /** Lock token for distributed lock (if using distributed locks) */
     lockToken?: string;
     /** Timer for refreshing the lock */
     lockRefreshTimer?: NodeJS.Timeout;
+}
+
+export function assertConsumerRuntimeConfig(config: MessageConsumerConfig): void {
+    const queueType = config.queueType.toLowerCase().replace(/_/g, '-');
+
+    if (config.ackMode !== AckMode.MANUAL) {
+        throw new Error(
+            'Message-triggered pipelines require MANUAL acknowledgment so delivery follows the terminal run outcome',
+        );
+    }
+
+    if (config.consumerGroup && queueType !== 'redis-streams') {
+        throw new Error('consumerGroup is supported only for REDIS_STREAMS message triggers');
+    }
+
+    if (queueType === 'rabbitmq') {
+        throw new Error(
+            'RabbitMQ HTTP cannot provide terminal-run acknowledgment; use RABBITMQ_AMQP',
+        );
+    }
 }
 
 /**
@@ -50,6 +74,10 @@ export class ConsumerLifecycle {
     ): Promise<ActiveConsumer | null> {
         const key = getConsumerKey(config.pipelineCode, config.triggerKey);
 
+        if (isDestroying()) {
+            return null;
+        }
+
         if (consumers.has(key)) {
             this.logger.debug(`Consumer already running`, {
                 pipelineCode: config.pipelineCode,
@@ -57,6 +85,8 @@ export class ConsumerLifecycle {
             });
             return null;
         }
+
+        assertConsumerRuntimeConfig(config);
 
         // Try to acquire distributed lock for this consumer
         const lockKey = `message-consumer:${key}`;
@@ -106,6 +136,13 @@ export class ConsumerLifecycle {
             }
         }
 
+        if (isDestroying()) {
+            if (lockToken && this.distributedLock) {
+                await this.distributedLock.release(lockKey, lockToken);
+            }
+            return null;
+        }
+
         const consumer: ActiveConsumer = {
             config,
             running: true,
@@ -113,6 +150,7 @@ export class ConsumerLifecycle {
             messagesFailed: 0,
             startedAt: new Date(),
             inFlightCount: 0,
+            activePollCount: 0,
             lockToken,
         };
 
@@ -147,34 +185,50 @@ export class ConsumerLifecycle {
     ): void {
         if (!this.distributedLock || !consumer.lockToken) return;
 
-        consumer.lockRefreshTimer = setInterval(async () => {
-            if (!consumer.running || isDestroying() || !consumer.lockToken || !this.distributedLock) {
-                return;
-            }
-
-            try {
-                const extended = await this.distributedLock.extend(
-                    lockKey,
-                    consumer.lockToken,
-                    DISTRIBUTED_LOCK.MESSAGE_CONSUMER_LOCK_TTL_MS,
-                );
-                if (!extended) {
-                    this.logger.warn(`Failed to extend lock for consumer ${consumerKey}, stopping`, {
-                        pipelineCode: consumer.config.pipelineCode,
-                    });
-                    // Lock lost - stop this consumer
-                    await this.stopConsumer(consumerKey, consumers);
-                }
-            } catch (error) {
-                this.logger.error(`Error extending lock for consumer ${consumerKey}`,
-                    toErrorOrUndefined(error), {
-                    pipelineCode: consumer.config.pipelineCode,
-                });
-            }
+        consumer.lockRefreshTimer = setInterval(() => {
+            void this.refreshConsumerLock(
+                consumerKey,
+                consumer,
+                lockKey,
+                consumers,
+                isDestroying,
+            );
         }, DISTRIBUTED_LOCK.MESSAGE_CONSUMER_LOCK_REFRESH_MS);
 
         if (typeof consumer.lockRefreshTimer.unref === 'function') {
             consumer.lockRefreshTimer.unref();
+        }
+    }
+
+    private async refreshConsumerLock(
+        consumerKey: string,
+        consumer: ActiveConsumer,
+        lockKey: string,
+        consumers: Map<string, ActiveConsumer>,
+        isDestroying: () => boolean,
+    ): Promise<void> {
+        try {
+            if (!consumer.running || isDestroying() || !consumer.lockToken || !this.distributedLock) {
+                return;
+            }
+
+            const extended = await this.distributedLock.extend(
+                lockKey,
+                consumer.lockToken,
+                DISTRIBUTED_LOCK.MESSAGE_CONSUMER_LOCK_TTL_MS,
+            );
+            if (!extended) {
+                this.logger.warn(`Failed to extend lock for consumer ${consumerKey}, stopping`, {
+                    pipelineCode: consumer.config.pipelineCode,
+                });
+                await this.stopConsumer(consumerKey, consumers);
+            }
+        } catch (error) {
+            this.logger.error(`Error extending lock for consumer ${consumerKey}`,
+                toErrorOrUndefined(error), {
+                pipelineCode: consumer.config.pipelineCode,
+            });
+            await this.stopConsumer(consumerKey, consumers);
         }
     }
 
@@ -196,6 +250,19 @@ export class ConsumerLifecycle {
         if (consumer.pollTimer) {
             clearInterval(consumer.pollTimer);
             consumer.pollTimer = undefined;
+        }
+
+        await this.waitForInFlightDeliveries(key, consumer);
+
+        const adapter = queueAdapterRegistry.get(consumer.config.queueType);
+        if (adapter?.stopConsumer) {
+            try {
+                await adapter.stopConsumer(key);
+            } catch (error) {
+                this.logger.warn(`Failed to stop broker consumer ${key}`, {
+                    error: getErrorMessage(error),
+                });
+            }
         }
 
         // Release distributed lock
@@ -224,13 +291,41 @@ export class ConsumerLifecycle {
         });
     }
 
+    private async waitForInFlightDeliveries(
+        key: string,
+        consumer: ActiveConsumer,
+    ): Promise<void> {
+        const deadline = Date.now() + QUEUE.CONSUMER_DRAIN_TIMEOUT_MS;
+        while (
+            (
+                consumer.inFlightCount > 0 ||
+                (consumer.activePollCount ?? 0) > 0
+            )
+            && Date.now() < deadline
+        ) {
+            await sleep(QUEUE.CONSUMER_DRAIN_POLL_INTERVAL_MS);
+        }
+
+        if (
+            consumer.inFlightCount > 0 ||
+            (consumer.activePollCount ?? 0) > 0
+        ) {
+            this.logger.warn('Consumer drain timed out; releasing ownership with unsettled deliveries', {
+                compositeKey: key,
+                pipelineCode: consumer.config.pipelineCode,
+                triggerKey: consumer.config.triggerKey,
+                inFlightCount: consumer.inFlightCount,
+                activePollCount: consumer.activePollCount ?? 0,
+            });
+        }
+    }
+
     /**
      * Stop all consumers
      */
     async stopAllConsumers(consumers: Map<string, ActiveConsumer>): Promise<void> {
-        for (const key of consumers.keys()) {
-            await this.stopConsumer(key, consumers);
-        }
+        const keys = [...consumers.keys()];
+        await Promise.all(keys.map(key => this.stopConsumer(key, consumers)));
         consumers.clear();
     }
 }

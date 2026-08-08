@@ -4,7 +4,6 @@ import type {
     ExportFormatConfig,
     DestinationConfig,
     ExportTriggerConfig,
-    CacheConfig,
     ExportOptions,
 } from '../../../types/wizard';
 import type { FilterCondition } from '../../../types';
@@ -26,7 +25,6 @@ export interface ExportConfiguration {
     format: ExportFormatConfig;
     destination: DestinationConfig;
     trigger: ExportTriggerConfig;
-    caching?: CacheConfig;
     options: ExportOptions;
 }
 
@@ -34,6 +32,5 @@ export type QueryType = QueryConfig['type'];
 /** Derived from DestinationConfig */
 export type DestinationType = DestinationConfig['type'];
 export type ExportTriggerType = ExportTriggerConfig['type'];
-export type CompressionType = NonNullable<ExportOptions['compression']>;
 
 export type { ExportField };

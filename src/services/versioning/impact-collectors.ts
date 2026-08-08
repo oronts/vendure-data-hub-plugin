@@ -7,15 +7,12 @@ import {
     FieldChangePreview,
     SampleRecordFlow,
     StepTransformation,
+    RecordDetail,
 } from '../../types/index';
 import { IMPACT_ANALYSIS, StepType } from '../../constants/index';
-import {
-    FlowOutcome,
-    SandboxLoadResultType,
-} from '../../constants/enums';
+import { FlowOutcome } from '../../constants/enums';
 import { getAdapterCode } from '../../types/step-configs';
 import { trackFieldChanges } from './field-detection';
-import { isEmpty } from '../../../shared/utils/validation';
 
 /**
  * Internal collector type for aggregating entity impacts during analysis
@@ -52,15 +49,15 @@ export interface SampleRecord {
  * Collect entity breakdown from sample records
  */
 export function collectEntityBreakdown(
-    sampleRecords: SampleRecord[],
+    recordDetails: RecordDetail[],
     definition: PipelineDefinition,
-    _sampleSize: number,
+    sampleSize: number,
 ): EntityImpact[] {
     const collector: EntityBreakdownCollector = {};
-    const entityTypes = initializeEntityCollectors(definition, collector);
+    initializeEntityCollectors(definition, collector);
 
-    for (const sample of sampleRecords) {
-        processEntityRecord(sample, entityTypes, collector);
+    for (const detail of recordDetails.slice(0, sampleSize)) {
+        processRecordDetail(detail, collector);
     }
 
     return Object.entries(collector).map(([entityType, data]) => ({
@@ -101,12 +98,11 @@ function initializeEntityCollectors(
 /**
  * Process a single entity record and update the collector
  */
-function processEntityRecord(
-    sample: SampleRecord,
-    entityTypes: Set<string>,
+function processRecordDetail(
+    detail: RecordDetail,
     collector: EntityBreakdownCollector,
 ): void {
-    const entityType = inferEntityTypeFromSample(sample, entityTypes);
+    const entityType = detail.entityType;
 
     if (!collector[entityType]) {
         collector[entityType] = {
@@ -116,15 +112,25 @@ function processEntityRecord(
         };
     }
 
-    const operation = inferOperation(sample);
-    collector[entityType].operations[operation]++;
-
-    const recordId = extractRecordId(sample.after);
-    if (recordId && collector[entityType].sampleRecordIds.length < IMPACT_ANALYSIS.MAX_SAMPLE_RECORD_IDS) {
-        collector[entityType].sampleRecordIds.push(recordId);
+    const operation = detail.operation.toLowerCase();
+    if (operation in collector[entityType].operations) {
+        collector[entityType].operations[operation as keyof EntityOperations]++;
     }
 
-    trackFieldChanges(sample, collector[entityType].fieldChanges);
+    if (collector[entityType].sampleRecordIds.length < IMPACT_ANALYSIS.MAX_SAMPLE_RECORD_IDS) {
+        collector[entityType].sampleRecordIds.push(detail.recordId);
+    }
+
+    if (isRecord(detail.currentState) && isRecord(detail.proposedState)) {
+        trackFieldChanges({
+            before: detail.currentState,
+            after: detail.proposedState,
+        }, collector[entityType].fieldChanges);
+    }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 /**
@@ -210,7 +216,7 @@ export function findStep(definition: PipelineDefinition, stepKey: string): Pipel
 /**
  * Map adapter codes to entity types
  */
-function inferEntityType(adapterCode: string): string {
+export function inferEntityType(adapterCode: string): string {
     const ADAPTER_ENTITY_MAP: Record<string, string> = {
         productUpsert: 'Product',
         variantUpsert: 'ProductVariant',
@@ -242,43 +248,22 @@ function inferEntityType(adapterCode: string): string {
 }
 
 /**
- * Infer entity type from sample record structure
- */
-function inferEntityTypeFromSample(
-    sample: { step: string; after: Record<string, unknown> },
-    entityTypes: Set<string>,
-): string {
-    // Try to infer from record structure
-    if (sample.after.__typename) {
-        return String(sample.after.__typename);
-    }
-
-    return entityTypes.values().next().value || 'Entity';
-}
-
-/**
- * Infer operation type from before/after states
- */
-function inferOperation(
-    sample: { before: Record<string, unknown>; after: Record<string, unknown> },
-): SandboxLoadResultType {
-    if (isEmpty(sample.before) && !isEmpty(sample.after)) {
-        return SandboxLoadResultType.CREATE;
-    }
-    if (!isEmpty(sample.before) && isEmpty(sample.after)) {
-        return SandboxLoadResultType.DELETE;
-    }
-    if (isEmpty(sample.before) && isEmpty(sample.after)) {
-        return SandboxLoadResultType.SKIP;
-    }
-    return SandboxLoadResultType.UPDATE;
-}
-
-/**
  * Extract record ID from common ID fields
  */
-function extractRecordId(record: Record<string, unknown>): string | null {
-    const idFields = ['id', '_id', 'ID', 'Id', 'sku', 'code', 'uuid'];
+export function extractRecordId(record: Record<string, unknown>): string | null {
+    const idFields = [
+        'id',
+        '_id',
+        'ID',
+        'Id',
+        'sku',
+        'code',
+        'uuid',
+        'externalId',
+        'slug',
+        'email',
+        'emailAddress',
+    ];
     for (const field of idFields) {
         if (record[field] != null) {
             return String(record[field]);

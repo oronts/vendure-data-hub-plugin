@@ -1,4 +1,13 @@
-import { JsonObject, BatchExtractorAdapter, ExtractContext, ExtractResult, StepConfigSchema, sleep } from '../../../../src';
+import {
+    JsonObject,
+    CURRENT_ADAPTER_API_VERSION,
+    BatchExtractorAdapter,
+    ExtractContext,
+    ExtractorPreviewResult,
+    ExtractResult,
+    StepConfigSchema,
+    sleep,
+} from '../../../../src';
 
 export const inMemoryExtractorSchema: StepConfigSchema = {
     fields: [
@@ -16,13 +25,14 @@ interface InMemoryExtractorConfig {
 
 export const inMemoryExtractor: BatchExtractorAdapter<InMemoryExtractorConfig> = {
     type: 'EXTRACTOR',
-    code: 'inMemory',
+    code: 'demoInMemory',
     name: 'In-Memory Data',
     description: 'Extract records from an in-memory data array',
     category: 'DATA_SOURCE',
     schema: inMemoryExtractorSchema,
     icon: 'memory',
     version: '1.0.0',
+    apiVersion: CURRENT_ADAPTER_API_VERSION,
 
     async extractAll(context: ExtractContext, config: InMemoryExtractorConfig): Promise<ExtractResult> {
         const { data, delay = 0, failOnEmpty = false } = config;
@@ -45,6 +55,24 @@ export const inMemoryExtractor: BatchExtractorAdapter<InMemoryExtractorConfig> =
                 meta: { sourceId: String((item as JsonObject).id ?? index), sequence: index },
             })),
             metrics: { totalFetched: data.length },
+        };
+    },
+
+    async preview(
+        context: ExtractContext,
+        config: InMemoryExtractorConfig,
+        limit: number,
+    ): Promise<ExtractorPreviewResult> {
+        if (!Array.isArray(config.data)) {
+            throw new Error('Config "data" must be an array');
+        }
+        const result = await this.extractAll(context, {
+            ...config,
+            data: config.data.slice(0, limit),
+        });
+        return {
+            records: result.records,
+            totalAvailable: config.data.length,
         };
     },
 };

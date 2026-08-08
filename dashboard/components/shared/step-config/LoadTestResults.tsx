@@ -1,15 +1,11 @@
 import * as React from 'react';
+import { Trans } from '@lingui/react/macro';
 import { formatKey, formatValue } from '../../../utils';
-import { COMPONENT_HEIGHTS } from '../../../constants';
 import { TestResultContainer, JsonDisplay } from './TestResultContainer';
 import type { TestResult } from './step-test-handlers';
 
 interface LoadTestResultsProps {
     result: TestResult;
-}
-
-interface FeedPreviewProps {
-    feedContent: { content: string; contentType: string; itemCount: number };
 }
 
 /**
@@ -23,7 +19,7 @@ function LoadSimulationResult({
     const entries = Object.entries(simulation);
 
     if (!entries.length) {
-        return <div className="text-muted-foreground text-sm">No simulation data returned</div>;
+        return <div className="text-muted-foreground text-sm"><Trans>No simulation data returned</Trans></div>;
     }
 
     return (
@@ -34,27 +30,6 @@ function LoadSimulationResult({
                     <span className="text-sm font-mono">{formatValue(value)}</span>
                 </div>
             ))}
-        </div>
-    );
-}
-
-/**
- * Display component for FEED step preview results
- */
-function FeedPreview({ feedContent }: FeedPreviewProps) {
-    return (
-        <div className="space-y-2">
-            <div className="flex items-center gap-4 text-sm">
-                <span>
-                    <strong>Items:</strong> {feedContent.itemCount}
-                </span>
-                <span>
-                    <strong>Type:</strong> {feedContent.contentType}
-                </span>
-            </div>
-            <pre className={`text-xs bg-muted p-3 rounded overflow-auto ${COMPONENT_HEIGHTS.SCROLL_AREA_SM} whitespace-pre-wrap`}>
-                {feedContent.content || '(empty)'}
-            </pre>
         </div>
     );
 }
@@ -75,28 +50,13 @@ export function LoadTestResults({ result }: LoadTestResultsProps) {
 }
 
 /**
- * Display component for FEED step test results
- */
-export function FeedTestResults({ result }: LoadTestResultsProps) {
-    if (!result.feedContent) {
-        return null;
-    }
-
-    return (
-        <TestResultContainer result={result}>
-            <FeedPreview feedContent={result.feedContent} />
-        </TestResultContainer>
-    );
-}
-
-/**
  * Generic result display for steps that only show data/message
  * Used for TRIGGER, EXPORT, SINK, and unknown step types
  */
 export function GenericTestResults({ result }: LoadTestResultsProps) {
     return (
         <TestResultContainer result={result}>
-            {result.data && (
+            {result.data !== undefined && result.data !== null && (
                 <JsonDisplay data={result.data} maxHeight="200px" />
             )}
         </TestResultContainer>

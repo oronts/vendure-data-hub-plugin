@@ -20,6 +20,8 @@ export interface BaseFeedConfig extends BaseStepConfig {
     descriptionField?: string;
     /** Field for price */
     priceField?: string;
+    /** Unit used by the mapped price field; Vendure query values use MINOR */
+    priceUnit?: 'MINOR' | 'MAJOR';
     /** Field for image URL */
     imageField?: string;
     /** Field for product link */

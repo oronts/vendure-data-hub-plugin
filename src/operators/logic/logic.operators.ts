@@ -158,17 +158,16 @@ export const switchOperator = createRecordOperator(applySwitchOperator);
 export function deltaFilterOperator(
     records: readonly JsonObject[],
     config: DeltaFilterOperatorConfig,
-    _helpers: AdapterOperatorHelpers,
-    checkpoint?: Map<string, string>,
+    helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     if (!config.idPath) {
         return { records: [...records] };
     }
 
-    // If no checkpoint provided, pass all records
-    if (!checkpoint) {
-        return { records: [...records] };
-    }
+    const checkpoint = new Map(
+        Object.entries(helpers.checkpoint ?? {})
+            .filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
+    );
 
     const newCheckpoint = new Map<string, string>();
     const changedRecords: JsonObject[] = [];
@@ -196,9 +195,10 @@ export function deltaFilterOperator(
         }
     }
 
+    helpers.setCheckpoint?.(Object.fromEntries(newCheckpoint));
+
     return {
         records: changedRecords,
         dropped: records.length - changedRecords.length,
-        meta: { checkpoint: Object.fromEntries(newCheckpoint) },
     };
 }

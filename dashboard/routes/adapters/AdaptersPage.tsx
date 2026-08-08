@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { useLingui } from '@lingui/react/macro';
 import {
     Button,
     Drawer,
@@ -7,10 +8,11 @@ import {
     DrawerHeader,
     DrawerTitle,
     PageBlock,
-    PermissionGuard,
     Page,
     PageActionBar,
     PageActionBarRight,
+    PageLayout,
+    PageTitle,
     Card,
     CardContent,
     Badge,
@@ -18,8 +20,15 @@ import {
     TabsContent,
     TabsList,
     TabsTrigger,
+    PermissionGuard,
 } from '@vendure/dashboard';
-import { DATAHUB_NAV_SECTION, ROUTES, DATAHUB_PERMISSIONS, FALLBACK_ADAPTER_TYPE_TABS } from '../../constants';
+import {
+    DATAHUB_NAV_LABELS,
+    DATAHUB_NAV_SECTION,
+    DATAHUB_PERMISSIONS,
+    ROUTES,
+    FALLBACK_ADAPTER_TYPE_TABS,
+} from '../../constants';
 import { DashboardRouteDefinition } from '@vendure/dashboard';
 import {
     RefreshCw,
@@ -54,10 +63,11 @@ export const adaptersList: DashboardRouteDefinition = {
         sectionId: DATAHUB_NAV_SECTION,
         id: 'data-hub-adapters',
         url: ROUTES.ADAPTERS,
-        title: 'Adapters',
+        title: DATAHUB_NAV_LABELS.ADAPTERS,
+        requiresPermission: DATAHUB_PERMISSIONS.MANAGE_ADAPTERS,
     },
     path: ROUTES.ADAPTERS,
-    loader: () => ({ breadcrumb: 'Adapters' }),
+    loader: () => ({ breadcrumb: DATAHUB_NAV_LABELS.ADAPTERS }),
     component: () => (
         <PermissionGuard requires={[DATAHUB_PERMISSIONS.MANAGE_ADAPTERS]}>
             <AdaptersPage />
@@ -66,6 +76,7 @@ export const adaptersList: DashboardRouteDefinition = {
 };
 
 function AdaptersPage() {
+    const { t } = useLingui();
     const { data: rows = [], isLoading, isError, error, refetch } = useAdapters();
     const { options: adapterTypes } = useOptionValues('adapterTypes');
     const [selected, setSelected] = React.useState<DataHubAdapter | null>(null);
@@ -74,7 +85,20 @@ function AdaptersPage() {
         if (!open) setSelected(null);
     }, []);
 
-    const tabs = adapterTypes.length > 0 ? adapterTypes : FALLBACK_ADAPTER_TYPE_TABS;
+    const fallbackLabels: Readonly<Record<string, string>> = {
+        EXTRACTOR: t`Extractors`,
+        OPERATOR: t`Operators`,
+        LOADER: t`Loaders`,
+        EXPORTER: t`Exporters`,
+        FEED: t`Feeds`,
+        SINK: t`Sinks`,
+    };
+    const tabs = adapterTypes.length > 0
+        ? adapterTypes
+        : FALLBACK_ADAPTER_TYPE_TABS.map(tab => ({
+            ...tab,
+            label: fallbackLabels[tab.value] ?? tab.label,
+        }));
 
     /** Group adapters by type, keyed by adapter type value */
     const adaptersByType = React.useMemo(() => {
@@ -113,13 +137,16 @@ function AdaptersPage() {
     if (isError) {
         return (
             <Page pageId="data-hub-adapters">
-                <PageBlock column="main" blockId="error">
-                    <ErrorState
-                        title="Failed to load adapters"
-                        message={getErrorMessage(error)}
-                        onRetry={() => refetch()}
-                    />
-                </PageBlock>
+                <PageTitle>{t`Adapters`}</PageTitle>
+                <PageLayout>
+                    <PageBlock column="main" blockId="error">
+                        <ErrorState
+                            title={t`Failed to load adapters`}
+                            message={getErrorMessage(error)}
+                            onRetry={() => refetch()}
+                        />
+                    </PageBlock>
+                </PageLayout>
             </Page>
         );
     }
@@ -127,9 +154,12 @@ function AdaptersPage() {
     if (isLoading && rows.length === 0) {
         return (
             <Page pageId="data-hub-adapters">
-                <PageBlock column="main" blockId="loading">
-                    <LoadingState type="card" rows={3} message="Loading adapters..." />
-                </PageBlock>
+                <PageTitle>{t`Adapters`}</PageTitle>
+                <PageLayout>
+                    <PageBlock column="main" blockId="loading">
+                        <LoadingState type="card" rows={3} message={t`Loading adapters…`} />
+                    </PageBlock>
+                </PageLayout>
             </Page>
         );
     }
@@ -138,15 +168,17 @@ function AdaptersPage() {
 
     return (
         <Page pageId="data-hub-adapters">
+            <PageTitle>{t`Adapters`}</PageTitle>
             <PageActionBar>
                 <PageActionBarRight>
                     <Button variant="ghost" onClick={() => refetch()} disabled={isLoading} data-testid="datahub-adapters-refresh-button">
                         <RefreshCw className={cn('w-4 h-4 mr-2', isLoading && 'animate-spin')} />
-                        Refresh
+                        {t`Refresh`}
                     </Button>
                 </PageActionBarRight>
             </PageActionBar>
 
+            <PageLayout>
             <PageBlock column="main" blockId="intro">
                 <Card className="overflow-hidden">
                     <CardContent className="p-0">
@@ -157,9 +189,11 @@ function AdaptersPage() {
                                     <Layers className="w-6 h-6" />
                                 </div>
                                 <div>
-                                    <h2 className="text-lg font-semibold tracking-tight">Pipeline Adapters</h2>
+                                    <h2 className="text-lg font-semibold tracking-tight">
+                                        {t`Pipeline adapters`}
+                                    </h2>
                                     <p className="text-sm text-muted-foreground">
-                                        {rows.length} registered &middot; {rows.length - customCount} built-in &middot; {customCount} custom
+                                        {t`${rows.length} registered · ${rows.length - customCount} built-in · ${customCount} custom`}
                                     </p>
                                 </div>
                             </div>
@@ -220,7 +254,7 @@ function AdaptersPage() {
                         })}
                         <TabsTrigger value="all" className="gap-2" data-testid="datahub-adapters-tab-all">
                             <Settings2 className="w-4 h-4" />
-                            All
+                            {t`All`}
                             <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-xs font-medium">
                                 {rows.length}
                             </Badge>
@@ -254,6 +288,7 @@ function AdaptersPage() {
                     </TabsContent>
                 </Tabs>
             </PageBlock>
+            </PageLayout>
 
             <Drawer open={!!selected} onOpenChange={handleCloseDrawer}>
                 <DrawerContent data-testid="datahub-adapter-detail-drawer">
@@ -265,7 +300,7 @@ function AdaptersPage() {
                             <DrawerTitle>{selected?.code}</DrawerTitle>
                         </div>
                         <DrawerDescription>
-                            {selected?.description || 'No description available'}
+                            {selected?.description || t`No description available`}
                         </DrawerDescription>
                     </DrawerHeader>
                     {selected && <AdapterDetail adapter={selected} />}

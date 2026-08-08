@@ -32,8 +32,30 @@ export const WEBHOOK = {
     JWT_PARTS_COUNT: 3,
     /** Required JWT signing algorithm */
     REQUIRED_JWT_ALGORITHM: 'HS256',
+    /** Maximum configured JWT issuer or audience length */
+    MAX_JWT_CLAIM_LENGTH: 512,
     /** Allowed HMAC signing algorithms */
     ALLOWED_HMAC_ALGORITHMS: ['sha256', 'sha512'] as readonly string[],
+    /** Maximum outgoing idempotency key length */
+    IDEMPOTENCY_KEY_MAX_LENGTH: 256,
+    /** Default incoming idempotency request header */
+    DEFAULT_IDEMPOTENCY_HEADER: 'x-idempotency-key',
+    /** Default incoming idempotency retention (24 hours) */
+    DEFAULT_IDEMPOTENCY_TTL_SEC: 86_400,
+    /** Minimum incoming idempotency retention */
+    MIN_IDEMPOTENCY_TTL_SEC: 60,
+    /** Maximum incoming idempotency retention (7 days) */
+    MAX_IDEMPOTENCY_TTL_SEC: 604_800,
+    /** Per-process pre-authentication request ceiling per source IP */
+    PRE_AUTH_RATE_LIMIT_REQUESTS: 120,
+    /** Pre-authentication rate-limit window */
+    PRE_AUTH_RATE_LIMIT_WINDOW_MS: 60_000,
+    /** Maximum configured authenticated requests per window */
+    MAX_RATE_LIMIT_REQUESTS: 10_000,
+    /** Minimum configured rate-limit window */
+    MIN_RATE_LIMIT_WINDOW_SEC: 1,
+    /** Maximum configured rate-limit window (24 hours) */
+    MAX_RATE_LIMIT_WINDOW_SEC: 86_400,
     /** Maximum webhook payload size in bytes (10 MB) */
     MAX_PAYLOAD_SIZE: 10 * 1024 * 1024,
 } as const;

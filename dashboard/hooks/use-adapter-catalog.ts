@@ -4,21 +4,14 @@ import {
     type LucideIcon,
 } from 'lucide-react';
 import { useAdapters } from './api/use-adapters';
-import { useConnectionCodes } from './api/use-connections';
-import { useSecrets } from './api/use-secrets';
-import { QUERY_LIMITS, FALLBACK_COLORS, UI_ADAPTER_CATEGORY, ADAPTER_TYPE_TO_NODE_TYPE, ADAPTER_TYPE_TO_CATEGORY } from '../constants';
+import { useStepMappings } from './api/use-config-options';
+import { FALLBACK_COLORS, UI_ADAPTER_CATEGORY } from '../constants';
+import type { StepMappings } from '../constants/step-mappings';
+import { mapAdapterSchema } from '../utils/adapter-schema';
 import { resolveIconName } from '../utils/icon-resolver';
-
-interface CatalogSchemaField {
-    key: string;
-    label?: string;
-    type: string;
-    required?: boolean;
-    description?: string;
-    defaultValue?: unknown;
-    placeholder?: string;
-    options?: Array<{ value: string; label: string }>;
-}
+import type { AdapterSchema } from '../../shared/types';
+import { useDynamicMetadataTranslations } from './use-dynamic-metadata-translations';
+import { resolveAdapterPresentation } from './adapter-presentation';
 
 export interface AdapterMetadata {
     code: string;
@@ -29,9 +22,7 @@ export interface AdapterMetadata {
     color: string;
     category: string;
     nodeType: AdapterNodeType;
-    schema?: {
-        fields: CatalogSchemaField[];
-    };
+    schema: AdapterSchema;
     entityType?: string;
     formatType?: string;
     patchableFields?: string[];
@@ -57,13 +48,6 @@ interface AdapterCatalog {
     all: AdapterMetadata[];
 }
 
-function adapterTypeToNodeType(adapterType: string): AdapterNodeType {
-    return (ADAPTER_TYPE_TO_NODE_TYPE[adapterType] ?? 'transform') as AdapterNodeType;
-}
-
-function adapterTypeToCategory(adapterType: string): string {
-    return ADAPTER_TYPE_TO_CATEGORY[adapterType] ?? 'other';
-}
 
 function buildAdapterMetadata(adapter: {
     code: string;
@@ -72,18 +56,7 @@ function buildAdapterMetadata(adapter: {
     description?: string | null;
     icon?: string | null;
     color?: string | null;
-    schema?: {
-        fields: Array<{
-            key: string;
-            label?: string | null;
-            type: string;
-            required?: boolean | null;
-            description?: string | null;
-            defaultValue?: unknown;
-            placeholder?: string | null;
-            options?: Array<{ value: string; label: string }> | null;
-        }>;
-    };
+    schema?: unknown;
     entityType?: string | null;
     formatType?: string | null;
     patchableFields?: readonly string[] | null;
@@ -93,43 +66,37 @@ function buildAdapterMetadata(adapter: {
     categoryOrder?: number | null;
     wizardHidden?: boolean | null;
     builtIn?: boolean | null;
-}): AdapterMetadata {
+}, translateAdapter: ReturnType<typeof useDynamicMetadataTranslations>['translateAdapter'],
+mappings: Pick<
+    StepMappings,
+    'adapterTypeToNodeType' | 'adapterTypeToCategory'
+>): AdapterMetadata {
     const code = adapter.code;
     const type = adapter.type;
+    const builtIn = adapter.builtIn === true;
+    const fallbackName = adapter.name ?? code;
+    const fallbackDescription = adapter.description ?? '';
 
     const icon = resolveIconName(adapter.icon) ?? Settings;
     const color = adapter.color ?? FALLBACK_COLORS.UNKNOWN_STEP_COLOR;
 
-    let schema = adapter.schema;
-    if (typeof schema === 'string') {
-        try {
-            schema = JSON.parse(schema);
-        } catch {
-            schema = { fields: [] };
-        }
-    }
-
-    const mappedFields: CatalogSchemaField[] = (schema?.fields ?? []).map((f) => ({
-        key: f.key,
-        label: f.label ?? undefined,
-        type: f.type,
-        required: f.required ?? undefined,
-        description: f.description ?? undefined,
-        defaultValue: f.defaultValue ?? undefined,
-        placeholder: f.placeholder ?? undefined,
-        options: f.options ?? undefined,
-    }));
-
+    const presentation = resolveAdapterPresentation(type, mappings);
     return {
         code,
         type,
-        name: adapter.name ?? code,
-        description: adapter.description ?? undefined,
+        name: translateAdapter(type, code, 'name', fallbackName, builtIn),
+        description: translateAdapter(
+            type,
+            code,
+            'description',
+            fallbackDescription,
+            builtIn,
+        ) || undefined,
         icon,
         color,
-        category: adapterTypeToCategory(type),
-        nodeType: adapterTypeToNodeType(type),
-        schema: { fields: mappedFields },
+        category: presentation.category,
+        nodeType: presentation.nodeType,
+        schema: mapAdapterSchema(adapter.schema),
         entityType: adapter.entityType ?? undefined,
         formatType: adapter.formatType ?? undefined,
         patchableFields: adapter.patchableFields ? [...adapter.patchableFields] : undefined,
@@ -145,8 +112,6 @@ function buildAdapterMetadata(adapter: {
 interface UseAdapterCatalogResult {
     catalog: AdapterCatalog;
     adapters: AdapterMetadata[];
-    connectionCodes: string[];
-    secretOptions: Array<{ code: string; provider?: string }>;
     isLoading: boolean;
     error: Error | null;
     getAdapter: (code: string) => AdapterMetadata | undefined;
@@ -156,12 +121,13 @@ interface UseAdapterCatalogResult {
 
 export function useAdapterCatalog(): UseAdapterCatalogResult {
     const { data: adaptersData, isLoading: adaptersLoading, error: adaptersError } = useAdapters();
-    const { data: connectionCodesData } = useConnectionCodes();
-    const { data: secretsData } = useSecrets({ take: QUERY_LIMITS.SECRETS_LIST });
+    const { translateAdapter } = useDynamicMetadataTranslations();
+    const { mappings, isLoading: mappingsLoading } = useStepMappings();
 
     const adapters: AdapterMetadata[] = React.useMemo(
-        () => (adaptersData ?? []).map(buildAdapterMetadata),
-        [adaptersData],
+        () => (adaptersData ?? []).map(adapter =>
+            buildAdapterMetadata(adapter, translateAdapter, mappings)),
+        [adaptersData, mappings, translateAdapter],
     );
 
     const catalog: AdapterCatalog = React.useMemo(() => {
@@ -187,15 +153,6 @@ export function useAdapterCatalog(): UseAdapterCatalogResult {
         };
     }, [adapters]);
 
-    const connectionCodes = connectionCodesData ?? [];
-
-    const secretOptions = React.useMemo(() => {
-        return (secretsData?.items ?? []).map(s => ({
-            code: s.code,
-            provider: s.provider ?? undefined,
-        }));
-    }, [secretsData]);
-
     const getAdapter = React.useCallback((code: string) => {
         return adapters.find(a => a.code === code);
     }, [adapters]);
@@ -211,13 +168,10 @@ export function useAdapterCatalog(): UseAdapterCatalogResult {
     return {
         catalog,
         adapters,
-        connectionCodes,
-        secretOptions,
-        isLoading: adaptersLoading,
+        isLoading: adaptersLoading || mappingsLoading,
         error: adaptersError as Error | null,
         getAdapter,
         getAdaptersByType,
         getAdaptersByNodeType,
     };
 }
-

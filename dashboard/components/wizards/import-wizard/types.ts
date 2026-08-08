@@ -14,6 +14,7 @@ export type ApiMethod = NonNullable<ImportSourceConfig['apiConfig']>['method'];
 export interface ImportWizardProps {
     onComplete: (config: ImportConfiguration) => void;
     onCancel: () => void;
+    canManageFiles: boolean;
     initialConfig?: Partial<ImportConfiguration>;
     isSubmitting?: boolean;
 }

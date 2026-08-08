@@ -5,6 +5,7 @@ import { HookService } from '../../services/events/hook.service';
 import { DomainEventsService } from '../../services/events/domain-events.service';
 import { CheckpointManager } from './checkpoint-manager';
 import { getErrorMessage } from '../../utils/error.utils';
+import { createChannelRequestContext } from './channel-request-context';
 
 /**
  * Manages pipeline execution lifecycle: preparation and finalization
@@ -26,13 +27,11 @@ export class ExecutionLifecycleManager {
         definition: PipelineDefinition,
         pipelineId?: ID,
         runId?: ID,
-        options?: { resume?: boolean },
+        options?: { resume?: boolean; resetCheckpoint?: boolean },
     ): Promise<RequestContext> {
-        const resume = options?.resume ?? false;
         const pipelineCtx = await this.resolvePipelineContext(ctx, definition);
 
-        // Handle checkpoint: clear for fresh runs, load for resume
-        if (pipelineId && !resume) {
+        if (pipelineId && options?.resetCheckpoint === true) {
             await this.checkpointManager.clearCheckpoint(ctx, pipelineId);
         }
         await this.checkpointManager.loadCheckpoint(ctx, pipelineId);
@@ -46,23 +45,27 @@ export class ExecutionLifecycleManager {
     async finalizeExecution(
         ctx: RequestContext,
         definition: PipelineDefinition,
-        result: { processed: number; succeeded: number; failed: number; details: JsonObject[]; counters: JsonObject; paused?: boolean; pausedAtStep?: string; cancelled?: boolean },
+        result: { processed: number; succeeded: number; failed: number; skipped: number; details: JsonObject[]; counters: JsonObject; paused?: boolean; pausedAtStep?: string; cancelled?: boolean },
         pipelineId?: ID,
-    ): Promise<{ processed: number; succeeded: number; failed: number; details?: JsonObject[]; paused?: boolean; pausedAtStep?: string }> {
-        await this.checkpointManager.saveCheckpoint(ctx, pipelineId);
+    ): Promise<{ processed: number; succeeded: number; failed: number; skipped: number; sourceRecords: number; details?: JsonObject[]; paused?: boolean; pausedAtStep?: string }> {
+        if (!result.cancelled) {
+            await this.checkpointManager.saveCheckpoint(ctx, pipelineId);
+        }
 
         result.details.push({ counters: result.counters });
 
         // Skip hooks if paused (gate) or cancelled (user abort)
         if (!result.paused && !result.cancelled) {
-            await this.hookService.run(ctx, definition, result.failed > 0 ? 'PIPELINE_FAILED' : 'PIPELINE_COMPLETED');
-            this.publishPipelineDomainEvent(pipelineId, result);
+            await this.hookService.run(ctx, definition, 'PIPELINE_COMPLETED');
+            this.publishPipelineCompleted(pipelineId, result);
         }
 
         return {
             processed: result.processed,
             succeeded: result.succeeded,
             failed: result.failed,
+            skipped: result.skipped,
+            sourceRecords: Number(result.counters['extracted'] ?? 0),
             details: result.details,
             paused: result.paused,
             pausedAtStep: result.pausedAtStep,
@@ -82,12 +85,12 @@ export class ExecutionLifecycleManager {
         if (channelFromContext || langFromContext) {
             // Extract channel token from context if available
             const channelToken = channelFromContext ?? ctx.channel?.token;
-            const req = await this.requestContextService.create({
-                apiType: ctx.apiType,
-                channelOrToken: channelToken,
-                languageCode: langFromContext as import('@vendure/core').LanguageCode | undefined,
-            });
-            if (req) return req;
+            return createChannelRequestContext(
+                this.requestContextService,
+                ctx,
+                channelToken,
+                langFromContext as import('@vendure/core').LanguageCode | undefined,
+            );
         }
 
         return ctx;
@@ -96,17 +99,17 @@ export class ExecutionLifecycleManager {
     /**
      * Publish pipeline completion or failure domain event
      */
-    private publishPipelineDomainEvent(
+    private publishPipelineCompleted(
         pipelineId: ID | undefined,
-        result: { processed: number; succeeded: number; failed: number },
+        result: { processed: number; succeeded: number; failed: number; skipped: number },
     ): void {
         try {
-            const eventType = result.failed > 0 ? 'PIPELINE_FAILED' : 'PIPELINE_COMPLETED';
-            this.domainEvents.publish(eventType, {
+            this.domainEvents.publish('PIPELINE_COMPLETED', {
                 pipelineId,
                 processed: result.processed,
                 succeeded: result.succeeded,
                 failed: result.failed,
+                skipped: result.skipped,
             });
         } catch (err) {
             this.logger.debug('Failed to publish domain event', {

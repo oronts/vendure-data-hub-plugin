@@ -48,7 +48,6 @@ const multiSourceProductSync = createPipeline()
 
     .capabilities({
         writes: ['CATALOG'],
-        streamSafe: true,
     })
 
     // Trigger: Scheduled daily at 2 AM
@@ -58,37 +57,13 @@ const multiSourceProductSync = createPipeline()
         timezone: 'UTC',
     })
 
-    // Extract from all three sources in parallel
+    // Extract the authoritative product records
     .extract('erp-products', {
         adapterCode: 'httpApi',
         connectionCode: 'erp-api',
         url: '/products',
         dataPath: 'data.products',
-        incremental: {
-            enabled: true,
-            field: 'updated_at',
-            operator: '>',
-        },
         throughput: { batchSize: 200 },
-    })
-
-    .extract('pim-descriptions', {
-        adapterCode: 'httpApi',
-        connectionCode: 'pim-api',
-        url: '/product-content',
-        dataPath: 'items',
-        incremental: {
-            enabled: true,
-            field: 'last_modified',
-            operator: '>=',
-        },
-    })
-
-    .extract('pricing-data', {
-        adapterCode: 'httpApi',
-        connectionCode: 'pricing-api',
-        url: '/prices',
-        dataPath: 'prices',
     })
 
     // Normalize field names from each source
@@ -96,45 +71,48 @@ const multiSourceProductSync = createPipeline()
         operators: [
             { op: 'rename', args: { from: 'product_id', to: 'sku' } },
             { op: 'rename', args: { from: 'product_name', to: 'name' } },
-            { op: 'set', args: { path: '_source', value: 'erp' } },
         ],
     })
 
-    .transform('normalize-pim', {
-        operators: [
-            { op: 'rename', args: { from: 'product_code', to: 'sku' } },
-            { op: 'rename', args: { from: 'long_description', to: 'description' } },
-            { op: 'rename', args: { from: 'marketing_text', to: 'marketingDescription' } },
-            { op: 'set', args: { path: '_source', value: 'pim' } },
-        ],
-    })
-
-    .transform('normalize-pricing', {
-        operators: [
-            { op: 'rename', args: { from: 'product_sku', to: 'sku' } },
-            { op: 'rename', args: { from: 'unit_price', to: 'price' } },
-            { op: 'math', args: { operation: 'multiply', source: 'price', operand: '100' } },
-            { op: 'set', args: { path: '_source', value: 'pricing' } },
-        ],
-    })
-
-    // Merge all sources by SKU
-    .transform('merge-sources', {
+    // Enrich each product from the PIM and pricing APIs
+    .transform('enrich-pim', {
         operators: [
             {
-                op: 'groupBy',
+                op: 'httpLookup',
                 args: {
-                    field: 'sku',
-                    aggregations: {
-                        name: 'first',
-                        description: 'first',
-                        marketingDescription: 'first',
-                        price: 'first',
-                        stock: 'sum',
-                        categories: 'unique',
-                    },
+                    connectionCode: 'pim-api',
+                    url: 'https://pim.example.com/product-content/{{sku}}',
+                    keyField: 'sku',
+                    target: 'pim',
+                    bearerTokenSecretCode: 'pim-api-token',
                 },
             },
+        ],
+    })
+
+    .transform('enrich-pricing', {
+        operators: [
+            {
+                op: 'httpLookup',
+                args: {
+                    connectionCode: 'pricing-api',
+                    url: 'https://pricing.example.com/prices/{{sku}}',
+                    keyField: 'sku',
+                    target: 'pricing',
+                    bearerTokenSecretCode: 'pricing-api-token',
+                },
+            },
+        ],
+    })
+
+    .transform('merge-source-fields', {
+        operators: [
+            { op: 'copy', args: { source: 'pim.long_description', target: 'description' } },
+            { op: 'copy', args: { source: 'pim.marketing_text', target: 'marketingDescription' } },
+            { op: 'copy', args: { source: 'pricing.unit_price', target: 'price' } },
+            { op: 'math', args: { operation: 'multiply', source: 'price', operand: '100', target: 'price' } },
+            { op: 'remove', args: { path: 'pim' } },
+            { op: 'remove', args: { path: 'pricing' } },
         ],
     })
 
@@ -185,14 +163,16 @@ const multiSourceProductSync = createPipeline()
     .load('upsert-high-value', {
         adapterCode: 'productUpsert',
         strategy: 'UPSERT',
-        matchField: 'sku',
+        slugField: 'slug',
+        skuField: 'sku',
         conflictStrategy: 'MERGE',
     })
 
     .load('upsert-standard', {
         adapterCode: 'productUpsert',
         strategy: 'UPSERT',
-        matchField: 'sku',
+        slugField: 'slug',
+        skuField: 'sku',
         conflictStrategy: 'SOURCE_WINS',
         throughput: { batchSize: 50, concurrency: 2 },
     })
@@ -201,23 +181,19 @@ const multiSourceProductSync = createPipeline()
     .sink('index-search', {
         adapterCode: 'meilisearch',
         indexName: 'products',
-        host: 'localhost',
-        port: 7700,
-        idField: 'sku',
-        bulkSize: 500,
+        host: 'http://localhost:7700',
+        apiKeySecretCode: 'meilisearch-api-key',
+        primaryKey: 'sku',
+        batchSize: 500,
     })
 
     // Define data flow
     .edge('schedule', 'erp-products')
-    .edge('schedule', 'pim-descriptions')
-    .edge('schedule', 'pricing-data')
     .edge('erp-products', 'normalize-erp')
-    .edge('pim-descriptions', 'normalize-pim')
-    .edge('pricing-data', 'normalize-pricing')
-    .edge('normalize-erp', 'merge-sources')
-    .edge('normalize-pim', 'merge-sources')
-    .edge('normalize-pricing', 'merge-sources')
-    .edge('merge-sources', 'add-computed-fields')
+    .edge('normalize-erp', 'enrich-pim')
+    .edge('enrich-pim', 'enrich-pricing')
+    .edge('enrich-pricing', 'merge-source-fields')
+    .edge('merge-source-fields', 'add-computed-fields')
     .edge('add-computed-fields', 'check-required-fields')
     .edge('check-required-fields', 'by-price')
     .edge('by-price', 'review-high-value', 'high-value')
@@ -278,14 +254,8 @@ const inventorySync = createPipeline()
     .version(1)
 
     .context({
-        checkpointing: {
-            enabled: true,
-            strategy: 'TIMESTAMP',
-            field: 'updated_at',
-        },
         errorHandling: {
             maxRetries: 3,
-            deadLetterQueue: true,
         },
     })
 
@@ -300,21 +270,27 @@ const inventorySync = createPipeline()
     .extract('query-warehouse', {
         adapterCode: 'database',
         connectionCode: 'warehouse-db',
+        databaseType: 'POSTGRESQL',
         query: `
             SELECT
+                id,
                 sku,
                 location_code,
                 quantity_on_hand,
                 reserved_quantity,
                 updated_at
             FROM inventory
-            WHERE updated_at > :checkpoint
-            ORDER BY updated_at ASC
         `,
         incremental: {
             enabled: true,
-            field: 'updated_at',
-            operator: '>',
+            column: 'updated_at',
+        },
+        pagination: {
+            enabled: true,
+            type: 'CURSOR',
+            pageSize: 1000,
+            cursorColumn: 'updated_at',
+            cursorTieBreakerColumn: 'id',
         },
         throughput: { batchSize: 1000 },
     })
@@ -376,7 +352,7 @@ const inventorySync = createPipeline()
     })
 
     .export('send-oos-alerts', {
-        adapterCode: 'webhook',
+        adapterCode: 'webhookExport',
         url: 'https://alerts.example.com/out-of-stock',
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -384,10 +360,10 @@ const inventorySync = createPipeline()
 
     // Update Vendure inventory
     .load('update-inventory', {
-        adapterCode: 'inventoryUpsert',
+        adapterCode: 'inventoryAdjust',
         strategy: 'UPDATE',
-        matchField: 'sku',
-        stockLocationField: 'location_code',
+        skuField: 'sku',
+        stockLocationNameField: 'location_code',
         stockOnHandField: 'stockOnHand',
     })
 
@@ -407,7 +383,7 @@ const inventorySync = createPipeline()
 ### Key Techniques
 
 - **Incremental Extraction**: Only queries records updated since last run
-- **Checkpointing**: Automatic resume on failure
+- **Incremental cursor**: The database extractor persists the exact tracked-value and primary-key boundary
 - **Math Operations**: Calculate available stock
 - **Conditional Routing**: Different flows for different stock levels
 - **Alerting**: Webhook notifications for critical events
@@ -442,7 +418,7 @@ const customerEnrichment = createPipeline()
     .extract('get-customer', {
         adapterCode: 'vendureQuery',
         entity: 'CUSTOMER',
-        relations: 'addresses,orders',
+        relations: ['addresses', 'orders'],
     })
 
     // Enrich with Clearbit
@@ -451,13 +427,11 @@ const customerEnrichment = createPipeline()
             {
                 op: 'httpLookup',
                 args: {
+                    connectionCode: 'clearbit-api',
                     url: 'https://person.clearbit.com/v2/combined/find?email={{emailAddress}}',
                     target: 'demographics',
-                    headers: {
-                        Authorization: 'Bearer {{clearbitApiKey}}',
-                    },
-                    cache: true,
-                    cacheTtl: 86400,  // 24 hours
+                    bearerTokenSecretCode: 'clearbit-api-key',
+                    cacheTtlSec: 86400,
                 },
             },
         ],
@@ -532,50 +506,62 @@ const customerEnrichment = createPipeline()
     .transform('add-vip-tag', {
         operators: [
             { op: 'set', args: { path: 'segment', value: 'VIP' } },
+            { op: 'set', args: { path: 'groupNames', value: ['VIP Customers'] } },
         ],
     })
 
     .transform('add-loyal-tag', {
         operators: [
             { op: 'set', args: { path: 'segment', value: 'Loyal' } },
+            { op: 'set', args: { path: 'groupNames', value: ['Loyal Customers'] } },
         ],
     })
 
     .transform('add-new-tag', {
         operators: [
             { op: 'set', args: { path: 'segment', value: 'New' } },
+            { op: 'set', args: { path: 'groupNames', value: ['New Customers'] } },
         ],
     })
 
     .transform('add-standard-tag', {
         operators: [
             { op: 'set', args: { path: 'segment', value: 'Standard' } },
+            { op: 'set', args: { path: 'groupNames', value: ['Standard Customers'] } },
         ],
     })
 
-    // Update customer group
+    // The named customer groups must already exist in Vendure.
     .load('assign-vip-group', {
-        adapterCode: 'customerGroupAssignment',
-        groupCode: 'vip-customers',
+        adapterCode: 'customerUpsert',
+        strategy: 'UPDATE',
         emailField: 'emailAddress',
+        groupsField: 'groupNames',
+        groupsMode: 'ADD',
     })
 
     .load('assign-loyal-group', {
-        adapterCode: 'customerGroupAssignment',
-        groupCode: 'loyal-customers',
+        adapterCode: 'customerUpsert',
+        strategy: 'UPDATE',
         emailField: 'emailAddress',
+        groupsField: 'groupNames',
+        groupsMode: 'ADD',
     })
 
     .load('assign-new-group', {
-        adapterCode: 'customerGroupAssignment',
-        groupCode: 'new-customers',
+        adapterCode: 'customerUpsert',
+        strategy: 'UPDATE',
         emailField: 'emailAddress',
+        groupsField: 'groupNames',
+        groupsMode: 'ADD',
     })
 
     .load('assign-standard-group', {
-        adapterCode: 'customerGroupAssignment',
-        groupCode: 'standard-customers',
+        adapterCode: 'customerUpsert',
+        strategy: 'UPDATE',
         emailField: 'emailAddress',
+        groupsField: 'groupNames',
+        groupsMode: 'ADD',
     })
 
     // Export to marketing platform
@@ -631,6 +617,9 @@ Process orders in real-time via webhook, validate, and send to fulfillment syste
 
 ### Pipeline
 
+This example assumes an application-defined `email` exporter registered by the
+host project. Data Hub does not ship an email exporter.
+
 ```typescript
 const orderProcessing = createPipeline()
     .name('Real-Time Order Processing')
@@ -639,16 +628,16 @@ const orderProcessing = createPipeline()
 
     .trigger('webhook', {
         type: 'WEBHOOK',
-        path: '/order-placed',
-        signature: 'hmac-sha256',
+        authentication: 'HMAC',
         secretCode: 'webhook-secret',
-        idempotencyKey: 'X-Order-ID',
+        hmacAlgorithm: 'SHA256',
+        requireIdempotencyKey: true,
+        idempotencyKeyHeader: 'X-Order-ID',
     })
 
-    // Extract order from webhook payload
+    // The authenticated request body is injected as the seeded order record.
     .extract('parse-order', {
-        adapterCode: 'webhookBody',
-        dataPath: 'order',
+        adapterCode: 'inMemory',
     })
 
     // Validate order
@@ -656,28 +645,32 @@ const orderProcessing = createPipeline()
         errorHandlingMode: 'FAIL_FAST',
         rules: [
             { type: 'business', spec: { field: 'code', required: true } },
-            { type: 'business', spec: { field: 'customer.emailAddress', required: true, type: 'email' } },
+            {
+                type: 'business',
+                spec: {
+                    field: 'customer.emailAddress',
+                    required: true,
+                    type: 'string',
+                    pattern: '^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$',
+                },
+            },
             { type: 'business', spec: { field: 'lines', required: true } },
             { type: 'business', spec: { field: 'totalWithTax', required: true, min: 0 } },
         ],
     })
 
-    // Check inventory for all line items
+    // Check inventory for the order through a batched inventory endpoint
     .transform('check-inventory', {
         operators: [
             {
-                op: 'forEach',
+                op: 'httpLookup',
                 args: {
-                    source: 'lines',
-                    operator: {
-                        op: 'vendureLookup',
-                        args: {
-                            entity: 'PRODUCT_VARIANT',
-                            matchField: 'productVariant.sku',
-                            select: 'stockOnHand',
-                            target: 'availableStock',
-                        },
-                    },
+                    connectionCode: 'inventory-api',
+                    url: 'https://inventory.example.com/check-order',
+                    method: 'POST',
+                    bodyField: 'lines',
+                    target: 'inventoryCheck',
+                    bearerTokenSecretCode: 'inventory-api-token',
                 },
             },
         ],
@@ -695,7 +688,7 @@ const orderProcessing = createPipeline()
             {
                 name: 'international',
                 when: [
-                    { field: 'shippingAddress.countryCode', cmp: 'nin', value: ['US', 'CA'] },
+                    { field: 'shippingAddress.countryCode', cmp: 'notIn', value: ['US', 'CA'] },
                 ],
             },
         ],
@@ -742,10 +735,10 @@ const orderProcessing = createPipeline()
 
     // Send to fulfillment
     .export('send-to-shipstation', {
-        adapterCode: 'api-export',
+        adapterCode: 'restPostExport',
         url: 'https://api.shipstation.com/orders/createorder',
         method: 'POST',
-        apiKeySecretCode: 'shipstation-api-key',
+        headerSecretCodes: { 'X-API-Key': 'shipstation-api-key' },
     })
 
     // Send confirmation email
@@ -756,16 +749,19 @@ const orderProcessing = createPipeline()
         template: 'order-confirmation',
     })
 
-    // Update order status
-    .load('update-order-status', {
-        adapterCode: 'orderUpdate',
-        matchField: 'code',
-        config: {
-            customFields: {
-                sentToFulfillment: true,
-                fulfillmentProvider: 'shipstation',
-            },
-        },
+    .transform('prepare-fulfillment-note', {
+        operators: [{
+            op: 'set',
+            args: { path: 'fulfillmentNote', value: 'Sent to ShipStation' },
+        }],
+    })
+
+    // Add an auditable note to the order
+    .load('record-fulfillment', {
+        adapterCode: 'orderNote',
+        orderCodeField: 'orderNumber',
+        noteField: 'fulfillmentNote',
+        isPrivate: true,
     })
 
     // Edges
@@ -777,7 +773,8 @@ const orderProcessing = createPipeline()
     .edge('by-shipping-method', 'format-for-shipstation', 'standard')
     .edge('format-for-shipstation', 'send-to-shipstation')
     .edge('send-to-shipstation', 'send-confirmation')
-    .edge('send-confirmation', 'update-order-status')
+    .edge('send-confirmation', 'prepare-fulfillment-note')
+    .edge('prepare-fulfillment-note', 'record-fulfillment')
 
     .hooks({
         ON_ERROR: [{
@@ -794,9 +791,9 @@ const orderProcessing = createPipeline()
 - **Webhook Trigger**: Real-time processing
 - **Idempotency**: Prevents duplicate processing
 - **Fail-Fast Validation**: Critical orders stop immediately on error
-- **Inventory Lookup**: Vendure entity lookup for stock
+- **Inventory Lookup**: Batched authenticated inventory check
 - **Complex Mapping**: Nested object transformation
-- **Multi-Step Flow**: Fulfillment → Email → Status update
+- **Multi-Step Flow**: Fulfillment → Email → Audit note
 
 ---
 
@@ -841,12 +838,15 @@ const multiChannelPricing = createPipeline()
     .transform('create-channel-copies', {
         operators: [
             {
-                op: 'fanOut',
+                op: 'set',
                 args: {
-                    dimension: 'channel',
-                    values: ['us-channel', 'eu-channel', 'uk-channel'],
+                    path: 'channels',
+                    value: ['us-channel', 'eu-channel', 'uk-channel'],
                 },
             },
+            { op: 'expand', args: { path: 'channels', mergeParent: true } },
+            { op: 'copy', args: { source: '_item', target: 'channel' } },
+            { op: 'remove', args: { path: '_item' } },
         ],
     })
 
@@ -872,7 +872,7 @@ const multiChannelPricing = createPipeline()
         operators: [
             { op: 'math', args: { operation: 'multiply', source: 'price', operand: '1.2' } },
             { op: 'math', args: { operation: 'multiply', source: 'price', operand: '0.92' } },  // USD to EUR
-            { op: 'round', args: { source: 'price', precision: 0 } },
+            { op: 'round', args: { source: 'price', decimals: 0 } },
             { op: 'set', args: { path: 'currencyCode', value: 'EUR' } },
         ],
     })
@@ -882,52 +882,28 @@ const multiChannelPricing = createPipeline()
         operators: [
             { op: 'math', args: { operation: 'multiply', source: 'price', operand: '1.15' } },
             { op: 'math', args: { operation: 'multiply', source: 'price', operand: '0.79' } },  // USD to GBP
-            { op: 'round', args: { source: 'price', precision: 0 } },
+            { op: 'round', args: { source: 'price', decimals: 0 } },
             { op: 'set', args: { path: 'currencyCode', value: 'GBP' } },
-        ],
-    })
-
-    // Merge channels back
-    .transform('merge-channels', {
-        operators: [
-            { op: 'identity' },  // Passthrough
         ],
     })
 
     // Apply promotional discounts
     .enrich('apply-promotions', {
         sourceType: 'HTTP',
-        endpoint: 'https://api.example.com/promotions/active',
-        matchField: 'sku',
-        targetField: 'promotion',
+        url: 'https://api.example.com/promotions/active',
+        keyField: 'sku',
+        target: 'promotion',
     })
 
     .transform('calculate-discounted-price', {
         operators: [
             {
-                op: 'conditional',
+                op: 'math',
                 args: {
-                    if: { field: 'promotion.discount', cmp: 'exists' },
-                    then: [
-                        {
-                            op: 'math',
-                            args: {
-                                operation: 'multiply',
-                                source: 'price',
-                                operand: '{{promotion.discountPercent}}',
-                                target: 'discountAmount',
-                            },
-                        },
-                        {
-                            op: 'math',
-                            args: {
-                                operation: 'subtract',
-                                source: 'price',
-                                operand: 'discountAmount',
-                                target: 'price',
-                            },
-                        },
-                    ],
+                    operation: 'multiply',
+                    source: 'price',
+                    operand: '$promotion.discountMultiplier',
+                    target: 'price',
                 },
             },
         ],
@@ -935,10 +911,11 @@ const multiChannelPricing = createPipeline()
 
     // Update variant prices in each channel
     .load('update-prices', {
-        adapterCode: 'variantPriceUpdate',
-        matchField: 'sku',
+        adapterCode: 'variantUpsert',
+        strategy: 'UPDATE',
+        skuField: 'sku',
         priceField: 'price',
-        channelStrategy: 'EXPLICIT',
+        channelsField: 'channel',
     })
 
     // Edges
@@ -947,10 +924,9 @@ const multiChannelPricing = createPipeline()
     .edge('by-channel', 'apply-us-pricing', 'us')
     .edge('by-channel', 'apply-eu-pricing', 'eu')
     .edge('by-channel', 'apply-uk-pricing', 'uk')
-    .edge('apply-us-pricing', 'merge-channels')
-    .edge('apply-eu-pricing', 'merge-channels')
-    .edge('apply-uk-pricing', 'merge-channels')
-    .edge('merge-channels', 'apply-promotions')
+    .edge('apply-us-pricing', 'apply-promotions')
+    .edge('apply-eu-pricing', 'apply-promotions')
+    .edge('apply-uk-pricing', 'apply-promotions')
     .edge('apply-promotions', 'calculate-discounted-price')
     .edge('calculate-discounted-price', 'update-prices')
 
@@ -981,6 +957,11 @@ Generate and upload product feeds for Google Shopping and Meta Catalog.
 
 ### Pipeline
 
+This example assumes application-defined `ftp-export` and `email` exporters
+registered by the host project. Built-in feed generators create managed local
+artifacts; remote transfer and notifications require a destination or custom
+adapter.
+
 ```typescript
 const productFeedGeneration = createPipeline()
     .name('Automated Product Feed Generation')
@@ -996,15 +977,20 @@ const productFeedGeneration = createPipeline()
     .extract('get-products', {
         adapterCode: 'vendureQuery',
         entity: 'PRODUCT',
-        relations: 'variants,featuredAsset,facetValues',
+        relations: ['variants', 'featuredAsset', 'facetValues'],
         batchSize: 500,
     })
 
     // Filter enabled products
     .transform('filter-active', {
         operators: [
-            { op: 'filter', args: { field: 'enabled', value: true } },
-            { op: 'filter', args: { field: 'variants.enabled', value: true } },
+            {
+                op: 'when',
+                args: {
+                    conditions: [{ field: 'enabled', cmp: 'eq', value: true }],
+                    action: 'keep',
+                },
+            },
         ],
     })
 
@@ -1014,9 +1000,15 @@ const productFeedGeneration = createPipeline()
             {
                 op: 'expand',
                 args: {
-                    source: 'variants',
-                    preserveParent: true,
-                    parentAlias: 'product',
+                    path: 'variants',
+                    mergeParent: true,
+                },
+            },
+            {
+                op: 'when',
+                args: {
+                    conditions: [{ field: 'enabled', cmp: 'eq', value: true }],
+                    action: 'keep',
                 },
             },
         ],
@@ -1049,7 +1041,7 @@ const productFeedGeneration = createPipeline()
         adapterCode: 'googleMerchant',
         feedType: 'GOOGLE_SHOPPING',
         format: 'XML',
-        outputPath: '/feeds/google-shopping.xml',
+        outputPath: 'feeds/google-shopping.xml',
         targetCountry: 'US',
         contentLanguage: 'en',
         currency: 'USD',
@@ -1068,7 +1060,7 @@ const productFeedGeneration = createPipeline()
         adapterCode: 'metaCatalog',
         feedType: 'META_CATALOG',
         format: 'CSV',
-        outputPath: '/feeds/meta-catalog.csv',
+        outputPath: 'feeds/meta-catalog.csv',
     })
 
     // Upload Meta feed to FTP
@@ -1125,6 +1117,9 @@ Stream database changes to data warehouse for analytics.
 
 ### Pipeline
 
+This example assumes an application-defined `snowflake-export` adapter
+registered by the host project. It is not part of the built-in exporter catalog.
+
 ```typescript
 const dataWarehouseSync = createPipeline()
     .name('CDC Data Warehouse Sync')
@@ -1133,17 +1128,17 @@ const dataWarehouseSync = createPipeline()
 
     .trigger('cdc', {
         type: 'MESSAGE',
-        queueType: 'RABBITMQ',
-        connectionCode: 'rabbitmq',
-        queueName: 'vendure.cdc.product',
-        consumerGroup: 'warehouse-sync',
-        ackMode: 'MANUAL',
+        message: {
+            queueType: 'RABBITMQ_AMQP',
+            connectionCode: 'rabbitmq',
+            queueName: 'vendure.cdc.product',
+            ackMode: 'MANUAL',
+        },
     })
 
-    // Extract CDC message
+    // The queue message is injected as the seeded CDC record.
     .extract('parse-cdc', {
-        adapterCode: 'cdcExtractor',
-        operation: 'ALL',  // INSERT, UPDATE, DELETE
+        adapterCode: 'inMemory',
     })
 
     // Transform to warehouse schema
@@ -1183,23 +1178,19 @@ const dataWarehouseSync = createPipeline()
         method: 'APPEND',
     })
 
-    // Handle updates - SCD Type 2
-    .transform('prepare-scd-update', {
-        operators: [
-            // Expire current record
-            {
-                op: 'sql',
-                args: {
-                    query: `
-                        UPDATE ANALYTICS.DIM.PRODUCT
-                        SET effective_to = CURRENT_TIMESTAMP(),
-                            is_current = FALSE
-                        WHERE product_key = :product_key
-                          AND is_current = TRUE
-                    `,
-                },
-            },
-        ],
+    // Handle updates - expire the current version through the custom exporter
+    .export('expire-current-version', {
+        adapterCode: 'snowflake-export',
+        connectionCode: 'snowflake',
+        database: 'ANALYTICS',
+        schema: 'DIM',
+        table: 'PRODUCT',
+        method: 'UPDATE',
+        updateFields: {
+            effective_to: '{{_cdc.timestamp}}',
+            is_current: false,
+        },
+        matchField: 'product_key',
     })
 
     .export('load-update', {
@@ -1231,9 +1222,9 @@ const dataWarehouseSync = createPipeline()
     .edge('parse-cdc', 'to-warehouse-schema')
     .edge('to-warehouse-schema', 'by-operation')
     .edge('by-operation', 'load-insert', 'insert')
-    .edge('by-operation', 'prepare-scd-update', 'update')
+    .edge('by-operation', 'expire-current-version', 'update')
     .edge('by-operation', 'load-delete', 'delete')
-    .edge('prepare-scd-update', 'load-update')
+    .edge('expire-current-version', 'load-update')
 
     .build();
 ```
@@ -1260,6 +1251,10 @@ Handle and retry failed records from dead letter queue.
 - Alert on persistent failures
 
 ### Pipeline
+
+This example assumes an application-defined `deadLetterQueue` extractor
+registered by the host project. Built-in queue consumers expose failure and
+retry operations through the Data Hub run and quarantine APIs instead.
 
 ```typescript
 const dlqRecovery = createPipeline()
@@ -1334,6 +1329,7 @@ const dlqRecovery = createPipeline()
         rules: [
             { type: 'business', spec: { field: 'sku', required: true } },
             { type: 'business', spec: { field: 'name', required: true } },
+            { type: 'business', spec: { field: 'slug', required: true } },
         ],
     })
 
@@ -1341,7 +1337,8 @@ const dlqRecovery = createPipeline()
     .load('retry-load', {
         adapterCode: 'productUpsert',
         strategy: 'UPSERT',
-        matchField: 'sku',
+        slugField: 'slug',
+        skuField: 'sku',
     })
 
     // Remove from DLQ on success
@@ -1353,17 +1350,16 @@ const dlqRecovery = createPipeline()
 
     // Alert on permanent failures
     .export('alert-permanent-failures', {
-        adapterCode: 'webhook',
+        adapterCode: 'webhookExport',
         url: 'https://alerts.example.com/dlq-permanent-failure',
         method: 'POST',
     })
 
     // Log unknown failures
     .export('log-unknown-failures', {
-        adapterCode: 'file-export',
-        path: '/logs/dlq',
-        filename: 'unknown-failures-{{date}}.json',
-        format: 'JSON',
+        adapterCode: 'jsonExport',
+        path: 'logs/dlq',
+        filenamePattern: 'unknown-failures-${date:YYYY-MM-DD}.json',
     })
 
     // Edges
@@ -1381,7 +1377,7 @@ const dlqRecovery = createPipeline()
         PIPELINE_COMPLETED: [{
             type: 'LOG',
             level: 'INFO',
-            message: 'DLQ recovery completed: {{stats.resolved}} resolved, {{stats.failed}} still failing',
+            message: 'DLQ recovery pipeline completed',
         }],
     })
 
@@ -1400,16 +1396,18 @@ const dlqRecovery = createPipeline()
 
 ## 9. Multi-Stage Approval Workflow
 
-Complex approval workflow with multiple gates and escalation.
+Complex approval workflow with multiple gates and value-based routing.
 
 ### Scenario
 
 - Import high-value products
 - Route through approval stages
-- Escalate on timeout
 - Track approval history
 
 ### Pipeline
+
+This example assumes an application-defined `database-export` adapter
+registered by the host project. It is not part of the built-in exporter catalog.
 
 ```typescript
 const approvalWorkflow = createPipeline()
@@ -1421,9 +1419,8 @@ const approvalWorkflow = createPipeline()
 
     // Extract products from import file
     .extract('parse-csv', {
-        adapterCode: 'file',
-        path: '/imports/new-products.csv',
-        format: 'CSV',
+        adapterCode: 'csv',
+        fileId: 'new-products-upload-id',
         hasHeader: true,
     })
 
@@ -1469,7 +1466,6 @@ const approvalWorkflow = createPipeline()
     .gate('manager-approval', {
         approvalType: 'MANUAL',
         notifyEmail: 'product-manager@example.com',
-        timeoutSeconds: 86400,  // 24 hours
     })
 
     .load('create-medium', {
@@ -1481,13 +1477,11 @@ const approvalWorkflow = createPipeline()
     .gate('buyer-approval', {
         approvalType: 'MANUAL',
         notifyEmail: 'buyer@example.com',
-        timeoutSeconds: 43200,  // 12 hours
     })
 
     .gate('director-approval', {
         approvalType: 'THRESHOLD',
         errorThresholdPercent: 0,  // No errors allowed
-        timeoutSeconds: 86400,      // 24 hours
         notifyEmail: 'director@example.com',
     })
 
@@ -1524,13 +1518,6 @@ const approvalWorkflow = createPipeline()
     .edge('create-medium', 'log-approval')
     .edge('create-high', 'log-approval')
 
-    .hooks({
-        GATE_TIMEOUT: [{
-            type: 'WEBHOOK',
-            url: 'https://alerts.example.com/approval-timeout',
-        }],
-    })
-
     .build();
 ```
 
@@ -1538,7 +1525,6 @@ const approvalWorkflow = createPipeline()
 
 - **Multi-Stage Gates**: Sequential approval steps
 - **Value-Based Routing**: Different flows by value
-- **Timeout Handling**: Auto-escalation
 - **Audit Trail**: Log all approvals
 - **Threshold Gates**: Auto-approve on quality
 
@@ -1567,16 +1553,13 @@ const eventDrivenSync = createPipeline()
     .trigger('event', {
         type: 'EVENT',
         event: 'ProductEvent',
-        filter: {
-            type: 'updated',
-        },
     })
 
     // Extract product details
     .extract('get-product', {
         adapterCode: 'vendureQuery',
         entity: 'PRODUCT',
-        relations: 'variants,assets,facetValues',
+        relations: ['variants', 'assets', 'facetValues'],
     })
 
     // Transform for search index
@@ -1597,9 +1580,9 @@ const eventDrivenSync = createPipeline()
     .sink('update-search', {
         adapterCode: 'meilisearch',
         indexName: 'products',
-        host: 'localhost',
-        port: 7700,
-        idField: 'id',
+        host: 'http://localhost:7700',
+        apiKeySecretCode: 'meilisearch-api-key',
+        primaryKey: 'id',
     })
 
     // Transform for PIM
@@ -1619,34 +1602,28 @@ const eventDrivenSync = createPipeline()
 
     // Sync to PIM
     .export('sync-to-pim', {
-        adapterCode: 'api-export',
-        connectionCode: 'pim-api',
-        url: '/products/${slug}',
+        adapterCode: 'restPostExport',
+        url: 'https://pim.example.com/products/bulk',
         method: 'PUT',
+        headerSecretCodes: { Authorization: 'pim-api-token' },
     })
 
     // Invalidate CDN cache
     .export('purge-cdn', {
-        adapterCode: 'webhook',
+        adapterCode: 'webhookExport',
         url: 'https://cdn.example.com/purge',
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-            urls: [
-                'https://shop.example.com/products/${slug}',
-                'https://shop.example.com/api/products/${slug}',
-            ],
-        }),
     })
 
     // Update recommendation engine
     .export('update-recommendations', {
-        adapterCode: 'api-export',
-        url: 'https://recommendations.example.com/products/${id}',
+        adapterCode: 'restPostExport',
+        url: 'https://recommendations.example.com/products/bulk',
         method: 'PUT',
-        apiKeySecretCode: 'recommendations-api-key',
+        headerSecretCodes: { 'X-API-Key': 'recommendations-api-key' },
     })
 
     // Edges

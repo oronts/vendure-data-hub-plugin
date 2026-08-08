@@ -42,11 +42,10 @@ export async function imageConvertOperator(
     config: ImageConvertConfig,
     _helpers: AdapterOperatorHelpers,
 ): Promise<OperatorResult> {
-    const output = await processImageRecords(records, config, async (sharp, inputBuffer, cfg) => {
+    return processImageRecords(records, config, async (sharp, inputBuffer, cfg) => {
         return await sharp(inputBuffer)
             .toFormat(cfg.format, { quality: cfg.quality })
             .toBuffer();
     });
 
-    return { records: output };
 }

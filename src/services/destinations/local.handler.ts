@@ -4,21 +4,11 @@
  * Delivery to local filesystem.
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
+import { FILE_STORAGE } from '../../constants';
+import { resolveSafeOutputPath, writeFileSafely } from '../../utils/safe-output-path.utils';
 import { LocalDestinationConfig, DeliveryResult, DeliveryOptions, DESTINATION_TYPE } from './destination.types';
-import { securePath } from '../../utils/input-validation.utils';
 import { getErrorMessage } from '../../utils/error.utils';
 
-/**
- * Securely resolve a filename within the destination directory.
- * Prevents path traversal attacks by validating the filename
- * doesn't escape the configured directory.
- */
-function getSecureTargetPath(directory: string, filename: string): string {
-    const resolvedDir = path.resolve(directory);
-    return securePath(resolvedDir, filename);
-}
 
 /**
  * Deliver content to local filesystem
@@ -29,17 +19,8 @@ export async function deliverToLocal(
     filename: string,
     _options?: DeliveryOptions,
 ): Promise<DeliveryResult> {
-    // Validate and resolve the target path securely
-    const targetPath = getSecureTargetPath(config.directory, filename);
-    const dir = path.dirname(targetPath);
-
-    try {
-        await fs.promises.access(dir);
-    } catch {
-        await fs.promises.mkdir(dir, { recursive: true });
-    }
-
-    await fs.promises.writeFile(targetPath, content);
+    const targetPath = await resolveSafeOutputPath(FILE_STORAGE.EXPORT_ROOT, config.directory, filename);
+    await writeFileSafely(targetPath, content);
 
     return {
         success: true,
@@ -57,18 +38,12 @@ export async function deliverToLocal(
  */
 export async function testLocalDestination(config: LocalDestinationConfig): Promise<{ success: boolean; message: string }> {
     try {
-        await fs.promises.access(config.directory);
-        return { success: true, message: 'Directory exists' };
-    } catch {
-        // Directory doesn't exist, try to create it
-        try {
-            await fs.promises.mkdir(config.directory, { recursive: true });
-            return { success: true, message: 'Directory created' };
-        } catch (error) {
-            return {
-                success: false,
-                message: getErrorMessage(error),
-            };
-        }
+        await resolveSafeOutputPath(FILE_STORAGE.EXPORT_ROOT, config.directory, '.data-hub-write-test');
+        return { success: true, message: 'Directory is available within the export root' };
+    } catch (error) {
+        return {
+            success: false,
+            message: getErrorMessage(error),
+        };
     }
 }

@@ -1,5 +1,5 @@
 import { ID, RequestContext, CustomerService, CustomerGroupService } from '@vendure/core';
-import { DataHubLogger } from '../../services/logger';
+import { DataHubLogger } from '../../services/logger/datahub-logger';
 
 export { isRecoverableError, shouldUpdateField } from '../shared-helpers';
 
@@ -57,4 +57,3 @@ export async function addCustomersToGroup(
         });
     }
 }
-

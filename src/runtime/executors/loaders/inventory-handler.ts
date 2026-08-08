@@ -3,19 +3,22 @@
  */
 import { Injectable } from '@nestjs/common';
 import {
+    ID,
     RequestContext,
     ProductVariantService,
     StockLocationService,
+    StockLevelService,
+    StockMovementService,
     ProductVariant,
 } from '@vendure/core';
-import { StockLevelInput, UpdateProductVariantInput } from '@vendure/common/lib/generated-types';
+import { StockLevelInput } from '@vendure/common/lib/generated-types';
 import { PipelineStepDefinition, ErrorHandlingConfig } from '../../../types/index';
-import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
+import { RecordObject, OnRecordErrorCallback, LoaderExecutionResult } from '../../executor-types';
 import { LoaderHandler } from './types';
 import { findVariantBySku as findVariantBySkuLookup } from './shared-lookups';
 import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
-import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
-import { LOGGER_CONTEXTS } from '../../../constants/index';
+import { getStringValue } from '../../../loaders/shared-helpers';
+import { DistributedLockService } from '../../../services/runtime/distributed-lock.service';
 
 /**
  * Configuration for the stock adjustment handler
@@ -42,21 +45,21 @@ function isStockAdjustConfig(value: unknown): value is StockAdjustConfig {
 function isStockByLocationMap(value: unknown): value is Record<string, number> {
     if (value === null || typeof value !== 'object') return false;
     return Object.entries(value as Record<string, unknown>).every(
-        ([, v]) => typeof v === 'number'
+        ([name, quantity]) => name.trim() !== ''
+            && typeof quantity === 'number'
+            && Number.isInteger(quantity),
     );
 }
 
 @Injectable()
 export class StockAdjustHandler implements LoaderHandler {
-    private readonly logger: DataHubLogger;
-
     constructor(
         private productVariantService: ProductVariantService,
         private stockLocationService: StockLocationService,
-        loggerFactory: DataHubLoggerFactory,
-    ) {
-        this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.INVENTORY_LOADER);
-    }
+        private stockLevelService: StockLevelService,
+        private stockMovementService: StockMovementService,
+        private distributedLock: DistributedLockService,
+    ) {}
 
     async execute(
         ctx: RequestContext,
@@ -64,29 +67,25 @@ export class StockAdjustHandler implements LoaderHandler {
         input: RecordObject[],
         onRecordError?: OnRecordErrorCallback,
         _errorHandling?: ErrorHandlingConfig,
-    ): Promise<ExecutionResult> {
+    ): Promise<LoaderExecutionResult> {
         let ok = 0, fail = 0;
 
         // Parse and validate config
-        const config: StockAdjustConfig = isStockAdjustConfig(step.config) ? step.config : {};
+        if (!isStockAdjustConfig(step.config)) {
+            throw new Error('Invalid stockAdjust configuration');
+        }
+        const config: StockAdjustConfig = step.config;
         const skuKey = config.skuField ?? 'sku';
         const stockMapKey = config.stockByLocationField ?? 'stockByLocation';
+        const absolute = config.absolute ?? true;
 
         for (const rec of input) {
             try {
-                const skuValue = rec[skuKey];
+                const sku = getStringValue(rec, skuKey);
 
-                if (skuValue === undefined || skuValue === null) {
+                if (!sku) {
                     if (onRecordError) {
                         await onRecordError(step.key, `Missing required SKU field "${skuKey}"`, rec);
-                    }
-                    fail++;
-                    continue;
-                }
-                const variant = await this.findVariantBySku(ctx, String(skuValue));
-                if (!variant) {
-                    if (onRecordError) {
-                        await onRecordError(step.key, `Variant not found for SKU "${String(skuValue)}"`, rec);
                     }
                     fail++;
                     continue;
@@ -95,27 +94,23 @@ export class StockAdjustHandler implements LoaderHandler {
                 const mapValue = rec[stockMapKey];
                 if (!isStockByLocationMap(mapValue)) {
                     if (onRecordError) {
-                        await onRecordError(step.key, `Invalid or missing stock-by-location map in field "${stockMapKey}" for SKU "${String(skuValue)}"`, rec);
+                        await onRecordError(step.key, `Invalid or missing stock-by-location map in field "${stockMapKey}" for SKU "${sku}"`, rec);
                     }
                     fail++;
                     continue;
                 }
 
-                const levels = await this.resolveStockLevelsByCode(ctx, mapValue);
-                if (!levels || !levels.length) {
+                const variant = await this.findVariantBySku(ctx, sku);
+                if (!variant) {
                     if (onRecordError) {
-                        await onRecordError(step.key, `No valid stock locations resolved for SKU "${String(skuValue)}"`, rec);
+                        await onRecordError(step.key, `Variant not found for SKU "${sku}"`, rec);
                     }
-                    fail++; continue;
+                    fail++;
+                    continue;
                 }
 
-                const stockLevels = levels;
-
-                const update: UpdateProductVariantInput = {
-                    id: variant.id,
-                    stockLevels,
-                };
-                await this.productVariantService.update(ctx, [update]);
+                const stockLevels = await this.resolveStockLevelsByName(ctx, mapValue);
+                await this.applyStockLevels(ctx, variant.id, stockLevels, absolute);
                 ok++;
             } catch (e: unknown) {
                 if (onRecordError) {
@@ -124,34 +119,66 @@ export class StockAdjustHandler implements LoaderHandler {
                 fail++;
             }
         }
-        return { ok, fail };
+        return { ok, fail, skipped: 0 };
     }
 
     private async findVariantBySku(ctx: RequestContext, sku: string): Promise<ProductVariant | undefined> {
         return findVariantBySkuLookup(this.productVariantService, ctx, sku);
     }
 
-    private async resolveStockLevelsByCode(ctx: RequestContext, stockByLocation?: Record<string, number>): Promise<StockLevelInput[] | undefined> {
-        if (!stockByLocation) return undefined;
+    private async resolveStockLevelsByName(
+        ctx: RequestContext,
+        stockByLocation: Record<string, number>,
+    ): Promise<StockLevelInput[]> {
+        if (Object.keys(stockByLocation).length === 0) {
+            throw new Error('Stock-by-location map must not be empty');
+        }
         const result: StockLevelInput[] = [];
-        for (const [locationName, qty] of Object.entries(stockByLocation)) {
-            try {
-                // StockLocation uses 'name' field, not 'code'
-                const list = await this.stockLocationService.findAll(ctx, {
-                    filter: { name: { eq: locationName } },
-                    take: 1,
-                });
-                const stockLocation = list.items[0];
-                if (stockLocation) {
-                    result.push({
-                        stockLocationId: stockLocation.id,
-                        stockOnHand: Math.max(0, Math.floor(qty)),
-                    });
-                }
-            } catch (error) {
-                this.logger.warn(`Failed to lookup stock location '${locationName}': ${getErrorMessage(error)}`);
+        for (const [locationName, quantity] of Object.entries(stockByLocation)) {
+            const list = await this.stockLocationService.findAll(ctx, {
+                filter: { name: { eq: locationName } },
+                take: 2,
+            });
+            if (list.items.length !== 1) {
+                const reason = list.items.length === 0 ? 'was not found' : 'is ambiguous';
+                throw new Error(`Stock location name "${locationName}" ${reason} in the active channel`);
             }
+            result.push({
+                stockLocationId: list.items[0].id,
+                stockOnHand: Math.trunc(quantity),
+            });
         }
         return result;
+    }
+
+    private async applyStockLevels(
+        ctx: RequestContext,
+        variantId: ID,
+        stockLevels: StockLevelInput[],
+        absolute: boolean,
+    ): Promise<void> {
+        if (absolute) {
+            if (stockLevels.some(level => level.stockOnHand < 0)) {
+                throw new Error('Absolute stock levels must be non-negative');
+            }
+            await this.stockMovementService.adjustProductVariantStock(ctx, variantId, stockLevels);
+            return;
+        }
+
+        const lockKey = `stock-adjust:${String(ctx.channelId)}:${String(variantId)}`;
+        await this.distributedLock.withLock(lockKey, async () => {
+            const updatedLevels = await Promise.all(stockLevels.map(async level => {
+                const current = await this.stockLevelService.getStockLevel(
+                    ctx,
+                    variantId,
+                    level.stockLocationId,
+                );
+                return {
+                    stockLocationId: level.stockLocationId,
+                    stockOnHand: current.stockOnHand + level.stockOnHand,
+                };
+            }));
+            await this.stockMovementService.adjustProductVariantStock(ctx, variantId, updatedLevels);
+        });
     }
 }

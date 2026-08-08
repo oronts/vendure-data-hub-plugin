@@ -4,7 +4,7 @@
  * Type-safe utility functions and namespace objects for building pipeline
  * definitions with compile-time validation. Provides:
  *
- * - Namespace objects (Extractors, Operators, Loaders, Exporters, Feeds) with
+ * - Namespace objects (Extractors, Loaders, Exporters, Feeds) with
  *   factory functions that return correctly-typed adapter configs
  * - Step factory functions (extractStep, transformStep, etc.) that produce
  *   PipelineStepDefinition with the correct `type` field
@@ -21,36 +21,39 @@ import type {
 import {
     type CsvExtractorConfig,
     type JsonExtractorConfig,
-    type ExcelExtractorConfig,
+    type XmlExtractorConfig,
+    type XlsxExtractorConfig,
     type HttpApiExtractorConfig,
     type GraphqlExtractorConfig,
     type VendureQueryExtractorConfig,
-    type WebhookExtractorConfig,
     type DatabaseExtractorConfig,
     type GenericExtractorConfig,
     type TypedExtractorConfig,
-    type MapOperatorConfig,
-    type TemplateOperatorConfig,
-    type FilterOperatorConfig,
-    type WhenOperatorConfig,
-    type LookupOperatorConfig,
-    type AggregateOperatorConfig,
-    type DedupeOperatorConfig,
-    type CoerceOperatorConfig,
-    type EnrichOperatorConfig,
-    type GenericOperatorConfig,
-    type TypedOperatorConfig,
+    type OperatorConfig,
     type ProductUpsertLoaderConfig,
     type VariantUpsertLoaderConfig,
     type CustomerUpsertLoaderConfig,
+    type OrderUpsertLoaderConfig,
     type StockAdjustLoaderConfig,
     type RestPostLoaderConfig,
+    type GraphqlMutationLoaderConfig,
     type OrderNoteLoaderConfig,
     type OrderTransitionLoaderConfig,
     type CollectionUpsertLoaderConfig,
     type AssetAttachLoaderConfig,
+    type AssetImportLoaderConfig,
     type ApplyCouponLoaderConfig,
     type PromotionUpsertLoaderConfig,
+    type FacetUpsertLoaderConfig,
+    type FacetValueUpsertLoaderConfig,
+    type TaxRateUpsertLoaderConfig,
+    type PaymentMethodUpsertLoaderConfig,
+    type ChannelUpsertLoaderConfig,
+    type ShippingMethodUpsertLoaderConfig,
+    type CustomerGroupUpsertLoaderConfig,
+    type StockLocationUpsertLoaderConfig,
+    type InventoryAdjustLoaderConfig,
+    type EntityDeletionLoaderConfig,
     type GenericLoaderConfig,
     type TypedLoaderConfig,
     type CsvExportConfig,
@@ -64,48 +67,47 @@ import {
     type CustomFeedConfig,
     type GenericFeedConfig,
     type TypedFeedConfig,
-    type SchemaValidatorConfig,
     type RouteConfig,
-    type UpdateCatalogLoaders,
-    type UpdateCustomerLoaders,
-    type UpdateOrderLoaders,
-    type UpdatePromotionLoaders,
-    type UpdateDataHubSettingsLoaders,
 } from '../../shared/types';
+import type { ValidateStepConfig } from '../sdk/dsl/step-configs';
+import type { LoaderCode, LoaderConfigMap } from './loader-configs';
+import { getLoaderCapabilities } from './loader-capabilities';
 
 export type {
     CsvExtractorConfig,
     JsonExtractorConfig,
-    ExcelExtractorConfig,
+    XmlExtractorConfig,
+    XlsxExtractorConfig,
     HttpApiExtractorConfig,
     GraphqlExtractorConfig,
     VendureQueryExtractorConfig,
-    WebhookExtractorConfig,
     DatabaseExtractorConfig,
     GenericExtractorConfig,
     TypedExtractorConfig,
-    MapOperatorConfig,
-    TemplateOperatorConfig,
-    FilterOperatorConfig,
-    WhenOperatorConfig,
-    LookupOperatorConfig,
-    AggregateOperatorConfig,
-    DedupeOperatorConfig,
-    CoerceOperatorConfig,
-    EnrichOperatorConfig,
-    GenericOperatorConfig,
-    TypedOperatorConfig,
     ProductUpsertLoaderConfig,
     VariantUpsertLoaderConfig,
     CustomerUpsertLoaderConfig,
+    OrderUpsertLoaderConfig,
     StockAdjustLoaderConfig,
     RestPostLoaderConfig,
+    GraphqlMutationLoaderConfig,
     OrderNoteLoaderConfig,
     OrderTransitionLoaderConfig,
     CollectionUpsertLoaderConfig,
     AssetAttachLoaderConfig,
+    AssetImportLoaderConfig,
     ApplyCouponLoaderConfig,
     PromotionUpsertLoaderConfig,
+    FacetUpsertLoaderConfig,
+    FacetValueUpsertLoaderConfig,
+    TaxRateUpsertLoaderConfig,
+    PaymentMethodUpsertLoaderConfig,
+    ChannelUpsertLoaderConfig,
+    ShippingMethodUpsertLoaderConfig,
+    CustomerGroupUpsertLoaderConfig,
+    StockLocationUpsertLoaderConfig,
+    InventoryAdjustLoaderConfig,
+    EntityDeletionLoaderConfig,
     GenericLoaderConfig,
     TypedLoaderConfig,
     CsvExportConfig,
@@ -119,13 +121,20 @@ export type {
     CustomFeedConfig,
     GenericFeedConfig,
     TypedFeedConfig,
-    SchemaValidatorConfig,
     RouteConfig,
     UpdateCatalogLoaders,
     UpdateCustomerLoaders,
     UpdateOrderLoaders,
     UpdatePromotionLoaders,
+    UpdateSettingsLoaders,
+    UpdateShippingMethodLoaders,
     UpdateDataHubSettingsLoaders,
+    LoaderAdapterCode,
+} from '../../shared/types';
+
+export type {
+    FeedLocalizationConfig,
+    CommerceFeedFieldMappingConfig,
 } from '../../shared/types';
 
 // ============================================================================
@@ -136,7 +145,8 @@ export type {
 type StepExtras = Partial<Pick<
     PipelineStepDefinition,
     'name' | 'label' | 'description' | 'order' | 'disabled' |
-    'parallel' | 'async' | 'concurrency' | 'throughput' |
+    'parallel' | 'async' | 'throughput' |
+    'context' |
     'retries' | 'retryDelayMs' | 'timeoutMs' | 'continueOnError' |
     'condition' | 'inputs' | 'outputs'
 >>;
@@ -156,6 +166,16 @@ interface TypedStepDefinition extends PipelineStepDefinition {
 
 /** Union type covering all typed step definitions produced by step factory functions. */
 export type TypedStep = TypedStepDefinition;
+
+export interface TypedTransformConfig {
+    operators: OperatorConfig[];
+    retryPerRecord?: {
+        maxRetries: number;
+        retryDelayMs?: number;
+        backoff?: 'FIXED' | 'EXPONENTIAL';
+        retryableErrors?: string[];
+    };
+}
 
 // ============================================================================
 // Step Factory Functions
@@ -189,16 +209,16 @@ export function extractStep(
 /** Create a typed TRANSFORM step definition. */
 export function transformStep(
     key: string,
-    config: TypedOperatorConfig,
+    config: TypedTransformConfig,
     extras?: StepExtras,
 ): TypedStep {
-    return makeStep(key, 'TRANSFORM', config as Record<string, unknown>, extras);
+    return makeStep(key, 'TRANSFORM', config as unknown as Record<string, unknown>, extras);
 }
 
 /** Create a typed VALIDATE step definition. */
 export function validateStep(
     key: string,
-    config: SchemaValidatorConfig,
+    config: ValidateStepConfig,
     extras?: StepExtras,
 ): TypedStep {
     return makeStep(key, 'VALIDATE', config as unknown as Record<string, unknown>, extras);
@@ -243,42 +263,55 @@ export function feedStep(
 export const Extractors = {
     csv: (config: Omit<CsvExtractorConfig, 'adapterCode'>): CsvExtractorConfig => ({ adapterCode: 'csv', ...config }),
     json: (config: Omit<JsonExtractorConfig, 'adapterCode'>): JsonExtractorConfig => ({ adapterCode: 'json', ...config }),
-    excel: (config: Omit<ExcelExtractorConfig, 'adapterCode'>): ExcelExtractorConfig => ({ adapterCode: 'excel', ...config }),
+    xml: (config: Omit<XmlExtractorConfig, 'adapterCode'>): XmlExtractorConfig => ({ adapterCode: 'xml', ...config }),
+    xlsx: (config: Omit<XlsxExtractorConfig, 'adapterCode'>): XlsxExtractorConfig => ({ adapterCode: 'xlsx', ...config }),
     httpApi: (config: Omit<HttpApiExtractorConfig, 'adapterCode'>): HttpApiExtractorConfig => ({ adapterCode: 'httpApi', ...config }),
     graphql: (config: Omit<GraphqlExtractorConfig, 'adapterCode'>): GraphqlExtractorConfig => ({ adapterCode: 'graphql', ...config }),
     vendureQuery: (config: Omit<VendureQueryExtractorConfig, 'adapterCode'>): VendureQueryExtractorConfig => ({ adapterCode: 'vendureQuery', ...config }),
-    webhook: (config: Omit<WebhookExtractorConfig, 'adapterCode'>): WebhookExtractorConfig => ({ adapterCode: 'webhook', ...config }),
     database: (config: Omit<DatabaseExtractorConfig, 'adapterCode'>): DatabaseExtractorConfig => ({ adapterCode: 'database', ...config }),
     custom: <T extends Record<string, unknown>>(adapterCode: string, config: T): GenericExtractorConfig => ({ adapterCode, ...config }),
 };
 
-export const Operators = {
-    map: (config: Omit<MapOperatorConfig, 'adapterCode'>): MapOperatorConfig => ({ adapterCode: 'map', ...config }),
-    template: (config: Omit<TemplateOperatorConfig, 'adapterCode'>): TemplateOperatorConfig => ({ adapterCode: 'template', ...config }),
-    filter: (config: Omit<FilterOperatorConfig, 'adapterCode'>): FilterOperatorConfig => ({ adapterCode: 'filter', ...config }),
-    when: (config: Omit<WhenOperatorConfig, 'adapterCode'>): WhenOperatorConfig => ({ adapterCode: 'when', ...config }),
-    lookup: (config: Omit<LookupOperatorConfig, 'adapterCode'>): LookupOperatorConfig => ({ adapterCode: 'lookup', ...config }),
-    aggregate: (config: Omit<AggregateOperatorConfig, 'adapterCode'>): AggregateOperatorConfig => ({ adapterCode: 'aggregate', ...config }),
-    dedupe: (config: Omit<DedupeOperatorConfig, 'adapterCode'>): DedupeOperatorConfig => ({ adapterCode: 'dedupe', ...config }),
-    coerce: (config: Omit<CoerceOperatorConfig, 'adapterCode'>): CoerceOperatorConfig => ({ adapterCode: 'coerce', ...config }),
-    enrich: (config: Omit<EnrichOperatorConfig, 'adapterCode'>): EnrichOperatorConfig => ({ adapterCode: 'enrich', ...config }),
-    custom: <T extends Record<string, unknown>>(adapterCode: string, config: T): GenericOperatorConfig => ({ adapterCode, ...config }),
+type LoaderFactoryMap = {
+    readonly [Code in LoaderCode]: (
+        config: Omit<LoaderConfigMap[Code], 'adapterCode'>,
+    ) => LoaderConfigMap[Code];
+};
+
+type LoaderFactories = LoaderFactoryMap & {
+    custom<T extends Record<string, unknown>>(
+        adapterCode: string,
+        config: T,
+    ): GenericLoaderConfig;
 };
 
 export const Loaders = {
-    productUpsert: (config: Omit<ProductUpsertLoaderConfig, 'adapterCode'>): ProductUpsertLoaderConfig => ({ adapterCode: 'productUpsert', ...config }),
-    variantUpsert: (config: Omit<VariantUpsertLoaderConfig, 'adapterCode'>): VariantUpsertLoaderConfig => ({ adapterCode: 'variantUpsert', ...config }),
-    customerUpsert: (config: Omit<CustomerUpsertLoaderConfig, 'adapterCode'>): CustomerUpsertLoaderConfig => ({ adapterCode: 'customerUpsert', ...config }),
-    stockAdjust: (config: Omit<StockAdjustLoaderConfig, 'adapterCode'>): StockAdjustLoaderConfig => ({ adapterCode: 'stockAdjust', ...config }),
-    restPost: (config: Omit<RestPostLoaderConfig, 'adapterCode'>): RestPostLoaderConfig => ({ adapterCode: 'restPost', ...config }),
-    orderNote: (config: Omit<OrderNoteLoaderConfig, 'adapterCode'>): OrderNoteLoaderConfig => ({ adapterCode: 'orderNote', ...config }),
-    orderTransition: (config: Omit<OrderTransitionLoaderConfig, 'adapterCode'>): OrderTransitionLoaderConfig => ({ adapterCode: 'orderTransition', ...config }),
-    collectionUpsert: (config: Omit<CollectionUpsertLoaderConfig, 'adapterCode'>): CollectionUpsertLoaderConfig => ({ adapterCode: 'collectionUpsert', ...config }),
-    assetAttach: (config: Omit<AssetAttachLoaderConfig, 'adapterCode'>): AssetAttachLoaderConfig => ({ adapterCode: 'assetAttach', ...config }),
-    applyCoupon: (config: Omit<ApplyCouponLoaderConfig, 'adapterCode'>): ApplyCouponLoaderConfig => ({ adapterCode: 'applyCoupon', ...config }),
-    promotionUpsert: (config: Omit<PromotionUpsertLoaderConfig, 'adapterCode'>): PromotionUpsertLoaderConfig => ({ adapterCode: 'promotionUpsert', ...config }),
-    custom: <T extends Record<string, unknown>>(adapterCode: string, config: T): GenericLoaderConfig => ({ adapterCode, ...config }),
-};
+    productUpsert: (config: Omit<ProductUpsertLoaderConfig, 'adapterCode'>): ProductUpsertLoaderConfig => ({ ...config, adapterCode: 'productUpsert' }),
+    variantUpsert: (config: Omit<VariantUpsertLoaderConfig, 'adapterCode'>): VariantUpsertLoaderConfig => ({ ...config, adapterCode: 'variantUpsert' }),
+    customerUpsert: (config: Omit<CustomerUpsertLoaderConfig, 'adapterCode'>): CustomerUpsertLoaderConfig => ({ ...config, adapterCode: 'customerUpsert' }),
+    orderUpsert: (config: Omit<OrderUpsertLoaderConfig, 'adapterCode'>): OrderUpsertLoaderConfig => ({ ...config, adapterCode: 'orderUpsert' }),
+    orderNote: (config: Omit<OrderNoteLoaderConfig, 'adapterCode'>): OrderNoteLoaderConfig => ({ ...config, adapterCode: 'orderNote' }),
+    stockAdjust: (config: Omit<StockAdjustLoaderConfig, 'adapterCode'>): StockAdjustLoaderConfig => ({ ...config, adapterCode: 'stockAdjust' }),
+    applyCoupon: (config: Omit<ApplyCouponLoaderConfig, 'adapterCode'>): ApplyCouponLoaderConfig => ({ ...config, adapterCode: 'applyCoupon' }),
+    collectionUpsert: (config: Omit<CollectionUpsertLoaderConfig, 'adapterCode'>): CollectionUpsertLoaderConfig => ({ ...config, adapterCode: 'collectionUpsert' }),
+    promotionUpsert: (config: Omit<PromotionUpsertLoaderConfig, 'adapterCode'>): PromotionUpsertLoaderConfig => ({ ...config, adapterCode: 'promotionUpsert' }),
+    orderTransition: (config: Omit<OrderTransitionLoaderConfig, 'adapterCode'>): OrderTransitionLoaderConfig => ({ ...config, adapterCode: 'orderTransition' }),
+    assetAttach: (config: Omit<AssetAttachLoaderConfig, 'adapterCode'>): AssetAttachLoaderConfig => ({ ...config, adapterCode: 'assetAttach' }),
+    assetImport: (config: Omit<AssetImportLoaderConfig, 'adapterCode'>): AssetImportLoaderConfig => ({ ...config, adapterCode: 'assetImport' }),
+    facetUpsert: (config: Omit<FacetUpsertLoaderConfig, 'adapterCode'>): FacetUpsertLoaderConfig => ({ ...config, adapterCode: 'facetUpsert' }),
+    facetValueUpsert: (config: Omit<FacetValueUpsertLoaderConfig, 'adapterCode'>): FacetValueUpsertLoaderConfig => ({ ...config, adapterCode: 'facetValueUpsert' }),
+    restPost: (config: Omit<RestPostLoaderConfig, 'adapterCode'>): RestPostLoaderConfig => ({ ...config, adapterCode: 'restPost' }),
+    graphqlMutation: (config: Omit<GraphqlMutationLoaderConfig, 'adapterCode'>): GraphqlMutationLoaderConfig => ({ ...config, adapterCode: 'graphqlMutation' }),
+    taxRateUpsert: (config: Omit<TaxRateUpsertLoaderConfig, 'adapterCode'>): TaxRateUpsertLoaderConfig => ({ ...config, adapterCode: 'taxRateUpsert' }),
+    paymentMethodUpsert: (config: Omit<PaymentMethodUpsertLoaderConfig, 'adapterCode'>): PaymentMethodUpsertLoaderConfig => ({ ...config, adapterCode: 'paymentMethodUpsert' }),
+    channelUpsert: (config: Omit<ChannelUpsertLoaderConfig, 'adapterCode'>): ChannelUpsertLoaderConfig => ({ ...config, adapterCode: 'channelUpsert' }),
+    shippingMethodUpsert: (config: Omit<ShippingMethodUpsertLoaderConfig, 'adapterCode'>): ShippingMethodUpsertLoaderConfig => ({ ...config, adapterCode: 'shippingMethodUpsert' }),
+    customerGroupUpsert: (config: Omit<CustomerGroupUpsertLoaderConfig, 'adapterCode'>): CustomerGroupUpsertLoaderConfig => ({ ...config, adapterCode: 'customerGroupUpsert' }),
+    stockLocationUpsert: (config: Omit<StockLocationUpsertLoaderConfig, 'adapterCode'>): StockLocationUpsertLoaderConfig => ({ ...config, adapterCode: 'stockLocationUpsert' }),
+    inventoryAdjust: (config: Omit<InventoryAdjustLoaderConfig, 'adapterCode'>): InventoryAdjustLoaderConfig => ({ ...config, adapterCode: 'inventoryAdjust' }),
+    entityDeletion: (config: Omit<EntityDeletionLoaderConfig, 'adapterCode'>): EntityDeletionLoaderConfig => ({ ...config, adapterCode: 'entityDeletion' }),
+    custom: <T extends Record<string, unknown>>(adapterCode: string, config: T): GenericLoaderConfig => ({ ...config, adapterCode }),
+} satisfies LoaderFactories;
 
 export const Exporters = {
     csv: (config: Omit<CsvExportConfig, 'adapterCode'>): CsvExportConfig => ({ adapterCode: 'csvExport', ...config }),
@@ -299,50 +332,6 @@ export const Feeds = {
 // Capability Derivation
 // ============================================================================
 
-/** Adapter codes that require UpdateCatalog permission */
-const CATALOG_LOADERS: ReadonlySet<string> = new Set<UpdateCatalogLoaders>([
-    'productUpsert', 'variantUpsert', 'stockAdjust', 'collectionUpsert', 'assetAttach',
-]);
-
-/** Adapter codes that require UpdateCustomer permission */
-const CUSTOMER_LOADERS: ReadonlySet<string> = new Set<UpdateCustomerLoaders>([
-    'customerUpsert',
-]);
-
-/** Adapter codes that require UpdateOrder permission */
-const ORDER_LOADERS: ReadonlySet<string> = new Set<UpdateOrderLoaders>([
-    'orderUpsert', 'orderNote', 'orderTransition', 'applyCoupon',
-]);
-
-/** Adapter codes that require UpdatePromotion permission */
-const PROMOTION_LOADERS: ReadonlySet<string> = new Set<UpdatePromotionLoaders>([
-    'promotionUpsert',
-]);
-
-/** Adapter codes that require UpdateDataHubSettings permission */
-const DATAHUB_LOADERS: ReadonlySet<string> = new Set<UpdateDataHubSettingsLoaders>([
-    'restPost',
-]);
-
-function getPermissionForAdapter(adapterCode: string): string | undefined {
-    if (CATALOG_LOADERS.has(adapterCode)) return 'UpdateCatalog';
-    if (CUSTOMER_LOADERS.has(adapterCode)) return 'UpdateCustomer';
-    if (ORDER_LOADERS.has(adapterCode)) return 'UpdateOrder';
-    if (PROMOTION_LOADERS.has(adapterCode)) return 'UpdatePromotion';
-    if (DATAHUB_LOADERS.has(adapterCode)) return 'UpdateDataHubSettings';
-    return undefined;
-}
-
-function getWriteDomain(adapterCode: string): PipelineCapabilityDomain | undefined {
-    if (adapterCode === 'stockAdjust') return 'INVENTORY';
-    if (CATALOG_LOADERS.has(adapterCode)) return 'CATALOG';
-    if (CUSTOMER_LOADERS.has(adapterCode)) return 'CUSTOMERS';
-    if (ORDER_LOADERS.has(adapterCode)) return 'ORDERS';
-    if (PROMOTION_LOADERS.has(adapterCode)) return 'PROMOTIONS';
-    if (DATAHUB_LOADERS.has(adapterCode)) return 'CUSTOM';
-    return undefined;
-}
-
 /**
  * Derive pipeline capabilities (required permissions and write domains)
  * from an array of typed step definitions.
@@ -353,24 +342,26 @@ function getWriteDomain(adapterCode: string): PipelineCapabilityDomain | undefin
  * @param steps - Array of TypedStep definitions (from the step factory functions)
  * @returns PipelineCapabilities with `requires` and `writes` populated
  */
-export function deriveCapabilities(steps: readonly TypedStep[]): PipelineCapabilities {
+export function deriveCapabilities(
+    steps: readonly PipelineStepDefinition[],
+): PipelineCapabilities {
     const requires = new Set<string>();
     const writes = new Set<PipelineCapabilityDomain>();
 
     for (const step of steps) {
         const adapterCode =
             (step as TypedStepDefinition).__adapterCode ??
+            step.adapterCode ??
             (typeof step.config === 'object' && step.config !== null
                 ? (step.config as Record<string, unknown>).adapterCode
                 : undefined);
 
         if (typeof adapterCode !== 'string') continue;
 
-        const permission = getPermissionForAdapter(adapterCode);
-        if (permission) requires.add(permission);
-
-        const domain = getWriteDomain(adapterCode);
-        if (domain) writes.add(domain);
+        const capability = getLoaderCapabilities(adapterCode, step.config);
+        if (!capability) continue;
+        capability.requires.forEach(permission => requires.add(permission));
+        capability.writes.forEach(domain => writes.add(domain));
     }
 
     return {

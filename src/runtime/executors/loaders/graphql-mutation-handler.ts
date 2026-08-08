@@ -7,41 +7,32 @@
 import { Injectable, Optional } from '@nestjs/common';
 import { RequestContext } from '@vendure/core';
 import { JsonObject, JsonValue, PipelineStepDefinition, ErrorHandlingConfig } from '../../../types/index';
-import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
+import type { GraphqlMutationLoaderConfig } from '../../../../shared/types';
+import { RecordObject, OnRecordErrorCallback, LoaderExecutionResult } from '../../executor-types';
 import { SecretService } from '../../../services/config/secret.service';
 import { CircuitBreakerService } from '../../../services/runtime/circuit-breaker.service';
-import { sleep, chunk } from '../../utils';
+import { sleep } from '../../../utils/retry.utils';
+import { chunk } from '../../../utils/array.utils';
 import { LoaderHandler } from './types';
-import { LOGGER_CONTEXTS, HTTP_HEADERS, CONTENT_TYPES } from '../../../constants/index';
-import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
+import { LOGGER_CONTEXTS } from '../../../constants/core';
+import { HTTP_HEADERS, CONTENT_TYPES } from '../../../constants/services';
+import { OUTBOUND_RESPONSE_LIMITS } from '../../../constants/defaults/http-defaults';
+import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger/datahub-logger';
 import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
-import { assertUrlSafe } from '../../../utils/url-security.utils';
 import { setNestedValue } from '../../../utils/object-path.utils';
 import { resolveAuthHeaders } from './shared-http-auth';
-import { doHttpFetch, execHttpWithRetry, deriveCircuitKey, resolveHttpRetryConfig, HttpFetchResult } from './shared-http-client';
+import {
+    doHttpFetch,
+    execHttpWithRetry,
+    deriveCircuitKey,
+    resolveGraphqlBatchMode,
+    resolveHttpRetryConfig,
+    HttpFetchResult,
+} from './shared-http-client';
+import { readResponseJson } from '../../../utils/secure-response-body.utils';
 
 /** Delay in ms when circuit breaker is open, to give the downstream service time to recover */
 const CIRCUIT_OPEN_BACKOFF_MS = 1_000;
-
-/**
- * Configuration for GraphQL Mutation loader step
- */
-interface GraphqlMutationConfig {
-    endpoint?: string;
-    mutation?: string;
-    variableMapping?: Record<string, string>;
-    headers?: Record<string, string>;
-    auth?: string;
-    bearerTokenSecretCode?: string;
-    basicSecretCode?: string;
-    retries?: number;
-    retryDelayMs?: number;
-    maxRetryDelayMs?: number;
-    backoffMultiplier?: number;
-    timeoutMs?: number;
-    maxBatchSize?: number;
-    batchMode?: string;
-}
 
 @Injectable()
 export class GraphqlMutationHandler implements LoaderHandler {
@@ -89,9 +80,9 @@ export class GraphqlMutationHandler implements LoaderHandler {
         input: RecordObject[],
         onRecordError?: OnRecordErrorCallback,
         errorHandling?: ErrorHandlingConfig,
-    ): Promise<ExecutionResult> {
+    ): Promise<LoaderExecutionResult> {
         let ok = 0, fail = 0;
-        const cfg = (step.config ?? {}) as GraphqlMutationConfig;
+        const cfg = (step.config ?? {}) as unknown as GraphqlMutationLoaderConfig;
         const endpoint = String(cfg.endpoint ?? '');
         const mutation = String(cfg.mutation ?? '');
         const variableMapping = cfg.variableMapping ?? {};
@@ -99,20 +90,9 @@ export class GraphqlMutationHandler implements LoaderHandler {
         // Resolve retry/timeout/batch config from step config with pipeline error handling fallbacks
         const { retries, retryDelayMs, maxRetryDelayMs, backoffMultiplier, timeoutMs, maxBatchSize } = resolveHttpRetryConfig(cfg, errorHandling);
 
-        try {
-            headers = await resolveAuthHeaders(ctx, this.secretService, cfg, headers);
-        } catch (error) {
-            this.logger.warn('Failed to resolve authentication secrets for GraphQL mutation loader', {
-                stepKey: step.key,
-                endpoint,
-                error: getErrorMessage(error),
-            });
-        }
+        headers = await resolveAuthHeaders(ctx, this.secretService, cfg, headers);
 
-        const fetchImpl = globalThis.fetch;
-        if (!fetchImpl) return { ok, fail: input.length };
 
-        await assertUrlSafe(endpoint);
 
         const circuitKey = deriveCircuitKey('graphql-loader', endpoint);
         const reqHeaders: Record<string, string> = { [HTTP_HEADERS.CONTENT_TYPE]: CONTENT_TYPES.JSON, ...headers };
@@ -120,13 +100,16 @@ export class GraphqlMutationHandler implements LoaderHandler {
         /** GraphQL-specific response checker: inspect body for GraphQL-level errors */
         const onGraphqlResponse = async (res: Response): Promise<HttpFetchResult | undefined> => {
             try {
-                const responseBody = await res.json() as { errors?: Array<{ message: string }> };
+                const responseBody = await readResponseJson<{ errors?: Array<{ message: string }> }>(res, {
+                    maxBytes: OUTBOUND_RESPONSE_LIMITS.CONNECTOR_EXTRACT_BYTES,
+                    context: 'GraphQL mutation response',
+                });
                 if (responseBody.errors && responseBody.errors.length > 0) {
                     const errorMessages = responseBody.errors.map(e => e.message).join('; ');
                     return { ok: false, error: `GraphQL errors: ${errorMessages}` };
                 }
-            } catch {
-                // If we can't parse the response, treat HTTP 2xx as success
+            } catch (error) {
+                return { ok: false, error: `Invalid GraphQL response: ${getErrorMessage(error)}` };
             }
             return undefined;
         };
@@ -149,7 +132,7 @@ export class GraphqlMutationHandler implements LoaderHandler {
             );
         };
 
-        const batchMode = String(cfg.batchMode ?? 'single');
+        const batchMode = resolveGraphqlBatchMode(cfg.batchMode);
         try {
             if (batchMode === 'batch') {
                 // In batch mode, send multiple records as a single variables array
@@ -207,6 +190,6 @@ export class GraphqlMutationHandler implements LoaderHandler {
                 if (onRecordError) await onRecordError(step.key, getErrorMessage(e) || 'graphqlMutation failed', rec as JsonObject, getErrorStack(e));
             }
         }
-        return { ok, fail };
+        return { ok, fail, skipped: 0 };
     }
 }

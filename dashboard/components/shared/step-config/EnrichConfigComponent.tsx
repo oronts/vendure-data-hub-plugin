@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { useCallback, useEffect, useRef, useMemo, memo } from 'react';
+import { Trans, useLingui } from '@lingui/react/macro';
 import {
     Label,
     Select,
@@ -44,6 +45,7 @@ export function EnrichConfigComponent({
 
     const sourceType = (config.sourceType as string) || 'STATIC';
     const currentSourceSchema = sourceTypeSchemas.find(s => s.value === sourceType);
+    const sourceTypeId = React.useId();
 
     // Use refs to avoid stale closures in the initialization effect
     const configRef = useRef(config);
@@ -104,12 +106,18 @@ export function EnrichConfigComponent({
     return (
         <div className="space-y-4">
             <div className="space-y-2">
-                <Label className="text-sm font-medium">Enrichment Source</Label>
+                <Label htmlFor={sourceTypeId} className="text-sm font-medium">
+                    <Trans>Enrichment source</Trans>
+                </Label>
                 <Select
                     value={sourceType}
                     onValueChange={(v) => updateField('sourceType', v)}
                 >
-                    <SelectTrigger className="w-full" data-testid="datahub-enrich-source-select">
+                    <SelectTrigger
+                        id={sourceTypeId}
+                        className="w-full"
+                        data-testid="datahub-enrich-source-select"
+                    >
                         <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -164,27 +172,45 @@ interface EnrichSchemaFieldProps {
 }
 
 /** Field type renderer registry: maps field.type to a render function. */
-type EnrichFieldRenderer = (props: EnrichSchemaFieldProps) => React.JSX.Element;
+interface EnrichFieldRendererProps extends EnrichSchemaFieldProps {
+    inputId: string;
+    addDefaultLabel: string;
+    addFieldLabel: string;
+    noDefaultValuesLabel: string;
+    selectEntityLabel: string;
+}
+
+type EnrichFieldRenderer = (props: EnrichFieldRendererProps) => React.JSX.Element;
 
 const ENRICH_FIELD_RENDERERS: Record<string, EnrichFieldRenderer> = {
-    keyValuePairs: ({ field, defaultsList, addDefault, updateDefaultItem, removeDefault }) => (
-        <div className="space-y-3">
+    keyValuePairs: ({
+        field,
+        inputId,
+        defaultsList,
+        addDefault,
+        updateDefaultItem,
+        removeDefault,
+        addDefaultLabel,
+        addFieldLabel,
+        noDefaultValuesLabel,
+    }) => (
+        <div className="space-y-3" role="group" aria-labelledby={inputId}>
             <div className="flex items-center justify-between">
-                <Label className="text-sm font-medium">{field.label}</Label>
+                <Label id={inputId} className="text-sm font-medium">{field.label}</Label>
                 <Button
                     variant="outline"
                     size="sm"
                     onClick={addDefault}
-                    aria-label="Add default field value"
+                    aria-label={addDefaultLabel}
                     data-testid="datahub-enrich-add-default-btn"
                 >
                     <Plus className="h-3 w-3 mr-1" />
-                    Add Field
+                    {addFieldLabel}
                 </Button>
             </div>
             {defaultsList.length === 0 && (
                 <p className="text-sm text-muted-foreground p-3 bg-muted/50 rounded-md">
-                    No default values defined. Add fields to set on each record.
+                    {noDefaultValuesLabel}
                 </p>
             )}
             {defaultsList.map((item, index) => (
@@ -199,12 +225,12 @@ const ENRICH_FIELD_RENDERERS: Record<string, EnrichFieldRenderer> = {
         </div>
     ),
 
-    entitySelect: ({ field, value, onChange, entityOptions }) => (
+    entitySelect: ({ field, value, onChange, entityOptions, selectEntityLabel, inputId }) => (
         <div className="space-y-2">
-            <Label className="text-sm font-medium">{field.label}</Label>
+            <Label htmlFor={inputId} className="text-sm font-medium">{field.label}</Label>
             <Select value={String(value || '')} onValueChange={(v) => onChange(v)}>
-                <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select entity..." />
+                <SelectTrigger id={inputId} className="w-full">
+                    <SelectValue placeholder={selectEntityLabel} />
                 </SelectTrigger>
                 <SelectContent>
                     {entityOptions.map((opt) => (
@@ -220,11 +246,17 @@ const ENRICH_FIELD_RENDERERS: Record<string, EnrichFieldRenderer> = {
 };
 
 /** Default renderer for unrecognized field types (text input). */
-function defaultEnrichFieldRenderer({ field, value, onChange }: EnrichSchemaFieldProps): React.JSX.Element {
+function defaultEnrichFieldRenderer({
+    field,
+    value,
+    onChange,
+    inputId,
+}: EnrichFieldRendererProps): React.JSX.Element {
     return (
         <div className="space-y-2">
-            <Label className="text-sm font-medium">{field.label}</Label>
+            <Label htmlFor={inputId} className="text-sm font-medium">{field.label}</Label>
             <Input
+                id={inputId}
                 value={String(value || '')}
                 onChange={(e) => onChange(e.target.value)}
                 placeholder={field.placeholder ?? undefined}
@@ -237,8 +269,17 @@ function defaultEnrichFieldRenderer({ field, value, onChange }: EnrichSchemaFiel
 }
 
 function EnrichSchemaField(props: EnrichSchemaFieldProps) {
+    const { t } = useLingui();
+    const inputId = React.useId();
     const renderer = ENRICH_FIELD_RENDERERS[props.field.type] ?? defaultEnrichFieldRenderer;
-    return renderer(props);
+    return renderer({
+        ...props,
+        inputId,
+        addDefaultLabel: t`Add default field value`,
+        addFieldLabel: t`Add field`,
+        noDefaultValuesLabel: t`No default values defined. Add fields to set on each record.`,
+        selectEntityLabel: t`Select entity...`,
+    });
 }
 
 interface DefaultValueRowProps {
@@ -254,6 +295,7 @@ const DefaultValueRow = memo(function DefaultValueRow({
     updateDefaultItem,
     removeDefault,
 }: DefaultValueRowProps) {
+    const { t } = useLingui();
     const handleFieldChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
         updateDefaultItem(index, e.target.value, item.value);
     }, [index, item.value, updateDefaultItem]);
@@ -269,15 +311,17 @@ const DefaultValueRow = memo(function DefaultValueRow({
     return (
         <div className="flex items-start gap-2" data-testid={`datahub-enrich-default-row-${index}`}>
             <Input
+                aria-label={t`Field name`}
                 value={item.field}
                 onChange={handleFieldChange}
-                placeholder="Field name"
+                placeholder={t`Field name`}
                 className="w-40"
             />
             <Input
+                aria-label={t`Value (JSON or string)`}
                 value={item.value}
                 onChange={handleValueChange}
-                placeholder="Value (JSON or string)"
+                placeholder={t`Value (JSON or string)`}
                 className="flex-1"
             />
             <Button
@@ -285,7 +329,7 @@ const DefaultValueRow = memo(function DefaultValueRow({
                 size="sm"
                 onClick={handleRemove}
                 className="text-destructive hover:text-destructive"
-                aria-label={`Remove default value for ${item.field || 'field'}`}
+                aria-label={t`Remove default value for ${item.field || t`Field name`}`}
                 data-testid={`datahub-enrich-remove-default-${index}-btn`}
             >
                 <Trash2 className="h-4 w-4" />

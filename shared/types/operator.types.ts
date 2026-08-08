@@ -182,8 +182,6 @@ export interface ConversionHelpers {
  * Helper functions for cryptographic operations
  */
 export interface CryptoHelpers {
-    /** Compute MD5 hash of a string */
-    md5(value: string): string;
     /** Compute SHA-256 hash of a string */
     sha256(value: string): string;
     /** Compute HMAC signature */
@@ -207,15 +205,15 @@ export interface JoinOperatorConfig extends BaseOperatorConfig {
     /** Field path in right records to join on */
     rightKey: string;
     /** Static right-side dataset provided inline */
-    rightData?: JsonObject[];
-    /** Dot-path to right-side data from pipeline context */
-    rightDataPath?: string;
+    rightData: JsonObject[];
     /** Join type (default: LEFT) */
     type?: JoinType;
     /** Prefix for right-side field names to avoid collisions */
     prefix?: string;
     /** Which right-side fields to include (default: all) */
     select?: string[];
+    /** Maximum records emitted by this join (default: 10,000; maximum: 100,000) */
+    maxOutputRecords?: number;
 }
 
 /**

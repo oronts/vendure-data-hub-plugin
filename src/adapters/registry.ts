@@ -7,11 +7,56 @@
  * Internal services should use the Injectable DataHubRegistryService
  * (src/sdk/registry.service.ts) which is managed by NestJS DI.
  */
-import { AdapterDefinition, AdapterType } from '../sdk/types';
+import type {
+    AdapterDefinition,
+    AdapterType,
+    BatchExtractorAdapter,
+    EnricherAdapter,
+    ExporterAdapter,
+    ExtractorAdapter,
+    FeedAdapter,
+    LoaderAdapter,
+    OperatorAdapter,
+    SingleRecordOperator,
+    SinkAdapter,
+    ValidatorAdapter,
+} from '../sdk/types/adapter-types';
 import { DataHubLoggerFactory } from '../services/logger/datahub-logger';
 import { LOGGER_CONTEXTS } from '../constants/core';
-import { CustomTransformInfo } from '../transforms/types';
-import { ScriptFunction } from '../../shared/types';
+import type { ScriptFunction } from '../../shared/types';
+import {
+    validateAdapterLifecycleMetadata,
+    validateBatchExtractorPreview,
+} from '../sdk/adapter-metadata';
+
+type RuntimeExtractor = ExtractorAdapter<unknown> | BatchExtractorAdapter<unknown>;
+
+function hasExtractorRuntime(adapter: RuntimeExtractor): boolean {
+    const value = adapter as unknown as Record<string, unknown>;
+    return adapter.type === 'EXTRACTOR' &&
+        (typeof value.extract === 'function' || typeof value.extractAll === 'function');
+}
+
+function assertRuntimeMethod(
+    adapter: AdapterDefinition,
+    expectedType: AdapterType,
+    methodNames: readonly string[],
+    registrationName: string,
+): void {
+    if (adapter.type !== expectedType) {
+        throw new Error(
+            `${registrationName} expects type '${expectedType}', got '${adapter.type}'`,
+        );
+    }
+    const value = adapter as unknown as Record<string, unknown>;
+    if (methodNames.some(methodName => typeof value[methodName] === 'function')) {
+        return;
+    }
+    const contract = methodNames.map(methodName => `${methodName}()`).join(' or ');
+    throw new Error(
+        `${registrationName} expects a ${expectedType} adapter with ${contract}`,
+    );
+}
 
 const MAX_ADAPTERS = 200;
 const adapterRegistry = new Map<string, AdapterDefinition>();
@@ -19,10 +64,11 @@ const adaptersByType = new Map<AdapterType, Set<string>>();
 const logger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.ADAPTER_REGISTRY);
 
 /** Register extractor adapter (pulls data from REST, GraphQL, CSV, etc.) */
-export function registerExtractor(adapter: AdapterDefinition): void {
-    if (adapter.type !== 'EXTRACTOR') {
-        throw new Error(`registerExtractor expects type 'EXTRACTOR', got '${adapter.type}'`);
+export function registerExtractor(adapter: RuntimeExtractor): void {
+    if (!hasExtractorRuntime(adapter)) {
+        throw new Error('registerExtractor expects an EXTRACTOR adapter with extract() or extractAll()');
     }
+    validateBatchExtractorPreview(adapter);
     registerAdapter(adapter);
     logger.info(`Registered custom extractor: ${adapter.code}`, {
         adapterCode: adapter.code,
@@ -31,10 +77,8 @@ export function registerExtractor(adapter: AdapterDefinition): void {
 }
 
 /** Register loader adapter (writes to Vendure entities) */
-export function registerLoader(adapter: AdapterDefinition): void {
-    if (adapter.type !== 'LOADER') {
-        throw new Error(`registerLoader expects type 'LOADER', got '${adapter.type}'`);
-    }
+export function registerLoader(adapter: LoaderAdapter<unknown>): void {
+    assertRuntimeMethod(adapter, 'LOADER', ['load'], 'registerLoader');
     registerAdapter(adapter);
     logger.info(`Registered custom loader: ${adapter.code}`, {
         adapterCode: adapter.code,
@@ -43,10 +87,10 @@ export function registerLoader(adapter: AdapterDefinition): void {
 }
 
 /** Register operator adapter (transforms or filters records) */
-export function registerOperator(adapter: AdapterDefinition): void {
-    if (adapter.type !== 'OPERATOR') {
-        throw new Error(`registerOperator expects type 'OPERATOR', got '${adapter.type}'`);
-    }
+export function registerOperator(
+    adapter: OperatorAdapter<unknown> | SingleRecordOperator<unknown>,
+): void {
+    assertRuntimeMethod(adapter, 'OPERATOR', ['apply', 'applyOne'], 'registerOperator');
     registerAdapter(adapter);
     logger.info(`Registered custom operator: ${adapter.code}`, {
         adapterCode: adapter.code,
@@ -56,10 +100,8 @@ export function registerOperator(adapter: AdapterDefinition): void {
 }
 
 /** Register exporter adapter (sends data to external systems) */
-export function registerExporter(adapter: AdapterDefinition): void {
-    if (adapter.type !== 'EXPORTER') {
-        throw new Error(`registerExporter expects type 'EXPORTER', got '${adapter.type}'`);
-    }
+export function registerExporter(adapter: ExporterAdapter<unknown>): void {
+    assertRuntimeMethod(adapter, 'EXPORTER', ['export'], 'registerExporter');
     registerAdapter(adapter);
     logger.info(`Registered custom exporter: ${adapter.code}`, {
         adapterCode: adapter.code,
@@ -68,10 +110,8 @@ export function registerExporter(adapter: AdapterDefinition): void {
 }
 
 /** Register feed adapter (generates product feeds for Google, Meta, etc.) */
-export function registerFeed(adapter: AdapterDefinition): void {
-    if (adapter.type !== 'FEED') {
-        throw new Error(`registerFeed expects type 'FEED', got '${adapter.type}'`);
-    }
+export function registerFeed(adapter: FeedAdapter<unknown>): void {
+    assertRuntimeMethod(adapter, 'FEED', ['generateFeed'], 'registerFeed');
     registerAdapter(adapter);
     logger.info(`Registered custom feed: ${adapter.code}`, {
         adapterCode: adapter.code,
@@ -80,10 +120,8 @@ export function registerFeed(adapter: AdapterDefinition): void {
 }
 
 /** Register sink adapter (indexes data to Elasticsearch, Algolia, etc.) */
-export function registerSink(adapter: AdapterDefinition): void {
-    if (adapter.type !== 'SINK') {
-        throw new Error(`registerSink expects type 'SINK', got '${adapter.type}'`);
-    }
+export function registerSink(adapter: SinkAdapter<unknown>): void {
+    assertRuntimeMethod(adapter, 'SINK', ['index'], 'registerSink');
     registerAdapter(adapter);
     logger.info(`Registered custom sink: ${adapter.code}`, {
         adapterCode: adapter.code,
@@ -92,10 +130,8 @@ export function registerSink(adapter: AdapterDefinition): void {
 }
 
 /** Register validator adapter (checks data against rules/schemas) */
-export function registerValidator(adapter: AdapterDefinition): void {
-    if (adapter.type !== 'VALIDATOR') {
-        throw new Error(`registerValidator expects type 'VALIDATOR', got '${adapter.type}'`);
-    }
+export function registerValidator(adapter: ValidatorAdapter<unknown>): void {
+    assertRuntimeMethod(adapter, 'VALIDATOR', ['validate'], 'registerValidator');
     registerAdapter(adapter);
     logger.info(`Registered custom validator: ${adapter.code}`, {
         adapterCode: adapter.code,
@@ -104,10 +140,8 @@ export function registerValidator(adapter: AdapterDefinition): void {
 }
 
 /** Register enricher adapter (adds data from external APIs) */
-export function registerEnricher(adapter: AdapterDefinition): void {
-    if (adapter.type !== 'ENRICHER') {
-        throw new Error(`registerEnricher expects type 'ENRICHER', got '${adapter.type}'`);
-    }
+export function registerEnricher(adapter: EnricherAdapter<unknown>): void {
+    assertRuntimeMethod(adapter, 'ENRICHER', ['enrich'], 'registerEnricher');
     registerAdapter(adapter);
     logger.info(`Registered custom enricher: ${adapter.code}`, {
         adapterCode: adapter.code,
@@ -117,6 +151,7 @@ export function registerEnricher(adapter: AdapterDefinition): void {
 
 /** Register adapter (throws if code already exists or registry is full) */
 export function registerAdapter(adapter: AdapterDefinition): void {
+    validateAdapterLifecycleMetadata(adapter, { requireVersion: true });
     if (adapterRegistry.has(adapter.code)) {
         throw new Error(`Adapter with code '${adapter.code}' is already registered`);
     }
@@ -308,99 +343,6 @@ export function getRegistrySummary(): {
     };
 }
 
-// ==========================================
-// Transform Registry
-// ==========================================
-
-const MAX_TRANSFORMS = 100;
-const transformRegistry = new Map<string, CustomTransformInfo>();
-
-/**
- * Register a custom field-level transform
- *
- * Custom transforms allow plugins to add new field transformation types
- * that can be used in TransformConfig alongside built-in transforms.
- *
- * @example
- * ```typescript
- * registerTransform({
- *     type: 'REVERSE_STRING',
- *     name: 'Reverse String',
- *     description: 'Reverses the characters in a string',
- *     transform: (ctx, value) => {
- *         if (typeof value !== 'string') return value;
- *         return value.split('').reverse().join('');
- *     }
- * });
- * ```
- */
-export function registerTransform(transform: CustomTransformInfo): void {
-    if (!transform.type) {
-        throw new Error('Transform type is required');
-    }
-    if (!transform.name) {
-        throw new Error('Transform name is required');
-    }
-    if (!transform.transform || typeof transform.transform !== 'function') {
-        throw new Error('Transform function is required');
-    }
-    if (transformRegistry.has(transform.type)) {
-        throw new Error(`Transform with type '${transform.type}' is already registered`);
-    }
-    if (transformRegistry.size >= MAX_TRANSFORMS) {
-        throw new Error(`Transform registry is full (max ${MAX_TRANSFORMS})`);
-    }
-
-    transformRegistry.set(transform.type, transform);
-    logger.info(`Registered custom transform: ${transform.type}`, {
-        type: transform.type,
-        name: transform.name,
-    });
-}
-
-/**
- * Get all registered custom transforms
- * Used by the bootstrap process to propagate module-level registrations to DI services
- */
-export function getModuleLevelTransforms(): CustomTransformInfo[] {
-    return Array.from(transformRegistry.values());
-}
-
-/**
- * Check if a transform type is registered
- */
-export function hasTransform(type: string): boolean {
-    return transformRegistry.has(type);
-}
-
-/**
- * Get a specific transform by type
- */
-export function getTransform(type: string): CustomTransformInfo | undefined {
-    return transformRegistry.get(type);
-}
-
-/**
- * Get all registered transform types
- */
-export function getTransformTypes(): string[] {
-    return Array.from(transformRegistry.keys());
-}
-
-/**
- * Get count of registered custom transforms
- */
-export function getTransformCount(): number {
-    return transformRegistry.size;
-}
-
-/**
- * Clear all registered custom transforms (primarily for testing)
- */
-export function clearTransforms(): void {
-    transformRegistry.clear();
-    logger.info('Cleared all custom transforms');
-}
 
 // ==========================================
 // Hook Script Registry

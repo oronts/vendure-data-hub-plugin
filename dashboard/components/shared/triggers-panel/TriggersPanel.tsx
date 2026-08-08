@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { useCallback, memo } from 'react';
+import { Trans, useLingui } from '@lingui/react/macro';
 import { Button, Switch } from '@vendure/dashboard';
 import { Plus, Trash2 } from 'lucide-react';
 import type { PipelineTrigger, TriggersPanelProps } from '../../../types';
@@ -16,7 +17,6 @@ interface CompactTriggerItemProps {
     readonly trigger: PipelineTrigger;
     readonly index: number;
     readonly readOnly: boolean;
-    readonly secretCodes: string[];
     readonly onUpdate: (index: number, trigger: PipelineTrigger) => void;
     readonly onRemove: (index: number) => void;
 }
@@ -25,12 +25,15 @@ const CompactTriggerItem = memo(function CompactTriggerItem({
     trigger,
     index,
     readOnly,
-    secretCodes,
     onUpdate,
     onRemove,
 }: CompactTriggerItemProps) {
+    const { t } = useLingui();
+    const { configList } = useTriggerTypes();
     const resolveTriggerIcon = useTriggerIconResolver();
     const Icon = resolveTriggerIcon(trigger.type);
+    const triggerLabel = configList.find(config => config.type === trigger.type)?.label
+        ?? trigger.type;
 
     const handleEnabledChange = useCallback((enabled: boolean) => {
         onUpdate(index, { ...trigger, enabled });
@@ -49,7 +52,7 @@ const CompactTriggerItem = memo(function CompactTriggerItem({
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                     <Icon className="h-4 w-4 text-muted-foreground" />
-                    <span className="font-medium text-sm capitalize">{trigger.type}</span>
+                    <span className="font-medium text-sm">{triggerLabel}</span>
                 </div>
                 <div className="flex items-center gap-2">
                     <Switch
@@ -63,7 +66,7 @@ const CompactTriggerItem = memo(function CompactTriggerItem({
                             size="sm"
                             className="h-6 w-6 p-0 text-destructive"
                             onClick={handleRemove}
-                            aria-label="Remove trigger"
+                            aria-label={t`Remove trigger`}
                         >
                             <Trash2 className="h-3 w-3" />
                         </Button>
@@ -74,7 +77,6 @@ const CompactTriggerItem = memo(function CompactTriggerItem({
                 trigger={trigger}
                 onChange={handleFormChange}
                 readOnly={readOnly}
-                secretCodes={secretCodes}
                 compact
             />
         </div>
@@ -86,7 +88,6 @@ interface FullTriggerItemProps {
     readonly trigger: PipelineTrigger;
     readonly index: number;
     readonly readOnly: boolean;
-    readonly secretCodes: string[];
     readonly onUpdate: (index: number, trigger: PipelineTrigger) => void;
     readonly onRemove: (index: number) => void;
 }
@@ -95,7 +96,6 @@ const FullTriggerItem = memo(function FullTriggerItem({
     trigger,
     index,
     readOnly,
-    secretCodes,
     onUpdate,
     onRemove,
 }: FullTriggerItemProps) {
@@ -113,7 +113,6 @@ const FullTriggerItem = memo(function FullTriggerItem({
             onChange={handleFormChange}
             onRemove={handleRemove}
             readOnly={readOnly}
-            secretCodes={secretCodes}
         />
     );
 });
@@ -146,10 +145,10 @@ const AddTriggerButton = memo(function AddTriggerButton({ config, onAdd }: AddTr
 });
 
 export function TriggersPanel(props: TriggersPanelProps) {
+    const { t } = useLingui();
     const {
         triggers,
         readOnly = false,
-        secretCodes = [],
         variant = 'full',
     } = props;
 
@@ -201,8 +200,12 @@ export function TriggersPanel(props: TriggersPanelProps) {
         return (
             <div className="flex flex-col h-full">
                 <div className="p-3 border-b bg-muted/50">
-                    <h3 className="font-semibold text-sm">Pipeline Triggers</h3>
-                    <p className="text-xs text-muted-foreground">When should this pipeline run?</p>
+                    <h3 className="font-semibold text-sm">
+                        <Trans>Pipeline Triggers</Trans>
+                    </h3>
+                    <p className="text-xs text-muted-foreground">
+                        <Trans>When should this pipeline run?</Trans>
+                    </p>
                 </div>
 
                 <div className="flex-1 overflow-auto p-2 space-y-2">
@@ -212,7 +215,6 @@ export function TriggersPanel(props: TriggersPanelProps) {
                             trigger={trigger}
                             index={index}
                             readOnly={readOnly}
-                            secretCodes={secretCodes}
                             onUpdate={handleUpdateTrigger}
                             onRemove={handleRemoveTrigger}
                         />
@@ -220,14 +222,16 @@ export function TriggersPanel(props: TriggersPanelProps) {
 
                     {triggers.length === 0 && (
                         <div className="p-4 text-center text-muted-foreground text-sm">
-                            No triggers configured. Add a trigger below.
+                            <Trans>No triggers configured. Add a trigger below.</Trans>
                         </div>
                     )}
                 </div>
 
                 {!readOnly && (
                     <div className="p-3 border-t bg-muted/50">
-                        <p className="text-xs text-muted-foreground mb-2">Add Trigger:</p>
+                        <p className="text-xs text-muted-foreground mb-2">
+                            <Trans>Add Trigger:</Trans>
+                        </p>
                         <div className="grid grid-cols-2 gap-1">
                             {configList.map((config) => (
                                 <AddTriggerButton
@@ -246,9 +250,12 @@ export function TriggersPanel(props: TriggersPanelProps) {
     if (triggers.length === 0) {
         return (
             <EmptyState
-                title="No triggers configured"
-                description="Add triggers to run this pipeline automatically"
-                action={!readOnly ? { label: 'Add Trigger', onClick: handleAddDefaultTrigger } : undefined}
+                title={t`No triggers configured`}
+                description={t`Add triggers to run this pipeline automatically`}
+                action={!readOnly ? {
+                    label: t`Add Trigger`,
+                    onClick: handleAddDefaultTrigger,
+                } : undefined}
             />
         );
     }
@@ -259,7 +266,7 @@ export function TriggersPanel(props: TriggersPanelProps) {
                 <div className="flex justify-end">
                     <Button variant="outline" size="sm" onClick={handleAddDefaultTrigger}>
                         <Plus className="h-4 w-4 mr-2" />
-                        Add Trigger
+                        <Trans>Add Trigger</Trans>
                     </Button>
                 </div>
             )}
@@ -270,7 +277,6 @@ export function TriggersPanel(props: TriggersPanelProps) {
                         trigger={trigger}
                         index={index}
                         readOnly={readOnly}
-                        secretCodes={secretCodes}
                         onUpdate={handleUpdateTrigger}
                         onRemove={handleRemoveTrigger}
                     />

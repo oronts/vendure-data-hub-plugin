@@ -10,7 +10,6 @@ import { StepExecution, StepMetrics } from './step.types';
 /** Status of a pipeline run */
 export type RunStatus =
     | 'PENDING'
-    | 'QUEUED'
     | 'RUNNING'
     | 'PAUSED'
     | 'COMPLETED'

@@ -1,8 +1,12 @@
 import { JsonObject, JsonValue } from '../types';
 import { getNestedValue, setNestedValue, deepClone } from '../helpers';
 import { DateUnit } from './types';
-import { TIME_UNITS } from '../../constants/index';
-import { formatDate } from '../../transforms/field/date-transforms';
+import { TIME_UNITS } from '../../constants/time';
+import { formatDate, parseDateWithFormat } from '../../utils/date-format.utils';
+
+function validDate(date: Date): Date | null {
+    return Number.isNaN(date.getTime()) ? null : date;
+}
 
 function parseDate(value: JsonValue | undefined, format?: string): Date | null {
     if (value === null || value === undefined) {
@@ -10,117 +14,22 @@ function parseDate(value: JsonValue | undefined, format?: string): Date | null {
     }
 
     if (value instanceof Date) {
-        return value;
+        return validDate(value);
     }
 
     if (typeof value === 'number') {
-        // Assume milliseconds timestamp
-        return new Date(value);
+        return validDate(new Date(value));
     }
 
     if (typeof value === 'string') {
-        // Try ISO format first
-        const isoDate = new Date(value);
-        if (!isNaN(isoDate.getTime())) {
-            return isoDate;
-        }
-
-        // If format is provided, try to parse with format
         if (format) {
             return parseDateWithFormat(value, format);
         }
 
-        return null;
+        return validDate(new Date(value));
     }
 
     return null;
-}
-
-function parseDateWithFormat(value: string, format: string): Date | null {
-    try {
-        // Replace known tokens with capture groups, then escape remaining chars
-        // to prevent regex injection from format strings with special characters.
-        const TOKENS: Record<string, string> = {
-            'YYYY': '(\\d{4})',
-            'MM': '(\\d{2})',
-            'DD': '(\\d{2})',
-            'HH': '(\\d{2})',
-            'mm': '(\\d{2})',
-            'ss': '(\\d{2})',
-        };
-        const TOKEN_RE = /YYYY|MM|DD|HH|mm|ss/g;
-        const segments: string[] = [];
-        let lastIndex = 0;
-        let m: RegExpExecArray | null;
-        while ((m = TOKEN_RE.exec(format)) !== null) {
-            if (m.index > lastIndex) {
-                // Escape literal characters between tokens
-                segments.push(format.slice(lastIndex, m.index).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-            }
-            segments.push(TOKENS[m[0]]);
-            lastIndex = m.index + m[0].length;
-        }
-        if (lastIndex < format.length) {
-            segments.push(format.slice(lastIndex).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-        }
-        const pattern = segments.join('');
-
-        const regex = new RegExp(`^${pattern}$`);
-        const match = value.match(regex);
-
-        if (!match) {
-            return null;
-        }
-
-        // Extract parts based on format
-        const parts: Record<string, number> = {
-            year: 1970,
-            month: 0,
-            day: 1,
-            hour: 0,
-            minute: 0,
-            second: 0,
-        };
-
-        const formatParts = format.match(/(YYYY|MM|DD|HH|mm|ss)/g) || [];
-        let matchIndex = 1;
-
-        for (const part of formatParts) {
-            const val = parseInt(match[matchIndex++], 10);
-            switch (part) {
-                case 'YYYY':
-                    parts.year = val;
-                    break;
-                case 'MM':
-                    parts.month = val - 1;
-                    break;
-                case 'DD':
-                    parts.day = val;
-                    break;
-                case 'HH':
-                    parts.hour = val;
-                    break;
-                case 'mm':
-                    parts.minute = val;
-                    break;
-                case 'ss':
-                    parts.second = val;
-                    break;
-            }
-        }
-
-        return new Date(Date.UTC(
-            parts.year,
-            parts.month,
-            parts.day,
-            parts.hour,
-            parts.minute,
-            parts.second,
-        ));
-    } catch {
-        // Date parsing failed - return null as fallback
-        return null;
-    }
 }
 
 export function applyDateFormat(
@@ -129,7 +38,6 @@ export function applyDateFormat(
     target: string,
     format: string,
     inputFormat?: string,
-    _timezone?: string,
 ): JsonObject {
     const result = deepClone(record);
     const value = getNestedValue(record, source);
@@ -148,7 +56,6 @@ export function applyDateParse(
     source: string,
     target: string,
     format: string,
-    _timezone?: string,
 ): JsonObject {
     const result = deepClone(record);
     const value = getNestedValue(record, source);
@@ -182,25 +89,25 @@ export function applyDateAdd(
 
     switch (unit) {
         case 'seconds':
-            newDate.setSeconds(newDate.getSeconds() + amount);
+            newDate.setUTCSeconds(newDate.getUTCSeconds() + amount);
             break;
         case 'minutes':
-            newDate.setMinutes(newDate.getMinutes() + amount);
+            newDate.setUTCMinutes(newDate.getUTCMinutes() + amount);
             break;
         case 'hours':
-            newDate.setHours(newDate.getHours() + amount);
+            newDate.setUTCHours(newDate.getUTCHours() + amount);
             break;
         case 'days':
-            newDate.setDate(newDate.getDate() + amount);
+            newDate.setUTCDate(newDate.getUTCDate() + amount);
             break;
         case 'weeks':
-            newDate.setDate(newDate.getDate() + (amount * 7));
+            newDate.setUTCDate(newDate.getUTCDate() + (amount * 7));
             break;
         case 'months':
-            newDate.setMonth(newDate.getMonth() + amount);
+            newDate.setUTCMonth(newDate.getUTCMonth() + amount);
             break;
         case 'years':
-            newDate.setFullYear(newDate.getFullYear() + amount);
+            newDate.setUTCFullYear(newDate.getUTCFullYear() + amount);
             break;
     }
 
@@ -279,7 +186,6 @@ export function applyNow(
     record: JsonObject,
     target: string,
     format: string = 'ISO',
-    _timezone?: string,
 ): JsonObject {
     const result = deepClone(record);
     const now = new Date();

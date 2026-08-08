@@ -1,12 +1,21 @@
-import { Injectable, OnModuleDestroy } from '@nestjs/common';
-import { DataHubLogger, DataHubLoggerFactory } from '../logger';
+import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { LOGGER_CONTEXTS, INTERNAL_TIMINGS } from '../../constants/index';
 import { RATE_LIMIT } from '../../constants/defaults';
+import { getErrorMessage } from '../../utils/error.utils';
+import { getConfiguredRedisConnection } from '../runtime/redis-configuration';
+import { DataHubLogger, DataHubLoggerFactory } from '../logger';
+import { RedisRateLimitBackend } from './redis-rate-limit.backend';
 
-interface RateLimitKey {
-    ip?: string;
-    pipelineCode?: string;
-    identifier?: string;
+export interface RateLimitKey {
+    readonly ip?: string;
+    readonly pipelineCode?: string;
+    readonly identifier?: string;
+}
+
+export interface RateLimitResult {
+    readonly limited: boolean;
+    readonly resetAt: number;
+    readonly retryAfter: number;
 }
 
 interface RateLimitEntry {
@@ -14,104 +23,233 @@ interface RateLimitEntry {
     resetAt: number;
 }
 
-const MAX_RATE_LIMIT_ENTRIES = RATE_LIMIT.MAX_ENTRIES;
+export class RateLimitBackendUnavailableError extends Error {
+    readonly backendCause?: unknown;
 
-/**
- * In-memory rate limiter for throttling requests by IP, pipeline code, or arbitrary identifier.
- *
- * **Deployment considerations:**
- * - This implementation stores all rate limit state in process memory.
- * - In multi-instance deployments (e.g., behind a load balancer), each instance
- *   maintains independent rate limit counters. Effective limits are therefore
- *   multiplied by the number of instances.
- * - For true distributed rate limiting, replace this implementation with a
- *   Redis-backed store (e.g., using a sliding-window or token-bucket algorithm
- *   backed by Redis MULTI/EXEC or Lua scripts).
- */
+    constructor(backendCause?: unknown) {
+        super('Distributed webhook rate limiting is temporarily unavailable');
+        this.name = 'RateLimitBackendUnavailableError';
+        this.backendCause = backendCause;
+    }
+}
+
 @Injectable()
-export class RateLimitService implements OnModuleDestroy {
+export class RateLimitService implements OnModuleInit, OnModuleDestroy {
     private readonly logger: DataHubLogger;
     private readonly store = new Map<string, RateLimitEntry>();
-    private readonly cleanupInterval: NodeJS.Timeout;
+    private readonly redisConnection = getConfiguredRedisConnection();
+    private readonly cleanupInterval?: NodeJS.Timeout;
+    private redisBackend?: RedisRateLimitBackend;
+    private redisInitialization?: Promise<void>;
+    private nextRedisInitializationAt = 0;
+    private shuttingDown = false;
 
     constructor(loggerFactory: DataHubLoggerFactory) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.RATE_LIMIT);
-
-        this.cleanupInterval = setInterval(() => this.cleanup(), INTERNAL_TIMINGS.CLEANUP_INTERVAL_MS);
-        this.cleanupInterval.unref();
-    }
-
-    onModuleDestroy(): void {
-        if (this.cleanupInterval) {
-            clearInterval(this.cleanupInterval);
+        if (!this.redisConnection) {
+            this.cleanupInterval = setInterval(
+                () => this.cleanup(),
+                INTERNAL_TIMINGS.CLEANUP_INTERVAL_MS,
+            );
+            this.cleanupInterval.unref();
         }
     }
 
-    isRateLimited(
+    async onModuleInit(): Promise<void> {
+        if (!this.redisConnection) {
+            this.logger.warn(
+                'Using process-local webhook rate limiting; configure a Redis URL or Sentinel before running multiple API instances',
+            );
+            return;
+        }
+        await this.ensureRedisBackend().catch(() => undefined);
+    }
+
+    async onModuleDestroy(): Promise<void> {
+        this.shuttingDown = true;
+        if (this.cleanupInterval) clearInterval(this.cleanupInterval);
+        await this.redisInitialization?.catch(() => undefined);
+        await this.redisBackend?.close();
+        this.redisBackend = undefined;
+    }
+
+    async isRateLimited(
         key: RateLimitKey,
         maxRequests: number,
         windowMs: number,
-    ): { limited: boolean; resetAt: number; retryAfter: number } {
-        const keyStr = this.generateKey(key);
+    ): Promise<RateLimitResult> {
+        this.assertLimits(maxRequests, windowMs);
+        const keyString = this.generateKey(key);
         const now = Date.now();
-        const resetAt = now + windowMs;
-
-        let entry = this.store.get(keyStr);
-
-        if (!entry || entry.resetAt <= now) {
-            // Evict oldest entries if at capacity
-            if (!this.store.has(keyStr) && this.store.size >= MAX_RATE_LIMIT_ENTRIES) {
-                this.evictOldest();
-            }
-            entry = { count: 0, resetAt };
-            this.store.set(keyStr, entry);
-        }
-
-        entry.count++;
-
-        this.store.set(keyStr, entry);
-
+        const entry = this.redisConnection
+            ? await this.incrementRedis(keyString, windowMs)
+            : this.incrementLocal(keyString, now, windowMs);
         const limited = entry.count > maxRequests;
-        const retryAfter = limited ? entry.resetAt - now : 0;
+        const retryAfter = limited ? Math.max(1, entry.resetAt - now) : 0;
 
         if (limited) {
-            this.logger.warn(`Rate limit exceeded for key ${keyStr}`, {
+            this.logger.warn(`Rate limit exceeded for key ${keyString}`, {
                 count: entry.count,
                 maxRequests,
                 resetAt: new Date(entry.resetAt).toISOString(),
             });
         }
-
         return { limited, resetAt: entry.resetAt, retryAfter };
     }
 
-    reset(key: RateLimitKey): void {
-        const keyStr = this.generateKey(key);
-        this.store.delete(keyStr);
-        this.logger.debug(`Rate limit reset for key ${keyStr}`);
+    async reset(key: RateLimitKey): Promise<void> {
+        const keyString = this.generateKey(key);
+        if (this.redisConnection) {
+            const backend = await this.ensureRedisBackend();
+            try {
+                await backend.reset(keyString);
+            } catch (error) {
+                this.invalidateRedisBackend(backend, error);
+                throw new RateLimitBackendUnavailableError(error);
+            }
+        } else {
+            this.store.delete(keyString);
+        }
+        this.logger.debug(`Rate limit reset for key ${keyString}`);
+    }
+
+    async getCount(key: RateLimitKey): Promise<number> {
+        const keyString = this.generateKey(key);
+        if (!this.redisConnection) {
+            return this.store.get(keyString)?.count ?? 0;
+        }
+        const backend = await this.ensureRedisBackend();
+        try {
+            return await backend.getCount(keyString);
+        } catch (error) {
+            this.invalidateRedisBackend(backend, error);
+            throw new RateLimitBackendUnavailableError(error);
+        }
+    }
+
+    getStats(): Record<string, { count: number; resetAt: string }> {
+        const stats: Record<string, { count: number; resetAt: string }> = {};
+        for (const [keyString, entry] of this.store.entries()) {
+            stats[keyString] = {
+                count: entry.count,
+                resetAt: new Date(entry.resetAt).toISOString(),
+            };
+        }
+        return stats;
+    }
+
+    private async incrementRedis(
+        key: string,
+        windowMs: number,
+    ): Promise<RateLimitEntry> {
+        const backend = await this.ensureRedisBackend();
+        try {
+            const result = await backend.increment(key, windowMs);
+            return {
+                count: result.count,
+                resetAt: Date.now() + result.ttlMs,
+            };
+        } catch (error) {
+            this.invalidateRedisBackend(backend, error);
+            throw new RateLimitBackendUnavailableError(error);
+        }
+    }
+
+    private incrementLocal(
+        key: string,
+        now: number,
+        windowMs: number,
+    ): RateLimitEntry {
+        let entry = this.store.get(key);
+        if (!entry || entry.resetAt <= now) {
+            if (!this.store.has(key) && this.store.size >= RATE_LIMIT.MAX_ENTRIES) {
+                this.evictOldest();
+            }
+            entry = { count: 0, resetAt: now + windowMs };
+            this.store.set(key, entry);
+        }
+        entry.count += 1;
+        return entry;
+    }
+
+    private async ensureRedisBackend(): Promise<RedisRateLimitBackend> {
+        if (!this.redisConnection || this.shuttingDown) {
+            throw new RateLimitBackendUnavailableError();
+        }
+        if (this.redisBackend) return this.redisBackend;
+        if (Date.now() < this.nextRedisInitializationAt) {
+            throw new RateLimitBackendUnavailableError();
+        }
+
+        this.redisInitialization ??= this.initializeRedis().finally(() => {
+            this.redisInitialization = undefined;
+        });
+        try {
+            await this.redisInitialization;
+        } catch (error) {
+            throw new RateLimitBackendUnavailableError(error);
+        }
+        if (!this.redisBackend) {
+            throw new RateLimitBackendUnavailableError();
+        }
+        return this.redisBackend;
+    }
+
+    private async initializeRedis(): Promise<void> {
+        try {
+            this.redisBackend = await RedisRateLimitBackend.create(
+                this.redisConnection!,
+                this.logger,
+            );
+            this.nextRedisInitializationAt = 0;
+        } catch (error) {
+            this.nextRedisInitializationAt =
+                Date.now() + RATE_LIMIT.REDIS_RECONNECT_DELAY_MS;
+            this.logger.error(
+                `Redis webhook rate limiter is unavailable: ${getErrorMessage(error)}`,
+            );
+            throw error;
+        }
+    }
+
+    private invalidateRedisBackend(
+        backend: RedisRateLimitBackend,
+        error: unknown,
+    ): void {
+        if (this.redisBackend === backend) {
+            this.redisBackend = undefined;
+            this.nextRedisInitializationAt =
+                Date.now() + RATE_LIMIT.REDIS_RECONNECT_DELAY_MS;
+            void backend.close().catch(closeError => {
+                this.logger.warn(
+                    `Failed to close invalid Redis webhook rate limiter: ${getErrorMessage(closeError)}`,
+                );
+            });
+        }
+        this.logger.error(
+            `Redis webhook rate-limit command failed: ${getErrorMessage(error)}`,
+        );
     }
 
     private evictOldest(): void {
         const entries = Array.from(this.store.entries())
-            .sort((a, b) => a[1].resetAt - b[1].resetAt);
-        const toRemove = entries.slice(0, Math.ceil(MAX_RATE_LIMIT_ENTRIES * 0.1));
-        for (const [key] of toRemove) {
+            .sort((left, right) => left[1].resetAt - right[1].resetAt);
+        const removeCount = Math.ceil(RATE_LIMIT.MAX_ENTRIES * 0.1);
+        for (const [key] of entries.slice(0, removeCount)) {
             this.store.delete(key);
         }
-        this.logger.debug(`Evicted ${toRemove.length} oldest rate limit entries`);
+        this.logger.debug(`Evicted ${removeCount} oldest rate limit entries`);
     }
 
     private cleanup(): void {
         const now = Date.now();
         let cleaned = 0;
-
-        for (const [keyStr, entry] of this.store.entries()) {
+        for (const [key, entry] of this.store.entries()) {
             if (entry.resetAt <= now) {
-                this.store.delete(keyStr);
-                cleaned++;
+                this.store.delete(key);
+                cleaned += 1;
             }
         }
-
         if (cleaned > 0) {
             this.logger.debug(`Cleaned up ${cleaned} expired rate limit entries`);
         }
@@ -119,34 +257,18 @@ export class RateLimitService implements OnModuleDestroy {
 
     private generateKey(key: RateLimitKey): string {
         const parts: string[] = [];
-
         if (key.ip) parts.push(`ip:${key.ip}`);
         if (key.pipelineCode) parts.push(`pipeline:${key.pipelineCode}`);
         if (key.identifier) parts.push(`id:${key.identifier}`);
-
-        if (parts.length === 0) {
-            return 'global:default';
-        }
-
-        return parts.join(':');
+        return parts.length > 0 ? parts.join(':') : 'global:default';
     }
 
-    getCount(key: RateLimitKey): number {
-        const keyStr = this.generateKey(key);
-        const entry = this.store.get(keyStr);
-        return entry?.count ?? 0;
-    }
-
-    getStats(): Record<string, { count: number; resetAt: string }> {
-        const stats: Record<string, { count: number; resetAt: string }> = {};
-
-        for (const [keyStr, entry] of this.store.entries()) {
-            stats[keyStr] = {
-                count: entry.count,
-                resetAt: new Date(entry.resetAt).toISOString(),
-            };
+    private assertLimits(maxRequests: number, windowMs: number): void {
+        if (!Number.isSafeInteger(maxRequests) || maxRequests < 0) {
+            throw new Error('Rate-limit maxRequests must be a non-negative integer');
         }
-
-        return stats;
+        if (!Number.isSafeInteger(windowMs) || windowMs < 1) {
+            throw new Error('Rate-limit windowMs must be a positive integer');
+        }
     }
 }

@@ -7,10 +7,34 @@ export const pipelineSchema = `
         DRAFT
         "Pipeline submitted for review before publishing"
         REVIEW
-        "Pipeline is live and can be triggered"
+        "Working copy matches the selected published revision"
         PUBLISHED
         "Pipeline is deactivated but preserved for history"
         ARCHIVED
+    }
+
+    input DataHubPipelineCapabilityOperators {
+        "Matches a capability code exactly"
+        eq: String
+        "Excludes a capability code exactly"
+        notEq: String
+        "Matches when any capability code contains this text"
+        contains: String
+        "Excludes pipelines with a capability code containing this text"
+        notContains: String
+        "Matches when any capability code is in this set"
+        in: [String!]
+        "Excludes pipelines containing any capability code in this set"
+        notIn: [String!]
+        "Matches when any capability code satisfies this safe regular expression"
+        regex: String
+        "Matches pipelines with no capabilities when true, or at least one when false"
+        isNull: Boolean
+    }
+
+    input DataHubPipelineFilterParameter {
+        requiredCapabilities: DataHubPipelineCapabilityOperators
+        writeCapabilities: DataHubPipelineCapabilityOperators
     }
 
     """
@@ -24,8 +48,10 @@ export const pipelineSchema = `
         code: String!
         "Human-readable pipeline name"
         name: String!
-        "Whether the pipeline can be triggered"
+        "Runtime enable switch; an active published revision must also exist"
         enabled: Boolean!
+        "Persisted ownership source: DATABASE or CODE_FIRST"
+        configurationSource: String!
         "Schema version for definition format"
         version: Int!
         """
@@ -34,10 +60,19 @@ export const pipelineSchema = `
         """
         definition: JSON!
         status: DataHubPipelineStatus!
+        "Selected published revision; executable only while the pipeline is runnable"
+        currentRevisionId: ID
+        "Number of the selected published version; zero before first publication"
+        publishedVersionCount: Int!
         "When the pipeline was last published"
         publishedAt: DateTime
         "User ID who published the pipeline"
         publishedByUserId: String
+        "Effective permissions declared by the pipeline and its registered adapters"
+        requiredCapabilities: [String!]!
+        "Declared data domains this pipeline writes"
+        writeCapabilities: [String!]!
+        channels: [Channel!]!
     }
 
     type DataHubPipelineList implements PaginatedList {
@@ -53,6 +88,8 @@ export const pipelineSchema = `
         createdAt: DateTime!
         updatedAt: DateTime!
         pipeline: DataHubPipeline!
+        "Immutable published revision executed by this run"
+        revisionId: ID
         status: DataHubRunStatus!
         startedAt: DateTime
         finishedAt: DateTime
@@ -65,7 +102,8 @@ export const pipelineSchema = `
         "Alias for error — error message if the run failed"
         errorMessage: String
         """
-        Checkpoint data for resumable pipelines: { lastProcessedId, cursor, state }
+        Per-run seeded graph input when the run was started with seed records; null for ordinary runs.
+        Durable adapter checkpoints are stored separately as DataHubCheckpoint records.
         """
         checkpoint: JSON
         "User ID who started the run (null for automated triggers)"
@@ -74,6 +112,10 @@ export const pipelineSchema = `
         triggeredBy: String
         "Alias for finishedAt — when the run reached a terminal state"
         completedAt: DateTime
+        "Exact GATE step awaiting action while the run is PAUSED"
+        gateStepKey: String
+        "Durable auto-approval deadline for a paused TIMEOUT gate"
+        gateTimeoutAt: DateTime
     }
 
     """
@@ -128,6 +170,13 @@ export const pipelineSchema = `
         stackTrace: String
     }
 
+    type DataHubRecordErrorPage {
+        items: [DataHubRecordError!]!
+        totalItems: Int!
+        hasNextPage: Boolean!
+        endCursor: String
+    }
+
     """
     Audit trail for retry attempts on failed records
     """
@@ -140,10 +189,42 @@ export const pipelineSchema = `
         userId: ID
         "Record state before the retry patch"
         previousPayload: JSON!
-        "JSON Patch operations applied"
+        "Accepted field patch applied to the retried payload"
         patch: JSON!
         "Record state after applying the patch"
         resultingPayload: JSON!
+    }
+    enum DataHubRecordRetryOutcome {
+        APPLIED
+        RECORD_NOT_FOUND
+        RUN_NOT_FOUND
+        PIPELINE_NOT_FOUND
+        STEP_NOT_FOUND
+        PATCH_REJECTED
+        REPLAY_FAILED
+    }
+
+    """
+    Structured result of retrying one quarantined record.
+    """
+    type DataHubRecordRetryResult {
+        success: Boolean!
+        outcome: DataHubRecordRetryOutcome!
+        message: String!
+        errorId: ID!
+        runId: ID
+        stepKey: String
+        adapterCode: String
+        definitionVersion: Int
+        "The accepted field patch. Empty when validation rejects the request before replay."
+        appliedPatch: JSON!
+        "Requested field names rejected by the loader patch policy."
+        rejectedPatchKeys: [String!]!
+        processed: Int!
+        succeeded: Int!
+        failed: Int!
+        auditId: ID
+        auditRecorded: Boolean!
     }
 
     """
@@ -154,7 +235,7 @@ export const pipelineSchema = `
         code: String!
         "Human-readable pipeline name"
         name: String!
-        "Whether the pipeline can be triggered (default: true)"
+        "Runtime enable switch (default: true); the pipeline must also be PUBLISHED to run"
         enabled: Boolean = true
         "Schema version for definition format (default: 1)"
         version: Int = 1
@@ -182,14 +263,17 @@ export const pipelineSchema = `
         definition: JSON
     }
 
+    input AssignDataHubPipelinesToChannelInput {
+        pipelineIds: [ID!]!
+        channelId: ID!
+    }
+
     """
     Pipeline run execution status
     """
     enum DataHubRunStatus {
         "Run created but not yet started"
         PENDING
-        "Run queued for execution"
-        QUEUED
         "Run currently executing"
         RUNNING
         "Run paused (resumable)"
@@ -218,14 +302,33 @@ export const pipelineSchema = `
         after: JSON!
     }
 
+    enum DataHubDryRunMessageLevel {
+        INFO
+        WARNING
+        ERROR
+    }
+
+    type DataHubDryRunMessage {
+        "Machine-readable severity"
+        level: DataHubDryRunMessageLevel!
+        "Stable code for client-side localization and handling"
+        code: String!
+        "Raw runtime detail when the message originates from an adapter or record"
+        detail: String
+        "Step that produced the message, when applicable"
+        stepKey: String
+        "Structured interpolation values for the message code"
+        values: JSON
+    }
+
     """
     Result of a dry run execution
     """
     type DataHubDryRunResult {
         "Execution metrics: { recordsProcessed, duration, stepMetrics }"
         metrics: JSON!
-        "Informational notes about the dry run"
-        notes: [String!]!
+        "Structured informational, warning, and error messages"
+        messages: [DataHubDryRunMessage!]!
         "Sample records showing transformation at each step"
         sampleRecords: [DataHubDryRunSampleRecord!]
     }
@@ -269,6 +372,28 @@ export const pipelineSchema = `
         "Any issues encountered during conversion"
         issues: [String!]!
     }
+
+    enum DataHubHookExecutionStatus {
+        EXECUTED
+        PARTIAL
+        FAILED
+        SKIPPED
+    }
+
+    type DataHubHookExecutionFailure {
+        action: String!
+        type: String!
+        error: String!
+    }
+
+    type DataHubHookExecutionResult {
+        status: DataHubHookExecutionStatus!
+        configured: Int!
+        executed: Int!
+        skipped: Int!
+        failed: Int!
+        errors: [DataHubHookExecutionFailure!]!
+    }
 `;
 
 export const pipelineQueries = `
@@ -277,9 +402,9 @@ export const pipelineQueries = `
         dataHubPipeline(id: ID!): DataHubPipeline
         dataHubPipelineRuns(pipelineId: ID): DataHubPipelineRunList!
         dataHubPipelineRun(id: ID!): DataHubPipelineRun
-        dataHubRunErrors(runId: ID!): [DataHubRecordError!]!
-        dataHubRecordRetryAudits(errorId: ID!): [DataHubRecordRetryAudit!]!
-        dataHubDeadLetters: [DataHubRecordError!]!
+        dataHubRunErrors(runId: ID!, first: Int = 20, after: String): DataHubRecordErrorPage!
+        dataHubRecordRetryAudits(errorId: ID!, limit: Int = 20): [DataHubRecordRetryAudit!]!
+        dataHubDeadLetters(first: Int = 20, after: String): DataHubRecordErrorPage!
         dataHubPipelineDependencies(id: ID!): [DataHubPipeline!]!
         dataHubPipelineDependents(id: ID!): [DataHubPipeline!]!
         dataHubCheckpoint(pipelineId: ID!): DataHubCheckpoint
@@ -303,13 +428,16 @@ export const pipelineMutations = `
         approveDataHubPipeline(id: ID!): DataHubPipeline!
         rejectDataHubPipelineReview(id: ID!): DataHubPipeline!
         archiveDataHubPipeline(id: ID!): DataHubPipeline!
-        startDataHubPipelineRun(pipelineId: ID!): DataHubPipelineRun!
+        reactivateDataHubPipeline(id: ID!): DataHubPipeline!
+        startDataHubPipelineRun(pipelineId: ID!, expectedRevisionId: ID): DataHubPipelineRun!
         cancelDataHubPipelineRun(id: ID!): DataHubPipelineRun!
         startDataHubPipelineDryRun(pipelineId: ID!): DataHubDryRunResult!
-        retryDataHubRecord(errorId: ID!, patch: JSON): Boolean!
+        retryDataHubRecord(errorId: ID!, patch: JSON): DataHubRecordRetryResult!
         updateDataHubCheckpoint(pipelineId: ID!, data: JSON!): DataHubCheckpoint!
         markDataHubDeadLetter(id: ID!, deadLetter: Boolean!): Boolean!
         revertDataHubPipelineToRevision(revisionId: ID!): DataHubPipeline!
-        runDataHubHookTest(pipelineId: ID!, stage: String!, payload: JSON): Boolean!
+        runDataHubHookTest(pipelineId: ID!, stage: String!, payload: JSON): DataHubHookExecutionResult!
+        assignDataHubPipelinesToChannel(input: AssignDataHubPipelinesToChannelInput!): [DataHubPipeline!]!
+        removeDataHubPipelinesFromChannel(input: AssignDataHubPipelinesToChannelInput!): [DataHubPipeline!]!
     }
 `;

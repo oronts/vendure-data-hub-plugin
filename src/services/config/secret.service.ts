@@ -1,7 +1,7 @@
 import { Inject, Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { RequestContext, TransactionalConnection } from '@vendure/core';
 import { DataHubSecret } from '../../entities/config';
-import { DATAHUB_PLUGIN_OPTIONS, LOGGER_CONTEXTS } from '../../constants/index';
+import { DATAHUB_PLUGIN_OPTIONS, LOGGER_CONTEXTS, SECRET_SECURITY } from '../../constants/index';
 import { DataHubPluginOptions, CodeFirstSecret } from '../../types/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
 import { SecretProvider } from '../../constants/enums';
@@ -13,17 +13,34 @@ import {
     getMasterKey,
 } from '../../utils/encryption.utils';
 import { ensureError } from '../../utils/error.utils';
+import { CODE_PATTERN, ENV_VARIABLE_NAME_PATTERN } from '../../../shared';
+import { cloneValue } from '../../../shared/utils/lossless-conversion';
+import { DEFAULT_CHANNEL_CODE } from '../../../shared/constants';
+import { loadDataHubConfigFile } from '../../utils/config-file.utils';
+export type SecretSecurityMode =
+    | 'ENCRYPTED'
+    | 'STRICT_DISABLED';
+
+export interface SecretCodeReference {
+    code: string;
+    provider: string;
+    source: 'config' | 'database';
+}
+
+const MAX_CODE_FIRST_SECRET_CHANNELS = 100;
+
 
 /**
  * Secure storage and resolution of secrets for DataHub pipelines.
  *
  * Supports multiple providers:
- * - `inline`: Value stored directly in database (encrypted at rest when DATAHUB_MASTER_KEY is set)
+ * - `inline`: Database values require DATAHUB_MASTER_KEY and are encrypted at rest
  * - `env`: Value read from environment variable at runtime
  * - `config`: Value provided via plugin configuration (code-first)
  *
  * Security:
- * - INLINE secrets are encrypted at rest using AES-256-GCM when DATAHUB_MASTER_KEY is configured
+ * - Database INLINE secrets fail closed without a valid DATAHUB_MASTER_KEY
+ * - Unencrypted database INLINE values are never stored or resolved
  * - Secrets are only decrypted in memory when resolved
  * - Environment variable secrets are never stored, only referenced
  *
@@ -42,8 +59,9 @@ import { ensureError } from '../../utils/error.utils';
 @Injectable()
 export class SecretService implements OnModuleInit, OnModuleDestroy {
     private readonly logger: DataHubLogger;
-    private configSecrets: Map<string, CodeFirstSecret> = new Map();
+    private configSecrets = new Map<string, Readonly<CodeFirstSecret>>();
     private readonly encryptionEnabled: boolean;
+    private readonly isProduction: boolean;
 
     constructor(
         private connection: TransactionalConnection,
@@ -52,26 +70,103 @@ export class SecretService implements OnModuleInit, OnModuleDestroy {
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.SECRET_SERVICE);
         this.encryptionEnabled = isEncryptionConfigured();
+        this.isProduction =
+            process.env[SECRET_SECURITY.NODE_ENV]?.trim().toLowerCase() ===
+            SECRET_SECURITY.PRODUCTION_ENV;
     }
 
-    onModuleInit() {
-        // Load secrets from plugin configuration
-        if (this.options.secrets) {
-            for (const secret of this.options.secrets) {
-                this.configSecrets.set(secret.code, secret);
-                this.logger.debug(`Registered config secret: ${secret.code}`);
-            }
-            this.logger.info(`Secret registry initialized`, { recordCount: this.configSecrets.size });
+    onModuleInit(): void {
+        if (this.options.enabled === false) {
+            return;
         }
 
-        // Log encryption status
+        const fileOptions = this.options.configPath
+            ? loadDataHubConfigFile(this.options.configPath)
+            : {};
+        const secrets = this.mergeSecretSources(
+            fileOptions.secrets ?? [],
+            this.options.secrets ?? [],
+        );
+        this.replaceConfigSecrets(secrets);
+        if (secrets.length > 0) {
+            this.logger.info('Secret registry initialized', {
+                recordCount: this.configSecrets.size,
+            });
+        }
+
         if (this.encryptionEnabled) {
             this.logger.info('Secret encryption is enabled (DATAHUB_MASTER_KEY configured)');
         } else {
             this.logger.warn(
-                'Secret encryption is NOT enabled. Set DATAHUB_MASTER_KEY environment variable ' +
-                'to enable encryption at rest for INLINE secrets.',
+                'INLINE secret storage and resolution are disabled until DATAHUB_MASTER_KEY is configured',
             );
+        }
+    }
+
+    replaceConfigSecrets(secrets: readonly CodeFirstSecret[]): number {
+        const nextSecrets = new Map<string, Readonly<CodeFirstSecret>>();
+        for (const secret of secrets) {
+            this.validateConfigSecret(secret);
+            if (nextSecrets.has(secret.code)) {
+                throw new Error(`Duplicate code-first secret code: "${secret.code}"`);
+            }
+            const normalized = Object.freeze({
+                ...secret,
+                value: secret.provider === 'ENV' ? secret.value.trim() : secret.value,
+                channelCodes: secret.channelCodes === undefined
+                    ? undefined
+                    : Object.freeze([...secret.channelCodes]),
+                metadata: secret.metadata === undefined
+                    ? undefined
+                    : cloneValue(secret.metadata),
+            });
+            nextSecrets.set(secret.code, normalized);
+        }
+
+        this.configSecrets = nextSecrets;
+        for (const code of nextSecrets.keys()) {
+            this.logger.debug(`Registered config secret: ${code}`);
+        }
+        return nextSecrets.size;
+    }
+
+    getConfigSecretCount(): number {
+        return this.configSecrets.size;
+    }
+
+    isConfigSecret(code: string): boolean {
+        return this.configSecrets.has(code);
+    }
+
+    private mergeSecretSources(
+        fileSecrets: readonly CodeFirstSecret[],
+        pluginSecrets: readonly CodeFirstSecret[],
+    ): CodeFirstSecret[] {
+        this.assertUniqueSecretCodes(fileSecrets, 'config file');
+        this.assertUniqueSecretCodes(pluginSecrets, 'plugin options');
+
+        const merged = new Map<string, CodeFirstSecret>();
+        for (const secret of fileSecrets) {
+            merged.set(secret.code, secret);
+        }
+        for (const secret of pluginSecrets) {
+            merged.set(secret.code, secret);
+        }
+        return [...merged.values()];
+    }
+
+    private assertUniqueSecretCodes(
+        secrets: readonly CodeFirstSecret[],
+        source: string,
+    ): void {
+        const codes = new Set<string>();
+        for (const secret of secrets) {
+            if (codes.has(secret.code)) {
+                throw new Error(
+                    `Duplicate code-first secret code "${secret.code}" in ${source}`,
+                );
+            }
+            codes.add(secret.code);
         }
     }
 
@@ -83,19 +178,38 @@ export class SecretService implements OnModuleInit, OnModuleDestroy {
         return this.encryptionEnabled;
     }
 
+    getSecurityMode(): SecretSecurityMode {
+        if (this.encryptionEnabled) {
+            return 'ENCRYPTED';
+        }
+        return 'STRICT_DISABLED';
+    }
+
+    isCodeFirstInlineAllowed(): boolean {
+        return !this.isProduction && this.encryptionEnabled;
+    }
+
     async getByCode(ctx: RequestContext, code: string): Promise<DataHubSecret | null> {
-        return this.connection.getRepository(ctx, DataHubSecret).findOne({ where: { code } });
+        return this.connection.getRepository(ctx, DataHubSecret).findOne({
+            where: { code, channels: { id: ctx.channelId } },
+        });
     }
 
     async getById(ctx: RequestContext, id: string): Promise<DataHubSecret | null> {
-        return this.connection.getRepository(ctx, DataHubSecret).findOne({ where: { id } });
+        return this.connection.findOneInChannel(
+            ctx,
+            DataHubSecret,
+            id,
+            ctx.channelId,
+            { relations: ['channels'] },
+        ).then(entity => entity ?? null);
     }
 
     /** Resolution order: 1. Config secrets, 2. Database secrets */
     async resolve(ctx: RequestContext, code: string): Promise<string | null> {
         // 1. Check config secrets first (highest priority)
         const configSecret = this.configSecrets.get(code);
-        if (configSecret) {
+        if (configSecret && this.isConfigSecretVisible(ctx, configSecret)) {
             return this.resolveConfigSecret(configSecret);
         }
 
@@ -123,40 +237,38 @@ export class SecretService implements OnModuleInit, OnModuleDestroy {
     }
 
     async exists(ctx: RequestContext, code: string): Promise<boolean> {
-        if (this.configSecrets.has(code)) {
+        const configSecret = this.configSecrets.get(code);
+        if (configSecret && this.isConfigSecretVisible(ctx, configSecret)) {
             return true;
         }
         const dbSecret = await this.getByCode(ctx, code);
         return dbSecret !== null;
     }
 
-    /** List all available secret codes (does NOT expose values) */
-    async listCodes(ctx: RequestContext): Promise<Array<{ code: string; provider: string; source: 'config' | 'database' }>> {
-        const result: Array<{ code: string; provider: string; source: 'config' | 'database' }> = [];
-
-        // Config secrets
-        for (const [code, def] of this.configSecrets) {
-            result.push({
+    listConfigReferences(
+        ctx: RequestContext,
+        searchTerm = '',
+    ): SecretCodeReference[] {
+        const search = searchTerm.trim().toLowerCase();
+        return [...this.configSecrets.entries()]
+            .filter(([code, definition]) => (
+                this.isConfigSecretVisible(ctx, definition)
+                && (!search || code.toLowerCase().includes(search))
+            ))
+            .map(([code, definition]) => ({
                 code,
-                provider: def.provider,
-                source: 'config',
-            });
-        }
+                provider: definition.provider,
+                source: 'config' as const,
+            }))
+            .sort((left, right) => left.code < right.code ? -1 : left.code > right.code ? 1 : 0);
+    }
 
-        // Database secrets
-        const dbSecrets = await this.connection.getRepository(ctx, DataHubSecret).find();
-        for (const s of dbSecrets) {
-            // Don't duplicate if already in config
-            if (!this.configSecrets.has(s.code)) {
-                result.push({
-                    code: s.code,
-                    provider: s.provider,
-                    source: 'database',
-                });
-            }
-        }
-
-        return result;
+    private isConfigSecretVisible(
+        ctx: RequestContext,
+        definition: Readonly<CodeFirstSecret>,
+    ): boolean {
+        return ctx.channel.code === DEFAULT_CHANNEL_CODE
+            || definition.channelCodes?.includes(ctx.channel.code) === true;
     }
 
     async validateSecrets(
@@ -176,6 +288,78 @@ export class SecretService implements OnModuleInit, OnModuleDestroy {
             valid: missing.length === 0,
             missing,
         };
+    }
+
+    private validateConfigSecret(def: Readonly<CodeFirstSecret>): void {
+        if (
+            typeof def.code !== 'string' ||
+            def.code.trim() !== def.code ||
+            !CODE_PATTERN.test(def.code)
+        ) {
+            throw new Error(
+                'Secret codes must start with a letter and contain only letters, numbers, hyphens, and underscores',
+            );
+        }
+        if ((def.channelCodes?.length ?? 0) > MAX_CODE_FIRST_SECRET_CHANNELS) {
+            throw new Error(
+                `Secret "${def.code}" cannot target more than ${MAX_CODE_FIRST_SECRET_CHANNELS} channels`,
+            );
+        }
+        const channelCodes = new Set<string>();
+        for (const channelCode of def.channelCodes ?? []) {
+            if (
+                typeof channelCode !== 'string'
+                || channelCode.trim() !== channelCode
+                || !CODE_PATTERN.test(channelCode)
+            ) {
+                throw new Error(
+                    `Secret "${def.code}" contains an invalid channel code`,
+                );
+            }
+            if (channelCode === DEFAULT_CHANNEL_CODE) {
+                throw new Error(
+                    `Secret "${def.code}" does not need to declare the default channel`,
+                );
+            }
+            if (channelCodes.has(channelCode)) {
+                throw new Error(
+                    `Secret "${def.code}" contains duplicate channel code "${channelCode}"`,
+                );
+            }
+            channelCodes.add(channelCode);
+        }
+
+        switch (def.provider) {
+            case 'INLINE':
+                if (!def.value) {
+                    throw new Error(`INLINE secret "${def.code}" requires a non-empty value`);
+                }
+                if (this.isProduction) {
+                    throw new Error(
+                        `Code-first INLINE secret "${def.code}" is not allowed in production; use ENV`,
+                    );
+                }
+                if (!this.encryptionEnabled) {
+                    throw new Error(
+                        `INLINE secret "${def.code}" requires DATAHUB_MASTER_KEY`,
+                    );
+                }
+                return;
+            case 'ENV':
+                if (
+                    !def.value ||
+                    !ENV_VARIABLE_NAME_PATTERN.test(def.value.trim())
+                ) {
+                    throw new Error(
+                        `ENV secret "${def.code}" must reference one environment variable name`,
+                    );
+                }
+                return;
+            default:
+                throw new Error(
+                    `Secret "${def.code}" has unsupported provider "${String(def.provider)}"`,
+                );
+        }
     }
 
     private resolveConfigSecret(def: CodeFirstSecret): string | null {
@@ -206,10 +390,12 @@ export class SecretService implements OnModuleInit, OnModuleDestroy {
         }
     }
 
-    /** Only encrypts if DATAHUB_MASTER_KEY is configured */
+    /** Encrypts INLINE values or rejects storage when no secure mode is configured. */
     async encryptValue(plaintext: string): Promise<string> {
         if (!this.encryptionEnabled) {
-            return plaintext;
+            throw new Error(
+                `INLINE secrets require ${SECRET_SECURITY.MASTER_KEY_ENV}`,
+            );
         }
 
         const masterKey = getMasterKey();
@@ -231,9 +417,9 @@ export class SecretService implements OnModuleInit, OnModuleDestroy {
             return null;
         }
 
-        // Plaintext value (not yet encrypted), return as-is for migration compatibility
         if (!isEncrypted(value)) {
-            return value;
+            this.logger.error('Refusing to resolve an unencrypted INLINE secret');
+            throw new Error('Cannot resolve unencrypted INLINE secret');
         }
 
         if (!this.encryptionEnabled) {
@@ -256,26 +442,24 @@ export class SecretService implements OnModuleInit, OnModuleDestroy {
         }
     }
 
-    /** Supports fallback syntax: VAR_NAME|fallback_value */
-    private resolveEnvValue(envNameOrFallback: string | null): string | null {
-        if (!envNameOrFallback) {
+    private resolveEnvValue(envNameValue: string | null): string | null {
+        if (!envNameValue) {
             return null;
         }
 
-        // Support fallback syntax: ENV_VAR|default_value
-        const pipeIndex = envNameOrFallback.indexOf('|');
-        const envName = pipeIndex === -1 ? envNameOrFallback.trim() : envNameOrFallback.substring(0, pipeIndex).trim();
-        const fallback = pipeIndex === -1 ? undefined : envNameOrFallback.substring(pipeIndex + 1).trim();
-
-        const value = process.env[envName];
-
-        if (value !== undefined) {
-            return value;
+        const envName = envNameValue.trim();
+        if (!ENV_VARIABLE_NAME_PATTERN.test(envName)) {
+            this.logger.error('Invalid environment variable secret reference', undefined, {
+                envName,
+            });
+            throw new Error(
+                'ENV secrets must reference exactly one environment variable name',
+            );
         }
 
-        if (fallback !== undefined) {
-            this.logger.debug(`Using fallback for env var ${envName}`);
-            return fallback;
+        const value = process.env[envName];
+        if (value !== undefined) {
+            return value;
         }
 
         this.logger.warn(`Environment variable not found: ${envName}`);

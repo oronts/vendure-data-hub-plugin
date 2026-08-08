@@ -7,14 +7,10 @@ import {
     ProductService,
     FacetValueService,
     AssetService,
-    ChannelService,
     TaxCategoryService,
-    ProductOptionService,
-    StockMovementService,
-    StockLevelService,
-    Product,
+    ProductOptionGroupService,
     ProductVariant,
-    LanguageCode,
+    ConfigService,
 } from '@vendure/core';
 import { GlobalFlag } from '@vendure/common/lib/generated-types';
 import {
@@ -23,9 +19,9 @@ import {
     EntityFieldSchema,
     TargetOperation,
 } from '../../types/index';
-import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
-import { LOGGER_CONTEXTS } from '../../constants/index';
-import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
+import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger/datahub-logger';
+import { LOGGER_CONTEXTS } from '../../constants/core';
+import { TARGET_OPERATION } from '../../constants/enums';
 import {
     BaseEntityLoader,
     ExistingEntityLookupResult,
@@ -36,18 +32,29 @@ import {
 import {
     ProductVariantInput,
     PRODUCT_VARIANT_LOADER_METADATA,
-    DEFAULT_PRODUCT_NAME,
 } from './types';
 import {
     resolveFacetValueIds,
-    slugify,
     shouldUpdateField,
     handleFacetValues,
     handleAssets,
     handleFeaturedAsset,
 } from '../shared-helpers';
-import { handleOptions } from './helpers';
+import {
+    createVariantExternalIdLookupStrategy,
+    handleOptions,
+    resolveOptionIds,
+    resolveVariantTaxCategoryId,
+} from './helpers';
 import { VariantUpsertLoaderConfig } from '../../types/index';
+import { majorToMinorUnits, resolveMoneyPrecision } from '../../utils/money.utils';
+import { getErrorMessage } from '../../utils/error.utils';
+import { PRODUCT_VARIANT_FIELD_SCHEMA } from './field-schema';
+import { resolveVariantProduct } from './product-reference';
+import {
+    buildCreateVariantTranslations,
+    buildVariantUpdateInput,
+} from './variant-input';
 
 /** Loads ProductVariant entities via ProductVariantService. Supports CREATE, UPDATE, UPSERT. */
 @Injectable()
@@ -58,16 +65,14 @@ export class ProductVariantLoader extends BaseEntityLoader<ProductVariantInput, 
     private readonly lookupHelper: EntityLookupHelper<TransactionalConnection, ProductVariant, ProductVariantInput>;
 
     constructor(
-        private connection: TransactionalConnection,
-        private variantService: ProductVariantService,
-        private productService: ProductService,
-        private facetValueService: FacetValueService,
-        private assetService: AssetService,
-        private channelService: ChannelService,
-        private taxCategoryService: TaxCategoryService,
-        private optionService: ProductOptionService,
-        private stockMovementService: StockMovementService,
-        private stockLevelService: StockLevelService,
+        private readonly connection: TransactionalConnection,
+        private readonly variantService: ProductVariantService,
+        private readonly productService: ProductService,
+        private readonly facetValueService: FacetValueService,
+        private readonly assetService: AssetService,
+        private readonly taxCategoryService: TaxCategoryService,
+        private readonly optionGroupService: ProductOptionGroupService,
+        private readonly configService: ConfigService,
         loggerFactory: DataHubLoggerFactory,
     ) {
         super();
@@ -75,30 +80,37 @@ export class ProductVariantLoader extends BaseEntityLoader<ProductVariantInput, 
         this.lookupHelper = new EntityLookupHelper<TransactionalConnection, ProductVariant, ProductVariantInput>(this.connection)
             .addCustomStrategy({
                 fieldName: 'sku',
-                lookup: async (ctx, conn, value) => {
+                lookup: async (ctx, _conn, value) => {
                     if (!value) return null;
-                    const variants = await conn
-                        .getRepository(ctx, ProductVariant)
-                        .find({ where: { sku: value as string }, relations: ['product'] });
-                    if (variants.length > 0) {
-                        return { id: variants[0].id, entity: variants[0] };
+                    const variants = await this.variantService.findAll(ctx, {
+                        filter: { sku: { eq: String(value) } },
+                        take: 1,
+                    });
+                    if (variants.items.length > 0) {
+                        return {
+                            id: variants.items[0].id,
+                            entity: variants.items[0],
+                        };
                     }
                     return null;
                 },
             })
             .addCustomStrategy({
                 fieldName: 'id',
-                lookup: async (ctx, conn, value) => {
+                lookup: async (ctx, _conn, value) => {
                     if (!value) return null;
-                    const variant = await conn
-                        .getRepository(ctx, ProductVariant)
-                        .findOne({ where: { id: value as ID }, relations: ['product'] });
+                    const variant = await this.variantService.findOne(
+                        ctx,
+                        value as ID,
+                        ['product'],
+                    );
                     if (variant) {
                         return { id: variant.id, entity: variant };
                     }
                     return null;
                 },
-            });
+            })
+            .addCustomStrategy(createVariantExternalIdLookupStrategy(this.connection));
     }
 
     protected getDuplicateErrorMessage(record: ProductVariantInput): string {
@@ -120,391 +132,284 @@ export class ProductVariantLoader extends BaseEntityLoader<ProductVariantInput, 
     ): Promise<EntityValidationResult> {
         const builder = new ValidationBuilder()
             .requireStringForCreate('sku', record.sku, operation, 'SKU is required');
-
-        // Price validation for CREATE/UPSERT
-        if (operation === TARGET_OPERATION.CREATE || operation === TARGET_OPERATION.UPSERT) {
-            if (record.price === undefined || record.price === null) {
-                builder.addError('price', 'Price is required', 'REQUIRED');
-            } else if (typeof record.price !== 'number' || isNaN(record.price)) {
-                builder.addError('price', 'Price must be a valid number', 'INVALID_TYPE');
-            } else if (record.price < 0) {
-                builder.addError('price', 'Price cannot be negative', 'INVALID_VALUE');
-            }
-
-            // For new variants, we need either product reference or product data
-            builder.addErrorIf(
-                !record.productId && !record.productSlug && !record.productName,
-                'productId',
-                'Product reference (productId, productSlug, or productName) is required for new variants',
-                'REQUIRED',
-            );
-        }
-
-        // Optional field validation
-        builder.addErrorIf(
-            record.stockOnHand !== undefined && typeof record.stockOnHand !== 'number',
-            'stockOnHand',
-            'Stock must be a number',
-            'INVALID_TYPE',
-        );
-
-        // Validate tax category if provided
-        if (record.taxCategoryCode) {
-            const taxCatList = await this.taxCategoryService.findAll(ctx);
-            const taxCat = taxCatList.items.find(tc => tc.name === record.taxCategoryCode);
-            if (!taxCat) {
-                builder.addWarning(
-                    'taxCategoryCode',
-                    `Tax category "${record.taxCategoryCode}" not found, will use default`,
-                );
-            }
-        }
-
+        this.validatePrice(builder, record, operation);
+        this.validateCreateProductReference(builder, record, operation);
+        this.validateOptionalFields(builder, record);
+        await this.validateTaxCategory(ctx, builder, record);
         return builder.build();
     }
 
+    private validatePrice(
+        builder: ValidationBuilder,
+        record: ProductVariantInput,
+        operation: TargetOperation,
+    ): void {
+        const priceRequired = operation === TARGET_OPERATION.CREATE
+            || operation === TARGET_OPERATION.UPSERT;
+        if (priceRequired && (record.price === undefined || record.price === null)) {
+            builder.addError('price', 'Price is required', 'REQUIRED');
+            return;
+        }
+        if (record.price === undefined || record.price === null) return;
+        if (typeof record.price !== 'number' || !Number.isFinite(record.price)) {
+            builder.addError('price', 'Price must be a valid number', 'INVALID_TYPE');
+        } else if (record.price < 0) {
+            builder.addError('price', 'Price cannot be negative', 'INVALID_VALUE');
+        }
+    }
+
+    private validateCreateProductReference(
+        builder: ValidationBuilder,
+        record: ProductVariantInput,
+        operation: TargetOperation,
+    ): void {
+        if (operation !== TARGET_OPERATION.CREATE && operation !== TARGET_OPERATION.UPSERT) {
+            return;
+        }
+        builder.addErrorIf(
+            record.productId === undefined
+                && !record.productSlug?.trim()
+                && !record.productName?.trim(),
+            'productId',
+            'Product reference (productId, productSlug, or productName) is required for new variants',
+            'REQUIRED',
+        );
+    }
+
+    private validateOptionalFields(
+        builder: ValidationBuilder,
+        record: ProductVariantInput,
+    ): void {
+        if (record.stockOnHand !== undefined) {
+            if (!Number.isFinite(record.stockOnHand) || !Number.isInteger(record.stockOnHand)) {
+                builder.addError(
+                    'stockOnHand',
+                    'Stock must be a finite whole number',
+                    'INVALID_TYPE',
+                );
+            } else if (record.stockOnHand < 0) {
+                builder.addError('stockOnHand', 'Stock cannot be negative', 'INVALID_VALUE');
+            }
+        }
+        if (record.trackInventory !== undefined && typeof record.trackInventory !== 'boolean') {
+            builder.addError(
+                'trackInventory',
+                'Track inventory must be a boolean',
+                'INVALID_TYPE',
+            );
+        }
+        if (record.name !== undefined && record.name.trim().length === 0) {
+            builder.addError('name', 'Variant name must not be empty', 'INVALID_VALUE');
+        }
+    }
+
+    private async validateTaxCategory(
+        ctx: RequestContext,
+        builder: ValidationBuilder,
+        record: ProductVariantInput,
+    ): Promise<void> {
+        if (record.taxCategoryId !== undefined && record.taxCategoryCode !== undefined) {
+            builder.addError(
+                'taxCategoryId',
+                'Provide either taxCategoryId or taxCategoryCode, not both',
+                'INVALID_VALUE',
+            );
+        } else if (record.taxCategoryId !== undefined || record.taxCategoryCode !== undefined) {
+            try {
+                await resolveVariantTaxCategoryId(ctx, this.taxCategoryService, record);
+            } catch (error) {
+                builder.addError(
+                    record.taxCategoryId !== undefined ? 'taxCategoryId' : 'taxCategoryCode',
+                    getErrorMessage(error),
+                    'INVALID_VALUE',
+                );
+            }
+        }
+    }
+
     getFieldSchema(): EntityFieldSchema {
-        return {
-            entityType: VendureEntityType.PRODUCT_VARIANT,
-            fields: [
-                {
-                    key: 'sku',
-                    label: 'SKU',
-                    type: 'string',
-                    required: true,
-                    lookupable: true,
-                    description: 'Unique stock keeping unit',
-                    example: 'PROD-001-BLK-L',
-                },
-                {
-                    key: 'name',
-                    label: 'Variant Name',
-                    type: 'string',
-                    translatable: true,
-                    description: 'Display name for the variant',
-                },
-                {
-                    key: 'price',
-                    label: 'Price',
-                    type: 'number',
-                    required: true,
-                    description: 'Price in cents (e.g., 1999 = $19.99)',
-                    example: 1999,
-                },
-                {
-                    key: 'productName',
-                    label: 'Product Name',
-                    type: 'string',
-                    description: 'Name of the parent product (for auto-creation)',
-                },
-                {
-                    key: 'productSlug',
-                    label: 'Product Slug',
-                    type: 'string',
-                    description: 'URL slug of the parent product',
-                },
-                {
-                    key: 'productId',
-                    label: 'Product ID',
-                    type: 'string',
-                    description: 'ID of the parent product',
-                },
-                {
-                    key: 'stockOnHand',
-                    label: 'Stock On Hand',
-                    type: 'number',
-                    description: 'Available inventory quantity',
-                    example: 100,
-                },
-                {
-                    key: 'trackInventory',
-                    label: 'Track Inventory',
-                    type: 'boolean',
-                    description: 'Whether to track stock levels',
-                },
-                {
-                    key: 'taxCategoryCode',
-                    label: 'Tax Category',
-                    type: 'string',
-                    description: 'Tax category code or name',
-                },
-                {
-                    key: 'facetValueCodes',
-                    label: 'Facet Values',
-                    type: 'array',
-                    description: 'Array of facet value codes to assign',
-                    example: ['color-black', 'size-large'],
-                },
-                {
-                    key: 'optionCodes',
-                    label: 'Options',
-                    type: 'array',
-                    description: 'Array of product option codes',
-                    example: ['black', 'large'],
-                },
-                {
-                    key: 'assetUrls',
-                    label: 'Asset URLs',
-                    type: 'array',
-                    description: 'URLs of images to attach',
-                },
-                {
-                    key: 'featuredAssetUrl',
-                    label: 'Featured Asset URL',
-                    type: 'string',
-                    description: 'URL of the featured/main image',
-                },
-                {
-                    key: 'customFields',
-                    label: 'Custom Fields',
-                    type: 'object',
-                    description: 'Custom field values',
-                },
-            ],
-        };
+        return PRODUCT_VARIANT_FIELD_SCHEMA;
     }
 
     protected async createEntity(context: LoaderContext, record: ProductVariantInput): Promise<ID | null> {
-        const { ctx } = context;
-
-        const product = await this.findOrCreateProduct(ctx, record);
-
-        const taxCatList = await this.taxCategoryService.findAll(ctx);
-        let taxCategoryId = taxCatList.items[0]?.id;
-        if (record.taxCategoryCode) {
-            const taxCat = taxCatList.items.find(tc => tc.name === record.taxCategoryCode);
-            if (taxCat) {
-                taxCategoryId = taxCat.id;
-            }
-        }
-
-        const facetValueIds = await resolveFacetValueIds(
-            ctx,
-            this.facetValueService,
-            record.facetValueCodes ?? [],
-            this.logger,
+        return this.connection.withTransaction(context.ctx, async ctx =>
+            this.createVariantEntity({ ...context, ctx }, record),
         );
+    }
 
-        // Build translations: multi-language from record field, or single-language default
-        const translations: Array<{ languageCode: LanguageCode; name: string }> = [];
-        if (record.translations && record.translations.length > 0) {
-            for (const t of record.translations) {
-                translations.push({
-                    languageCode: t.languageCode as LanguageCode,
-                    name: t.name || record.name || record.sku,
-                });
-            }
+    private async createVariantEntity(
+        context: LoaderContext,
+        record: ProductVariantInput,
+    ): Promise<ID> {
+        const { ctx } = context;
+        const { product, created: productCreated } = await resolveVariantProduct(
+            ctx,
+            this.productService,
+            record,
+        );
+        if (productCreated) {
+            this.logger.log(`Created product "${product.name}" (ID: ${product.id})`);
         }
-        const hasCtxLang = translations.some(t => t.languageCode === ctx.languageCode);
-        if (!hasCtxLang) {
-            translations.unshift({
-                languageCode: ctx.languageCode,
-                name: record.name || record.sku,
-            });
-        }
+        const config = (context.options.config ?? {}) as unknown as VariantUpsertLoaderConfig;
+        const taxCategoryId = await resolveVariantTaxCategoryId(
+            ctx, this.taxCategoryService, record,
+        );
+        const { facetValueIds, optionIds } = await this.resolveCreateRelationIds(
+            ctx,
+            product.id,
+            record,
+            config,
+        );
+        const [createdVariant] = await this.variantService.create(ctx, [{
+            productId: product.id,
+            sku: record.sku,
+            translations: buildCreateVariantTranslations(record, ctx.languageCode),
+            price: majorToMinorUnits(record.price, resolveMoneyPrecision(this.configService)),
+            taxCategoryId,
+            facetValueIds,
+            optionIds,
+            trackInventory: record.trackInventory === undefined
+                ? undefined
+                : record.trackInventory ? GlobalFlag.TRUE : GlobalFlag.FALSE,
+            stockOnHand: record.stockOnHand,
+            customFields: record.customFields,
+        }]);
 
-        const variant = await this.variantService.create(ctx, [
-            {
-                productId: product.id,
-                sku: record.sku,
-                translations,
-                price: record.price,
-                taxCategoryId,
-                facetValueIds,
-                trackInventory: record.trackInventory === false ? GlobalFlag.FALSE : GlobalFlag.TRUE,
-                stockOnHand: record.stockOnHand,
-            },
-        ]);
-
-        const createdVariant = variant[0];
-
-        // Apply additional translations for non-context languages.
-        // Vendure's create() only persists the translation matching ctx.languageCode.
-        // We need a subsequent update() call to persist the remaining translations.
-        const additionalTranslations = translations.filter(t => t.languageCode !== ctx.languageCode);
-        if (additionalTranslations.length > 0) {
-            await this.variantService.update(ctx, [{
-                id: createdVariant.id,
-                translations: additionalTranslations,
-            }]);
-            this.logger.debug(
-                `Applied ${additionalTranslations.length} additional translation(s) for variant ${record.sku}`,
-            );
-        }
+        await this.applyCreateMedia(ctx, createdVariant.id, record, config);
 
         this.logger.log(`Created variant ${record.sku} (ID: ${createdVariant.id})`);
         return createdVariant.id;
     }
 
-    protected async updateEntity(context: LoaderContext, variantId: ID, record: ProductVariantInput): Promise<void> {
-        const { ctx, options } = context;
-
-        const updateInput: Record<string, unknown> = { id: variantId };
-
-        // Build translations for the update. Vendure requires translations array
-        if (shouldUpdateField('name', options.updateOnlyFields)) {
-            const variantName = record.name || record.sku;
-            const translations: Array<{ languageCode: LanguageCode; name: string }> = [];
-            if (record.translations && record.translations.length > 0) {
-                for (const t of record.translations) {
-                    translations.push({
-                        languageCode: t.languageCode as LanguageCode,
-                        name: t.name || variantName,
-                    });
-                }
-            }
-            const hasCtxLang = translations.some(t => t.languageCode === ctx.languageCode);
-            if (!hasCtxLang) {
-                translations.unshift({
-                    languageCode: ctx.languageCode,
-                    name: variantName,
-                });
-            }
-            updateInput.translations = translations;
-        }
-        if (record.sku !== undefined && shouldUpdateField('sku', options.updateOnlyFields)) {
-            updateInput.sku = record.sku;
-        }
-        if (record.price !== undefined && shouldUpdateField('price', options.updateOnlyFields)) {
-            updateInput.price = record.price;
-        }
-        if (record.trackInventory !== undefined && shouldUpdateField('trackInventory', options.updateOnlyFields)) {
-            updateInput.trackInventory = record.trackInventory === false ? GlobalFlag.FALSE : GlobalFlag.TRUE;
-        }
-        if (record.customFields !== undefined && shouldUpdateField('customFields', options.updateOnlyFields)) {
-            updateInput.customFields = record.customFields;
-        }
-
-        if (record.taxCategoryCode && shouldUpdateField('taxCategoryCode', options.updateOnlyFields)) {
-            const taxCatList = await this.taxCategoryService.findAll(ctx);
-            const taxCat = taxCatList.items.find(tc => tc.name === record.taxCategoryCode);
-            if (taxCat) {
-                updateInput.taxCategoryId = taxCat.id;
-            }
-        }
-
-        await this.variantService.update(ctx, [updateInput as Parameters<typeof this.variantService.update>[1][0]]);
-
-        // Handle facet values with configurable mode
-        if (record.facetValueCodes && shouldUpdateField('facetValueCodes', options.updateOnlyFields)) {
-            const mode = (options.config as unknown as VariantUpsertLoaderConfig)?.facetValuesMode ?? 'REPLACE_ALL';
-            await handleFacetValues(
+    private async resolveCreateRelationIds(
+        ctx: RequestContext,
+        productId: ID,
+        record: ProductVariantInput,
+        config: VariantUpsertLoaderConfig,
+    ): Promise<{ facetValueIds: ID[]; optionIds: ID[] | undefined }> {
+        const facetValueIds = config.facetValuesMode === 'SKIP'
+            ? []
+            : await resolveFacetValueIds(
                 ctx,
-                this.variantService,
                 this.facetValueService,
-                variantId,
-                record.facetValueCodes,
-                mode,
+                record.facetValueCodes ?? [],
                 this.logger,
             );
-        }
-
-        // Handle options with configurable mode
-        if (record.optionCodes && shouldUpdateField('optionCodes', options.updateOnlyFields)) {
-            const mode = (options.config as unknown as VariantUpsertLoaderConfig)?.optionsMode ?? 'REPLACE_ALL';
-            await handleOptions(
+        const optionIds = config.optionsMode === 'SKIP'
+            ? undefined
+            : await resolveOptionIds(
                 ctx,
-                this.optionService,
-                this.variantService,
-                variantId,
-                record.optionCodes,
-                mode,
-                this.logger,
+                this.optionGroupService,
+                productId,
+                record.optionCodes ?? [],
             );
-        }
+        return { facetValueIds, optionIds };
+    }
 
-        // Handle assets with configurable mode
-        if (record.assetUrls && shouldUpdateField('assetUrls', options.updateOnlyFields)) {
-            const mode = (options.config as unknown as VariantUpsertLoaderConfig)?.assetsMode ?? 'UPSERT_BY_URL';
+    private async applyCreateMedia(
+        ctx: RequestContext,
+        variantId: ID,
+        record: ProductVariantInput,
+        config: VariantUpsertLoaderConfig,
+    ): Promise<void> {
+        if (record.assetUrls) {
             await handleAssets(
-                ctx,
-                this.assetService,
-                this.variantService,
-                variantId,
-                record.assetUrls,
-                mode,
-                this.logger,
+                ctx, this.assetService, this.variantService, variantId,
+                record.assetUrls, config.assetsMode ?? 'UPSERT_BY_URL', this.logger,
             );
         }
-
-        // Handle featured asset with configurable mode
-        if (record.featuredAssetUrl && shouldUpdateField('featuredAssetUrl', options.updateOnlyFields)) {
-            const mode = (options.config as unknown as VariantUpsertLoaderConfig)?.featuredAssetMode ?? 'UPSERT_BY_URL';
+        if (record.featuredAssetUrl) {
             await handleFeaturedAsset(
-                ctx,
-                this.assetService,
-                this.variantService,
-                variantId,
+                ctx, this.assetService, this.variantService, variantId,
                 record.featuredAssetUrl,
-                mode,
+                config.featuredAssetMode ?? 'UPSERT_BY_URL',
                 this.logger,
             );
         }
+    }
 
-        if (record.stockOnHand !== undefined && shouldUpdateField('stockOnHand', options.updateOnlyFields)) {
-            await this.updateStock(ctx, variantId, record.stockOnHand);
+    protected async updateEntity(
+        context: LoaderContext,
+        variantId: ID,
+        record: ProductVariantInput,
+    ): Promise<void> {
+        await this.connection.withTransaction(context.ctx, async ctx =>
+            this.updateVariantEntity({ ...context, ctx }, variantId, record),
+        );
+    }
+
+    private async updateVariantEntity(
+        context: LoaderContext,
+        variantId: ID,
+        record: ProductVariantInput,
+    ): Promise<void> {
+        const { ctx, options } = context;
+        const updateInput = buildVariantUpdateInput(
+            variantId,
+            record,
+            ctx.languageCode,
+            options.updateOnlyFields,
+        );
+        if (record.price !== undefined && shouldUpdateField('price', options.updateOnlyFields)) {
+            updateInput.price = majorToMinorUnits(record.price, resolveMoneyPrecision(this.configService));
         }
-
+        const taxCategoryField = record.taxCategoryId !== undefined
+            ? 'taxCategoryId'
+            : 'taxCategoryCode';
+        if (
+            (record.taxCategoryId !== undefined || record.taxCategoryCode !== undefined)
+            && shouldUpdateField(taxCategoryField, options.updateOnlyFields)
+        ) {
+            updateInput.taxCategoryId = await resolveVariantTaxCategoryId(
+                ctx, this.taxCategoryService, record,
+            );
+        }
+        await this.variantService.update(ctx, [updateInput]);
+        await this.updateRelations(context, variantId, record);
         this.logger.debug(`Updated variant ${record.sku} (ID: ${variantId})`);
     }
 
-    private async findOrCreateProduct(ctx: RequestContext, record: ProductVariantInput): Promise<Product> {
-        if (record.productSlug) {
-            const products = await this.productService.findAll(ctx, {
-                filter: { slug: { eq: record.productSlug } },
-            });
-            if (products.totalItems > 0) {
-                return products.items[0];
-            }
+    private async updateRelations(
+        context: LoaderContext,
+        variantId: ID,
+        record: ProductVariantInput,
+    ): Promise<void> {
+        const { ctx, options } = context;
+        const config = (options.config ?? {}) as unknown as VariantUpsertLoaderConfig;
+        if (record.facetValueCodes && shouldUpdateField('facetValueCodes', options.updateOnlyFields)) {
+            await handleFacetValues(
+                ctx, this.variantService, this.facetValueService, variantId,
+                record.facetValueCodes, config.facetValuesMode ?? 'REPLACE_ALL', this.logger,
+            );
         }
-
-        if (record.productId) {
-            const product = await this.connection
-                .getRepository(ctx, Product)
-                .findOne({ where: { id: record.productId as ID } });
-            if (product) {
-                return product;
-            }
+        if (record.optionCodes && shouldUpdateField('optionCodes', options.updateOnlyFields)) {
+            await handleOptions(
+                ctx, this.optionGroupService, this.variantService, variantId,
+                record.optionCodes, config.optionsMode ?? 'REPLACE_ALL', this.logger,
+            );
         }
-
-        if (record.productName) {
-            const products = await this.productService.findAll(ctx, {
-                filter: { name: { eq: record.productName } },
-            });
-            if (products.totalItems > 0) {
-                return products.items[0];
-            }
-        }
-
-        const productName = record.productName || record.sku.split('-')[0] || DEFAULT_PRODUCT_NAME;
-        const product = await this.productService.create(ctx, {
-            enabled: true,
-            translations: [
-                {
-                    languageCode: ctx.languageCode,
-                    name: productName,
-                    slug: slugify(productName),
-                    description: '',
-                },
-            ],
-        });
-
-        this.logger.log(`Created product "${productName}" (ID: ${product.id})`);
-        return product;
+        await this.updateMedia(context, variantId, record, config);
     }
 
-    private async updateStock(ctx: RequestContext, variantId: ID, quantity: number): Promise<void> {
-        try {
-            const stockLevels = await this.stockLevelService.getStockLevelsForVariant(ctx, variantId);
-            const currentStock = stockLevels.reduce((sum, sl) => sum + sl.stockOnHand, 0);
-            const adjustment = quantity - currentStock;
-
-            if (adjustment !== 0) {
-                // Use stock adjustment to set the desired quantity
-                await this.stockMovementService.adjustProductVariantStock(ctx, variantId, adjustment);
-            }
-        } catch (error) {
-            this.logger.warn(`Failed to update stock for variant ${variantId}: ${error}`);
+    private async updateMedia(
+        context: LoaderContext,
+        variantId: ID,
+        record: ProductVariantInput,
+        config: VariantUpsertLoaderConfig,
+    ): Promise<void> {
+        const { ctx, options } = context;
+        if (record.assetUrls && shouldUpdateField('assetUrls', options.updateOnlyFields)) {
+            await handleAssets(
+                ctx, this.assetService, this.variantService, variantId,
+                record.assetUrls, config.assetsMode ?? 'UPSERT_BY_URL', this.logger,
+            );
+        }
+        if (record.featuredAssetUrl && shouldUpdateField('featuredAssetUrl', options.updateOnlyFields)) {
+            await handleFeaturedAsset(
+                ctx, this.assetService, this.variantService, variantId,
+                record.featuredAssetUrl,
+                config.featuredAssetMode ?? 'UPSERT_BY_URL', this.logger,
+            );
         }
     }
 }

@@ -22,13 +22,13 @@ import { createPipeline } from '../../../src';
 export const productEnrichment = createPipeline()
     .name('Product Enrichment')
     .description('Enrich products with VALIDATE, parallel SEO/Pricing enrichment, and computed fields')
-    .capabilities({ requires: ['UpdateCatalog'] })
+    .capabilities({ requires: ['UpdateCatalog'], writes: ['CATALOG'] })
     .trigger('start', { type: 'MANUAL' })
 
     .extract('fetch-products', {
         adapterCode: 'vendureQuery',
         entity: 'PRODUCT_VARIANT',
-        relations: 'translations,product,facetValues',
+        relations: ['translations', 'product', 'facetValues'],
         languageCode: 'en',
         batchSize: 50,
     })
@@ -46,7 +46,6 @@ export const productEnrichment = createPipeline()
             { type: 'business', spec: { field: 'sku', pattern: '^[A-Za-z0-9_-]+$', error: 'SKU must be alphanumeric' } },
         ],
         errorHandlingMode: 'ACCUMULATE',
-        validationMode: 'STRICT',
     })
 
     .transform('filter-valid', {
@@ -175,6 +174,7 @@ export const productEnrichment = createPipeline()
 
     .load('update-variants', {
         adapterCode: 'variantUpsert',
+        strategy: 'UPDATE',
         skuField: 'sku',
     })
 
@@ -244,7 +244,7 @@ export const orderAnalytics = createPipeline()
     .extract('fetch-orders', {
         adapterCode: 'vendureQuery',
         entity: 'ORDER',
-        relations: 'customer,lines,channels',
+        relations: ['customer', 'lines', 'channels'],
         batchSize: 100,
     })
 
@@ -429,13 +429,16 @@ export const orderAnalytics = createPipeline()
 export const customerSegmentation = createPipeline()
     .name('Customer Segmentation')
     .description('Segment customers with VALIDATE, ENRICH computed RFM, and parallel reporting')
-    .capabilities({ requires: ['ReadCustomer', 'ReadOrder', 'UpdateCustomer'] })
+    .capabilities({
+        requires: ['ReadCustomer', 'ReadOrder', 'UpdateCustomer'],
+        writes: ['CUSTOMERS'],
+    })
     .trigger('start', { type: 'MANUAL' })
 
     .extract('fetch-customers', {
         adapterCode: 'vendureQuery',
         entity: 'CUSTOMER',
-        relations: 'orders,groups',
+        relations: ['orders', 'groups'],
         batchSize: 100,
     })
 
@@ -447,7 +450,6 @@ export const customerSegmentation = createPipeline()
             { type: 'business', spec: { field: 'id', required: true, error: 'Customer ID is required' } },
         ],
         errorHandlingMode: 'ACCUMULATE',
-        validationMode: 'STRICT',
     })
 
     .transform('filter-active', {

@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { useCallback, memo, useMemo } from 'react';
+import { useLingui } from '@lingui/react/macro';
 import {
     Card,
     CardContent,
@@ -7,45 +8,35 @@ import {
     CardTitle,
 } from '@vendure/dashboard';
 import { FolderOpen } from 'lucide-react';
-import { useSecrets } from '../../../hooks/api';
-import { useOptionValues, useDestinationSchemas, type ConfigOptionValue, type DestinationSchema, type ConnectionSchemaField } from '../../../hooks/api/use-config-options';
-import { resolveIconName } from '../../../utils';
+import { useOptionValues, useDestinationSchemas, type ConfigOptionValue, type DestinationSchema } from '../../../hooks/api/use-config-options';
+import { mapAdapterSchema, resolveIconName } from '../../../utils';
 import { WizardStepContainer } from '../shared';
 import { SelectableCard, SelectableCardGrid } from '../../shared/selectable-card';
 import { SchemaFormRenderer } from '../../shared/schema-form';
-import { STEP_CONTENT } from './constants';
 import type { ExportConfiguration, DestinationType } from './types';
-import type { AdapterSchema, AdapterSchemaField, SchemaFieldType } from '../../../../shared/types';
 
 interface DestinationStepProps {
     config: Partial<ExportConfiguration>;
     updateConfig: (updates: Partial<ExportConfiguration>) => void;
-    errors?: Record<string, string>;
 }
 
-export function DestinationStep({ config, updateConfig, errors = {} }: DestinationStepProps) {
-    const destination = config.destination ?? { type: 'FILE' };
-
-    const { data: secretsData } = useSecrets();
-    const secretCodes = useMemo(
-        () => (secretsData?.items ?? []).map(s => s.code),
-        [secretsData],
-    );
+export function DestinationStep({ config, updateConfig }: DestinationStepProps) {
+    const { t } = useLingui();
+    const destination = config.destination ?? { type: 'LOCAL' };
 
     const { options: destinationTypeOptions } = useOptionValues('destinationTypes');
     const { schemas: destinationSchemas } = useDestinationSchemas();
 
     return (
         <WizardStepContainer
-            title={STEP_CONTENT.destination.title}
-            description={STEP_CONTENT.destination.description}
+            title={t`Destination`}
+            description={t`Choose where to deliver the exported data`}
         >
             <DestinationTypeSelection destination={destination} updateConfig={updateConfig} options={destinationTypeOptions} />
 
             <DestinationConfigPanel
                 destination={destination}
                 updateConfig={updateConfig}
-                secretCodes={secretCodes}
                 schemas={destinationSchemas}
             />
         </WizardStepContainer>
@@ -55,14 +46,12 @@ export function DestinationStep({ config, updateConfig, errors = {} }: Destinati
 interface DestinationConfigPanelProps {
     destination: ExportConfiguration['destination'];
     updateConfig: (updates: Partial<ExportConfiguration>) => void;
-    secretCodes: string[];
     schemas: DestinationSchema[];
 }
 
 function DestinationConfigPanel({
     destination,
     updateConfig,
-    secretCodes,
     schemas,
 }: DestinationConfigPanelProps) {
     const schema = schemas.find(s => s.type === destination.type);
@@ -83,12 +72,11 @@ function DestinationConfigPanel({
                 schema={schema}
                 destination={destination}
                 updateConfig={updateConfig}
-                secretCodes={secretCodes}
             />
         );
     }
 
-    // No schema found: generic fallback
+    // The server only advertises destinations with executable schemas.
     return <GenericDestinationConfig destinationType={destination.type} />;
 }
 
@@ -141,34 +129,17 @@ const DestinationTypeCard = memo(function DestinationTypeCard({
 
 // --- Schema-driven destination editor using SchemaFormRenderer ---
 
-/** Convert ConnectionSchemaField[] to AdapterSchema for SchemaFormRenderer. */
-function toAdapterSchema(fields: ConnectionSchemaField[]): AdapterSchema {
-    return {
-        fields: fields.map((f): AdapterSchemaField => ({
-            key: f.key,
-            label: f.label,
-            description: f.description ?? undefined,
-            type: (f.type || 'string') as SchemaFieldType,
-            required: f.required ?? undefined,
-            default: f.defaultValue,
-            placeholder: f.placeholder ?? undefined,
-            options: f.options?.map(o => ({ value: o.value, label: o.label })),
-        })),
-    };
-}
-
 interface SchemaDestinationEditorProps {
     schema: DestinationSchema;
     destination: ExportConfiguration['destination'];
     updateConfig: (updates: Partial<ExportConfiguration>) => void;
-    secretCodes: string[];
 }
 
-function SchemaDestinationEditor({ schema, destination, updateConfig, secretCodes }: SchemaDestinationEditorProps) {
+function SchemaDestinationEditor({ schema, destination, updateConfig }: SchemaDestinationEditorProps) {
     const configKey = schema.configKey as keyof typeof destination;
     const currentConfig = (destination[configKey] as Record<string, unknown> | undefined) ?? {};
 
-    const adapterSchema = useMemo(() => toAdapterSchema(schema.fields), [schema.fields]);
+    const adapterSchema = useMemo(() => mapAdapterSchema({ fields: schema.fields }), [schema.fields]);
 
     const handleChange = useCallback((values: Record<string, unknown>) => {
         updateConfig({
@@ -189,7 +160,6 @@ function SchemaDestinationEditor({ schema, destination, updateConfig, secretCode
                     schema={adapterSchema}
                     values={currentConfig}
                     onChange={handleChange}
-                    secretCodes={secretCodes}
                 />
             </CardContent>
         </Card>
@@ -197,10 +167,11 @@ function SchemaDestinationEditor({ schema, destination, updateConfig, secretCode
 }
 
 function GenericDestinationConfig({ destinationType }: { destinationType: string }) {
+    const { t } = useLingui();
     return (
         <div className="p-4 rounded-lg bg-muted/50 text-sm text-muted-foreground">
             <p>
-                No additional configuration is needed for the "{destinationType}" destination type.
+                {t`No configuration schema is available for the ${destinationType} destination.`}
             </p>
         </div>
     );

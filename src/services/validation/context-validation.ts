@@ -1,11 +1,20 @@
 /**
  * Context and capabilities validation for pipeline definitions.
- * Handles validation of pipeline context settings, capabilities, and late events policies.
+ * Handles validation of pipeline context settings and capabilities.
  */
 
-import { LateEventsPolicy } from '../../constants/enums';
+import {
+    ChannelStrategy,
+    ValidationStrictness,
+} from '../../constants/enums';
 import { PipelineDefinition } from '../../types/index';
 import { PipelineDefinitionIssue } from '../../validation/pipeline-definition-error';
+import {
+    isRecord,
+    validateErrorHandling,
+    validateParallelExecution,
+    validateThroughput,
+} from './execution-policy-validation';
 
 // ============================================================================
 // Type Definitions
@@ -17,16 +26,14 @@ import { PipelineDefinitionIssue } from '../../validation/pipeline-definition-er
 interface PipelineCapabilitiesConfig {
     writes?: string[];
     requires?: string[];
-    streamSafe?: boolean;
 }
 
-/**
- * Late events policy configuration
- */
-interface LateEventsConfig {
-    policy: string;
-    bufferMs?: number;
-}
+const SUPPORTED_CHANNEL_STRATEGIES: ReadonlySet<string> = new Set(
+    Object.values(ChannelStrategy),
+);
+const SUPPORTED_VALIDATION_MODES: ReadonlySet<string> = new Set(
+    Object.values(ValidationStrictness),
+);
 
 // ============================================================================
 // Validation Functions
@@ -53,9 +60,9 @@ export function validateCapabilities(definition: PipelineDefinition, issues: Pip
         });
     }
 
-    if (caps.streamSafe !== undefined && typeof caps.streamSafe !== 'boolean') {
+    if ('streamSafe' in caps) {
         issues.push({
-            message: 'capabilities.streamSafe must be a boolean',
+            message: 'capabilities.streamSafe is not supported',
             errorCode: 'capabilities-invalid',
         });
     }
@@ -83,53 +90,204 @@ function validateCapabilitiesWrites(writes: unknown, issues: PipelineDefinitionI
 }
 
 /**
- * Validates pipeline context configuration including late events and watermarks.
+ * Validates pipeline context configuration.
  */
 export function validateContext(definition: PipelineDefinition, issues: PipelineDefinitionIssue[]): void {
-    if (!definition.context) {
-        return;
+    const rawPipelineContext = definition.context as unknown;
+    let pipelineContext: Record<string, unknown> | undefined;
+    if (rawPipelineContext !== undefined) {
+        if (!isRecord(rawPipelineContext)) {
+            issues.push({
+                message: 'context must be an object',
+                errorCode: 'context-invalid',
+                field: 'context',
+            });
+        } else {
+            pipelineContext = rawPipelineContext;
+        }
     }
 
-    if (definition.context.lateEvents) {
-        validateLateEvents(definition.context.lateEvents as LateEventsConfig, issues);
+    if (pipelineContext) {
+        validateContextFields(pipelineContext, 'context', issues);
+        if ('lateEvents' in pipelineContext) {
+            issues.push({
+                message: 'context.lateEvents is not supported',
+                errorCode: 'context-invalid',
+                field: 'context.lateEvents',
+            });
+        }
+        if ('watermarkMs' in pipelineContext) {
+            issues.push({
+                message: 'context.watermarkMs is not supported',
+                errorCode: 'context-invalid',
+                field: 'context.watermarkMs',
+            });
+        }
+
+        validateParallelExecution(
+            pipelineContext.parallelExecution,
+            issues,
+            'context.parallelExecution',
+        );
+        validateErrorHandling(
+            pipelineContext.errorHandling,
+            issues,
+            'context.errorHandling',
+        );
     }
 
-    validateWatermark(definition.context.watermarkMs, issues);
+    for (const step of definition.steps) {
+        validateThroughput(
+            step.throughput,
+            `steps.${step.key}.throughput`,
+            issues,
+            step.key,
+        );
+        if (step.context === undefined) continue;
+        const path = `steps.${step.key}.context`;
+        if (!isRecord(step.context)) {
+            issues.push({
+                message: `${path} must be an object`,
+                errorCode: 'context-invalid',
+                stepKey: step.key,
+                field: path,
+            });
+            continue;
+        }
+        const stepContext = step.context as Record<string, unknown>;
+        validateContextFields(stepContext, path, issues, step.key);
+        validateChannelSelection(
+            {
+                ...pipelineContext,
+                ...stepContext,
+            },
+            path,
+            issues,
+            step.key,
+        );
+    }
+
+    if (pipelineContext) {
+        validateChannelSelection(pipelineContext, 'context', issues);
+    }
 }
 
-/**
- * Validates late events policy configuration.
- */
-function validateLateEvents(le: LateEventsConfig, issues: PipelineDefinitionIssue[]): void {
-    const policyLower = typeof le.policy === 'string' ? le.policy.toLowerCase() : '';
-
-    if (policyLower !== LateEventsPolicy.DROP && policyLower !== LateEventsPolicy.BUFFER) {
+function validateContextFields(
+    context: Record<string, unknown>,
+    path: string,
+    issues: PipelineDefinitionIssue[],
+    stepKey?: string,
+): void {
+    if (Object.prototype.hasOwnProperty.call(context, 'runMode')) {
         issues.push({
-            message: 'context.lateEvents.policy must be drop|buffer',
+            message: `${path}.runMode is not supported`,
             errorCode: 'context-invalid',
+            stepKey,
+            field: `${path}.runMode`,
         });
     }
-
-    if (policyLower === LateEventsPolicy.BUFFER && (typeof le.bufferMs !== 'number' || le.bufferMs <= 0)) {
-        issues.push({
-            message: 'context.lateEvents.bufferMs must be a positive number when policy=buffer',
-            errorCode: 'context-invalid',
-        });
-    }
-}
-
-/**
- * Validates watermark configuration.
- */
-function validateWatermark(watermarkMs: unknown, issues: PipelineDefinitionIssue[]): void {
     if (
-        watermarkMs !== undefined &&
-        watermarkMs !== null &&
-        (typeof watermarkMs !== 'number' || watermarkMs < 0)
+        context.channelStrategy !== undefined
+        && !SUPPORTED_CHANNEL_STRATEGIES.has(String(context.channelStrategy))
     ) {
         issues.push({
-            message: 'context.watermarkMs must be a non-negative number',
+            message: `${path}.channelStrategy must be EXPLICIT, INHERIT, or MULTI`,
             errorCode: 'context-invalid',
+            stepKey,
+            field: `${path}.channelStrategy`,
+        });
+    }
+    if (
+        context.validationMode !== undefined
+        && !SUPPORTED_VALIDATION_MODES.has(String(context.validationMode))
+    ) {
+        issues.push({
+            message: `${path}.validationMode must be STRICT or LENIENT`,
+            errorCode: 'context-invalid',
+            stepKey,
+            field: `${path}.validationMode`,
+        });
+    }
+    validateNonEmptyString(context.channel, `${path}.channel`, issues, stepKey);
+    validateNonEmptyString(
+        context.idempotencyKeyField,
+        `${path}.idempotencyKeyField`,
+        issues,
+        stepKey,
+    );
+    if (
+        context.contentLanguage !== undefined
+        && (
+            typeof context.contentLanguage !== 'string'
+            || context.contentLanguage.trim().length === 0
+        )
+    ) {
+        issues.push({
+            message: `${path}.contentLanguage must be a non-empty language code`,
+            errorCode: 'context-invalid',
+            stepKey,
+            field: `${path}.contentLanguage`,
+        });
+    }
+    if (context.channelIds !== undefined) {
+        const channelIds = context.channelIds;
+        if (
+            !Array.isArray(channelIds)
+            || channelIds.some(channelId => (
+                typeof channelId !== 'string' || channelId.trim().length === 0
+            ))
+        ) {
+            issues.push({
+                message: `${path}.channelIds must contain non-empty channel IDs`,
+                errorCode: 'context-invalid',
+                stepKey,
+                field: `${path}.channelIds`,
+            });
+        }
+    }
+    validateThroughput(context.throughput, `${path}.throughput`, issues, stepKey);
+}
+
+function validateChannelSelection(
+    context: Record<string, unknown>,
+    path: string,
+    issues: PipelineDefinitionIssue[],
+    stepKey?: string,
+): void {
+    if (
+        context.channelStrategy !== 'EXPLICIT'
+        && context.channelStrategy !== 'MULTI'
+    ) {
+        return;
+    }
+    if (
+        !Array.isArray(context.channelIds)
+        || context.channelIds.length === 0
+    ) {
+        issues.push({
+            message: `${path}.channelIds is required for ${context.channelStrategy} channel strategy`,
+            errorCode: 'context-invalid',
+            stepKey,
+            field: `${path}.channelIds`,
+        });
+    }
+}
+
+function validateNonEmptyString(
+    value: unknown,
+    field: string,
+    issues: PipelineDefinitionIssue[],
+    stepKey?: string,
+): void {
+    if (
+        value !== undefined
+        && (typeof value !== 'string' || value.trim().length === 0)
+    ) {
+        issues.push({
+            message: `${field} must be a non-empty string`,
+            errorCode: 'context-invalid',
+            stepKey,
+            field,
         });
     }
 }

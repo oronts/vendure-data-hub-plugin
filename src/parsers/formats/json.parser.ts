@@ -96,6 +96,7 @@ export function parseJson(
 ): ParseResult {
     const errors: ParseError[] = [];
     const warnings: string[] = [];
+    const previewLimit = normalizePreviewLimit(options.preview);
 
     try {
         let data = JSON.parse(content);
@@ -138,12 +139,16 @@ export function parseJson(
 
         // Validate records are objects
         const validRecords: Record<string, unknown>[] = [];
+        let validCount = 0;
         let invalidCount = 0;
 
         for (let i = 0; i < data.length; i++) {
             const item = data[i];
             if (typeof item === 'object' && item !== null && !Array.isArray(item)) {
-                validRecords.push(item as Record<string, unknown>);
+                validCount++;
+                if (previewLimit === undefined || validRecords.length < previewLimit) {
+                    validRecords.push(item as Record<string, unknown>);
+                }
             } else {
                 invalidCount++;
                 if (invalidCount <= 3) {
@@ -166,7 +171,7 @@ export function parseJson(
             format: 'JSON' as const,
             records: validRecords,
             fields,
-            totalRows: validRecords.length,
+            totalRows: validCount,
             errors,
             warnings,
         };
@@ -195,10 +200,15 @@ export function parseJson(
 }
 
 /** Parse NDJSON - each line is a separate JSON object */
-export function parseJsonLines(content: string): ParseResult {
+export function parseJsonLines(
+    content: string,
+    options: JsonParseOptions = {},
+): ParseResult {
     const errors: ParseError[] = [];
     const warnings: string[] = [];
     const records: Record<string, unknown>[] = [];
+    const previewLimit = normalizePreviewLimit(options.preview);
+    let validCount = 0;
 
     const lines = content.split('\n').filter(line => line.trim());
 
@@ -206,7 +216,10 @@ export function parseJsonLines(content: string): ParseResult {
         try {
             const parsed = JSON.parse(lines[i]);
             if (typeof parsed === 'object' && parsed !== null) {
-                records.push(parsed as Record<string, unknown>);
+                validCount++;
+                if (previewLimit === undefined || records.length < previewLimit) {
+                    records.push(parsed as Record<string, unknown>);
+                }
             } else {
                 errors.push({
                     row: i + 1,
@@ -228,10 +241,15 @@ export function parseJsonLines(content: string): ParseResult {
         format: 'JSON' as const,
         records,
         fields,
-        totalRows: records.length,
+        totalRows: validCount,
         errors,
         warnings,
     };
+}
+
+function normalizePreviewLimit(value: number | undefined): number | undefined {
+    if (value === undefined || !Number.isFinite(value)) return undefined;
+    return Math.max(1, Math.floor(value));
 }
 
 export function isJsonLines(content: string): boolean {
@@ -271,4 +289,3 @@ export function generateJson(
 export function generateJsonLines(records: Record<string, unknown>[]): string {
     return records.map(r => JSON.stringify(r)).join('\n');
 }
-

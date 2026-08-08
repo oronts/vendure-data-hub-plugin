@@ -75,7 +75,7 @@ export type SchemaFieldType =
  *
  * Values are lowercase abbreviations (serialized to DB, changing requires migration)
  */
-export type DependsOnOperator = 'eq' | 'ne' | 'in' | 'exists';
+export type DependsOnOperator = 'eq' | 'ne' | 'in' | 'notIn' | 'exists';
 
 /**
  * Option for select/multiselect fields
@@ -170,8 +170,7 @@ export interface AdapterSchema {
  *
  * Parallel definition exists in src/sdk/types/adapter-types.ts with a different
  * shape: all readonly fields, optional `name`, uses StepConfigSchema instead of
- * AdapterSchema, and includes SDK-specific fields (requires, version,
- * deprecatedMessage, experimentalMessage). The SDK version is the immutable
+ * AdapterSchema, and includes SDK-specific runtime fields. The SDK version is the immutable
  * contract for custom adapter registration.
  */
 export interface AdapterDefinition {
@@ -197,8 +196,14 @@ export interface AdapterDefinition {
     async?: boolean;
     /** Whether adapter supports batch processing */
     batchable?: boolean;
+    /** Catalog version for display; runtime selection remains code-based */
+    version?: string;
+    /** Data Hub adapter API contract version */
+    apiVersion?: number;
     /** Whether adapter is deprecated */
     deprecated?: boolean;
+    /** Explanation and migration path for a deprecated adapter */
+    deprecatedMessage?: string;
     /** Whether adapter is experimental */
     experimental?: boolean;
     /** Tags for filtering/search */

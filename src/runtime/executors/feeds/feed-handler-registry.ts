@@ -28,6 +28,31 @@ interface FeedRegistryEntry {
     definition: AdapterDefinition;
 }
 
+const FEED_PRICE_UNIT_OPTIONS = [
+    { value: 'MINOR', label: 'Minor units (Vendure)' },
+    { value: 'MAJOR', label: 'Major units' },
+] as const;
+
+const BASE_COMMERCE_FEED_FIELDS = [
+    { key: 'titleField', label: 'Title field', type: 'string', description: 'Field path for product title (defaults to "name")' },
+    { key: 'descriptionField', label: 'Description field', type: 'string', description: 'Field path for description (defaults to "description")' },
+    { key: 'priceField', label: 'Price field', type: 'string', description: 'Field path for price (defaults to "price")' },
+    {
+        key: 'priceUnit',
+        label: 'Price unit',
+        type: 'select',
+        defaultValue: 'MINOR',
+        options: FEED_PRICE_UNIT_OPTIONS,
+        description: 'Vendure queries return minor units. Choose major units only when the source already contains values such as 19.99.',
+    },
+    { key: 'imageField', label: 'Image field', type: 'string', description: 'Field path for main image URL (defaults to "image")' },
+    { key: 'brandField', label: 'Brand field', type: 'string', description: 'Field path for brand (defaults to "brand")' },
+] as const;
+
+const LINK_FIELD = { key: 'linkField', label: 'Link field', type: 'string', description: 'Field path for product URL (defaults to "link")' } as const;
+const GTIN_FIELD = { key: 'gtinField', label: 'GTIN field', type: 'string', description: 'Field path for UPC, EAN, or GTIN (defaults to "gtin")' } as const;
+const AVAILABILITY_FIELD = { key: 'availabilityField', label: 'Availability field', type: 'string', description: 'Field path for availability (defaults to "availability")' } as const;
+
 /**
  * Maps each feed code to its corresponding handler function and adapter definition.
  * Used by FeedExecutor for dispatch and BUILTIN_ADAPTERS for UI rendering.
@@ -46,9 +71,12 @@ export const FEED_HANDLER_REGISTRY = new Map<string, FeedRegistryEntry>([
             formatType: 'XML',
             schema: {
                 fields: [
-                    { key: 'outputPath', label: 'Output path', type: 'string', required: true, description: 'File path or URL' },
+                    { key: 'outputPath', label: 'Output path', type: 'string', required: true, defaultValue: 'feeds/google-merchant.xml', description: 'Relative file path under the configured Data Hub export root' },
                     { key: 'currency', label: 'Currency', type: 'string', required: true, description: 'ISO currency code (e.g., USD)' },
-                    { key: 'channelId', label: 'Channel', type: 'string', description: 'Vendure channel to use' },
+                    ...BASE_COMMERCE_FEED_FIELDS,
+                    LINK_FIELD,
+                    GTIN_FIELD,
+                    AVAILABILITY_FIELD,
                     { key: 'storeUrl', label: 'Store URL', type: 'string', required: true },
                     ...LOCALIZATION_SCHEMA_FIELDS,
                 ],
@@ -68,10 +96,11 @@ export const FEED_HANDLER_REGISTRY = new Map<string, FeedRegistryEntry>([
             formatType: 'CSV',
             schema: {
                 fields: [
-                    { key: 'outputPath', label: 'Output path', type: 'string', required: true },
+                    { key: 'outputPath', label: 'Output path', type: 'string', required: true, defaultValue: 'feeds/meta-catalog.csv', description: 'Relative file path under the configured Data Hub export root' },
                     { key: 'currency', label: 'Currency', type: 'string', required: true },
-                    { key: 'channelId', label: 'Channel', type: 'string' },
-                    { key: 'brandField', label: 'Brand field', type: 'string', description: 'Field path for brand' },
+                    ...BASE_COMMERCE_FEED_FIELDS,
+                    LINK_FIELD,
+                    AVAILABILITY_FIELD,
                     ...LOCALIZATION_SCHEMA_FIELDS,
                 ],
             },
@@ -87,18 +116,13 @@ export const FEED_HANDLER_REGISTRY = new Map<string, FeedRegistryEntry>([
             category: 'EXTERNAL',
             icon: 'shopping-cart',
             color: '#ff9900',
-            formatType: 'XML',
+            formatType: 'TSV',
             schema: {
                 fields: [
-                    { key: 'outputPath', label: 'Output path', type: 'string', required: true, description: 'File path for the feed output' },
+                    { key: 'outputPath', label: 'Output path', type: 'string', required: true, defaultValue: 'feeds/amazon.txt', description: 'Relative file path under the configured Data Hub export root' },
                     { key: 'currency', label: 'Currency', type: 'string', required: true, description: 'ISO currency code (e.g., USD)' },
-                    { key: 'channelId', label: 'Channel', type: 'string', description: 'Vendure channel to use' },
-                    { key: 'titleField', label: 'Title field', type: 'string', description: 'Field path for product title' },
-                    { key: 'descriptionField', label: 'Description field', type: 'string', description: 'Field path for description' },
-                    { key: 'priceField', label: 'Price field', type: 'string', description: 'Field path for price' },
-                    { key: 'imageField', label: 'Image field', type: 'string', description: 'Field path for main image URL' },
-                    { key: 'brandField', label: 'Brand field', type: 'string', description: 'Field path for brand' },
-                    { key: 'gtinField', label: 'GTIN field', type: 'string', description: 'Field path for UPC/EAN/GTIN' },
+                    ...BASE_COMMERCE_FEED_FIELDS,
+                    GTIN_FIELD,
                     ...LOCALIZATION_SCHEMA_FIELDS,
                 ],
             },
@@ -116,7 +140,7 @@ export const FEED_HANDLER_REGISTRY = new Map<string, FeedRegistryEntry>([
             color: '#8b5cf6',
             schema: {
                 fields: [
-                    { key: 'outputPath', label: 'Output path', type: 'string', required: true },
+                    { key: 'outputPath', label: 'Output path', type: 'string', required: true, defaultValue: 'feeds/custom.csv', description: 'Relative file path under the configured Data Hub export root' },
                     { key: 'format', label: 'Format', type: 'select', required: true, options: CUSTOM_FEED_FORMAT_OPTIONS },
                     { key: 'fieldMapping', label: 'Field mapping', type: 'json', required: true, description: 'Map source fields to feed fields' },
                     ...LOCALIZATION_SCHEMA_FIELDS,

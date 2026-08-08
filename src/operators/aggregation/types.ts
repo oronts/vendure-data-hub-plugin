@@ -23,6 +23,14 @@ export interface UniqueOperatorConfig extends BaseOperatorConfig {
     readonly by?: string;
 }
 
+export type DeduplicateRecordsStrategy = 'FIRST' | 'LAST' | 'LOWEST' | 'HIGHEST';
+
+export interface DeduplicateRecordsOperatorConfig extends BaseOperatorConfig {
+    readonly key: string;
+    readonly keep?: DeduplicateRecordsStrategy;
+    readonly priority?: string;
+}
+
 export interface FlattenOperatorConfig extends BaseOperatorConfig {
     readonly source: string;
     readonly target?: string;
@@ -49,13 +57,13 @@ export interface MultiJoinOperatorConfig extends BaseOperatorConfig {
     /** Field path in right records to join on */
     readonly rightKey: string;
     /** Static right-side dataset provided inline */
-    readonly rightData?: JsonObject[];
-    /** Dot-path to right-side data from pipeline context */
-    readonly rightDataPath?: string;
+    readonly rightData: JsonObject[];
     /** Join type: INNER, LEFT, RIGHT, or FULL (default: LEFT) */
     readonly type?: JoinType;
     /** Prefix for right-side field names to avoid collisions */
     readonly prefix?: string;
     /** Which right-side fields to include (default: all) */
     readonly select?: string[];
+    /** Maximum records emitted by this join (default: 10,000; maximum: 100,000) */
+    readonly maxOutputRecords?: number;
 }

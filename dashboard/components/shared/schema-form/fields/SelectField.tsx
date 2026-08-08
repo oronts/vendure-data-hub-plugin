@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { useLingui } from '@lingui/react/macro';
 import {
     Select,
     SelectContent,
@@ -7,7 +8,8 @@ import {
     SelectValue,
 } from '@vendure/dashboard';
 import type { AdapterSchemaField } from '../../../../types';
-import { SENTINEL_VALUES } from '../../../../constants';
+import { ResourceReferenceSelector } from '../../ResourceReferenceSelector';
+import type { ReferenceResource } from '../../ResourceReferenceSelector';
 
 export interface SelectFieldProps {
     field: AdapterSchemaField;
@@ -18,11 +20,14 @@ export interface SelectFieldProps {
 }
 
 export function SelectField({ field, value, onChange, compact, disabled }: SelectFieldProps) {
+    const { t } = useLingui();
     const validOptions = field.options?.filter(o => o.value !== '') ?? [];
     return (
         <Select value={value ?? (field.default as string) ?? ''} onValueChange={onChange} disabled={disabled}>
             <SelectTrigger className={compact ? 'h-8 text-sm' : ''}>
-                <SelectValue placeholder={field.placeholder ?? `Select ${field.label || field.key}`} />
+                <SelectValue
+                    placeholder={field.placeholder ?? t`Select ${field.label || field.key}`}
+                />
             </SelectTrigger>
             <SelectContent>
                 {validOptions.map((option) => (
@@ -36,35 +41,28 @@ export function SelectField({ field, value, onChange, compact, disabled }: Selec
 }
 
 export interface ReferenceFieldProps {
-    field: AdapterSchemaField;
+    resource: ReferenceResource;
     value: string;
     onChange: (value: string) => void;
-    options: string[];
-    placeholder: string;
+    placeholder?: string;
     compact?: boolean;
     disabled?: boolean;
 }
 
-export function ReferenceField({ field, value, onChange, options, placeholder, compact, disabled }: ReferenceFieldProps) {
-    const validOptions = options.filter(o => o !== '');
+export function ReferenceField({ resource, value, onChange, placeholder, compact, disabled }: ReferenceFieldProps) {
+    const { t } = useLingui();
+    const resolvedPlaceholder = placeholder ?? (resource === 'secret'
+        ? t`Select secret...`
+        : t`Select connection...`);
+
     return (
-        <Select value={value ?? ''} onValueChange={onChange} disabled={disabled}>
-            <SelectTrigger className={compact ? 'h-8 text-sm' : ''}>
-                <SelectValue placeholder={placeholder} />
-            </SelectTrigger>
-            <SelectContent>
-                {validOptions.length === 0 ? (
-                    <SelectItem value={SENTINEL_VALUES.NONE} disabled>
-                        No options available
-                    </SelectItem>
-                ) : (
-                    validOptions.map((code) => (
-                        <SelectItem key={code} value={code}>
-                            {code}
-                        </SelectItem>
-                    ))
-                )}
-            </SelectContent>
-        </Select>
+        <ResourceReferenceSelector
+            resource={resource}
+            value={value ?? ''}
+            onValueChange={onChange}
+            placeholder={resolvedPlaceholder}
+            compact={compact}
+            disabled={disabled}
+        />
     );
 }

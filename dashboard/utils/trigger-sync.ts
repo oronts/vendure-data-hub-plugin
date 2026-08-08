@@ -6,9 +6,71 @@
  * - Triggers Tab in pipeline editor (form-based)
  */
 
-import type { PipelineDefinition, PipelineStepDefinition, PipelineTrigger, StepType } from '../types';
+import type {
+    JsonObject,
+    JsonValue,
+    PipelineDefinition,
+    PipelineStepDefinition,
+    PipelineTrigger,
+    StepType,
+    TriggerType,
+} from '../types';
 
 const TRIGGER_STEP_TYPE = 'TRIGGER' as StepType;
+const TRIGGER_TYPES: ReadonlySet<string> = new Set([
+    'MANUAL',
+    'SCHEDULE',
+    'WEBHOOK',
+    'EVENT',
+    'FILE',
+    'MESSAGE',
+]);
+
+type SynchronizedTrigger = PipelineTrigger & { stepKey: string };
+
+function isTriggerType(value: JsonValue | undefined): value is TriggerType {
+    return typeof value === 'string' && TRIGGER_TYPES.has(value);
+}
+
+function normalizeJsonValue(value: unknown, path: string): JsonValue | undefined {
+    if (value === undefined) return undefined;
+    if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
+    if (typeof value === 'number') {
+        if (Number.isFinite(value)) return value;
+        throw new Error(`Trigger config at "${path}" must contain a finite number`);
+    }
+    if (Array.isArray(value)) {
+        return value.map((item, index) => normalizeJsonValue(item, `${path}[${index}]`) ?? null);
+    }
+    if (typeof value === 'object') {
+        const prototype = Object.getPrototypeOf(value);
+        if (prototype !== Object.prototype && prototype !== null) {
+            throw new Error(`Trigger config at "${path}" must contain only JSON values`);
+        }
+        const normalized: JsonObject = {};
+        for (const [key, child] of Object.entries(value)) {
+            const normalizedChild = normalizeJsonValue(child, `${path}.${key}`);
+            if (normalizedChild !== undefined) normalized[key] = normalizedChild;
+        }
+        return normalized;
+    }
+    throw new Error(`Trigger config at "${path}" must contain only JSON values`);
+}
+
+function getTriggerStepKey(trigger: PipelineTrigger): string | undefined {
+    const values: Record<string, unknown> = { ...trigger };
+    return typeof values.stepKey === 'string' ? values.stepKey : undefined;
+}
+
+function triggerConfig(trigger: PipelineTrigger): JsonObject {
+    const config: JsonObject = {};
+    for (const [key, value] of Object.entries(trigger)) {
+        if (key === 'stepKey') continue;
+        const normalized = normalizeJsonValue(value, key);
+        if (normalized !== undefined) config[key] = normalized;
+    }
+    return config;
+}
 
 /**
  * Get all trigger steps from pipeline definition
@@ -20,9 +82,14 @@ function getTriggerSteps(definition: PipelineDefinition): PipelineStepDefinition
 /**
  * Convert trigger step to PipelineTrigger (for TriggersPanel)
  */
-function stepToTrigger(step: PipelineStepDefinition): PipelineTrigger {
+function stepToTrigger(step: PipelineStepDefinition): SynchronizedTrigger {
+    const type = step.config.type;
+    if (!isTriggerType(type)) {
+        throw new Error(`Trigger step "${step.key}" has an invalid trigger type`);
+    }
     return {
-        ...(step.config as PipelineTrigger),
+        ...step.config,
+        type,
         stepKey: step.key,
     };
 }
@@ -43,12 +110,12 @@ function triggerToStep(
     trigger: PipelineTrigger,
     existingKey?: string
 ): PipelineStepDefinition {
-    const { stepKey, ...triggerConfig } = trigger as PipelineTrigger & { stepKey?: string };
+    const stepKey = getTriggerStepKey(trigger);
 
     return {
-        key: existingKey ?? stepKey ?? `trigger-${Date.now()}`,
+        key: existingKey ?? stepKey ?? `trigger-${globalThis.crypto.randomUUID()}`,
         type: TRIGGER_STEP_TYPE,
-        config: triggerConfig,
+        config: triggerConfig(trigger),
     };
 }
 
@@ -63,7 +130,7 @@ function triggersToSteps(
     const nonTriggerSteps = existingSteps.filter(s => s.type !== TRIGGER_STEP_TYPE);
 
     const newTriggerSteps: PipelineStepDefinition[] = triggers.map((trigger, index) => {
-        const triggerStepKey = (trigger as PipelineTrigger & { stepKey?: string }).stepKey;
+        const triggerStepKey = getTriggerStepKey(trigger);
         const existingStep = triggerStepKey
             ? existingTriggerSteps.find(s => s.key === triggerStepKey)
             : existingTriggerSteps[index];
@@ -82,41 +149,32 @@ export function getCombinedTriggers(definition: PipelineDefinition): PipelineTri
 }
 
 /**
- * Update definition with new triggers
- * Also updates edges so all triggers connect to the first execution step
+ * Synchronize trigger steps while preserving routes for retained triggers.
  */
 export function updateDefinitionWithTriggers(
     definition: PipelineDefinition,
     triggers: PipelineTrigger[]
 ): PipelineDefinition {
-    const newSteps = triggersToSteps(triggers, definition.steps ?? []);
-
-    // Find the first non-trigger step (the execution entry point)
-    const firstExecutionStep = newSteps.find(s => s.type !== TRIGGER_STEP_TYPE);
-
-    // Get all trigger step keys
-    const triggerStepKeys = newSteps
-        .filter(s => s.type === TRIGGER_STEP_TYPE)
-        .map(s => s.key);
-
-    // Build new edges:
-    // 1. Remove all edges FROM trigger steps (we'll recreate them)
-    // 2. Keep all non-trigger edges
-    // 3. Add edges from each trigger to the first execution step
-    const existingEdges = definition.edges ?? [];
-    const nonTriggerEdges = existingEdges.filter(
-        e => !triggerStepKeys.includes(e.from)
+    const existingSteps = definition.steps ?? [];
+    const newSteps = triggersToSteps(triggers, existingSteps);
+    const firstExecutionStep = newSteps.find(step => step.type !== TRIGGER_STEP_TYPE);
+    const existingTriggerKeys = new Set(
+        existingSteps.filter(step => step.type === TRIGGER_STEP_TYPE).map(step => step.key),
     );
-
-    // Create edges from triggers to first execution step
+    const triggerStepKeys = newSteps
+        .filter(step => step.type === TRIGGER_STEP_TYPE)
+        .map(step => step.key);
+    const newTriggerKeys = new Set(triggerStepKeys);
+    const retainedEdges = (definition.edges ?? []).filter(edge => (
+        (!existingTriggerKeys.has(edge.from) || newTriggerKeys.has(edge.from)) &&
+        (!existingTriggerKeys.has(edge.to) || newTriggerKeys.has(edge.to))
+    ));
+    const keysWithOutgoingEdges = new Set(retainedEdges.map(edge => edge.from));
     const triggerEdges: Array<{ from: string; to: string }> = [];
+
     if (firstExecutionStep) {
         for (const triggerKey of triggerStepKeys) {
-            // Check if this edge already exists
-            const edgeExists = nonTriggerEdges.some(
-                e => e.from === triggerKey && e.to === firstExecutionStep.key
-            );
-            if (!edgeExists) {
+            if (!keysWithOutgoingEdges.has(triggerKey)) {
                 triggerEdges.push({ from: triggerKey, to: firstExecutionStep.key });
             }
         }
@@ -125,6 +183,6 @@ export function updateDefinitionWithTriggers(
     return {
         ...definition,
         steps: newSteps,
-        edges: [...nonTriggerEdges, ...triggerEdges],
+        edges: [...retainedEdges, ...triggerEdges],
     };
 }

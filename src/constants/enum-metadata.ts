@@ -35,6 +35,10 @@ export interface SchemaFieldDefinition {
     placeholder?: string;
     defaultValue?: unknown;
     description?: string;
+    /** Minimum accepted value for number fields */
+    min?: number;
+    /** Maximum accepted value for number fields */
+    max?: number;
     options?: Array<{ value: string; label: string }>;
     /** Reference to a dynamic option list served by configOptions (e.g. 'authTypes', 'queueTypes', 'vendureEvents') */
     optionsRef?: string;
@@ -187,14 +191,13 @@ export const ADAPTER_TYPE_METADATA: OptionValue[] = [
 /** Run status option metadata for filter dropdowns. */
 export const RUN_STATUS_OPTIONS: OptionValue[] = [
     { value: 'PENDING', label: 'Pending', description: 'Run is waiting to start', icon: 'clock' },
-    { value: 'QUEUED', label: 'Queued', description: 'Run is in the job queue', icon: 'list' },
     { value: 'RUNNING', label: 'Running', description: 'Run is actively executing', icon: 'play' },
     { value: 'PAUSED', label: 'Paused (awaiting approval)', description: 'Run is paused at a gate step', icon: 'pause' },
     { value: 'COMPLETED', label: 'Completed', description: 'Run completed successfully', icon: 'check-circle' },
     { value: 'FAILED', label: 'Failed', description: 'Run encountered an error', icon: 'x-circle' },
     { value: 'TIMEOUT', label: 'Timeout', description: 'Run exceeded time limit', icon: 'timer-off' },
-    { value: 'CANCEL_REQUESTED', label: 'Cancel requested', description: 'Cancellation has been requested', icon: 'x' },
     { value: 'CANCELLED', label: 'Cancelled', description: 'Run was cancelled', icon: 'ban' },
+    { value: 'CANCEL_REQUESTED', label: 'Cancel requested', description: 'Cancellation has been requested', icon: 'x' },
 ];
 
 // ---------------------------------------------------------------------------

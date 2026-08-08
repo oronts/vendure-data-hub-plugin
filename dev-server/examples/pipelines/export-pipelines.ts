@@ -14,7 +14,7 @@ export const productExportFull = createPipeline()
         adapterCode: 'vendureQuery',
         entity: 'PRODUCT',
         // Load variants.translations as a nested relation to get variant names
-        relations: 'translations,variants,variants.translations,featuredAsset,facetValues',
+        relations: ['translations', 'variants', 'variants.translations', 'featuredAsset', 'facetValues'],
         languageCode: 'en',
         batchSize: 100,
     })
@@ -161,7 +161,7 @@ export const customerExportFull = createPipeline()
     .extract('fetch-customers', {
         adapterCode: 'vendureQuery',
         entity: 'CUSTOMER',
-        relations: 'addresses,groups,orders',
+        relations: ['addresses', 'groups', 'orders'],
         batchSize: 100,
     })
 
@@ -272,7 +272,7 @@ export const orderExportFull = createPipeline()
     .extract('fetch-orders', {
         adapterCode: 'vendureQuery',
         entity: 'ORDER',
-        relations: 'customer,lines,shippingLines,payments',
+        relations: ['customer', 'lines', 'shippingLines', 'payments'],
         batchSize: 50,
     })
 
@@ -404,7 +404,7 @@ export const inventoryExport = createPipeline()
     .extract('fetch-variants', {
         adapterCode: 'vendureQuery',
         entity: 'PRODUCT_VARIANT',
-        relations: 'translations,product,stockLevels',
+        relations: ['translations', 'product', 'stockLevels'],
         languageCode: 'en',
         batchSize: 100,
     })

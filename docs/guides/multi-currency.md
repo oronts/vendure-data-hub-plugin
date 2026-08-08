@@ -225,7 +225,8 @@ Premium Hoodie,HDI-001,"{""USD"": 59.99, ""EUR"": 49.99, ""GBP"": 44.99}"
 **Pipeline configuration:**
 ```typescript
 .extract('csv-file', {
-    filePath: '/data/products.csv'
+    adapterCode: 'csv',
+    fileId: 'products-upload-id'
 })
 .transform('parse-json-fields', {
     fields: 'prices'  // Parse JSON string to object
@@ -337,7 +338,7 @@ Use TRANSFORM operators to calculate prices from a base currency:
 **Real-time conversion with ENRICH step:**
 
 ```typescript
-.extract('csv-file', { filePath: '/data/products.csv' })
+.extract('csv-file', { adapterCode: 'csv', fileId: 'products-upload-id' })
 .enrich('http-lookup', {
     url: 'https://api.exchangerate.host/latest?base=USD',
     responseField: 'rates',
@@ -375,7 +376,7 @@ Use `UPDATE` strategy with price fields only:
 
 ```typescript
 // Pipeline that ONLY updates prices (doesn't modify name, description, etc.)
-.extract('csv-file', { filePath: '/data/price-updates.csv' })
+.extract('csv-file', { adapterCode: 'csv', fileId: 'price-updates-upload-id' })
 .load('update-prices', {
     adapterCode: 'productUpsert',
     strategy: 'UPDATE',  // ← Only update existing products
@@ -437,46 +438,45 @@ Update prices for specific channels only:
 Combine with SCHEDULE trigger for automatic updates:
 
 ```typescript
-const pipeline = {
-    name: 'Daily Price Sync',
-    trigger: {
+const pipeline = createPipeline()
+    .name('Daily Price Sync')
+    .trigger('daily', {
         type: 'SCHEDULE',
-        cron: '0 2 * * *'  // 2 AM daily
-    },
-    steps: [
-        {
-            type: 'EXTRACT',
-            adapterCode: 'databaseExtract',
-            config: {
-                query: `
-                    SELECT sku, usd_price, eur_price, gbp_price
-                    FROM pricing_updates
-                    WHERE updated_at > NOW() - INTERVAL '1 DAY'
-                `
-            }
-        },
-        {
-            type: 'TRANSFORM',
-            adapterCode: 'mapFields',
-            config: {
-                mappings: {
+        cron: '0 2 * * *',
+    })
+    .extract('prices', {
+        adapterCode: 'database',
+        connectionCode: 'pricing-postgres',
+        databaseType: 'POSTGRESQL',
+        query: `
+            SELECT sku, usd_price, eur_price, gbp_price
+            FROM pricing_updates
+            WHERE updated_at > NOW() - INTERVAL '1 DAY'
+        `,
+    })
+    .transform('map-prices', {
+        operators: [{
+            op: 'map',
+            args: {
+                mapping: {
                     'prices.USD': 'usd_price',
                     'prices.EUR': 'eur_price',
-                    'prices.GBP': 'gbp_price'
-                }
-            }
-        },
-        {
-            type: 'LOAD',
-            adapterCode: 'variantUpsert',
-            config: {
-                strategy: 'UPDATE',
-                skuField: 'sku',
-                priceByCurrencyField: 'prices'
-            }
-        }
-    ]
-};
+                    'prices.GBP': 'gbp_price',
+                },
+                passthrough: true,
+            },
+        }],
+    })
+    .load('update-variants', {
+        adapterCode: 'variantUpsert',
+        strategy: 'UPDATE',
+        skuField: 'sku',
+        priceByCurrencyField: 'prices',
+    })
+    .edge('daily', 'prices')
+    .edge('prices', 'map-prices')
+    .edge('map-prices', 'update-variants')
+    .build();
 ```
 
 ---
@@ -488,19 +488,32 @@ const pipeline = {
 ```typescript
 // Import products from PIM with international pricing
 .extract('rest-api', {
-    url: 'https://pim.example.com/api/products',
-    auth: { type: 'API_KEY', apiKey: 'secret' }
+    adapterCode: 'httpApi',
+    connectionCode: 'pim-api',
+    url: '/api/products',
+    auth: {
+        type: 'API_KEY',
+        secretCode: 'pim-api-key',
+        headerName: 'X-API-Key',
+    },
+    dataPath: 'products',
 })
 .transform('map-fields', {
-    mappings: {
-        name: 'product_name',
-        slug: 'product_slug',
-        sku: 'sku_code',
-        'prices.USD': 'price_us',
-        'prices.EUR': 'price_eu',
-        'prices.GBP': 'price_uk',
-        'prices.JPY': 'price_jp'
-    }
+    operators: [{
+        op: 'map',
+        args: {
+            mapping: {
+                name: 'product_name',
+                slug: 'product_slug',
+                sku: 'sku_code',
+                'prices.USD': 'price_us',
+                'prices.EUR': 'price_eu',
+                'prices.GBP': 'price_uk',
+                'prices.JPY': 'price_jp',
+            },
+            passthrough: true,
+        },
+    }],
 })
 .load('import-products', {
     adapterCode: 'productUpsert',
@@ -529,18 +542,20 @@ const pipeline = {
 ### Example 2: ERP Price Sync
 
 ```typescript
-// Daily price sync from ERP system
+// Daily price sync from a saved PostgreSQL ERP connection
 .extract('database', {
-    type: 'MSSQL',
+    adapterCode: 'database',
+    connectionCode: 'erp-postgres',
+    databaseType: 'POSTGRESQL',
     query: `
         SELECT
-            ProductSKU,
-            USDPrice,
-            EURPrice,
-            GBPPrice,
-            LastModified
-        FROM PricingMaster
-        WHERE LastModified >= DATEADD(day, -1, GETDATE())
+            product_sku AS "ProductSKU",
+            usd_price AS "USDPrice",
+            eur_price AS "EURPrice",
+            gbp_price AS "GBPPrice",
+            last_modified AS "LastModified"
+        FROM pricing_master
+        WHERE last_modified >= CURRENT_TIMESTAMP - INTERVAL '1 day'
     `
 })
 .transform('calculate-fields', {
@@ -564,7 +579,7 @@ const pipeline = {
 
 ```typescript
 // Import with both multi-currency AND multi-channel support
-.extract('csv-file', { filePath: '/data/products.csv' })
+.extract('csv-file', { adapterCode: 'csv', fileId: 'products-upload-id' })
 .load('import-products', {
     adapterCode: 'productUpsert',
     nameField: 'name',
@@ -573,8 +588,8 @@ const pipeline = {
     translationsField: 'translations' // ← Multi-language
 })
 
-// Input data:
-{
+// Example input record:
+const inputRecord = {
     name: 'Global Product',
     prices: {
         USD: 99.99,
@@ -594,6 +609,12 @@ const pipeline = {
 // - Correct price per channel's currency
 // - Translated name per channel's language
 ```
+
+For `variantUpsert`, the default Vendure channel owns SKU identity. The loader
+creates or updates one variant there and assigns the same entity to the listed
+target channels. It rejects a SKU found only in a target channel and rejects
+ambiguous duplicate IDs. The currency map must include every selected channel's
+default currency; no exchange-rate conversion is inferred.
 
 ---
 
@@ -806,7 +827,7 @@ skuField: 'variant_sku'
 
 ### Missing Currencies
 
-**Problem**: Some currencies not appearing in Admin UI
+**Problem**: Some currencies not appearing in the Vendure Dashboard
 
 **Cause**: Channel doesn't list currency in `availableCurrencyCodes`
 
@@ -851,7 +872,8 @@ skuField: 'variant_sku'
 ```typescript
 // Complete multi-currency pipeline
 .extract('csv-file', {
-    filePath: '/data/international-products.csv'
+    adapterCode: 'csv',
+    fileId: 'international-products-upload-id'
 })
 .transform('parse-json-fields', {
     fields: 'prices'  // Parse JSON string to object

@@ -1,6 +1,6 @@
 # Pimcore Connector
 
-Integration for syncing products, categories, assets, and facets from **Pimcore PIM/DAM** to **Vendure Commerce**.
+Integration for syncing products, categories, and assets from **Pimcore PIM/DAM** to **Vendure Commerce**.
 
 ## Overview
 
@@ -17,7 +17,6 @@ The Pimcore Connector provides pre-built pipelines for synchronizing your Pimcor
 │  │ Products  │  │ ─────────────────────►   │  │ Products  │  │
 │  │ Categories│  │   GraphQL Extraction     │  │ Collections│  │
 │  │ Assets    │  │   Transform & Validate   │  │ Assets    │  │
-│  │ Attributes│  │   Vendure Loaders        │  │ Facets    │  │
 │  └───────────┘  │                          │  └───────────┘  │
 └─────────────────┘                          └─────────────────┘
 ```
@@ -29,11 +28,14 @@ The Pimcore Connector provides pre-built pipelines for synchronizing your Pimcor
 | Products + Variants | Products + Variants | `productSync` |
 | Categories | Collections | `categorySync` |
 | Assets (Images) | Assets | `assetSync` |
-| Select Options | Facets + Values | `facetSync` |
 
 ## Installation
 
 The connector is included in the DataHub plugin. No separate installation required.
+
+Configure the endpoint, API key, schema, and workspaces using Pimcore's
+[GraphQL Datahub guide](https://docs.pimcore.com/platform/Datahub/GraphQL/). Expose
+only the classes and fields required by the synchronization pipelines.
 
 ## Configuration
 
@@ -44,21 +46,33 @@ The connector is included in the DataHub plugin. No separate installation requir
 import { DataHubPlugin } from '@oronts/vendure-data-hub-plugin';
 import { PimcoreConnector } from '@oronts/vendure-data-hub-plugin/connectors/pimcore';
 
+const pimcore = PimcoreConnector({
+  connectionCode: 'pimcore-graphql',
+});
+
 export const config: VendureConfig = {
   plugins: [
     DataHubPlugin.init({
-      pipelines: [
-        PimcoreConnector({
-          connection: {
-            // Pimcore DataHub GraphQL endpoint
-            endpoint: 'https://pimcore.company.com/pimcore-datahub-webservices/shop',
-            // Reference to DataHub secret (recommended)
-            apiKeySecretCode: 'pimcore-api-key',
-            // Or direct API key (not recommended for production)
-            // apiKey: process.env.PIMCORE_API_KEY,
-          },
-        }),
+      secrets: [
+        { code: 'pimcore-api-key', provider: 'ENV', value: 'PIMCORE_API_KEY' },
+        { code: 'pimcore-webhook-key', provider: 'ENV', value: 'PIMCORE_WEBHOOK_KEY' },
       ],
+      connections: [
+        {
+          code: 'pimcore-graphql',
+          type: 'GRAPHQL',
+          settings: {
+            baseUrl: 'https://pimcore.company.com/pimcore-graphql-webservices/shop',
+            auth: {
+              type: 'API_KEY',
+              secretCode: 'pimcore-api-key',
+              headerName: 'X-API-Key',
+            },
+          },
+        },
+      ],
+      connectors: [pimcore],
+      pipelines: pimcore.pipelines,
     }),
   ],
 };
@@ -67,49 +81,38 @@ export const config: VendureConfig = {
 ### Full Configuration
 
 ```typescript
-PimcoreConnector({
-  // Connection settings
-  connection: {
-    endpoint: 'https://pimcore.company.com/pimcore-datahub-webservices/shop',
-    apiKeySecretCode: 'pimcore-api-key',
-    headers: {
-      'X-Custom-Header': 'value',
-    },
-    timeoutMs: 30000,
-  },
+const pimcore = PimcoreConnector({
+  connectionCode: 'pimcore-graphql',
+  timeoutMs: 30000,
 
   // Target Vendure channel
   vendureChannel: 'b2c-shop',
 
-  // Languages for translations
+  // Localized value selected from Pimcore responses
   defaultLanguage: 'en',
-  languages: ['en', 'de', 'fr'],
 
   // Sync options
   sync: {
-    deltaSync: true,           // Only sync changed records
+    deltaSync: true,           // Skip unchanged records before loading into Vendure
     batchSize: 100,            // Records per page
-    maxPages: 100,             // Safety limit
-    includeUnpublished: false, // Skip unpublished items
+    maxPages: 100,             // Fail if a run needs more pages
+    includeUnpublished: false, // Request and retain unpublished object records
     includeVariants: true,     // Include product variants
     pathFilter: '/Products/B2C/', // Only sync items under this path
   },
 
   // Field mappings (customize to match your Pimcore schema)
+  // Values must be plain GraphQL field names; the generated query selects them.
   mapping: {
     product: {
       skuField: 'itemNumber',      // Your SKU field name
       nameField: 'productName',    // Your name field name
       slugField: 'urlKey',         // Your slug field name
       descriptionField: 'longDescription',
-      assetsField: 'productImages',
-      categoriesField: 'productCategories',
       variantsField: 'children',
+      priceField: 'retailPrice',
+      stockQuantityField: 'availableStock',
       enabledField: 'isActive',
-      customFields: {
-        'pimcoreBrand': 'brand',
-        'pimcoreMaterial': 'material',
-      },
     },
     category: {
       nameField: 'categoryName',
@@ -117,6 +120,22 @@ PimcoreConnector({
       descriptionField: 'categoryDescription',
       parentField: 'parentCategory',
       positionField: 'sortOrder',
+    },
+    asset: {
+      urlField: 'fullpath',
+      filenameField: 'filename',
+    },
+  },
+
+  // Optional Data Hub schema overrides. Defaults target Product, Category,
+  // and Asset using their standard generated GraphQL names.
+  queries: {
+    product: {
+      className: 'CommerceProduct',
+      listingField: 'getCommerceProducts',
+      responseField: 'products',
+      fragmentType: 'object_CommerceProduct',
+      // query: 'query ...', // Complete query override when field mapping is insufficient
     },
   },
 
@@ -126,15 +145,11 @@ PimcoreConnector({
       enabled: true,
       name: 'B2C Product Sync',
       schedule: '0 */4 * * *',    // Every 4 hours
-      syncAssets: true,
-      syncCategories: true,
       syncVariants: true,
-      deleteOrphans: false,
     },
     categorySync: {
       enabled: true,
       schedule: '0 2 * * *',      // Daily at 2 AM
-      maxDepth: 5,
       rootPath: '/Categories/Shop/',
     },
     assetSync: {
@@ -143,13 +158,13 @@ PimcoreConnector({
       folderPath: '/Product Images/',
       mimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
     },
-    facetSync: {
-      enabled: true,
-      schedule: '0 1 * * 0',      // Weekly on Sunday at 1 AM
-      attributeGroups: ['color', 'size', 'material'],
-    },
   },
-})
+});
+
+DataHubPlugin.init({
+  connectors: [pimcore],
+  pipelines: pimcore.pipelines,
+});
 ```
 
 ## Pipelines
@@ -168,8 +183,6 @@ The canonical product truth pipeline. Syncs products and variants from Pimcore t
 Pimcore GraphQL → Validate → Transform → Delta Filter → Vendure Products
                                                     ↓
                                               Vendure Variants
-                                                    ↓
-                                              Attach Assets
 ```
 
 **Webhook Setup:**
@@ -177,7 +190,8 @@ Pimcore GraphQL → Validate → Transform → Delta Filter → Vendure Products
 # In Pimcore, configure webhook to call:
 POST /data-hub/webhook/pimcore-product-sync
 Headers:
-  X-API-Key: your-webhook-key
+  X-DataHub-Signature: sha256=<HMAC-SHA256 of the raw request body>
+  X-Idempotency-Key: <unique delivery identifier>
 Body:
   { "id": 123, "action": "update" }
 ```
@@ -189,8 +203,7 @@ Syncs the category tree as Vendure collections with proper parent-child relation
 **Features:**
 - Hierarchical tree preservation
 - Position/sort order sync
-- Localized names and descriptions
-- Category images as collection featured assets
+- Configurable default language selection
 
 ### Asset Sync Pipeline
 
@@ -199,48 +212,31 @@ Bulk imports images and documents from Pimcore DAM to Vendure.
 **Features:**
 - MIME type filtering
 - Folder path filtering
-- Alt text extraction from Pimcore metadata
-- Dimension preservation (width, height)
+- Configurable URL and filename source fields
 
-### Facet Sync Pipeline
+## Dashboard Templates and Pipelines
 
-Syncs Pimcore select options (attributes) as Vendure facets and facet values.
+Pimcore imports use the connector's generated pipelines instead of generic import-wizard templates. The generated definitions carry the configured saved connection, GraphQL queries, validation, transformations, delta filtering, and webhook security. A generic API template cannot safely reproduce that contract.
 
-**Features:**
-- Attribute to facet mapping
-- Option values as facet values
-- Localized facet names
-
-## Wizard Templates
-
-The Pimcore connector ships 4 import templates and 1 export template for the import/export wizards. Built-in export templates are served automatically by the `TemplateRegistryService`. To add connector templates, include them in your `DataHubPlugin.init()` options:
+Pass both the configured connector and its pipelines to the plugin:
 
 ```typescript
-import { DataHubPlugin, DEFAULT_IMPORT_TEMPLATES } from '@oronts/vendure-data-hub-plugin';
+import { DataHubPlugin } from '@oronts/vendure-data-hub-plugin';
 import { PimcoreConnector } from '@oronts/vendure-data-hub-plugin/connectors/pimcore';
 
+const pimcore = PimcoreConnector({
+    connectionCode: 'pimcore-graphql',
+});
+
 DataHubPlugin.init({
-    importTemplates: [
-        ...DEFAULT_IMPORT_TEMPLATES,
-        ...(PimcoreConnector.importTemplates ?? []),
-    ],
-    exportTemplates: [
-        ...(PimcoreConnector.exportTemplates ?? []),
-    ],
-    // ... other options
+    connectors: [pimcore],
+    pipelines: pimcore.pipelines,
 });
 ```
 
-### Available Import Templates
+By default, the enabled generated imports appear in the Pipelines area as Pimcore Product Sync, Pimcore Category Sync, and Pimcore Asset Sync. They are not shown as import-wizard cards.
 
-| Template | Category | Description |
-|----------|----------|-------------|
-| Pimcore Product Sync | products | Sync products via GraphQL DataHub API with variants, pricing, and assets |
-| Pimcore Category Sync | catalog | Sync categories to Vendure collections with hierarchy preservation |
-| Pimcore Asset Sync | catalog | Import images and media from Pimcore DAM with metadata |
-| Pimcore Facet/Attribute Sync | catalog | Sync product attributes to Vendure facets and values |
-
-### Available Export Templates
+### Available Export Template
 
 | Template | Format | Description |
 |----------|--------|-------------|
@@ -248,7 +244,7 @@ DataHubPlugin.init({
 
 ### Using ConnectorRegistry
 
-If you use `ConnectorRegistry` to manage multiple connectors, use `getPluginTemplates()` for convenience:
+If you use `ConnectorRegistry` to manage multiple connectors, pass its configured connector instances and generated pipelines to the plugin:
 
 ```typescript
 import { ConnectorRegistry, PimcoreConnector } from '@oronts/vendure-data-hub-plugin/connectors';
@@ -256,22 +252,24 @@ import { ConnectorRegistry, PimcoreConnector } from '@oronts/vendure-data-hub-pl
 const registry = new ConnectorRegistry();
 registry.register(PimcoreConnector, pimcoreConfig);
 
-const connectorTemplates = registry.getPluginTemplates();
-
 DataHubPlugin.init({
-    importTemplates: [...DEFAULT_IMPORT_TEMPLATES, ...connectorTemplates.importTemplates],
-    exportTemplates: connectorTemplates.exportTemplates,
+    connectors: registry.getConnectors().map(({ connector, config }) => ({
+        definition: connector,
+        config,
+    })),
+    pipelines: registry.getAllPipelines(),
 });
 ```
 
 ## Secrets Configuration
 
-The connector requires these secrets:
+The saved connection owns the GraphQL authentication. The examples use these
+Secret Codes:
 
 | Secret Code | Description |
 |------------|-------------|
 | `pimcore-api-key` | Pimcore DataHub API key |
-| `pimcore-webhook-key` | Webhook authentication key (optional) |
+| `pimcore-webhook-key` | HMAC key required when using the generated product/category webhook triggers |
 
 ### Secret Providers
 
@@ -279,20 +277,35 @@ DataHub supports multiple secret providers:
 
 | Provider | Description | Use Case |
 |----------|-------------|----------|
-| `inline` | Stored in database | Development, or production with encryption |
-| `env` | Read from environment variable | Production deployments, CI/CD |
+| `INLINE` | Stored in database | Development, or production with encryption |
+| `ENV` | Read from environment variable | Production deployments, CI/CD |
 
 ### Option 1: Environment Variables (Recommended for Production)
 
 ```typescript
+const pimcore = PimcoreConnector({ /* ... */ });
+
 DataHubPlugin.init({
   secrets: [
     // Reads from PIMCORE_API_KEY env var at runtime
     { code: 'pimcore-api-key', provider: 'ENV', value: 'PIMCORE_API_KEY' },
     { code: 'pimcore-webhook-key', provider: 'ENV', value: 'PIMCORE_WEBHOOK_KEY' },
   ],
-  pipelines: [PimcoreConnector({ /* ... */ })],
-})
+  connections: [{
+    code: 'pimcore-graphql',
+    type: 'GRAPHQL',
+    settings: {
+      baseUrl: 'https://pimcore.company.com/pimcore-graphql-webservices/shop',
+      auth: {
+        type: 'API_KEY',
+        secretCode: 'pimcore-api-key',
+        headerName: 'X-API-Key',
+      },
+    },
+  }],
+  connectors: [pimcore],
+  pipelines: pimcore.pipelines,
+});
 ```
 
 Then set environment variables:
@@ -301,109 +314,108 @@ export PIMCORE_API_KEY="your-actual-api-key"
 export PIMCORE_WEBHOOK_KEY="your-webhook-secret"
 ```
 
-### Option 2: Env with Fallback (Development)
+### Option 2: Dashboard-Managed Inline Secret
 
-```typescript
-// Fallback syntax: 'ENV_VAR|fallback_value'
-secrets: [
-  { code: 'pimcore-api-key', provider: 'ENV', value: 'PIMCORE_API_KEY|dev-test-key' },
-]
-```
-
-Uses `dev-test-key` if `PIMCORE_API_KEY` is not set.
-
-### Option 3: Inline with Encryption (Secure Storage)
-
-For storing secrets directly in the database with encryption:
+For encrypted database storage, configure the same master key on every API server and worker:
 
 ```bash
 # Generate master key (run once, store securely)
 export DATAHUB_MASTER_KEY=$(openssl rand -hex 32)
 ```
 
-```typescript
-DataHubPlugin.init({
-  secrets: [
-    // Encrypted at rest with AES-256-GCM when DATAHUB_MASTER_KEY is set
-    { code: 'pimcore-api-key', provider: 'INLINE', value: 'your-api-key' },
-  ],
-})
-```
-
-### Option 4: Dashboard UI
-
-Create secrets via the DataHub dashboard:
+Then create the secret via the Data Hub dashboard:
 
 1. Go to **DataHub → Settings → Secrets**
 2. Click **Create Secret**
 3. Enter code: `pimcore-api-key`
-4. Select provider: `inline` or `env`
-5. Enter value (actual key or env var name)
+4. Select provider: `INLINE`
+5. Enter the actual key
 
-Secrets created via dashboard are stored in the database and can be encrypted.
+`ENV` references must contain exactly one variable name such as `PIMCORE_API_KEY`. Expressions such as `PIMCORE_API_KEY|dev-test-key` are rejected. Prefer `ENV` for code-first configuration so credentials are not embedded in deployed source or configuration files.
 
 ## Pimcore DataHub Setup
 
-### 1. Create DataHub Configuration
+1. Create an active **GraphQL** configuration, for example `shop`. The client
+   name becomes the final endpoint segment:
+   `https://pimcore.example/pimcore-graphql-webservices/shop`.
+2. Grant only the required workspaces and read permissions. Enable the Product
+   and Category data-object classes and Asset listing only when their generated
+   pipelines are enabled.
+3. Expose the Pimcore system fields used by the generated pipelines:
+   `id`, `key`, `fullpath`, and `published` for objects, plus `index` for
+   categories. `published` is a system object property, not a custom checkbox
+   field. Expose the class fields named by `mapping` and the asset fields named
+   by `mapping.asset`.
+4. In **Security**, generate an API key of at least 16 characters. Store it as
+   a Data Hub Secret; do not embed it in the endpoint URL or committed config.
+5. Keep introspection enabled while validating a new schema, or disable it and
+   use the representative listing query below when production policy requires
+   introspection to be off.
 
-In Pimcore Admin → Settings → DataHub:
+Before starting Vendure, prove that the configured client, workspace, schema,
+and key work together. This request prints no key value:
 
-1. Create new configuration (e.g., "shop")
-2. Set type to "GraphQL"
-3. Configure schema for your product class
-
-### 2. Configure Product Schema
-
-Example Product class fields to expose:
-
-```yaml
-# Pimcore Product Class
-fields:
-  - name: sku
-    type: input
-  - name: name
-    type: localizedInput
-  - name: description
-    type: localizedWysiwyg
-  - name: price
-    type: numeric
-  - name: images
-    type: manyToManyObjectRelation
-  - name: categories
-    type: manyToManyObjectRelation
-  - name: published
-    type: checkbox
+```bash
+test -n "$PIMCORE_API_KEY"
+curl --fail-with-body \
+  --request POST \
+  --header 'Content-Type: application/json' \
+  --header "X-API-Key: $PIMCORE_API_KEY" \
+  --data '{"query":"query Smoke { getProductListing(first: 1, after: 0, sortBy: [\"id\"], sortOrder: [\"ASC\"]) { totalCount edges { node { id key fullpath published } } } }"}' \
+  'https://pimcore.example/pimcore-graphql-webservices/shop'
 ```
 
-### 3. Generate API Key
-
-In DataHub configuration → Security:
-
-1. Generate new API key
-2. Copy key to DataHub secrets
+Replace `getProductListing` and its selected fields when `queries.product` or
+`mapping.product` target a custom schema. A `200` response from the Data Hub
+explorer page is not sufficient; the GraphQL POST itself must return data and
+no GraphQL `errors`.
 
 ## Custom Extractors
 
 The connector provides a custom extractor for Pimcore DataHub GraphQL:
+
+Pagination uses a non-negative numeric offset. `first` is the page size and
+`after` is the initial offset. Generated product and asset pipelines sort by
+`id ASC`; category sync sorts by `fullpath ASC`, so page boundaries are
+deterministic. A terminal page clears its offset checkpoint so the next
+completed scheduled run starts from the beginning and can detect changes on
+every page. Reaching `maxPages` before `totalCount` is exhausted fails the run
+explicitly instead of reporting a partial extraction as complete.
+
+Custom queries must declare the variables they use and return `totalCount` and
+`edges { node { id ... } }`. Set `responseField` when their result key differs
+from the default `getProductListing`, `getCategoryListing`, or
+`getAssetListing`.
+
+Generated product and category pipelines depend on `id`, `key`,
+`fullpath`, and `published`. Asset sync depends on the configured URL field
+(`fullpath` by default) and filename field. `connectionCode` must reference a
+saved `HTTP`, `REST`, or `GRAPHQL` connection with `baseUrl`. The extractor
+uses that connection's headers and Secret-backed authentication, and restricts
+the initial request and every redirect to the saved endpoint origin.
 
 ```typescript
 // Use in custom pipelines
 createPipeline()
   .extract('fetch-custom', {
     adapterCode: 'pimcoreGraphQL',
-    'connection.endpoint': 'https://pimcore.company.com/...',
-    'connection.apiKeySecretCode': 'pimcore-api-key',
+    connectionCode: 'pimcore-graphql',
     entityType: 'product',
-    className: 'CustomProduct',
+    responseField: 'customProducts',
+    sortBy: 'id',
+    sortOrder: 'ASC',
     first: 50,
-    filter: '{"path": {"$like": "/Custom/%"}}',
+    maxPages: 100,
+    includeUnpublished: false,
+    filter: '{"fullpath": {"$like": "/Custom/%"}}',
     // Custom GraphQL query (optional)
     query: `
-      query MyCustomQuery($first: Int) {
-        getCustomProductListing(first: $first) {
+      query MyCustomQuery($first: Int, $after: Int) {
+        customProducts: getCustomProductListing(first: $first, after: $after) {
+          totalCount
           edges {
             node {
-              id
+              id key fullpath published
               myCustomField
             }
           }
@@ -450,17 +462,17 @@ In DataHub Dashboard → Pipelines, find:
 - "Pimcore Product Sync"
 - "Pimcore Category Sync"
 - "Pimcore Asset Sync"
-- "Pimcore Facet Sync"
 
 ### Common Issues
 
 **1. Authentication Failed**
 ```
-Error: Pimcore API request failed: 401 Unauthorized
+Error: Extraction failed: HTTP 403: ...
 ```
 - Check API key is correct
 - Verify DataHub secret is configured
-- Ensure API key has required permissions
+- Ensure the GraphQL configuration is active and the key has its required workspace permissions
+- A missing client configuration normally returns `404`; an inactive or unauthorized configuration returns `403`
 
 **2. No Products Found**
 ```
@@ -483,7 +495,7 @@ Error: Product name is required
 DataHubPlugin.init({
   debug: true,
   pipelines: [/* ... */],
-})
+});
 ```
 
 ## Migration from Existing Sync
@@ -492,46 +504,43 @@ If migrating from a custom Pimcore sync:
 
 1. Run initial full sync with `deltaSync: false`
 2. Verify products in Vendure Admin
-3. Enable `deltaSync: true` for incremental updates
+3. Enable `deltaSync: true` to suppress unchanged Vendure writes
 4. Configure scheduled triggers
 5. Set up webhooks for real-time sync
 
+`deltaSync` hashes records after extraction. Scheduled runs still traverse the
+complete filtered Pimcore listing from offset zero; it is not a
+`modificationDate` cursor or another source-side incremental query.
+
 ## Extending the Connector
 
-The connector is designed for customization. You can extend field mappings, add validation rules, customize transforms, and add triggers without modifying the core code.
+The connector is designed for customization. You can remap the supported source fields, add validation rules, customize transforms, and add triggers without modifying the core code.
 
 ### Adding New Field Mappings
 
-Map additional Pimcore fields to Vendure by extending the mapping configuration:
+Remap the source fields consumed by the generated pipelines:
 
 ```typescript
 PimcoreConnector({
-  connection: { /* ... */ },
+  connectionCode: 'pimcore-graphql',
   mapping: {
     product: {
-      // Standard fields
       skuField: 'itemNumber',
       nameField: 'productName',
-
-      // Map Pimcore fields to Vendure custom fields
-      customFields: {
-        // Vendure custom field name : Pimcore field name
-        'pimcoreBrand': 'brand',
-        'pimcoreMaterial': 'material',
-        'pimcoreWeight': 'technicalSpecs.weight',
-        'pimcoreColor': 'attributes.color.name',
-      },
+      descriptionField: 'longDescription',
+      variantsField: 'children',
+      priceField: 'retailPrice',
+      stockQuantityField: 'availableStock',
+      enabledField: 'active',
     },
     category: {
       nameField: 'categoryName',
-      // Add custom category fields
-      customFields: {
-        'pimcoreSeoTitle': 'seoTitle',
-        'pimcoreSeoDescription': 'seoDescription',
-      },
+      slugField: 'urlPath',
+      parentField: 'parentCategory',
+      positionField: 'sortOrder',
     },
   },
-})
+});
 ```
 
 ### Adding Validation Rules
@@ -547,8 +556,7 @@ const customPipeline = createPipeline()
   .trigger('MANUAL', { type: 'MANUAL' })
   .extract('fetch-categories', {
     adapterCode: 'pimcoreGraphQL',
-    'connection.endpoint': 'https://pimcore.example.com/datahub/shop',
-    'connection.apiKeySecretCode': 'pimcore-api-key',
+    connectionCode: 'pimcore-graphql',
     entityType: 'category',
   })
   .validate('custom-validation', {
@@ -559,12 +567,11 @@ const customPipeline = createPipeline()
         spec: {
           field: 'seoTitle',
           required: true,
-          when: { field: 'parentId', operator: 'isNull' },
-          error: 'Top-level categories require SEO title',
+          error: 'Categories require an SEO title',
         },
       },
       {
-        type: 'format',
+        type: 'business',
         spec: {
           field: 'slug',
           pattern: '^[a-z0-9-]+$',
@@ -576,7 +583,7 @@ const customPipeline = createPipeline()
   .load('upsert-categories', {
     adapterCode: 'collectionUpsert',
     strategy: 'UPSERT',
-    matchField: 'slug',
+    slugField: 'slug',
   })
   .edge('MANUAL', 'fetch-categories')
   .edge('fetch-categories', 'custom-validation')
@@ -645,7 +652,7 @@ Configure multiple trigger types for your pipelines:
 
 ```typescript
 PimcoreConnector({
-  connection: { /* ... */ },
+  connectionCode: 'pimcore-graphql',
   pipelines: {
     productSync: {
       enabled: true,
@@ -656,7 +663,7 @@ PimcoreConnector({
       // POST /data-hub/webhook/pimcore-product-sync
     },
   },
-})
+});
 
 import { createPipeline } from '@oronts/vendure-data-hub-plugin';
 
@@ -669,21 +676,21 @@ const customPipeline = createPipeline()
   .trigger('on-product-event', {
     type: 'EVENT',
     event: 'ProductEvent',
-    filter: { action: 'created' },
   })
 
   // Webhook trigger with HMAC signature verification
   .trigger('secure-webhook', {
     type: 'WEBHOOK',
-    webhookCode: 'pimcore-secure-sync',
-    signature: 'hmac-sha256',
-    hmacSecretCode: 'pimcore-webhook-secret',
+    authentication: 'HMAC',
+    secretCode: 'pimcore-webhook-secret',
+    hmacAlgorithm: 'SHA256',
+    requireIdempotencyKey: true,
+    idempotencyKeyHeader: 'x-idempotency-key',
   })
 
   .extract('fetch-products', {
     adapterCode: 'pimcoreGraphQL',
-    'connection.endpoint': 'https://pimcore.example.com/datahub/shop',
-    'connection.apiKeySecretCode': 'pimcore-api-key',
+    connectionCode: 'pimcore-graphql',
     entityType: 'product',
   })
   // ... rest of pipeline steps
@@ -701,15 +708,13 @@ import { pimcoreGraphQLExtractor } from '@oronts/vendure-data-hub-plugin/connect
 import { createPipeline } from '@oronts/vendure-data-hub-plugin';
 
 const customProductQuery = `
-  query GetProducts($first: Int, $after: String, $filter: String) {
-    getMyCustomProductListing(first: $first, after: $after, filter: $filter) {
+  query GetProducts($first: Int, $after: Int, $filter: String) {
+    getProductListing: getMyCustomProductListing(first: $first, after: $after, filter: $filter) {
       totalCount
-      pageInfo { hasNextPage endCursor }
       edges {
-        cursor
         node {
-          id key fullPath published
-          ... on MyCustomProduct {
+          id key fullpath published
+          ... on object_MyCustomProduct {
             sku
             name { en de fr }
             customAttribute
@@ -725,8 +730,7 @@ const customPipeline = createPipeline()
   .name('Custom Pimcore Product Sync')
   .extract('fetch', {
     adapterCode: 'pimcoreGraphQL',
-    'connection.endpoint': 'https://pimcore.example.com/datahub/shop',
-    'connection.apiKeySecretCode': 'pimcore-api-key',
+    connectionCode: 'pimcore-graphql',
     entityType: 'product',
     query: customProductQuery,
     first: 100,
@@ -747,8 +751,7 @@ const externalSyncPipeline = createPipeline()
   .name('Pimcore to External ERP')
   .extract('fetch-pimcore', {
     adapterCode: 'pimcoreGraphQL',
-    'connection.endpoint': 'https://pimcore.example.com/datahub/shop',
-    'connection.apiKeySecretCode': 'pimcore-api-key',
+    connectionCode: 'pimcore-graphql',
     entityType: 'product',
   })
   .transform('prepare', {
@@ -760,7 +763,7 @@ const externalSyncPipeline = createPipeline()
     adapterCode: 'restPost',
     endpoint: 'https://erp.example.com/api/products',
     method: 'POST',
-    headers: { 'Authorization': 'Bearer {{secret:erp-token}}' },
+    bearerTokenSecretCode: 'erp-token',
   })
   .build();
 ```
@@ -820,22 +823,22 @@ const externalSyncPipeline = createPipeline()
 | **Enrichment** | | |
 | `default` | Set default for empty fields | `{ op: 'default', args: { path: 'stock', value: 0 } }` |
 | `enrich` | Enrich or default fields on records | `{ op: 'enrich', args: { set: { category: 'electronics' } } }` |
-| `httpLookup` | Fetch data from external HTTP API | `{ op: 'httpLookup', args: { url: 'https://api.example.com/stock/${sku}', target: 'stockData' } }` |
+| `httpLookup` | Fetch data from external HTTP API | `{ op: 'httpLookup', args: { url: 'https://api.example.com/stock/{{sku}}', target: 'stockData' } }` |
 | `lookup` | Look up value from a reference table | `{ op: 'lookup', args: { source: 'colorCode', map: { 'R': 'Red', 'G': 'Green', 'B': 'Blue' }, target: 'colorName' } }` |
 | **Aggregation** | | |
 | `aggregate` | Aggregate values across records | `{ op: 'aggregate', args: { op: 'avg', source: 'price', target: 'avgPrice' } }` |
-| `count` | Count records in a group | `{ op: 'count', args: { source: 'items', target: 'productCount' } }` |
+| `count` | Count array elements or string characters | `{ op: 'count', args: { source: 'items', target: 'itemCount' } }` |
 | `expand` | Expand array into multiple records | `{ op: 'expand', args: { path: 'variants', mergeParent: true } }` |
 | `first` | Take first element of an array | `{ op: 'first', args: { source: 'variants', target: 'defaultVariant' } }` |
 | `last` | Take last element of an array | `{ op: 'last', args: { source: 'variants', target: 'latestVariant' } }` |
 | `unique` | Deduplicate values in an array | `{ op: 'unique', args: { source: 'tags' } }` |
-| `multiJoin` | Join two datasets by matching key fields | `{ op: 'multiJoin', args: { leftKey: 'sku', rightKey: 'sku', rightSource: 'prices' } }` |
+| `multiJoin` | Join records with an inline dataset | `{ op: 'multiJoin', args: { leftKey: 'sku', rightKey: 'sku', rightData: [{ sku: 'A-1', price: 1999 }] } }` |
 | **File** | | |
-| `imageResize` | Resize images referenced in record fields | `{ op: 'imageResize', args: { source: 'imageUrl', width: 800, height: 600, target: 'resizedUrl' } }` |
-| `imageConvert` | Convert image format (JPEG, PNG, WebP, AVIF, GIF) | `{ op: 'imageConvert', args: { source: 'imageUrl', format: 'webp', target: 'convertedUrl' } }` |
-| `pdfGenerate` | Generate PDF from HTML template with record data | `{ op: 'pdfGenerate', args: { template: '<h1>{{name}}</h1>', target: 'pdfUrl' } }` |
+| `imageResize` | Resize a base64-encoded image | `{ op: 'imageResize', args: { sourceField: 'imageBase64', width: 800, height: 600, targetField: 'resizedBase64' } }` |
+| `imageConvert` | Convert a base64-encoded image format | `{ op: 'imageConvert', args: { sourceField: 'imageBase64', format: 'webp', targetField: 'convertedBase64' } }` |
+| `pdfGenerate` | Generate a multi-page plain-text PDF | `{ op: 'pdfGenerate', args: { template: 'Product: {{name}}', targetField: 'pdfBase64' } }` |
 | **Validation** | | |
-| `validateFormat` | Validate field matches a pattern | `{ op: 'validateFormat', args: { field: 'sku', pattern: '^[A-Z0-9-]+$', error: 'Invalid SKU' } }` |
+| `validateFormat` | Validate field matches a pattern | `{ op: 'validateFormat', args: { field: 'sku', pattern: '^[A-Z0-9-]+$', errorMessage: 'Invalid SKU' } }` |
 | `validateRequired` | Ensure required fields are present | `{ op: 'validateRequired', args: { fields: ['sku', 'name', 'price'] } }` |
 | **Script** | | |
 | `script` | Run custom JavaScript transform | `{ op: 'script', args: { code: 'return { ...record, fullName: record.brand + " " + record.name }' } }` |

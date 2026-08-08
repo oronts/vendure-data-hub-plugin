@@ -26,12 +26,6 @@ export interface HttpApiExtractorConfig extends ExtractorConfig {
     /** Pagination configuration */
     pagination?: PaginationConfig;
 
-    /** GraphQL query (if using GraphQL) */
-    graphqlQuery?: string;
-
-    /** GraphQL variables */
-    graphqlVariables?: JsonObject;
-
     /** Response data path (JSON path to records array) */
     dataPath?: string;
 }
@@ -45,6 +39,7 @@ export interface HttpResponse {
 
 export interface PaginationState {
     cursor?: string;
+    nextUrl?: string;
     offset: number;
     page: number;
     recordCount: number;
@@ -53,6 +48,7 @@ export interface PaginationState {
 export interface UpdatedPaginationState {
     hasMore: boolean;
     cursor?: string;
+    nextUrl?: string;
     offset: number;
     page: number;
 }

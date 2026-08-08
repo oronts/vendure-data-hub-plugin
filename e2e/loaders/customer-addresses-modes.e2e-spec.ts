@@ -5,23 +5,18 @@
  * - UPSERT_BY_MATCH (smart match by street+city+postal - prevents duplicates)
  * - REPLACE_ALL (delete all existing, create from record)
  * - APPEND_ONLY (always create new - may cause duplicates)
- * - UPDATE_BY_ID (update by Vendure ID)
+ * - Unsupported mode rejection without address mutation
  * - SKIP (don't modify addresses)
  *
  * Verifies: idempotency, duplicate prevention, edge cases, performance
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { CustomerService, Address } from '@vendure/core';
+import { CustomerService } from '@vendure/core';
 import { createDataHubTestEnvironment } from '../test-config';
 import { CustomerHandler } from '../../src/runtime/executors/loaders/customer-handler';
 import { getSuperadminContext, makeStep, createErrorCollector, LOADER_TEST_INITIAL_DATA } from './loader-test-helpers';
 import {
     testIdempotency,
-    testModePreventsDuplicates,
-    testReplaceAllMode,
-    testSkipMode,
-    testAppendOnlyMode,
-    testEmptyArrayHandling,
     testPerformance,
 } from './mode-test-helpers';
 
@@ -317,8 +312,8 @@ describe('Customer Addresses Modes', () => {
         });
     });
 
-    describe('UPDATE_BY_ID mode', () => {
-        it('should update addresses by Vendure ID', async () => {
+    describe('Unsupported address modes', () => {
+        it('should reject UPDATE_BY_ID without mutating an existing address', async () => {
             // First create a customer with an address using UPSERT_BY_MATCH
             const createStep = makeStep('addr-update-id-create', {
                 strategy: 'UPSERT',
@@ -339,9 +334,6 @@ describe('Customer Addresses Modes', () => {
             const list = await customerService.findAll(ctx, { filter: { emailAddress: { eq: 'update-by-id@test.de' } } } as never);
             const addrs = await customerService.findAddressesByCustomerId(ctx, list.items[0].id);
 
-            // The CustomerHandler does not support UPDATE_BY_ID mode; it falls through
-            // to the default APPEND_ONLY behavior. So setting addressesMode: 'UPDATE_BY_ID'
-            // causes addresses to be appended rather than updated by ID.
             const updateStep = makeStep('addr-update-id', {
                 strategy: 'UPSERT',
                 emailField: 'email',
@@ -350,20 +342,22 @@ describe('Customer Addresses Modes', () => {
                 addressesField: 'addresses',
                 addressesMode: 'UPDATE_BY_ID',
             });
+            const collector = createErrorCollector();
             const result = await handler.execute(ctx, updateStep, [{
                 email: 'update-by-id@test.de',
                 firstName: 'UpdateId',
                 lastName: 'Test',
                 addresses: [{ id: addrs[0].id, streetLine1: 'Updated Str', city: 'Berlin', postalCode: '10115', countryCode: 'DE' }],
-            }]);
-            expect(result.ok).toBe(1);
+            }], collector.callback);
+            expect(result).toEqual({ ok: 0, fail: 1, skipped: 0 });
+            expect(collector.errors[0]?.message).toBe('Unsupported customer address mode "UPDATE_BY_ID"');
 
-            // Falls through to APPEND_ONLY, so the new address is appended (2 total)
             const updatedAddrs = await customerService.findAddressesByCustomerId(ctx, list.items[0].id);
-            expect(updatedAddrs.length).toBe(2);
+            expect(updatedAddrs).toHaveLength(1);
+            expect(updatedAddrs[0].streetLine1).toBe('Original Str');
         });
 
-        it('should skip addresses without id field', async () => {
+        it('should reject UPDATE_BY_ID records without an id', async () => {
             const step = makeStep('addr-update-no-id', {
                 strategy: 'UPSERT',
                 emailField: 'email',
@@ -372,23 +366,23 @@ describe('Customer Addresses Modes', () => {
                 addressesField: 'addresses',
                 addressesMode: 'UPDATE_BY_ID',
             });
-            // Customer exists from previous test. UPDATE_BY_ID falls through to APPEND_ONLY,
-            // so addresses are always appended (not skipped).
+            const collector = createErrorCollector();
             const result = await handler.execute(ctx, step, [{
                 email: 'update-by-id@test.de',
                 firstName: 'UpdateId',
                 lastName: 'Test',
                 addresses: [{ streetLine1: 'No ID Str', city: 'Hamburg', postalCode: '20095', countryCode: 'DE' }],
-            }]);
-            expect(result.ok).toBe(1);
+            }], collector.callback);
+            expect(result).toEqual({ ok: 0, fail: 1, skipped: 0 });
+            expect(collector.errors[0]?.message).toBe('Unsupported customer address mode "UPDATE_BY_ID"');
 
-            // APPEND_ONLY appends the new address (previous test had 2, now 3)
             const list = await customerService.findAll(ctx, { filter: { emailAddress: { eq: 'update-by-id@test.de' } } } as never);
             const addrs = await customerService.findAddressesByCustomerId(ctx, list.items[0].id);
-            expect(addrs.length).toBe(3);
+            expect(addrs).toHaveLength(1);
+            expect(addrs[0].streetLine1).toBe('Original Str');
         });
 
-        it('should error on invalid ID', async () => {
+        it('should reject UPDATE_BY_ID regardless of the supplied id', async () => {
             const step = makeStep('addr-update-bad-id', {
                 strategy: 'UPSERT',
                 emailField: 'email',
@@ -404,8 +398,13 @@ describe('Customer Addresses Modes', () => {
                 lastName: 'Test',
                 addresses: [{ id: '999999', streetLine1: 'Bad ID', city: 'Berlin', postalCode: '10115', countryCode: 'DE' }],
             }], collector.callback);
-            // The handler should process the customer (ok) but the invalid address may be reported or silently skipped
-            expect(result.ok + result.fail).toBeGreaterThanOrEqual(1);
+            expect(result).toEqual({ ok: 0, fail: 1, skipped: 0 });
+            expect(collector.errors[0]?.message).toBe('Unsupported customer address mode "UPDATE_BY_ID"');
+
+            const list = await customerService.findAll(ctx, { filter: { emailAddress: { eq: 'update-by-id@test.de' } } } as never);
+            const addrs = await customerService.findAddressesByCustomerId(ctx, list.items[0].id);
+            expect(addrs).toHaveLength(1);
+            expect(addrs[0].streetLine1).toBe('Original Str');
         });
     });
 

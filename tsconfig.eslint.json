@@ -1,0 +1,34 @@
+{
+  "extends": "./tsconfig.build.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "lib": ["es2020", "dom", "dom.iterable"],
+    "noEmit": true,
+    "paths": {
+      "@/gql": ["./dashboard/gql/index.ts"],
+      "@/*": ["./dashboard/*"]
+    }
+  },
+  "include": [
+    "src/**/*.ts",
+    "shared/**/*.ts",
+    "connectors/**/*.ts",
+    "dashboard/**/*.ts",
+    "dashboard/**/*.tsx",
+    "dev-server/**/*.ts",
+    "e2e/**/*.ts",
+    "scripts/**/*.ts",
+    "vendure-config.dev.ts",
+    "codegen.ts",
+    "vitest.config.ts",
+    "vite.config.mts",
+    "vite.dev.config.mts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "dashboard/gql/**/*",
+    "src/gql/generated.ts",
+    "dev-server/gql/**/*"
+  ]
+}

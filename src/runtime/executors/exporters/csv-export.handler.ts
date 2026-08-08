@@ -4,7 +4,7 @@
  * Writes records to a CSV file on disk.
  */
 
-import { recordsToCsv } from '../../utils';
+import { CsvFormulaMode, recordsToCsv } from '../../utils';
 import { ExportHandlerParams, ExportHandlerResult } from './export-handler.types';
 import { writeExportFile } from './export-helpers';
 
@@ -15,7 +15,8 @@ export async function csvExportHandler(params: ExportHandlerParams): Promise<Exp
         (records, config) => {
             const delimiter = (config.delimiter as string) ?? ',';
             const includeHeader = config.includeHeader !== false;
-            return recordsToCsv(records, delimiter, includeHeader);
+            const formulaMode = (config.formulaMode as CsvFormulaMode | undefined) ?? 'SPREADSHEET_SAFE';
+            return recordsToCsv(records, delimiter, includeHeader, formulaMode);
         },
         'CSV',
     );

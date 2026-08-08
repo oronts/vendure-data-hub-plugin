@@ -1,16 +1,7 @@
-/**
- * Webhook Types
- *
- * Type definitions for webhook delivery and retry management.
- */
-
 import type { RetryConfig } from '../../../shared/types';
 
 export type { RetryConfig };
 
-/**
- * Webhook delivery status
- */
 export enum WebhookDeliveryStatus {
     PENDING = 'PENDING',
     DELIVERED = 'DELIVERED',
@@ -19,50 +10,44 @@ export enum WebhookDeliveryStatus {
     DEAD_LETTER = 'DEAD_LETTER',
 }
 
-/**
- * Webhook payload type
- */
 export type WebhookPayload = Record<string, unknown> | unknown[];
 
 /**
- * Webhook delivery record
+ * Public delivery view. Replay payloads, request headers, credentials, and the
+ * encrypted persistence envelope are intentionally absent.
  */
 export interface WebhookDelivery {
     id: string;
     webhookId: string;
     url: string;
     method: string;
-    headers: Record<string, string>;
-    payload: WebhookPayload;
+    payloadHash: string;
+    payloadBytes: number;
     status: WebhookDeliveryStatus;
     attempts: number;
     maxAttempts: number;
     lastAttemptAt?: Date;
     nextRetryAt?: Date;
     responseStatus?: number;
-    responseBody?: string;
     error?: string;
     createdAt: Date;
     deliveredAt?: Date;
 }
 
-/**
- * Webhook configuration
- */
+export type WebhookDeliverySummary = WebhookDelivery;
+
 export interface WebhookConfig {
     id: string;
     url: string;
     method?: 'POST' | 'PUT' | 'PATCH';
     headers?: Record<string, string>;
-    secret?: string;
+    secretCode?: string;
+    headerSecretCodes?: Record<string, string>;
     signatureHeader?: string;
     retryConfig?: RetryConfig;
     enabled?: boolean;
 }
 
-/**
- * Webhook statistics
- */
 export interface WebhookStats {
     total: number;
     pending: number;
@@ -72,4 +57,3 @@ export interface WebhookStats {
     deadLetter: number;
     byWebhook: Record<string, { total: number; delivered: number; failed: number }>;
 }
-

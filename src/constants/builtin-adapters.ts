@@ -7,7 +7,7 @@
 
 import type { AdapterDefinition } from '../sdk/types';
 import { EXTRACTOR_ADAPTERS } from '../extractors/extractor-handler-registry';
-import { LOADER_ADAPTERS } from '../runtime/executors/loaders/loader-handler-registry';
+import { LOADER_ADAPTERS } from '../runtime/executors/loaders/registry/loader-adapter-definitions';
 import { EXPORTER_ADAPTERS } from '../runtime/executors/exporters/export-handler-registry';
 import { FEED_ADAPTERS } from '../runtime/executors/feeds/feed-handler-registry';
 import { SINK_ADAPTERS } from '../runtime/executors/sink-handler-registry';

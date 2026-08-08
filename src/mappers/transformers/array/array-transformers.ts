@@ -22,7 +22,7 @@ export function applyMapTransform(
     const key = config.caseSensitive === false ? stringValue.toLowerCase() : stringValue;
 
     // Check for direct match
-    if (key in config.values) {
+    if (Object.prototype.hasOwnProperty.call(config.values, key)) {
         return config.values[key];
     }
 
@@ -46,7 +46,7 @@ export function applyDefaultTransform(
     config: NonNullable<MapperTransformConfig['default']>,
     isEmpty: (value: JsonValue | undefined) => boolean,
 ): JsonValue {
-    if (config.onlyIfEmpty !== false && isEmpty(value)) {
+    if (config.onlyIfEmpty === false || isEmpty(value)) {
         return config.value;
     }
     return value ?? null;

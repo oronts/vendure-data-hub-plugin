@@ -1,6 +1,6 @@
 /**
  * AES-256-GCM encryption for secrets at rest.
- * Set DATAHUB_MASTER_KEY environment variable or provide via plugin configuration.
+ * Database-backed inline secrets use the DATAHUB_MASTER_KEY environment variable.
  */
 
 import * as crypto from 'crypto';

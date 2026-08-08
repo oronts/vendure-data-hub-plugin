@@ -1,9 +1,13 @@
 import { JsonValue } from '../../types/index';
-import { DatabaseExtractorConfig, DatabasePaginationConfig, PaginationState } from './types';
-import { DatabasePaginationType, PAGINATION } from '../../constants/index';
-import { validateColumnName, escapeSqlIdentifier, validateLimitOffset, containsSqlInjection } from '../../utils/sql-security.utils';
+import {
+    DatabaseCursorValue,
+    DatabasePaginationConfig,
+    PaginationState,
+} from './types';
+import { DatabasePaginationType, DatabaseType, PAGINATION } from '../../constants/index';
+import { escapeSqlIdentifier, validateLimitOffset, containsSqlInjection } from '../../utils/sql-security.utils';
 
-export function formatSqlValue(value: JsonValue): string {
+export function formatSqlValue(value: JsonValue | Date): string {
     if (value === null) return 'NULL';
     if (typeof value === 'number') return String(value);
     if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE';
@@ -38,18 +42,38 @@ export function hasLimitClause(query: string): boolean {
     return /\bLIMIT\b/i.test(query);
 }
 
-function validateColumnNameSafe(column: string | undefined): void {
-    if (!column) {
-        throw new Error('Column name is required');
+export function buildPreviewQuery(query: string, limit: number): string {
+    if (!query) {
+        throw new Error('Query is required');
     }
-    // Validate format only (letters, digits, underscores) - no whitelist restriction
-    validateColumnName(column);
+    const validation = validateQuery(query);
+    if (!validation.valid) {
+        throw new Error(`Invalid query: ${validation.errors.join(', ')}`);
+    }
+
+    const baseQuery = query.replace(/;\s*$/, '');
+    return `SELECT * FROM (${baseQuery}) AS _dh_preview LIMIT ${limit}`;
+}
+
+function escapeDatabaseIdentifier(identifier: string, databaseType: DatabaseType): string {
+    return escapeSqlIdentifier(
+        identifier,
+        databaseType === DatabaseType.MYSQL ? '`' : '"',
+    );
+}
+
+function formatCursorValue(value: DatabaseCursorValue | undefined, column: string): string {
+    if (value === undefined) {
+        throw new Error(`Cursor column "${column}" must contain a non-null scalar value`);
+    }
+    return formatSqlValue(value);
 }
 
 export function buildPaginatedQuery(
     query: string,
     pagination: DatabasePaginationConfig | undefined,
     state: PaginationState,
+    databaseType: DatabaseType,
 ): string {
     if (!query) {
         throw new Error('Query is required');
@@ -77,83 +101,37 @@ export function buildPaginatedQuery(
         if (!pagination.cursorColumn) {
             throw new Error('cursorColumn is required for cursor-based pagination');
         }
-
-        validateColumnNameSafe(pagination.cursorColumn);
-        const col = escapeSqlIdentifier(pagination.cursorColumn);
-
-        if (state.cursor !== undefined) {
-            const cursorValue = formatSqlValue(state.cursor);
-            const cursorFilter = `${col} > ${cursorValue}`;
-            return `${baseQuery} WHERE ${cursorFilter} ORDER BY ${col} LIMIT ${pageSize}`;
+        if (!pagination.cursorTieBreakerColumn) {
+            throw new Error('cursorTieBreakerColumn is required for cursor-based pagination');
+        }
+        if (pagination.cursorColumn === pagination.cursorTieBreakerColumn) {
+            throw new Error('cursorColumn and cursorTieBreakerColumn must be different');
         }
 
-        return `${baseQuery} ORDER BY ${col} LIMIT ${pageSize}`;
+        const cursorColumn = escapeDatabaseIdentifier(pagination.cursorColumn, databaseType);
+        const tieBreakerColumn = escapeDatabaseIdentifier(
+            pagination.cursorTieBreakerColumn,
+            databaseType,
+        );
+        const hasCursor = state.cursor !== undefined;
+        const hasTieBreaker = state.cursorTieBreaker !== undefined;
+
+        if (hasCursor !== hasTieBreaker) {
+            throw new Error('Cursor pagination state must include both cursor values');
+        }
+
+        if (hasCursor && hasTieBreaker) {
+            const cursorValue = formatCursorValue(state.cursor, pagination.cursorColumn);
+            const tieBreakerValue = formatCursorValue(
+                state.cursorTieBreaker,
+                pagination.cursorTieBreakerColumn,
+            );
+            const cursorFilter = `(${cursorColumn} > ${cursorValue} OR (${cursorColumn} = ${cursorValue} AND ${tieBreakerColumn} > ${tieBreakerValue}))`;
+            return `${baseQuery} WHERE ${cursorFilter} ORDER BY ${cursorColumn}, ${tieBreakerColumn} LIMIT ${pageSize}`;
+        }
+
+        return `${baseQuery} ORDER BY ${cursorColumn}, ${tieBreakerColumn} LIMIT ${pageSize}`;
     }
 
     return `${baseQuery} LIMIT ${pageSize}`;
-}
-
-export function appendIncrementalFilter(
-    query: string,
-    config: DatabaseExtractorConfig,
-    lastValue: JsonValue,
-): string {
-    if (!query) {
-        throw new Error('Query is required');
-    }
-
-    const validation = validateQuery(query);
-    if (!validation.valid) {
-        throw new Error(`Invalid query: ${validation.errors.join(', ')}`);
-    }
-
-    if (!config.incremental?.enabled || lastValue === undefined) {
-        return query;
-    }
-
-    const column = config.incremental.column;
-    validateColumnNameSafe(column);
-
-    const operator = '>';
-    const value = formatSqlValue(lastValue);
-    const filter = `${escapeSqlIdentifier(column)} ${operator} ${value}`;
-
-    if (/WHERE/i.test(query)) {
-        const insertionPoint = findClauseInsertionPoint(query);
-        if (insertionPoint >= 0) {
-            return (
-                query.slice(0, insertionPoint) +
-                ` AND ${filter}` +
-                query.slice(insertionPoint)
-            );
-        }
-        return `${query} AND ${filter}`;
-    }
-
-    const insertionPoint = findClauseInsertionPoint(query);
-    if (insertionPoint >= 0) {
-        return (
-            query.slice(0, insertionPoint) +
-            ` WHERE ${filter}` +
-            query.slice(insertionPoint)
-        );
-    }
-
-    return `${query} WHERE ${filter}`;
-}
-
-function findClauseInsertionPoint(query: string): number {
-    const keywords = ['ORDER BY', 'GROUP BY', 'HAVING', 'LIMIT', 'OFFSET', 'UNION', 'INTERSECT', 'EXCEPT'];
-
-    let earliestPosition = -1;
-
-    for (const keyword of keywords) {
-        const regex = new RegExp(`\\b${keyword}\\b`, 'i');
-        const match = regex.exec(query);
-        if (match && (earliestPosition === -1 || match.index < earliestPosition)) {
-            earliestPosition = match.index;
-        }
-    }
-
-    return earliestPosition;
 }

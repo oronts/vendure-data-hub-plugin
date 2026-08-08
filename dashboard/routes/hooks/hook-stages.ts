@@ -7,7 +7,7 @@ export interface HookStage {
     label: string;
     description: string;
     icon: React.ElementType;
-    category: 'lifecycle' | 'data' | 'error';
+    category: string;
     examplePayload: Record<string, unknown>;
 }
 
@@ -23,7 +23,7 @@ const EXAMPLE_PAYLOADS: Record<string, Record<string, unknown>> = {
     AFTER_EXTRACT: { stepKey: 'extract', recordCount: 50, records: [{ id: 1 }] },
     BEFORE_TRANSFORM: { stepKey: 'transform', recordCount: 50 },
     AFTER_TRANSFORM: { stepKey: 'transform', recordCount: 48, dropped: 2 },
-    BEFORE_VALIDATE: { stepKey: 'validate', schemaCode: 'product-schema' },
+    BEFORE_VALIDATE: { stepKey: 'validate', recordCount: 50 },
     AFTER_VALIDATE: { stepKey: 'validate', valid: 45, invalid: 3 },
     BEFORE_ENRICH: { stepKey: 'enrich' },
     AFTER_ENRICH: { stepKey: 'enrich', enrichedFields: ['category', 'price'] },
@@ -36,17 +36,13 @@ const EXAMPLE_PAYLOADS: Record<string, Record<string, unknown>> = {
     ON_DEAD_LETTER: { errorId: '456', reason: 'Max retries exceeded', record: { id: 1 } },
 };
 
-/**
- * Build HookStage objects from backend metadata, merging in frontend-only
- * examplePayloads and resolving icon names to Lucide components.
- */
 export function buildHookStages(backendStages: HookStageConfig[]): HookStage[] {
     return backendStages.map(stage => ({
         key: stage.key,
         label: stage.label,
         description: stage.description,
         icon: resolveIconName(stage.icon) ?? Circle,
-        category: stage.category as HookStage['category'],
+        category: stage.category,
         examplePayload: EXAMPLE_PAYLOADS[stage.key] ?? {},
     }));
 }

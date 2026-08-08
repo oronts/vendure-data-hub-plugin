@@ -17,9 +17,11 @@ import {
     RiskSeverity,
     EstimateConfidence,
     RISK_THRESHOLDS,
+    TIME_UNITS,
 } from '../../constants/index';
 import { Pipeline, PipelineRun } from '../../entities/pipeline';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
+import { getActivePipelineRunChannelId } from '../pipeline/pipeline-run-channel';
 
 /**
  * Default risk rules for assessing pipeline impact
@@ -94,14 +96,20 @@ const DEFAULT_RISK_RULES: RiskRule[] = [
     // Resource warnings
     {
         id: 'high-memory-usage',
-        check: (impact) => impact.resourceUsage.memoryMb > RISK_THRESHOLDS.HIGH_MEMORY_USAGE_MB,
+        check: (impact) => (
+            impact.resourceUsage?.memoryMb != null
+            && impact.resourceUsage.memoryMb > RISK_THRESHOLDS.HIGH_MEMORY_USAGE_MB
+        ),
         severity: RiskSeverity.WARNING,
         message: 'High memory usage estimated: {memory}MB',
         recommendation: 'Ensure sufficient system resources are available',
     },
     {
         id: 'high-database-load',
-        check: (impact) => impact.resourceUsage.databaseQueries > RISK_THRESHOLDS.HIGH_DATABASE_QUERIES,
+        check: (impact) => (
+            impact.resourceUsage?.databaseQueries != null
+            && impact.resourceUsage.databaseQueries > RISK_THRESHOLDS.HIGH_DATABASE_QUERIES
+        ),
         severity: RiskSeverity.WARNING,
         message: 'High database load expected: {queries} queries',
         recommendation: 'Consider running during off-peak hours to avoid impacting other operations',
@@ -141,6 +149,14 @@ const DEFAULT_RISK_RULES: RiskRule[] = [
         recommendation: 'Actual duration may vary significantly from estimate',
     },
 ];
+
+function wholeMinutes(durationMs: number): number {
+    return Math.round(durationMs / TIME_UNITS.MINUTE);
+}
+
+function wholeHours(durationMs: number): number {
+    return Math.round(durationMs / TIME_UNITS.HOUR);
+}
 
 /**
  * Service for assessing risk of pipeline execution
@@ -247,16 +263,16 @@ export class RiskAssessmentService {
 
     private async buildContext(ctx: RequestContext, pipelineId: ID): Promise<RiskContext> {
         const runRepo = this.connection.getRepository(ctx, PipelineRun);
-        const pipelineRepo = this.connection.getRepository(ctx, Pipeline);
+        const channelId = getActivePipelineRunChannelId(ctx);
 
         // Count previous runs
         const previousRunCount = await runRepo.count({
-            where: { pipeline: { id: pipelineId } },
+            where: { pipeline: { id: pipelineId }, channelId },
         });
 
         // Get last run status
         const lastRun = await runRepo.findOne({
-            where: { pipeline: { id: pipelineId } },
+            where: { pipeline: { id: pipelineId }, channelId },
             order: { finishedAt: SortOrder.DESC },
         });
 
@@ -267,9 +283,12 @@ export class RiskAssessmentService {
         }
 
         // Get pipeline config
-        const pipeline = await pipelineRepo.findOne({
-            where: { id: pipelineId },
-        });
+        const pipeline = await this.connection.findOneInChannel(
+            ctx,
+            Pipeline,
+            pipelineId,
+            ctx.channelId,
+        );
 
         return {
             previousRunCount,
@@ -283,7 +302,7 @@ export class RiskAssessmentService {
         impact: ImpactAnalysis,
         context: RiskContext,
     ): RiskWarning {
-        const message = this.interpolateMessage(rule.message, impact, context);
+        const message = this.interpolateMessage(rule, impact, context);
         const details = this.generateDetails(rule.id, impact, context);
 
         return {
@@ -297,20 +316,23 @@ export class RiskAssessmentService {
     }
 
     private interpolateMessage(
-        template: string,
+        rule: RiskRule,
         impact: ImpactAnalysis,
         _context: RiskContext,
     ): string {
-        return template
+        const duration = rule.id === 'very-long-duration'
+            ? wholeHours(impact.estimatedDuration.estimatedMs)
+            : wholeMinutes(impact.estimatedDuration.estimatedMs);
+        return rule.message
             .replace('{count}', String(impact.summary.totalRecordsToProcess))
             .replace('{rate}', String(
                 Math.round(
                     (impact.summary.estimatedFailureCount / Math.max(impact.summary.totalRecordsToProcess, 1)) * 100
                 )
             ))
-            .replace('{memory}', String(impact.resourceUsage.memoryMb))
-            .replace('{queries}', String(impact.resourceUsage.databaseQueries))
-            .replace('{duration}', String(Math.round(impact.estimatedDuration.estimatedMs / 60000)));
+            .replace('{memory}', String(impact.resourceUsage?.memoryMb ?? 'unavailable'))
+            .replace('{queries}', String(impact.resourceUsage?.databaseQueries ?? 'unavailable'))
+            .replace('{duration}', String(duration));
     }
 
     private generateDetails(
@@ -322,7 +344,7 @@ export class RiskAssessmentService {
             case 'high-record-count':
             case 'very-high-record-count':
                 return `The pipeline will process ${impact.summary.totalRecordsToProcess.toLocaleString()} records. ` +
-                    `This may take approximately ${Math.round(impact.estimatedDuration.estimatedMs / 60000)} minutes.`;
+                    `This may take approximately ${wholeMinutes(impact.estimatedDuration.estimatedMs)} minutes.`;
 
             case 'has-deletions':
             case 'high-deletion-count': {
@@ -346,16 +368,21 @@ export class RiskAssessmentService {
                     `have been resolved before running again.`;
 
             case 'high-memory-usage':
+                if (!impact.resourceUsage) return 'Resource usage was not estimated.';
                 return `The pipeline is estimated to use ${impact.resourceUsage.memoryMb}MB of memory. ` +
                     `Ensure the system has sufficient resources available.`;
 
             case 'high-database-load':
+                if (!impact.resourceUsage) return 'Resource usage was not estimated.';
                 return `The pipeline will execute approximately ${impact.resourceUsage.databaseQueries.toLocaleString()} ` +
                     `database queries. This may impact system performance.`;
 
             case 'long-duration':
+                return `Estimated duration: ${wholeMinutes(impact.estimatedDuration.estimatedMs)} minutes ` +
+                    `(confidence: ${impact.estimatedDuration.confidence}). Based on: ${impact.estimatedDuration.basedOn}.`;
+
             case 'very-long-duration':
-                return `Estimated duration: ${Math.round(impact.estimatedDuration.estimatedMs / 60000)} minutes ` +
+                return `Estimated duration: ${wholeHours(impact.estimatedDuration.estimatedMs)} hours ` +
                     `(confidence: ${impact.estimatedDuration.confidence}). Based on: ${impact.estimatedDuration.basedOn}.`;
 
             case 'multiple-entity-types':

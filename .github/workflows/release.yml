@@ -23,18 +23,49 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
 
       - run: npm ci
-      - run: npm run build
-      - run: npm test
-
-      - name: Publish to npm
-        run: npm publish --provenance --access public
+      - name: Verify release tag matches package version
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          node -e "const version=require('./package.json').version; const tag=process.env.RELEASE_TAG; if (tag !== 'v' + version) { throw new Error('Release tag ' + tag + ' does not match package version v' + version); }"
+      - run: npm run typecheck
+      - run: npm run typecheck:dashboard
+      - run: npm run lint
+      - run: npm run verify:i18n
+      - run: npm run verify:docs
+      - run: npm test
+      - run: npm run test:e2e
+      - run: npm run i18n:extract
+      - run: npm run codegen
+      - run: git diff --exit-code
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npm run build
+      - run: npm run verify:package
+
+      - name: Generate SBOM
+        run: npm sbom --omit=dev --sbom-format=spdx --sbom-type=library > data-hub.spdx.json
 
       - name: Create tarball
-        run: npm pack
+        run: npm pack --json > package-pack.json
+
+      - name: Publish to npm
+        run: |
+          PACKAGE_NAME=$(node -p "require('./package.json').name")
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          TARBALL=$(node -p "require('./package-pack.json')[0].filename")
+          LOCAL_INTEGRITY=$(node -p "require('./package-pack.json')[0].integrity")
+          PUBLISHED_INTEGRITY=$(npm view "${PACKAGE_NAME}@${PACKAGE_VERSION}" dist.integrity 2>/dev/null || true)
+          if [ -n "${PUBLISHED_INTEGRITY}" ]; then
+            test "${PUBLISHED_INTEGRITY}" = "${LOCAL_INTEGRITY}"
+          else
+            npm publish "${TARBALL}" --provenance --access public
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Upload release assets
         uses: softprops/action-gh-release@v2
         with:
-          files: '*.tgz'
+          files: |
+            *.tgz
+            data-hub.spdx.json

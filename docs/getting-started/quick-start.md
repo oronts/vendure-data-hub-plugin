@@ -13,7 +13,7 @@ We'll build a pipeline that:
 
 ### Step 1: Create a Pipeline
 
-1. Open the Admin UI
+1. Open the Vendure Dashboard
 2. Navigate to **Data Hub > Pipelines**
 3. Click **Create Pipeline**
 4. Enter:
@@ -64,7 +64,7 @@ We'll build a pipeline that:
 
 1. Click **Save**
 2. Click **Run Pipeline**
-3. Monitor the execution in **Data Hub > Runs**
+3. Monitor the execution in the pipeline detail's **Runs** block
 
 ## Using Code-First DSL
 
@@ -96,7 +96,7 @@ const productImportPipeline = createPipeline()
     .load('create-products', {
         adapterCode: 'productUpsert',
         strategy: 'UPSERT',
-        matchField: 'slug',
+        slugField: 'slug',
         conflictStrategy: 'SOURCE_WINS',
     })
     .edge('start', 'fetch-products')
@@ -120,7 +120,7 @@ export const config: VendureConfig = {
 
 ## Running the Pipeline
 
-### Via Admin UI
+### Via the Dashboard
 
 1. Go to **Data Hub > Pipelines**
 2. Find your pipeline
@@ -148,7 +148,7 @@ POST /data-hub/webhook/product-import
 
 ### Run History
 
-Go to **Data Hub > Runs** to see:
+Go to **Data Hub > Pipelines**, open the pipeline, and use its **Runs** block to see:
 - Start and end times
 - Records processed
 - Records failed
@@ -168,16 +168,15 @@ const csvImport = createPipeline()
     .capabilities({ requires: ['UpdateCatalog'] })
     .trigger('start', { type: 'MANUAL' })
     .extract('parse-csv', {
-        adapterCode: 'file',
-        path: '/uploads/products.csv',
-        format: 'CSV',
+        adapterCode: 'csv',
+        fileId: 'uploaded-file-id',
         delimiter: ',',
         hasHeader: true,
     })
     .load('import', {
         adapterCode: 'productUpsert',
         strategy: 'UPSERT',
-        matchField: 'slug',
+        slugField: 'slug',
     })
     .edge('start', 'parse-csv')
     .edge('parse-csv', 'import')
@@ -199,7 +198,7 @@ const scheduledSync = createPipeline()
     .load('sync', {
         adapterCode: 'productUpsert',
         strategy: 'UPSERT',
-        matchField: 'slug',
+        slugField: 'slug',
     })
     .edge('schedule', 'fetch')
     .edge('fetch', 'sync')
@@ -216,7 +215,7 @@ const productExport = createPipeline()
     .extract('query', {
         adapterCode: 'vendureQuery',
         entity: 'PRODUCT',
-        relations: 'variants,featuredAsset',
+        relations: ['variants', 'featuredAsset'],
         batchSize: 100,
     })
     .transform('prepare', {

@@ -1,11 +1,16 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useLingui } from '@lingui/react/macro';
 import { api } from '@vendure/dashboard';
 import { graphql } from '../../gql';
 import { createMutationErrorHandler } from './mutation-helpers';
 import { createQueryKeys } from '../../utils/query-key-factory';
-import { POLLING_INTERVALS, RUN_STATUS } from '../../constants';
+import { shouldPollRunStatus } from '../../utils/run-status';
+import {
+    ITEMS_PER_PAGE,
+    POLLING_INTERVALS,
+} from '../../constants';
 import { queueKeys } from './use-queues';
-import type { DataHubPipelineRunListOptions, JsonObject } from '../../types';
+import type { DataHubPipelineRunListOptions } from '../../types';
 
 const base = createQueryKeys('pipelineRuns');
 export const runKeys = {
@@ -21,6 +26,7 @@ const runsListDocument = graphql(`
         dataHubPipelineRuns(pipelineId: $pipelineId, options: $options) {
             items {
                 id
+                revisionId
                 status
                 startedAt
                 finishedAt
@@ -35,29 +41,41 @@ const runDetailDocument = graphql(`
     query DataHubPipelineRunDetailApi($id: ID!) {
         dataHubPipelineRun(id: $id) {
             id
+            revisionId
             status
             startedAt
             finishedAt
             metrics
             error
             startedByUserId
+            gateStepKey
+            gateTimeoutAt
             pipeline {
                 id
                 code
                 name
+                enabled
+                status
+                currentRevisionId
+                publishedVersionCount
             }
         }
     }
 `);
 
 const runErrorsDocument = graphql(`
-    query DataHubRunErrorsApi($runId: ID!) {
-        dataHubRunErrors(runId: $runId) {
-            id
-            stepKey
-            message
-            payload
-            stackTrace
+    query DataHubRunErrorsApi($runId: ID!, $first: Int!, $after: String) {
+        dataHubRunErrors(runId: $runId, first: $first, after: $after) {
+            items {
+                id
+                stepKey
+                message
+                payload
+                stackTrace
+            }
+            totalItems
+            hasNextPage
+            endCursor
         }
     }
 `);
@@ -73,7 +91,23 @@ const cancelRunDocument = graphql(`
 
 const retryErrorDocument = graphql(`
     mutation RetryDataHubRecordApi($errorId: ID!, $patch: JSON) {
-        retryDataHubRecord(errorId: $errorId, patch: $patch)
+        retryDataHubRecord(errorId: $errorId, patch: $patch) {
+            success
+            outcome
+            message
+            errorId
+            runId
+            stepKey
+            adapterCode
+            definitionVersion
+            appliedPatch
+            rejectedPatchKeys
+            processed
+            succeeded
+            failed
+            auditId
+            auditRecorded
+        }
     }
 `);
 
@@ -104,8 +138,8 @@ const rejectGateDocument = graphql(`
 `);
 
 const errorAuditsDocument = graphql(`
-    query DataHubRecordRetryAuditsApi($errorId: ID!) {
-        dataHubRecordRetryAudits(errorId: $errorId) {
+    query DataHubRecordRetryAuditsApi($errorId: ID!, $limit: Int!) {
+        dataHubRecordRetryAudits(errorId: $errorId, limit: $limit) {
             id
             createdAt
             userId
@@ -123,6 +157,7 @@ export function usePipelineRuns(pipelineId?: string, options?: DataHubPipelineRu
             api
                 .query(runsListDocument, { pipelineId, options })
                 .then((res) => res.dataHubPipelineRuns),
+        enabled: !!pipelineId,
         refetchInterval: POLLING_INTERVALS.PIPELINE_RUNS,
     });
 }
@@ -135,17 +170,23 @@ export function usePipelineRun(id: string | undefined) {
         enabled: !!id,
         refetchInterval: (query) => {
             const status = query.state.data?.status;
-            return status === RUN_STATUS.RUNNING || status === RUN_STATUS.PENDING || status === RUN_STATUS.PAUSED
+            return shouldPollRunStatus(status)
                 ? POLLING_INTERVALS.ACTIVE_RUN : false;
         },
     });
 }
 
 export function useRunErrors(runId: string | undefined) {
-    return useQuery({
+    return useInfiniteQuery({
         queryKey: runKeys.errors(runId ?? ''),
-        queryFn: () =>
-            api.query(runErrorsDocument, { runId: runId! }).then((res) => res.dataHubRunErrors),
+        queryFn: ({ pageParam }) =>
+            api.query(runErrorsDocument, {
+                runId: runId!,
+                first: ITEMS_PER_PAGE,
+                after: pageParam,
+            }).then(res => res.dataHubRunErrors),
+        initialPageParam: null as string | null,
+        getNextPageParam: lastPage => lastPage.hasNextPage ? lastPage.endCursor : undefined,
         enabled: !!runId,
     });
 }
@@ -154,69 +195,99 @@ export function useErrorAudits(errorId: string | undefined) {
     return useQuery({
         queryKey: runKeys.errorAudits(errorId ?? ''),
         queryFn: () =>
-            api.query(errorAuditsDocument, { errorId: errorId! }).then((res) => res.dataHubRecordRetryAudits),
+            api.query(errorAuditsDocument, {
+                errorId: errorId!,
+                limit: ITEMS_PER_PAGE,
+            }).then((res) => res.dataHubRecordRetryAudits),
         enabled: !!errorId,
     });
 }
 
 export function useCancelRun() {
+    const { t } = useLingui();
     const queryClient = useQueryClient();
 
     return useMutation({
         mutationFn: (id: string) =>
             api.mutate(cancelRunDocument, { id }).then((res) => res.cancelDataHubPipelineRun),
-        onSuccess: (data) => {
-            queryClient.invalidateQueries({ queryKey: runKeys.lists() });
-            if (data?.id) {
-                queryClient.invalidateQueries({ queryKey: runKeys.detail(String(data.id)) });
-            }
+        onSuccess: async data => {
+            await Promise.all([
+                queryClient.invalidateQueries({ queryKey: runKeys.lists() }),
+                ...(data?.id
+                    ? [queryClient.invalidateQueries({ queryKey: runKeys.detail(String(data.id)) })]
+                    : []),
+            ]);
         },
-        onError: createMutationErrorHandler('cancel pipeline run'),
+        onError: createMutationErrorHandler(
+            t`Failed to cancel pipeline run`,
+            { showDetails: true },
+        ),
     });
 }
 
 export function useRetryError() {
+    const { t } = useLingui();
     const queryClient = useQueryClient();
 
     return useMutation({
-        mutationFn: ({ errorId, patch }: { errorId: string; patch?: JsonObject }) =>
+        mutationFn: ({ errorId, patch }: { errorId: string; patch?: Record<string, unknown> }) =>
             api.mutate(retryErrorDocument, { errorId, patch }).then((res) => res.retryDataHubRecord),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: runKeys.all });
-            queryClient.invalidateQueries({ queryKey: queueKeys.all });
+        onSuccess: async result => {
+            if (!result.success) {
+                return;
+            }
+            await Promise.all([
+                queryClient.invalidateQueries({ queryKey: runKeys.all }),
+                queryClient.invalidateQueries({ queryKey: queueKeys.all }),
+            ]);
         },
-        onError: createMutationErrorHandler('retry record'),
+        onError: createMutationErrorHandler(
+            t`Failed to retry record`,
+            { showDetails: true },
+        ),
     });
 }
 
 export function useApproveGate() {
+    const { t } = useLingui();
     const queryClient = useQueryClient();
 
     return useMutation({
         mutationFn: ({ runId, stepKey }: { runId: string; stepKey: string }) =>
             api.mutate(approveGateDocument, { runId, stepKey }).then((res) => res.approveDataHubGate),
-        onSuccess: (data) => {
-            queryClient.invalidateQueries({ queryKey: runKeys.lists() });
-            if (data?.run?.id) {
-                queryClient.invalidateQueries({ queryKey: runKeys.detail(String(data.run.id)) });
-            }
+        onSuccess: async data => {
+            await Promise.all([
+                queryClient.invalidateQueries({ queryKey: runKeys.lists() }),
+                ...(data?.run?.id
+                    ? [queryClient.invalidateQueries({ queryKey: runKeys.detail(String(data.run.id)) })]
+                    : []),
+            ]);
         },
-        onError: createMutationErrorHandler('approve gate'),
+        onError: createMutationErrorHandler(
+            t`Failed to approve gate`,
+            { showDetails: true },
+        ),
     });
 }
 
 export function useRejectGate() {
+    const { t } = useLingui();
     const queryClient = useQueryClient();
 
     return useMutation({
         mutationFn: ({ runId, stepKey }: { runId: string; stepKey: string }) =>
             api.mutate(rejectGateDocument, { runId, stepKey }).then((res) => res.rejectDataHubGate),
-        onSuccess: (data) => {
-            queryClient.invalidateQueries({ queryKey: runKeys.lists() });
-            if (data?.run?.id) {
-                queryClient.invalidateQueries({ queryKey: runKeys.detail(String(data.run.id)) });
-            }
+        onSuccess: async data => {
+            await Promise.all([
+                queryClient.invalidateQueries({ queryKey: runKeys.lists() }),
+                ...(data?.run?.id
+                    ? [queryClient.invalidateQueries({ queryKey: runKeys.detail(String(data.run.id)) })]
+                    : []),
+            ]);
         },
-        onError: createMutationErrorHandler('reject gate'),
+        onError: createMutationErrorHandler(
+            t`Failed to reject gate`,
+            { showDetails: true },
+        ),
     });
 }

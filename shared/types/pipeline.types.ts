@@ -7,7 +7,8 @@ import { Throughput, PipelineStepDefinition, PipelineEdge, PipelineCapabilities,
 import { FieldMapping } from './mapping.types';
 import { FilterCondition } from './filter.types';
 import { PipelineHooksConfig, PipelineHooks } from './hook.types';
-import { TriggerConfig, WebhookAuthType } from './trigger.types';
+import { TriggerConfig, WebhookAuthType, VendureEventType } from './trigger.types';
+import { AdapterType } from './adapter.types';
 
 // PIPELINE TYPE ENUMS
 
@@ -19,6 +20,14 @@ export type TargetOperation = 'CREATE' | 'UPDATE' | 'UPSERT' | 'MERGE' | 'DELETE
 
 /** Strategy for handling errors during pipeline execution */
 export type ErrorStrategy = 'SKIP' | 'ABORT' | 'QUARANTINE' | 'RETRY';
+
+export interface AdapterBinding {
+    location: string;
+    type: AdapterType;
+    code: string;
+    version: string;
+    apiVersion: number;
+}
 
 /** Vendure entity types that can be imported/exported */
 export type VendureEntityType =
@@ -61,7 +70,7 @@ export type FileFormat = 'CSV' | 'JSON' | 'XML' | 'XLSX' | 'NDJSON' | 'TSV' | 'P
 /**
  * Type of export destination.
  */
-export type DestinationType = 'FILE' | 'DOWNLOAD' | 'S3' | 'FTP' | 'SFTP' | 'HTTP' | 'EMAIL' | 'WEBHOOK' | 'LOCAL';
+export type DestinationType = 'S3' | 'FTP' | 'SFTP' | 'HTTP' | 'EMAIL' | 'LOCAL';
 
 /** Type of product feed for e-commerce platforms */
 export type FeedType =
@@ -78,14 +87,6 @@ export type FeedType =
 
 // CONTEXT TYPES
 
-/** Policy for handling late-arriving events (internal, used by PipelineContext) */
-type LateEventPolicyType = 'DROP' | 'BUFFER';
-
-interface LateEventPolicy {
-    policy: LateEventPolicyType;
-    bufferMs?: number;
-}
-
 /**
  * Configuration for error handling and retry behavior
  */
@@ -98,39 +99,11 @@ export interface ErrorHandlingConfig {
     maxRetryDelayMs?: number;
     /** Multiplier for exponential backoff */
     backoffMultiplier?: number;
-    /** Whether to use a dead letter queue for failed records */
-    deadLetterQueue?: boolean;
-    /** Whether to send alerts when records go to dead letter queue */
-    alertOnDeadLetter?: boolean;
-    /** Error percentage threshold that triggers alerts/pauses */
-    errorThresholdPercent?: number;
-}
-
-/** Strategy for creating checkpoints */
-export type CheckpointStrategy = 'COUNT' | 'TIMESTAMP' | 'INTERVAL';
-
-/**
- * Configuration for pipeline checkpointing (resumable execution)
- */
-export interface CheckpointingConfig {
-    /** Whether checkpointing is enabled */
-    enabled?: boolean;
-    /** Strategy for creating checkpoints */
-    strategy?: CheckpointStrategy;
-    /** Create checkpoint every N records (for COUNT strategy) */
-    intervalRecords?: number;
-    /** Create checkpoint every N milliseconds (for INTERVAL strategy) */
-    intervalMs?: number;
-    /** Field to use for TIMESTAMP strategy */
-    field?: string;
 }
 
 /**
  * These types match the enum values in src/constants/enums.ts
  */
-
-/** Execution mode for the pipeline */
-export type RunModeValue = 'SYNC' | 'ASYNC' | 'BATCH' | 'STREAM';
 
 /** Strategy for handling multilingual content */
 export type LanguageStrategyValue = 'SPECIFIC' | 'FALLBACK' | 'MULTI';
@@ -144,7 +117,7 @@ export type ConflictStrategyValue = 'SOURCE_WINS' | 'VENDURE_WINS' | 'MERGE' | '
 export interface ParallelExecutionConfig {
     /** Enable parallel step execution (default: false for sequential) */
     enabled?: boolean;
-    /** Maximum concurrent steps (default: 4) */
+    /** Maximum concurrent steps (default: 4, range: 1-16) */
     maxConcurrentSteps?: number;
     /**
      * Error handling policy for parallel execution:
@@ -159,7 +132,7 @@ export interface ParallelExecutionConfig {
  * Execution context for a pipeline run
  */
 export interface PipelineContext {
-    /** Default channel code */
+    /** Default Vendure channel token */
     channel?: string;
     /** Default language code for content */
     contentLanguage?: string;
@@ -171,18 +144,10 @@ export interface PipelineContext {
     validationMode?: ValidationModeType;
     /** Field to use as idempotency key */
     idempotencyKeyField?: string;
-    /** Execution mode */
-    runMode?: RunModeValue;
     /** Throughput/rate limiting configuration */
     throughput?: Throughput;
-    /** Policy for late events in streaming mode */
-    lateEvents?: LateEventPolicy;
-    /** Watermark for event time processing in milliseconds */
-    watermarkMs?: number;
     /** Error handling configuration */
     errorHandling?: ErrorHandlingConfig;
-    /** Checkpointing configuration */
-    checkpointing?: CheckpointingConfig;
     /**
      * Parallel execution configuration for graph-based pipelines
      * When enabled, independent steps run concurrently
@@ -247,17 +212,6 @@ export interface PipelineOptions {
         recordsPerSecond?: number;
         /** Maximum concurrent operations */
         maxConcurrent?: number;
-    };
-    /** Notification configuration */
-    notifications?: {
-        /** Send notification on completion */
-        onComplete?: boolean;
-        /** Send notification on error */
-        onError?: boolean;
-        /** Webhook URL for notifications */
-        webhookUrl?: string;
-        /** Email addresses for notifications */
-        emailTo?: string[];
     };
 }
 
@@ -362,6 +316,7 @@ interface HttpApiSourceConfig {
     path?: string;
     headers?: Record<string, string>;
     body?: JsonObject;
+    dataPath?: string;
     pagination?: {
         type: PaginationTypeValue;
         pageParam?: string;
@@ -369,7 +324,6 @@ interface HttpApiSourceConfig {
         limit?: number;
         cursorPath?: string;
         hasMorePath?: string;
-        dataPath?: string;
     };
     rateLimit?: {
         requestsPerSecond?: number;
@@ -413,8 +367,7 @@ interface VendureQuerySourceConfig {
 
 interface EventSourceConfig {
     type: 'EVENT';
-    eventType: string;
-    filter?: string;
+    event: VendureEventType;
 }
 
 type SourceTypeConfig =
@@ -458,8 +411,6 @@ export interface UnifiedPipelineDefinition {
     triggers?: TriggerConfig[];
     /** Hook configurations */
     hooks?: PipelineHooksConfig;
-    /** Schema code for validation */
-    schemaCode?: string;
 }
 
 /**
@@ -474,6 +425,8 @@ export interface PipelineDefinition {
     description?: string;
     /** Pipeline steps */
     steps: PipelineStepDefinition[];
+    /** Server-resolved exact adapter contracts for this published revision */
+    adapterBindings?: AdapterBinding[];
     /** Pipeline codes this depends on */
     dependsOn?: string[];
     /** Pipeline capabilities declaration */

@@ -30,13 +30,16 @@ import { createPipeline } from '../../../src';
 export const interceptorHooksPipeline = createPipeline()
     .name('Interceptor Hooks Example')
     .description('Demonstrates interceptor hooks that modify records during pipeline execution')
-    .capabilities({ requires: ['ReadCatalog'] })
+    .capabilities({
+        requires: ['ReadCatalog', 'UpdateDataHubSettings'],
+        writes: ['CUSTOM'],
+    })
     .trigger('start', { type: 'MANUAL' })
 
     .extract('fetch-products', {
         adapterCode: 'vendureQuery',
         entity: 'PRODUCT_VARIANT',
-        relations: 'product,stockLevels',
+        relations: ['product', 'stockLevels'],
         batchSize: 50,
     })
 
@@ -127,7 +130,7 @@ export const interceptorHooksPipeline = createPipeline()
                     return records.filter(record => {
                         // Skip records missing required fields
                         if (!record.sku || !record.name) {
-                            console.warn('Skipping record with missing sku or name:', record);
+                            console.warn('Skipping record: sku or name is missing', record);
                             return false;
                         }
                         return true;
@@ -181,13 +184,16 @@ export const interceptorHooksPipeline = createPipeline()
 export const scriptHooksPipeline = createPipeline()
     .name('Script Hooks Example')
     .description('Demonstrates registered script hooks for type-safe data modification')
-    .capabilities({ requires: ['ReadCustomer'] })
+    .capabilities({
+        requires: ['ReadCustomer', 'UpdateDataHubSettings'],
+        writes: ['CUSTOM'],
+    })
     .trigger('start', { type: 'MANUAL' })
 
     .extract('fetch-customers', {
         adapterCode: 'vendureQuery',
         entity: 'CUSTOMER',
-        relations: 'orders',
+        relations: ['orders'],
         batchSize: 100,
     })
 
@@ -272,7 +278,7 @@ export const scriptOperatorPipeline = createPipeline()
     .extract('fetch-products', {
         adapterCode: 'vendureQuery',
         entity: 'PRODUCT',
-        relations: 'variants',
+        relations: ['variants'],
         batchSize: 50,
     })
 
@@ -397,7 +403,7 @@ export const advancedValidationPipeline = createPipeline()
     .extract('fetch-orders', {
         adapterCode: 'vendureQuery',
         entity: 'ORDER',
-        relations: 'customer,lines,payments',
+        relations: ['customer', 'lines', 'payments'],
         batchSize: 50,
     })
 
@@ -588,13 +594,16 @@ export const advancedValidationPipeline = createPipeline()
 export const allHookStagesPipeline = createPipeline()
     .name('All 18 Hook Stages Demo')
     .description('Demonstrates every available hook stage with interceptors that can modify data')
-    .capabilities({ requires: ['ReadCatalog'] })
+    .capabilities({
+        requires: ['ReadCatalog', 'UpdateDataHubSettings'],
+        writes: ['CUSTOM'],
+    })
     .trigger('start', { type: 'MANUAL' })
 
     .extract('fetch-products', {
         adapterCode: 'vendureQuery',
         entity: 'PRODUCT_VARIANT',
-        relations: 'product,stockLevels',
+        relations: ['product', 'stockLevels'],
         batchSize: 50,
     })
 
@@ -651,6 +660,7 @@ export const allHookStagesPipeline = createPipeline()
                 type: 'TRIGGER_PIPELINE',
                 name: 'Trigger follow-up pipeline',
                 pipelineCode: 'post-processing-pipeline',
+                triggerKey: 'hook',
             },
         ],
 
@@ -920,99 +930,17 @@ export const allHookStagesPipeline = createPipeline()
 // =============================================================================
 
 /**
- * This example shows how to create custom adapters via SDK.
- *
- * Custom adapters are defined in your plugin code and registered
- * with the adapter registry. They provide type-safe, reusable
- * extraction, transformation, or loading logic.
- *
- * Example SDK custom extractor (to be registered in your plugin):
- *
- * ```typescript
- * import { defineExtractor, ExtractorHelpers, JsonObject } from '@data-hub/sdk';
- *
- * export const shopifyProductsExtractor = defineExtractor({
- *     code: 'shopify-products',
- *     name: 'Shopify Products',
- *     description: 'Extract products from Shopify GraphQL API',
- *     category: 'E-commerce',
- *     schema: {
- *         fields: [
- *             { key: 'shopDomain', label: 'Shop Domain', type: 'string', required: true },
- *             { key: 'apiVersion', label: 'API Version', type: 'string', default: '2024-01' },
- *             { key: 'productStatus', label: 'Product Status', type: 'select',
- *               options: [{ value: 'active', label: 'Active' }, { value: 'draft', label: 'Draft' }] },
- *         ],
- *     },
- *
- *     async extract(config, helpers: ExtractorHelpers): Promise<JsonObject[]> {
- *         const { shopDomain, apiVersion, productStatus } = config;
- *         const accessToken = await helpers.getSecret('shopify-access-token');
- *
- *         const query = `
- *             query GetProducts($status: ProductStatus) {
- *                 products(first: 100, query: $status) {
- *                     edges {
- *                         node {
- *                             id
- *                             title
- *                             handle
- *                             status
- *                             variants(first: 50) {
- *                                 edges {
- *                                     node {
- *                                         id
- *                                         sku
- *                                         price
- *                                         inventoryQuantity
- *                                     }
- *                                 }
- *                             }
- *                         }
- *                     }
- *                 }
- *             }
- *         `;
- *
- *         const response = await fetch(
- *             `https://${shopDomain}/admin/api/${apiVersion}/graphql.json`,
- *             {
- *                 method: 'POST',
- *                 headers: {
- *                     'Content-Type': 'application/json',
- *                     'X-Shopify-Access-Token': accessToken,
- *                 },
- *                 body: JSON.stringify({
- *                     query,
- *                     variables: { status: productStatus?.toUpperCase() },
- *                 }),
- *             }
- *         );
- *
- *         const data = await response.json();
- *         return data.data.products.edges.map(edge => edge.node);
- *     },
- * });
- * ```
- *
- * Then register in your plugin:
- *
- * ```typescript
- * // In your plugin's onModuleInit:
- * adapterRegistry.registerExtractor(shopifyProductsExtractor);
- * ```
+ * Demonstrates a deterministic generated extractor and a DI-backed Vendure loader.
  */
 export const customAdapterPipeline = createPipeline()
-    .name('Custom Adapter Example')
-    .description('Demonstrates usage of custom SDK adapters')
-    .capabilities({ requires: ['ReadCatalog'] })
+    .name('Generated Shopify-Shaped Products')
+    .description('Generate reproducible Shopify-shaped records and persist them through Vendure services')
+    .capabilities({ requires: ['UpdateCatalog'], writes: ['CATALOG', 'INVENTORY'] })
     .trigger('start', { type: 'MANUAL' })
 
-    // Use custom extractor (registered via SDK)
-    .extract('fetch-shopify-products', {
-        adapterCode: 'shopify-products', // Custom adapter
-        shopDomain: 'your-store.myshopify.com',
-        apiVersion: '2024-01',
+    // Use the deterministic generated-data extractor registered by the dev server
+    .extract('generate-shopify-products', {
+        adapterCode: 'shopify-product-generator',
         productStatus: 'active',
     })
 
@@ -1035,26 +963,37 @@ export const customAdapterPipeline = createPipeline()
                 args: {
                     path: 'variants',
                     mergeParent: true,
-                    parentFields: {
+                },
+            },
+            {
+                op: 'map',
+                args: {
+                    mapping: {
+                        sku: 'node.sku',
                         productExternalId: 'externalId',
                         productName: 'name',
                         productSlug: 'slug',
+                        priceMajor: 'node.price',
+                        stockOnHand: 'node.inventoryQuantity',
                     },
                 },
             },
+            { op: 'toNumber', args: { source: 'priceMajor' } },
+            { op: 'toCents', args: { source: 'priceMajor', target: 'price' } },
+            { op: 'toNumber', args: { source: 'stockOnHand' } },
         ],
     })
 
-    // Use custom loader (registered via SDK)
+    // Use the custom loader created through the dev server's DI factory
     .load('sync-to-vendure', {
-        adapterCode: 'vendure-product-sync', // Custom adapter
+        adapterCode: 'vendure-product-sync',
         matchField: 'sku',
         createMissing: true,
         updateExisting: true,
     })
 
-    .edge('start', 'fetch-shopify-products')
-    .edge('fetch-shopify-products', 'normalize-data')
+    .edge('start', 'generate-shopify-products')
+    .edge('generate-shopify-products', 'normalize-data')
     .edge('normalize-data', 'sync-to-vendure')
 
     .build();

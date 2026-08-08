@@ -10,9 +10,9 @@ This section covers everything you need to get the Data Hub plugin running in yo
 
 ## Prerequisites
 
-- Vendure ^3.0.0
-- Node.js >=18.0.0
-- A running Vendure server with Admin UI
+- Vendure >=3.5.7 <3.6.0
+- Node.js >=20.0.0
+- A running Vendure server with the Dashboard enabled
 
 ## Overview
 
@@ -23,7 +23,7 @@ The Data Hub plugin adds ETL (Extract, Transform, Load) capabilities to Vendure:
 3. **Load** - Create or update Vendure entities (products, customers, etc.)
 
 You can build pipelines using either:
-- **Visual Builder** - Drag-and-drop interface in the Admin UI
+- **Visual Builder** - Drag-and-drop interface in the Vendure Dashboard
 - **Code-First DSL** - TypeScript API for defining pipelines in code
 
 ## Next Steps

@@ -5,15 +5,28 @@ import { LOADER_CODE } from '../../../src/constants/adapters';
 import { TRANSFORM_OPERATOR, HOOK_ACTION } from '../../../src/sdk/constants';
 import { pimcoreGraphQLExtractor } from '../extractors/pimcore-graphql.extractor';
 import { PimcoreConnectorConfig } from '../types';
-import { PIMCORE_API_KEY_SECRET } from '../index';
+import { PIMCORE_SOURCE_URL_FIELD } from '../constants';
 import { buildSafePathFilter, buildSafeMimeTypeFilter, combineFilters } from '../utils/security.utils';
+import { createPimcoreExtractorConfig } from './extractor-config';
+import {
+    createPimcoreAssetQuery,
+    resolvePimcoreQueryContract,
+} from '../extractors/query-builder';
+import { DEFAULT_CHANNEL_CODE } from '../../../shared/constants';
 
 const DEFAULT_ASSET_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 export function createAssetSyncPipeline(config: PimcoreConnectorConfig): PipelineDefinition {
-    const { connection, sync, pipelines } = config;
+    const {
+        mapping,
+        sync,
+        pipelines,
+        vendureChannel = DEFAULT_CHANNEL_CODE,
+    } = config;
 
     const pipelineConfig = pipelines?.assetSync ?? {};
+    const queryConfig = config.queries?.asset;
+    const queryContract = resolvePimcoreQueryContract('asset', queryConfig);
 
     if (pipelineConfig.enabled === false) {
         return createPipeline()
@@ -26,7 +39,7 @@ export function createAssetSyncPipeline(config: PimcoreConnectorConfig): Pipelin
     const pipeline = createPipeline()
         .name(pipelineConfig.name ?? 'Pimcore Asset Sync')
         .description('Sync assets from Pimcore DAM to Vendure')
-        .capabilities({ requires: ['UpdateCatalog'] });
+        .capabilities({ requires: ['UpdateCatalog'], writes: ['CATALOG'] });
 
     if (pipelineConfig.schedule) {
         pipeline.trigger('scheduled', { type: TRIGGER_TYPE.SCHEDULE, cron: pipelineConfig.schedule, timezone: 'UTC' });
@@ -39,43 +52,40 @@ export function createAssetSyncPipeline(config: PimcoreConnectorConfig): Pipelin
     const mimeFilter = buildSafeMimeTypeFilter(mimeTypes);
     const filter = combineFilters([pathFilter, mimeFilter]);
 
-    let assetBaseUrl: string;
-    try {
-        assetBaseUrl = new URL(connection.endpoint).origin;
-    } catch {
-        assetBaseUrl = connection.endpoint.replace(/\/[^/]+$/, '');
-    }
+    const assetUrlField = mapping?.asset?.urlField ?? 'fullpath';
+    const assetFilenameField = mapping?.asset?.filenameField ?? 'filename';
 
     pipeline.extract('fetch-assets', {
+        ...createPimcoreExtractorConfig(config, 'asset', 50),
         adapterCode: pimcoreGraphQLExtractor.code,
-        'connection.endpoint': connection.endpoint,
-        'connection.apiKeySecretCode': connection.apiKeySecretCode ?? PIMCORE_API_KEY_SECRET,
-        entityType: 'asset',
-        first: sync?.batchSize ?? 50,
+        query: queryConfig?.query ?? createPimcoreAssetQuery(mapping?.asset, queryConfig),
+        responseField: queryContract.responseField,
         filter,
+        sortBy: 'id',
+        sortOrder: 'ASC',
+        assetUrlField,
     });
 
     pipeline.validate('validate-assets', {
         errorHandlingMode: VALIDATION_MODE.ACCUMULATE,
         rules: [
             { type: 'business', spec: { field: 'id', required: true, error: 'Asset ID required' } },
-            { type: 'business', spec: { field: 'fullPath', required: true, error: 'Asset path required' } },
-            { type: 'business', spec: { field: 'filename', required: true, error: 'Filename required' } },
+            { type: 'business', spec: { field: PIMCORE_SOURCE_URL_FIELD, required: true, error: 'Valid HTTP asset URL required' } },
+            { type: 'business', spec: { field: assetFilenameField, required: true, error: 'Filename required' } },
         ],
     });
 
     pipeline.transform('transform-assets', {
         operators: [
             { op: TRANSFORM_OPERATOR.TEMPLATE, args: { template: 'pimcore:asset:${id}', target: 'externalId' } },
-            { op: TRANSFORM_OPERATOR.TEMPLATE, args: { template: `${assetBaseUrl}\${fullPath}`, target: 'sourceUrl' } },
             {
                 op: TRANSFORM_OPERATOR.MAP,
                 args: {
                     mapping: {
                         externalId: 'externalId',
-                        sourceUrl: 'sourceUrl',
-                        filename: 'filename',
-                        name: 'filename',
+                        sourceUrl: PIMCORE_SOURCE_URL_FIELD,
+                        filename: assetFilenameField,
+                        name: assetFilenameField,
                         mimeType: 'mimetype',
                     },
                 },
@@ -97,6 +107,7 @@ export function createAssetSyncPipeline(config: PimcoreConnectorConfig): Pipelin
 
     pipeline.load('import-assets', {
         adapterCode: LOADER_CODE.ASSET_IMPORT,
+        channel: vendureChannel,
         sourceUrlField: 'sourceUrl',
         filenameField: 'filename',
         nameField: 'name',

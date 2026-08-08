@@ -1,4 +1,11 @@
-import { JsonObject, JsonValue, ErrorHandlingConfig, CheckpointingConfig, ExecutorContext as SharedExecutorContext } from '../types/index';
+import {
+    JsonObject,
+    JsonValue,
+    ErrorHandlingConfig,
+    ExecutorContext as SharedExecutorContext,
+    PipelineContext,
+} from '../types/index';
+import type { ID } from '@vendure/core';
 
 /**
  * Placeholder pipeline ID used when executing operators/adapters in sandbox mode
@@ -35,17 +42,20 @@ export interface CheckpointData {
 }
 
 /**
- * Runtime ExecutorContext - extends the shared base with runtime-specific fields
- * (errorHandling, checkpointing). The shared base (from shared/types/pipeline.types.ts)
+ * Runtime ExecutorContext - extends the shared base with runtime-specific fields.
+ * The shared base (from shared/types/pipeline.types.ts)
  * provides the core checkpoint management contract (cpData, cpDirty, markCheckpointDirty).
  */
 export interface ExecutorContext extends SharedExecutorContext {
+    runId?: ID;
     /** Error handling configuration from pipeline context */
     errorHandling?: ErrorHandlingConfig;
-    /** Checkpointing configuration from pipeline context */
-    checkpointing?: CheckpointingConfig;
     /** Cancellation check callback - returns true when the run has been cancelled */
     onCancelRequested?: () => Promise<boolean>;
+    /** Maximum records materialized by preview and sandbox extraction */
+    recordLimit?: number;
+    /** Pipeline-level context used to resolve per-step dry-run behavior */
+    definitionContext?: PipelineContext;
 }
 
 /**
@@ -56,6 +66,13 @@ export interface ExecutionResult {
     fail: number;
     /** Optional error message when the entire execution fails */
     error?: string;
+}
+
+/**
+ * Result from record loaders, which distinguish intentional skips from writes.
+ */
+export interface LoaderExecutionResult extends ExecutionResult {
+    skipped: number;
 }
 
 /**

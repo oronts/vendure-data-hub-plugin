@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useCallback } from 'react';
+import { Trans, useLingui } from '@lingui/react/macro';
 import {
-    Input,
     Select,
     SelectContent,
     SelectItem,
@@ -14,44 +14,66 @@ import {
     Switch,
     Label,
 } from '@vendure/dashboard';
-import { Clock, AlertTriangle, Zap, GitBranch } from 'lucide-react';
-import {
-    PIPELINE_RETRY_DEFAULTS,
-    PIPELINE_CHECKPOINT_DEFAULTS,
-    CHECKPOINT_STRATEGY,
-} from '../../../constants';
+import { AlertTriangle, GitBranch } from 'lucide-react';
+import { PARALLEL_EXECUTION, PIPELINE_RETRY } from '../../../constants';
 import { useOptionValues } from '../../../hooks';
+import {
+    ExecutionContextFields,
+    OptionalNumberField,
+} from '../../shared/ExecutionContextFields';
 import type {
     PipelineContext,
     ErrorHandlingConfig,
-    CheckpointingConfig,
-    Throughput,
-    RunModeValue,
-    CheckpointStrategy,
     ParallelExecutionConfig,
 } from '../../../types';
 
 export interface PipelineSettingsPanelProps {
     readonly context: PipelineContext;
     readonly onChange: (context: PipelineContext) => void;
+    readonly errors?: Readonly<Record<string, string>>;
     readonly compact?: boolean;
 }
 
-export function PipelineSettingsPanel({ context, onChange, compact = false }: PipelineSettingsPanelProps) {
-    const { options: runModeOptions } = useOptionValues('runModes');
-    const { options: checkpointStrategyOptions } = useOptionValues('checkpointStrategies');
-    const { options: errorPolicyOptions } = useOptionValues('parallelErrorPolicies');
+export function PipelineSettingsPanel({
+    context,
+    onChange,
+    errors = {},
+    compact = false,
+}: PipelineSettingsPanelProps) {
+    const { t } = useLingui();
+    const {
+        options: errorPolicyOptions,
+        isLoading: errorPoliciesLoading,
+    } = useOptionValues('parallelErrorPolicies');
+    const fieldIdPrefix = React.useId();
+    const fieldIds = {
+        maxRetries: `${fieldIdPrefix}-max-retries`,
+        retryDelay: `${fieldIdPrefix}-retry-delay`,
+        maxRetryDelay: `${fieldIdPrefix}-max-retry-delay`,
+        backoffMultiplier: `${fieldIdPrefix}-backoff-multiplier`,
+        parallelEnabled: `${fieldIdPrefix}-parallel-enabled`,
+        parallelHelp: `${fieldIdPrefix}-parallel-help`,
+        maxConcurrent: `${fieldIdPrefix}-max-concurrent`,
+        errorPolicy: `${fieldIdPrefix}-error-policy`,
+    } as const;
 
-    const updateErrorHandling = useCallback((errorHandling: ErrorHandlingConfig) => {
-        onChange({ ...context, errorHandling });
-    }, [context, onChange]);
-
-    const updateCheckpointing = useCallback((checkpointing: CheckpointingConfig) => {
-        onChange({ ...context, checkpointing });
-    }, [context, onChange]);
-
-    const updateThroughput = useCallback((throughput: Throughput) => {
-        onChange({ ...context, throughput });
+    const updateErrorHandling = useCallback((
+        key: keyof ErrorHandlingConfig,
+        value: number | undefined,
+    ) => {
+        const errorHandling = { ...context.errorHandling };
+        if (value === undefined) {
+            delete errorHandling[key];
+        } else {
+            errorHandling[key] = value;
+        }
+        const next = { ...context };
+        if (Object.keys(errorHandling).length === 0) {
+            delete next.errorHandling;
+        } else {
+            next.errorHandling = errorHandling;
+        }
+        onChange(next);
     }, [context, onChange]);
 
     const updateParallelExecution = useCallback((parallelExecution: ParallelExecutionConfig) => {
@@ -63,263 +85,93 @@ export function PipelineSettingsPanel({ context, onChange, compact = false }: Pi
     const spacing = compact ? 'space-y-3' : 'space-y-4';
     const cardHeaderPadding = compact ? 'py-2 px-3' : 'py-3 px-4';
     const cardContentPadding = compact ? 'px-3 pb-3' : 'px-4 pb-4';
+    const fieldError = (path: string): string | undefined => Object.entries(errors)
+        .find(([field]) => field === path || field.endsWith(`.${path}`))?.[1];
 
     return (
         <div className="flex flex-col h-full overflow-auto">
             <div className="p-3 border-b bg-muted/50">
-                <h3 className="font-semibold text-sm">Pipeline Settings</h3>
-                <p className="text-xs text-muted-foreground">Execution configuration</p>
+                <h3 className="font-semibold text-sm">
+                    <Trans>Pipeline Settings</Trans>
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                    <Trans>Execution configuration</Trans>
+                </p>
             </div>
 
             <div className={`p-3 ${spacing}`}>
-                <div className="space-y-2">
-                    <Label className={labelSize}>Run Mode</Label>
-                    <Select
-                        value={context.runMode ?? 'BATCH'}
-                        onValueChange={(v) => onChange({ ...context, runMode: v as RunModeValue })}
-                    >
-                        <SelectTrigger className={`${labelSize} ${inputHeight}`}>
-                            <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {runModeOptions.map(mode => (
-                                <SelectItem key={mode.value} value={mode.value}>{mode.label}</SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                </div>
+                <ExecutionContextFields
+                    context={context}
+                    onChange={onChange}
+                    showIdempotencyKey={true}
+                    showExecutionChannel={true}
+                    showThroughput={true}
+                    errors={errors}
+                    compact={compact}
+                />
 
                 <Card>
                     <CardHeader className={cardHeaderPadding}>
                         <CardTitle className="text-xs flex items-center gap-2">
                             <AlertTriangle className="h-3 w-3 text-amber-500" />
-                            Error Handling
+                            <Trans>Error Handling</Trans>
                         </CardTitle>
                     </CardHeader>
                     <CardContent className={`${cardContentPadding} space-y-3`}>
-                        <div className="grid grid-cols-2 gap-2">
-                            <div className="space-y-1">
-                                <Label className={labelSize}>Max Retries</Label>
-                                <Input
-                                    type="number"
-                                    min={0}
-                                    max={10}
-                                    value={context.errorHandling?.maxRetries ?? 3}
-                                    onChange={(e) => updateErrorHandling({
-                                        ...context.errorHandling,
-                                        maxRetries: parseInt(e.target.value) || 0,
-                                    })}
-                                    className={`${inputHeight} text-xs`}
-                                />
-                            </div>
-                            <div className="space-y-1">
-                                <Label className={labelSize}>Retry Delay (ms)</Label>
-                                <Input
-                                    type="number"
-                                    min={100}
-                                    value={context.errorHandling?.retryDelayMs ?? PIPELINE_RETRY_DEFAULTS.DELAY_MS}
-                                    onChange={(e) => updateErrorHandling({
-                                        ...context.errorHandling,
-                                        retryDelayMs: parseInt(e.target.value) || PIPELINE_RETRY_DEFAULTS.DELAY_MS,
-                                    })}
-                                    className={`${inputHeight} text-xs`}
-                                />
-                            </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-2">
-                            <div className="space-y-1">
-                                <Label className={labelSize}>Max Delay (ms)</Label>
-                                <Input
-                                    type="number"
-                                    min={PIPELINE_RETRY_DEFAULTS.MIN_DELAY_MS}
-                                    value={context.errorHandling?.maxRetryDelayMs ?? PIPELINE_RETRY_DEFAULTS.MAX_DELAY_MS}
-                                    onChange={(e) => updateErrorHandling({
-                                        ...context.errorHandling,
-                                        maxRetryDelayMs: parseInt(e.target.value) || PIPELINE_RETRY_DEFAULTS.MAX_DELAY_MS,
-                                    })}
-                                    className={`${inputHeight} text-xs`}
-                                />
-                            </div>
-                            <div className="space-y-1">
-                                <Label className={labelSize}>Backoff Multiplier</Label>
-                                <Input
-                                    type="number"
-                                    min={1}
-                                    max={5}
-                                    step={0.5}
-                                    value={context.errorHandling?.backoffMultiplier ?? 2}
-                                    onChange={(e) => updateErrorHandling({
-                                        ...context.errorHandling,
-                                        backoffMultiplier: parseFloat(e.target.value) || 2,
-                                    })}
-                                    className={`${inputHeight} text-xs`}
-                                />
-                            </div>
-                        </div>
-                        <div className="flex items-center justify-between">
-                            <Label className={labelSize}>Dead Letter Queue</Label>
-                            <Switch
-                                checked={context.errorHandling?.deadLetterQueue ?? false}
-                                onCheckedChange={(v) => updateErrorHandling({
-                                    ...context.errorHandling,
-                                    deadLetterQueue: v,
-                                })}
-                            />
-                        </div>
-                        {context.errorHandling?.deadLetterQueue && (
-                            <div className="flex items-center justify-between">
-                                <Label className={labelSize}>Alert on Dead Letter</Label>
-                                <Switch
-                                    checked={context.errorHandling?.alertOnDeadLetter ?? false}
-                                    onCheckedChange={(v) => updateErrorHandling({
-                                        ...context.errorHandling,
-                                        alertOnDeadLetter: v,
-                                    })}
-                                />
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
-
-                <Card>
-                    <CardHeader className={cardHeaderPadding}>
-                        <CardTitle className="text-xs flex items-center gap-2">
-                            <Clock className="h-3 w-3 text-blue-500" />
-                            Checkpointing
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className={`${cardContentPadding} space-y-3`}>
-                        <div className="flex items-center justify-between">
-                            <Label className={labelSize}>Enable Checkpointing</Label>
-                            <Switch
-                                checked={context.checkpointing?.enabled ?? false}
-                                onCheckedChange={(v) => updateCheckpointing({
-                                    ...context.checkpointing,
-                                    enabled: v,
-                                })}
-                            />
-                        </div>
-                        {context.checkpointing?.enabled && (
-                            <>
-                                <div className="space-y-1">
-                                    <Label className={labelSize}>Strategy</Label>
-                                    <Select
-                                        value={context.checkpointing?.strategy ?? CHECKPOINT_STRATEGY.COUNT}
-                                        onValueChange={(v) => updateCheckpointing({
-                                            ...context.checkpointing,
-                                            strategy: v as CheckpointStrategy,
-                                        })}
-                                    >
-                                        <SelectTrigger className={`${inputHeight} text-xs`}>
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {checkpointStrategyOptions.map(opt => (
-                                                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                {context.checkpointing?.strategy === CHECKPOINT_STRATEGY.COUNT && (
-                                    <div className="space-y-1">
-                                        <Label className={labelSize}>Checkpoint Every N Records</Label>
-                                        <Input
-                                            type="number"
-                                            min={100}
-                                            value={context.checkpointing?.intervalRecords ?? PIPELINE_CHECKPOINT_DEFAULTS.INTERVAL_RECORDS}
-                                            onChange={(e) => updateCheckpointing({
-                                                ...context.checkpointing,
-                                                intervalRecords: parseInt(e.target.value) || PIPELINE_CHECKPOINT_DEFAULTS.INTERVAL_RECORDS,
-                                            })}
-                                            className={`${inputHeight} text-xs`}
-                                        />
-                                    </div>
-                                )}
-                                {context.checkpointing?.strategy === CHECKPOINT_STRATEGY.INTERVAL && (
-                                    <div className="space-y-1">
-                                        <Label className={labelSize}>Checkpoint Interval (ms)</Label>
-                                        <Input
-                                            type="number"
-                                            min={PIPELINE_CHECKPOINT_DEFAULTS.MIN_INTERVAL_MS}
-                                            value={context.checkpointing?.intervalMs ?? PIPELINE_CHECKPOINT_DEFAULTS.INTERVAL_MS}
-                                            onChange={(e) => updateCheckpointing({
-                                                ...context.checkpointing,
-                                                intervalMs: parseInt(e.target.value) || PIPELINE_CHECKPOINT_DEFAULTS.INTERVAL_MS,
-                                            })}
-                                            className={`${inputHeight} text-xs`}
-                                        />
-                                    </div>
-                                )}
-                                {context.checkpointing?.strategy === CHECKPOINT_STRATEGY.TIMESTAMP && (
-                                    <div className="space-y-1">
-                                        <Label className={labelSize}>Timestamp Field</Label>
-                                        <Input
-                                            value={context.checkpointing?.field ?? 'updatedAt'}
-                                            onChange={(e) => updateCheckpointing({
-                                                ...context.checkpointing,
-                                                field: e.target.value,
-                                            })}
-                                            placeholder="updatedAt"
-                                            className={`${inputHeight} text-xs`}
-                                        />
-                                    </div>
-                                )}
-                            </>
-                        )}
-                    </CardContent>
-                </Card>
-
-                <Card>
-                    <CardHeader className={cardHeaderPadding}>
-                        <CardTitle className="text-xs flex items-center gap-2">
-                            <Zap className="h-3 w-3 text-green-500" />
-                            Throughput
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className={`${cardContentPadding} space-y-3`}>
-                        <div className="grid grid-cols-2 gap-2">
-                            <div className="space-y-1">
-                                <Label className={labelSize}>Batch Size</Label>
-                                <Input
-                                    type="number"
-                                    min={1}
-                                    value={context.throughput?.batchSize ?? 100}
-                                    onChange={(e) => updateThroughput({
-                                        ...context.throughput,
-                                        batchSize: parseInt(e.target.value) || 100,
-                                    })}
-                                    className={`${inputHeight} text-xs`}
-                                />
-                            </div>
-                            <div className="space-y-1">
-                                <Label className={labelSize}>Concurrency</Label>
-                                <Input
-                                    type="number"
-                                    min={1}
-                                    max={32}
-                                    value={context.throughput?.concurrency ?? 4}
-                                    onChange={(e) => updateThroughput({
-                                        ...context.throughput,
-                                        concurrency: parseInt(e.target.value) || 4,
-                                    })}
-                                    className={`${inputHeight} text-xs`}
-                                />
-                            </div>
-                        </div>
-                        <div className="space-y-1">
-                            <Label className={labelSize}>Rate Limit (requests/sec)</Label>
-                            <Input
-                                type="number"
-                                min={0}
-                                value={context.throughput?.rateLimitRps ?? 0}
-                                onChange={(e) => updateThroughput({
-                                    ...context.throughput,
-                                    rateLimitRps: parseInt(e.target.value) || 0,
-                                })}
-                                placeholder="0 = unlimited"
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                            <OptionalNumberField
+                                id={fieldIds.maxRetries}
+                                label={t`Max Retries`}
+                                value={context.errorHandling?.maxRetries}
+                                minimum={0}
+                                maximum={PIPELINE_RETRY.MAX_RETRIES}
+                                integer={true}
+                                labelClassName={labelSize}
                                 className={`${inputHeight} text-xs`}
+                                placeholder={String(PIPELINE_RETRY.DEFAULT_MAX_RETRIES)}
+                                externalError={fieldError('errorHandling.maxRetries')}
+                                onChange={value => updateErrorHandling('maxRetries', value)}
                             />
-                            <p className={`${labelSize} text-muted-foreground`}>0 = no rate limiting</p>
+                            <OptionalNumberField
+                                id={fieldIds.retryDelay}
+                                label={t`Retry Delay (ms)`}
+                                value={context.errorHandling?.retryDelayMs}
+                                minimum={0}
+                                maximum={PIPELINE_RETRY.MAX_DELAY_MS}
+                                integer={true}
+                                labelClassName={labelSize}
+                                className={`${inputHeight} text-xs`}
+                                placeholder={String(PIPELINE_RETRY.DEFAULT_DELAY_MS)}
+                                externalError={fieldError('errorHandling.retryDelayMs')}
+                                onChange={value => updateErrorHandling('retryDelayMs', value)}
+                            />
+                        </div>
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                            <OptionalNumberField
+                                id={fieldIds.maxRetryDelay}
+                                label={t`Max Delay (ms)`}
+                                value={context.errorHandling?.maxRetryDelayMs}
+                                minimum={0}
+                                maximum={PIPELINE_RETRY.MAX_DELAY_MS}
+                                integer={true}
+                                labelClassName={labelSize}
+                                className={`${inputHeight} text-xs`}
+                                placeholder={String(PIPELINE_RETRY.DEFAULT_MAX_DELAY_MS)}
+                                externalError={fieldError('errorHandling.maxRetryDelayMs')}
+                                onChange={value => updateErrorHandling('maxRetryDelayMs', value)}
+                            />
+                            <OptionalNumberField
+                                id={fieldIds.backoffMultiplier}
+                                label={t`Backoff Multiplier`}
+                                value={context.errorHandling?.backoffMultiplier}
+                                minimum={1}
+                                maximum={PIPELINE_RETRY.MAX_BACKOFF_MULTIPLIER}
+                                labelClassName={labelSize}
+                                className={`${inputHeight} text-xs`}
+                                placeholder={String(PIPELINE_RETRY.DEFAULT_BACKOFF_MULTIPLIER)}
+                                externalError={fieldError('errorHandling.backoffMultiplier')}
+                                onChange={value => updateErrorHandling('backoffMultiplier', value)}
+                            />
                         </div>
                     </CardContent>
                 </Card>
@@ -328,18 +180,22 @@ export function PipelineSettingsPanel({ context, onChange, compact = false }: Pi
                     <CardHeader className={cardHeaderPadding}>
                         <CardTitle className="text-xs flex items-center gap-2">
                             <GitBranch className="h-3 w-3 text-purple-500" />
-                            Parallel Execution
+                            <Trans>Parallel Execution</Trans>
                         </CardTitle>
                     </CardHeader>
                     <CardContent className={`${cardContentPadding} space-y-3`}>
                         <div className="flex items-center justify-between">
                             <div className="space-y-0.5">
-                                <Label className={labelSize}>Enable Parallel Steps</Label>
-                                <p className={`${labelSize} text-muted-foreground`}>
-                                    Run independent steps concurrently
+                                <Label htmlFor={fieldIds.parallelEnabled} className={labelSize}>
+                                    <Trans>Enable Parallel Steps</Trans>
+                                </Label>
+                                <p id={fieldIds.parallelHelp} className={`${labelSize} text-muted-foreground`}>
+                                    <Trans>Run independent steps concurrently</Trans>
                                 </p>
                             </div>
                             <Switch
+                                id={fieldIds.parallelEnabled}
+                                aria-describedby={fieldIds.parallelHelp}
                                 checked={context.parallelExecution?.enabled ?? false}
                                 onCheckedChange={(v) => updateParallelExecution({
                                     ...context.parallelExecution,
@@ -350,29 +206,39 @@ export function PipelineSettingsPanel({ context, onChange, compact = false }: Pi
                         {context.parallelExecution?.enabled && (
                             <>
                                 <div className="space-y-1">
-                                    <Label className={labelSize}>Max Concurrent Steps</Label>
-                                    <Input
-                                        type="number"
-                                        min={2}
-                                        max={16}
-                                        value={context.parallelExecution?.maxConcurrentSteps ?? 4}
-                                        onChange={(e) => updateParallelExecution({
-                                            ...context.parallelExecution,
-                                            maxConcurrentSteps: parseInt(e.target.value) || 4,
-                                        })}
+                                    <OptionalNumberField
+                                        id={fieldIds.maxConcurrent}
+                                        label={t`Max Concurrent Steps`}
+                                        value={context.parallelExecution?.maxConcurrentSteps}
+                                        minimum={PARALLEL_EXECUTION.MIN_CONCURRENT_STEPS}
+                                        maximum={PARALLEL_EXECUTION.MAX_CONCURRENT_STEPS}
+                                        integer={true}
+                                        labelClassName={labelSize}
                                         className={`${inputHeight} text-xs`}
+                                        placeholder={String(PARALLEL_EXECUTION.DEFAULT_MAX_CONCURRENT_STEPS)}
+                                        externalError={fieldError('parallelExecution.maxConcurrentSteps')}
+                                        onChange={maxConcurrentSteps => updateParallelExecution({
+                                            ...context.parallelExecution,
+                                            maxConcurrentSteps,
+                                        })}
                                     />
                                 </div>
                                 <div className="space-y-1">
-                                    <Label className={labelSize}>Error Policy</Label>
+                                    <Label htmlFor={fieldIds.errorPolicy} className={labelSize}>
+                                        <Trans>Error Policy</Trans>
+                                    </Label>
                                     <Select
+                                        disabled={errorPoliciesLoading}
                                         value={context.parallelExecution?.errorPolicy ?? 'FAIL_FAST'}
                                         onValueChange={(v) => updateParallelExecution({
                                             ...context.parallelExecution,
                                             errorPolicy: v as 'FAIL_FAST' | 'CONTINUE' | 'BEST_EFFORT',
                                         })}
                                     >
-                                        <SelectTrigger className={`${inputHeight} text-xs`}>
+                                        <SelectTrigger
+                                            id={fieldIds.errorPolicy}
+                                            className={`${inputHeight} text-xs`}
+                                        >
                                             <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
@@ -381,6 +247,11 @@ export function PipelineSettingsPanel({ context, onChange, compact = false }: Pi
                                             ))}
                                         </SelectContent>
                                     </Select>
+                                    {fieldError('parallelExecution.errorPolicy') && (
+                                        <p className="text-xs text-destructive">
+                                            {fieldError('parallelExecution.errorPolicy')}
+                                        </p>
+                                    )}
                                 </div>
                             </>
                         )}

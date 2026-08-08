@@ -1,14 +1,13 @@
 import { StepConfigSchema } from '../../types/index';
 import { FileFormat } from '../../constants/enums';
 import { S3_DEFAULTS } from './types';
-import { FILE_FORMAT_OPTIONS, CSV_DELIMITER_OPTIONS, S3_SELECT_FORMAT_OPTIONS } from '../../constants/adapter-schema-options';
+import { FILE_FORMAT_OPTIONS, CSV_DELIMITER_OPTIONS } from '../../constants/adapter-schema-options';
 
 export const S3_EXTRACTOR_SCHEMA: StepConfigSchema = {
     groups: [
         { id: 'connection', label: 'Connection', description: 'S3 connection settings' },
         { id: 'source', label: 'Source', description: 'Bucket and object settings' },
         { id: 'format', label: 'Format', description: 'File format options' },
-        { id: 's3select', label: 'S3 Select', description: 'Server-side filtering' },
         { id: 'postProcess', label: 'Post-Processing', description: 'Actions after processing' },
         { id: 'advanced', label: 'Advanced', description: 'Advanced options' },
     ],
@@ -63,9 +62,8 @@ export const S3_EXTRACTOR_SCHEMA: StepConfigSchema = {
         {
             key: 'bucket',
             label: 'Bucket',
-            description: 'S3 bucket name',
+            description: 'Required only when no saved connection is selected',
             type: 'string',
-            required: true,
             placeholder: 'my-data-bucket',
             group: 'source',
         },
@@ -119,38 +117,11 @@ export const S3_EXTRACTOR_SCHEMA: StepConfigSchema = {
             group: 'format',
             dependsOn: { field: 'format', value: FileFormat.JSON },
         },
-        // S3 Select
-        {
-            key: 's3Select.enabled',
-            label: 'Use S3 Select',
-            description: 'Use S3 Select for server-side filtering (CSV/JSON only)',
-            type: 'boolean',
-            defaultValue: false,
-            group: 's3select',
-        },
-        {
-            key: 's3Select.expression',
-            label: 'SQL Expression',
-            description: 'S3 Select SQL expression',
-            type: 'string',
-            placeholder: "SELECT * FROM s3object WHERE status = 'active'",
-            group: 's3select',
-            dependsOn: { field: 's3Select.enabled', value: true },
-        },
-        {
-            key: 's3Select.inputSerialization',
-            label: 'Input Format',
-            type: 'select',
-            options: S3_SELECT_FORMAT_OPTIONS,
-            defaultValue: FileFormat.CSV,
-            group: 's3select',
-            dependsOn: { field: 's3Select.enabled', value: true },
-        },
         // Post-Processing
         {
             key: 'deleteAfterProcess',
             label: 'Delete After Processing',
-            description: 'Delete objects after successful processing',
+            description: 'Delete objects after the pipeline run completes successfully',
             type: 'boolean',
             defaultValue: false,
             group: 'postProcess',
@@ -158,7 +129,7 @@ export const S3_EXTRACTOR_SCHEMA: StepConfigSchema = {
         {
             key: 'moveAfterProcess.enabled',
             label: 'Move After Processing',
-            description: 'Move objects to another prefix after processing',
+            description: 'Move objects after the pipeline run completes successfully',
             type: 'boolean',
             defaultValue: false,
             group: 'postProcess',

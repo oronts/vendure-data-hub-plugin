@@ -70,17 +70,18 @@ Complete reference for all transform operators.
 - [unique](#unique) - Remove duplicate values from an array
 - [first](#first) - Get the first element of an array
 - [last](#last) - Get the last element of an array
-- [count](#count) - Count elements in an array
+- [count](#count) - Count array elements or string characters
 - [expand](#expand) - Expand an array field into multiple records
 
 ### [Aggregation Operators](#aggregation-operators)
 - [aggregate](#aggregate) - Compute aggregates over records
+- [deduplicateRecords](#deduplicaterecords) - Deduplicate a record batch by a scalar key
 - [multiJoin](#multijoin) - Merge records from two datasets by key
 
 ### [File Operators](#file-operators)
 - [imageResize](#imageresize) - Resize base64-encoded images
 - [imageConvert](#imageconvert) - Convert image format
-- [pdfGenerate](#pdfgenerate) - Generate PDF from HTML template
+- [pdfGenerate](#pdfgenerate) - Generate a plain-text PDF from a template
 
 ### [Validation Operators](#validation-operators)
 - [validateRequired](#validaterequired) - Mark records as invalid if required fields are missing
@@ -176,20 +177,23 @@ Render a string template and set it at target path.
 
 ### hash
 
-Generate a cryptographic hash of field value(s).
+Generate a deterministic cryptographic digest of field value(s).
 
 | Arg | Type | Required | Description |
 |-----|------|----------|-------------|
 | `source` | json | Yes | Single path string or array of paths to hash together |
 | `target` | string | Yes | Path where the hash will be stored |
-| `algorithm` | select | No | `md5`, `sha1`, `sha256`, `sha512` (default: `sha256`) |
+| `algorithm` | select | No | `sha256`, `sha512` (default: `sha256`) |
 | `encoding` | select | No | `hex` or `base64` (default: `hex`) |
 
 ```typescript
 { op: 'hash', args: { source: 'data', target: 'checksum', algorithm: 'sha256' } }
-{ op: 'hash', args: { source: ['sku', 'name', 'price'], target: 'contentHash', algorithm: 'md5' } }
-{ op: 'hash', args: { source: 'password', target: 'passwordHash', algorithm: 'sha512', encoding: 'base64' } }
+{ op: 'hash', args: { source: ['sku', 'name', 'price'], target: 'contentHash', algorithm: 'sha256' } }
+{ op: 'hash', args: { source: 'externalId', target: 'externalIdDigest', algorithm: 'sha512', encoding: 'base64' } }
 ```
+
+This is not a password-hashing function: it has no salt or configurable work
+factor. Never use it to store passwords.
 
 ### uuid
 
@@ -199,13 +203,13 @@ Generate a UUID.
 |-----|------|----------|-------------|
 | `target` | string | Yes | Target field path |
 | `version` | string | No | `v4` (random) or `v5` (namespace-based) |
-| `namespace` | string | No | Namespace for v5 (required if version is v5) |
-| `source` | string | No | Source field path for v5 name |
+| `namespace` | string | No | For v5, a UUID or `dns`, `url`, `oid`, or `x500`; required with `source` |
+| `source` | string | No | Source field path used as the v5 name; required with `namespace` |
 
 ```typescript
 { op: 'uuid', args: { target: 'id' } }
 { op: 'uuid', args: { target: 'productId', version: 'v4' } }
-{ op: 'uuid', args: { target: 'stableId', version: 'v5', namespace: 'products', source: 'sku' } }
+{ op: 'uuid', args: { target: 'stableId', version: 'v5', namespace: 'url', source: 'sku' } }
 ```
 
 ---
@@ -274,15 +278,16 @@ Enrich records by fetching data from external HTTP endpoints with caching, authe
 
 | Arg | Type | Required | Description |
 |-----|------|----------|-------------|
+| `connectionCode` | connection | No | Saved HTTP connection; required for Secret-backed authentication and used to bind credentials and redirects to one origin |
 | `url` | string | Yes | HTTP endpoint URL. Use `{{field}}` for dynamic values |
 | `method` | select | No | `GET` or `POST` (default: GET) |
 | `target` | string | Yes | Field path to store the response data |
 | `responsePath` | string | No | JSON path to extract from response |
-| `keyField` | string | No | Field to use as cache key. If not set, URL is used |
+| `keyField` | string | No | Optional record value included in the opaque full-request cache identity |
 | `default` | json | No | Value to use if lookup fails or returns 404 |
-| `timeoutMs` | number | No | Request timeout in milliseconds |
-| `cacheTtlSec` | number | No | Cache time-to-live in seconds. Set to 0 to disable |
-| `headers` | json | No | Static HTTP headers as JSON object |
+| `timeoutMs` | number | No | Integer from 1 to 300000; default: 5000 ms |
+| `cacheTtlSec` | number | No | Integer from 0 to 604800 seconds; default: 300. Set to 0 to disable |
+| `headers` | json | No | Non-sensitive static string headers |
 | `bearerTokenSecretCode` | string | No | Secret code for Bearer token authentication |
 | `apiKeySecretCode` | string | No | Secret code for API key authentication |
 | `apiKeyHeader` | string | No | Header name for API key |
@@ -290,10 +295,10 @@ Enrich records by fetching data from external HTTP endpoints with caching, authe
 | `bodyField` | string | No | Field path for POST body (uses record value at this path) |
 | `body` | json | No | Static POST body (JSON object) |
 | `skipOn404` | boolean | No | Remove record from pipeline if endpoint returns 404 (see note below) |
-| `failOnError` | boolean | No | Fail pipeline if HTTP request fails |
-| `maxRetries` | number | No | Maximum retry attempts on transient errors |
-| `batchSize` | number | No | Process this many records in parallel (default: 50) |
-| `rateLimitPerSecond` | number | No | Max requests per second per domain (default: 100) |
+| `failOnError` | boolean | No | Report lookup failures as operator errors instead of writing `default` |
+| `maxRetries` | number | No | Integer from 0 to 10; default: 2 retries after the initial attempt |
+| `batchSize` | number | No | Parallel lookup concurrency from 1 to 500; default: 50 |
+| `rateLimitPerSecond` | number | No | Integer from 1 to 10000 requests per second per domain; default: 100 |
 
 ```typescript
 // Basic enrichment from external API
@@ -305,6 +310,7 @@ Enrich records by fetching data from external HTTP endpoints with caching, authe
 
 // With authentication and response extraction
 { op: 'httpLookup', args: {
+    connectionCode: 'inventory-api',
     url: 'https://api.inventory.com/stock/{{productId}}',
     target: 'stockLevel',
     responsePath: 'data.available',
@@ -321,6 +327,25 @@ Enrich records by fetching data from external HTTP endpoints with caching, authe
     headers: { 'Content-Type': 'application/json' },
 } }
 ```
+
+The cache identity includes the execution namespace, resolved credential
+headers, URL, method, request body, response path, and optional
+`keyField` value; `keyField` does not replace the URL as the cache key.
+Circuit-breaker and process-local rate-limit state use a separate opaque key
+derived from the channel, endpoint, and resolved request headers. Failures or
+reservations from another channel or credential cannot open or throttle this
+lookup; lookups in the same channel using the same provider identity share the
+configured per-domain bucket. If those lookups declare different limits, the
+process uses the lower value until the idle bucket is discarded.
+Configure at most one of `bearerTokenSecretCode`,
+`apiKeySecretCode`, and `basicAuthSecretCode`. A Basic-auth secret
+must resolve to `username:password`. Missing or empty secrets fail before
+the request. Credential, cookie, signature, routing-control, and hop-by-hop
+headers are rejected from `headers`.
+Secret-backed authentication requires `connectionCode` referencing a saved
+HTTP-family connection with `baseUrl`. Public unauthenticated lookups may omit
+the connection. Cross-origin URLs and redirects fail before credentials can be
+sent.
 
 > **`skipOn404` behavior:** When `skipOn404: true` and the enrichment HTTP lookup returns a 404, the record is **removed from the pipeline** (not passed through with original values). To preserve records when enrichment fails, use `default` to provide a fallback value instead.
 
@@ -593,8 +618,9 @@ Parse locale-formatted number strings.
 | Arg | Type | Required | Description |
 |-----|------|----------|-------------|
 | `source` | string | Yes | Source field path |
-| `target` | string | No | Target field path |
+| `target` | string | No | Target field path (defaults to source) |
 | `locale` | string | No | Locale for parsing (e.g., `de-DE` for `1.234,56`) |
+| `default` | number | No | Value written when parsing fails; otherwise the operator writes `null` |
 
 ```typescript
 { op: 'parseNumber', args: { source: 'priceEuro', target: 'price', locale: 'de-DE' } }
@@ -609,11 +635,11 @@ Format numbers with locale support.
 |-----|------|----------|-------------|
 | `source` | string | Yes | Source field path |
 | `target` | string | Yes | Target field path |
-| `locale` | string | No | Output locale (e.g., "en-US", "de-DE"). Default: "en-US" |
-| `decimals` | number | No | Number of decimal places |
-| `style` | select | No | `decimal`, `currency`, `percent` |
-| `currency` | string | No | Currency code (e.g., "USD", "EUR") - required for currency style |
-| `useGrouping` | boolean | No | Use thousand separators |
+| `locale` | string | No | Output locale (e.g., `en-US`, `de-DE`); default: `en-US` |
+| `decimals` | number | No | Sets both minimum and maximum fraction digits; otherwise Intl style defaults apply |
+| `style` | select | No | `decimal`, `currency`, or `percent`; default: `decimal` |
+| `currency` | string | No | Currency code used with `currency` style; a missing code falls back to decimal formatting |
+| `useGrouping` | boolean | No | Use grouping separators; default: `true` |
 
 ```typescript
 { op: 'formatNumber', args: { source: 'price', target: 'priceDisplay', style: 'currency', currency: 'USD' } }
@@ -666,11 +692,14 @@ Format a date to a string.
 | `target` | string | Yes | Target field path |
 | `format` | string | Yes | Output format (e.g., `YYYY-MM-DD`) |
 | `inputFormat` | string | No | Input format if source is string |
-| `timezone` | string | No | Timezone (e.g., `UTC`, `Europe/London`) |
+
+Custom formats use the exact UTC tokens `YYYY`, `MM`, `DD`, `HH`, `mm`, and
+`ss` and are limited to 128 characters. Separators must match and impossible
+calendar or clock values leave the target unchanged.
 
 ```typescript
 { op: 'dateFormat', args: { source: 'createdAt', target: 'dateStr', format: 'YYYY-MM-DD' } }
-{ op: 'dateFormat', args: { source: 'timestamp', target: 'formatted', format: 'DD/MM/YYYY HH:mm', timezone: 'Europe/London' } }
+{ op: 'dateFormat', args: { source: 'timestamp', target: 'formatted', format: 'DD/MM/YYYY HH:mm' } }
 ```
 
 ### dateParse
@@ -682,7 +711,9 @@ Parse a string to a date.
 | `source` | string | Yes | Source field path |
 | `target` | string | Yes | Target field path |
 | `format` | string | Yes | Input format |
-| `timezone` | string | No | Timezone |
+
+The input format uses the same exact UTC token contract and 128-character
+limit. Invalid dates leave the target unchanged.
 
 ```typescript
 { op: 'dateParse', args: { source: 'dateStr', target: 'date', format: 'MM/DD/YYYY' } }
@@ -720,6 +751,9 @@ Calculate the difference between two dates.
 
 > **Important:** Unit strings must be plural: `"days"`, `"hours"`, `"minutes"`, `"seconds"`, `"weeks"`, `"months"`, `"years"`. Singular forms like `"day"` are not supported.
 
+Months and years are elapsed-time approximations of 30.44 and 365.25 days,
+respectively; they are not calendar-month or anniversary calculations.
+
 ```typescript
 { op: 'dateDiff', args: { startDate: 'createdAt', endDate: 'completedAt', target: 'durationDays', unit: 'days' } }
 { op: 'dateDiff', args: { startDate: 'orderDate', endDate: 'deliveryDate', target: 'deliveryHours', unit: 'hours', absolute: true } }
@@ -733,12 +767,11 @@ Set the current timestamp on a field.
 |-----|------|----------|-------------|
 | `target` | string | Yes | Target field path |
 | `format` | string | No | `ISO`, `timestamp`, `date`, `datetime`, or custom format |
-| `timezone` | string | No | Timezone (e.g., `UTC`, `Europe/London`) |
 
 ```typescript
 { op: 'now', args: { target: 'processedAt' } }
 { op: 'now', args: { target: 'dateOnly', format: 'date' } }
-{ op: 'now', args: { target: 'localTime', format: 'YYYY-MM-DD HH:mm:ss', timezone: 'America/New_York' } }
+{ op: 'now', args: { target: 'formattedTime', format: 'YYYY-MM-DD HH:mm:ss' } }
 ```
 
 ---
@@ -971,7 +1004,7 @@ Get the last element of an array.
 
 ### count
 
-Count elements in an array.
+Count array elements or characters in a string. Other value types produce 0.
 
 | Arg | Type | Required | Description |
 |-----|------|----------|-------------|
@@ -999,6 +1032,11 @@ Expand an array field into multiple records (one per element).
 ```
 
 This operator changes the record count. For example, 1 product with 3 variants becomes 3 records.
+Object elements become output records directly; primitive elements are written
+to `_item`. With the default `mergeParent: false`, a missing, non-array, or
+empty value emits no records. With `mergeParent: true`, that input emits the
+unchanged parent record. When expanding an object with `mergeParent: true`, its
+fields overwrite same-named parent fields.
 
 ---
 
@@ -1022,46 +1060,91 @@ Compute aggregates over records.
 { op: 'aggregate', args: { op: 'max', source: 'price', target: 'highestPrice' } }
 ```
 
+The aggregate is computed once across the current record set and the same
+result is written to `target` on every input record.
+
+### deduplicateRecords
+
+Deduplicate the current record batch using a type-strict scalar key. The
+output position of each key is always its first-seen position, even when a
+later record wins.
+
+| Arg | Type | Required | Description |
+|-----|------|----------|-------------|
+| `key` | string | Yes | Scalar key field path |
+| `keep` | select | No | `FIRST`, `LAST`, `LOWEST`, or `HIGHEST` (default: `FIRST`) |
+| `priority` | string | Conditional | Finite numeric field path; required for `LOWEST` and `HIGHEST` |
+
+```typescript
+{ op: 'deduplicateRecords', args: { key: 'sku' } }
+{ op: 'deduplicateRecords', args: {
+    key: 'sku',
+    keep: 'LOWEST',
+    priority: '_sourcePriority',
+} }
+```
+
+String, boolean, and finite-number keys are distinct by both value and type.
+Missing, null, object, array, `NaN`, and infinite keys are not grouped and
+remain in the output. Ordered strategies fail if either competing record has
+a missing or non-finite priority.
+
 ### multiJoin
 
-Merge records from two datasets by matching on key fields. Supports INNER, LEFT, RIGHT, and FULL join types with optional prefix and field selection.
+Merge the current records with an inline right-side dataset by matching key
+fields. Supports one-to-many matches, INNER, LEFT, RIGHT, and FULL joins,
+optional field selection, and right-field prefixes.
 
 | Arg | Type | Required | Description |
 |-----|------|----------|-------------|
 | `leftKey` | string | Yes | Key field path in the current (left) dataset |
 | `rightKey` | string | Yes | Key field path in the right dataset |
-| `rightDataPath` | string | Yes | JSON path to the right dataset (e.g., `$.steps.prices.output`) |
-| `type` | select | No | Join type: `INNER`, `LEFT`, `RIGHT`, `FULL` (default: `INNER`) |
-| `prefix` | string | No | Prefix for joined fields from right dataset (e.g., `price_`) |
-| `select` | array | No | Specific fields to include from the right dataset. If omitted, all fields are included |
+| `rightData` | array | Yes | Static array of right-side record objects |
+| `type` | select | No | Join type: `INNER`, `LEFT`, `RIGHT`, `FULL` (default: `LEFT`) |
+| `prefix` | string | No | Prefix for right fields; the operator adds an underscore |
+| `select` | array | No | Specific fields to include from the right dataset. If omitted or empty, all fields are included |
+| `maxOutputRecords` | number | No | Maximum emitted records; default `10000`, maximum `100000` |
 
 ```typescript
-// Inner join products with prices by product ID
+// Inner join products with an inline price table
 { op: 'multiJoin', args: {
     leftKey: 'productId',
     rightKey: 'id',
-    rightDataPath: '$.steps.prices.output',
+    rightData: [
+        { id: 'p1', price: 1999 },
+        { id: 'p2', price: 2499 },
+    ],
     type: 'INNER',
+    maxOutputRecords: 10000,
 } }
 
-// Left join with prefix to avoid field name collisions
+// Prefix "inv" produces fields such as inv_stock
 { op: 'multiJoin', args: {
     leftKey: 'sku',
     rightKey: 'sku',
-    rightDataPath: '$.steps.inventory.output',
-    type: 'LEFT',
-    prefix: 'inv_',
-} }
-
-// Join with specific fields from right dataset
-{ op: 'multiJoin', args: {
-    leftKey: 'id',
-    rightKey: 'productId',
-    rightDataPath: '$.steps.reviews.output',
-    type: 'LEFT',
-    select: ['rating', 'reviewCount'],
+    rightData: [
+        { sku: 'SKU-1', stock: 12, warehouse: 'BER' },
+    ],
+    prefix: 'inv',
+    select: ['stock'],
 } }
 ```
+
+`rightData` is inline configuration; the operator does not resolve another
+step's output from a path. Model a dynamic multi-source join explicitly in the
+pipeline graph or provide a custom operator.
+
+`rightData` accepts at most 10,000 objects. Join keys must resolve to finite
+numbers, strings, or booleans, and both the value and its type must match.
+Null, missing, array, object, `NaN`, and infinite key values never match; RIGHT
+and FULL joins preserve those right-side records as unmatched in their original
+order. Empty strings are valid string keys. Outer rows use the union of
+top-level fields found on each side and fill absent fields with `null`.
+
+One-to-many matches can expand output quickly. The operator fails before it
+would emit more than `maxOutputRecords`; it never silently truncates. Use a
+right-field `prefix` whenever left and right records can share field names,
+because unprefixed right fields occupy the same output keys.
 
 ---
 
@@ -1073,8 +1156,8 @@ Resize base64-encoded images using sharp. Supports width, height, fit modes, out
 
 | Arg | Type | Required | Description |
 |-----|------|----------|-------------|
-| `sourceField` | string | Yes | Field path containing the base64-encoded image |
-| `targetField` | string | No | Target field path (defaults to source) |
+| `sourceField` | string | Yes | Root record field containing the base64-encoded image |
+| `targetField` | string | No | Root record field for the result (defaults to source) |
 | `width` | number | No | Target width in pixels |
 | `height` | number | No | Target height in pixels |
 | `fit` | select | No | Resize fit mode: `cover`, `contain`, `fill`, `inside`, `outside` (default: `cover`) |
@@ -1092,7 +1175,9 @@ Resize base64-encoded images using sharp. Supports width, height, fit modes, out
 { op: 'imageResize', args: { sourceField: 'banner', targetField: 'thumbnail', width: 200, height: 200, fit: 'inside' } }
 ```
 
-**Note**: Requires the `sharp` package to be installed.
+Requires the optional `sharp` package. If it is unavailable, the operator
+fails before processing records. Missing, empty, or invalid image values pass
+through unchanged.
 
 ### imageConvert
 
@@ -1100,8 +1185,8 @@ Convert image format (JPEG, PNG, WebP, AVIF, GIF). Reads a base64-encoded image 
 
 | Arg | Type | Required | Description |
 |-----|------|----------|-------------|
-| `sourceField` | string | Yes | Field path containing the base64-encoded image |
-| `targetField` | string | No | Target field path (defaults to source) |
+| `sourceField` | string | Yes | Root record field containing the base64-encoded image |
+| `targetField` | string | No | Root record field for the result (defaults to source) |
 | `format` | select | Yes | Target format: `jpeg`, `png`, `webp`, `avif`, `gif` |
 | `quality` | number | No | Output quality (1-100). Default varies by format |
 
@@ -1116,30 +1201,34 @@ Convert image format (JPEG, PNG, WebP, AVIF, GIF). Reads a base64-encoded image 
 { op: 'imageConvert', args: { sourceField: 'image', format: 'avif', quality: 75 } }
 ```
 
-**Note**: Requires the `sharp` package to be installed.
+Requires the optional `sharp` package. If it is unavailable, the operator
+fails before processing records. Missing, empty, or invalid image values pass
+through unchanged.
 
 ### pdfGenerate
 
-Generate a PDF document from an HTML template with `{{field}}` placeholders using pdf-lib. Each record produces a base64-encoded PDF stored in the target field. You can provide the template as a static string (`template`) or read it from a record field (`templateField`).
+Generate a multi-page, plain-text PDF with nested-path `{{field.path}}`
+placeholders using `pdf-lib`. Each record produces a base64-encoded PDF in the
+target field. Provide a static `template` or read one from `templateField`.
 
 | Arg | Type | Required | Description |
 |-----|------|----------|-------------|
-| `template` | string | No | Static HTML template with `{{field}}` placeholders (use this or `templateField`) |
-| `templateField` | string | No | Record field containing the HTML template (use this or `template`) |
-| `targetField` | string | Yes | Field path to store the generated base64-encoded PDF |
+| `template` | string | No | Static text template with nested-path placeholders; used when `templateField` is absent or resolves to `undefined` |
+| `templateField` | string | No | Record field path containing the text template |
+| `targetField` | string | Yes | Field path for the generated base64-encoded PDF |
 | `pageSize` | select | No | Page size: `A4`, `LETTER`, `A3` (default: `A4`) |
 | `orientation` | select | No | Page orientation: `PORTRAIT`, `LANDSCAPE` (default: `PORTRAIT`) |
 
 ```typescript
 // Generate a simple invoice PDF
 { op: 'pdfGenerate', args: {
-    template: '<h1>Invoice #{{invoiceNumber}}</h1><p>Customer: {{customerName}}</p><p>Total: {{total}}</p>',
+    template: 'Invoice #{{invoiceNumber}}\nCustomer: {{customerName}}\nTotal: {{total}}',
     targetField: 'invoice_pdf',
 } }
 
 // Generate a product label in landscape
 { op: 'pdfGenerate', args: {
-    template: '<h2>{{name}}</h2><p>SKU: {{sku}}</p><p>{{description}}</p>',
+    template: '{{name}}\nSKU: {{sku}}\n{{description}}',
     targetField: 'label_pdf',
     pageSize: 'LETTER',
     orientation: 'LANDSCAPE',
@@ -1152,6 +1241,13 @@ Generate a PDF document from an HTML template with `{{field}}` placeholders usin
     pageSize: 'A3',
 } }
 ```
+
+This operator does not render HTML or CSS. Common block and line-break tags are
+converted to newlines, remaining HTML-like tags are stripped, and text is
+wrapped with standard Helvetica. Content continues on additional pages.
+`pdf-lib` is a direct runtime dependency. An individual record that cannot be
+rendered passes through without the target field and produces an operator
+error.
 
 ---
 
@@ -1198,8 +1294,8 @@ Execute custom JavaScript for complex transformations that can't be achieved wit
 |-----|------|----------|-------------|
 | `code` | code | Yes | JavaScript code to execute. Receives `record`, `index`, `context` (single mode) or `records`, `context` (batch mode). Must return the transformed result. |
 | `batch` | boolean | No | If true, processes all records at once. If false (default), processes one record at a time. |
-| `timeout` | number | No | Maximum execution time in milliseconds (default: 5000) |
-| `failOnError` | boolean | No | If true, errors fail the entire step. If false, errors are logged and records skipped. |
+| `timeout` | number | No | Integer from 1 to 300000 milliseconds (default: 5000) |
+| `failOnError` | boolean | No | If true, throw on an execution error. If false, log the error and preserve the original record(s) |
 | `context` | json | No | Optional JSON data passed to the script as `context.data` |
 
 **Single Record Mode** (default):
@@ -1259,10 +1355,19 @@ The code receives `records` array and `context`. Return the modified array.
 - `context` - contains `{ total, data, index }`
 - `Array`, `Object`, `String`, `Number`, `Boolean`, `Date`, `JSON`, `Math`
 - `parseInt`, `parseFloat`, `isNaN`, `isFinite`
-- `encodeURIComponent`, `decodeURIComponent`
-- `console.log`, `console.warn`, `console.error` (logged to pipeline logs)
+- `encodeURI`, `decodeURI`, `encodeURIComponent`, `decodeURIComponent`
+- Type helpers such as `isArray`, `keys`, `values`, `entries`, `isNull`, and `isString`
 
-**Security**: Scripts run in a sandboxed environment with limited globals. They cannot access the filesystem, network, or Node.js APIs.
+`Array`, `Object`, `Math`, `JSON`, and `Date` are limited safe
+wrappers, not unrestricted host constructors. `console` is not exposed.
+
+When `failOnError` is false, a single-record failure preserves that original
+record and continues; a batch failure preserves the entire original batch.
+
+**Security**: Scripts receive restricted globals and a VM timeout, but Node's
+`vm` is not a security boundary for hostile code. Permit script-bearing
+pipelines only for trusted administrators, or disable script execution in the
+plugin security options. See [SECURITY.md](../../SECURITY.md#expressions-and-scripts).
 
 ---
 
@@ -1277,7 +1382,7 @@ The code receives `records` array and `context`. Return the modified array.
 | Logic (4) | `when`, `ifThenElse`, `switch`, `deltaFilter` |
 | JSON (4) | `pick`, `omit`, `parseJson`, `stringifyJson` |
 | Enrichment (5) | `lookup`, `enrich`, `coalesce`, `default`, `httpLookup` |
-| Aggregation (8) | `aggregate`, `multiJoin`, `flatten`, `count`, `unique`, `first`, `last`, `expand` |
+| Aggregation (9) | `aggregate`, `deduplicateRecords`, `multiJoin`, `flatten`, `count`, `unique`, `first`, `last`, `expand` |
 | File (3) | `imageResize`, `imageConvert`, `pdfGenerate` |
 | Validation (2) | `validateRequired`, `validateFormat` |
 | Advanced (1) | `script` |

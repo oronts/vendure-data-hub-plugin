@@ -1,9 +1,20 @@
 import { Pool as PgPool } from 'pg';
+import {
+    createPool as createMysqlPool,
+    type PoolOptions as MysqlPoolOptions,
+    type QueryOptions as MysqlQueryOptions,
+} from 'mysql2/promise';
+import { isIP } from 'net';
 import { ExtractorContext } from '../../types/index';
 import { getErrorMessage } from '../../utils/error.utils';
-import { isBlockedHostname } from '../../utils/url-security.utils';
+import { resolveSafeRemoteAddresses } from '../../utils/remote-host-security.utils';
 import { DatabaseExtractorConfig, DATABASE_DEFAULT_PORTS } from './types';
 import { DatabaseType, CONNECTION_POOL, HTTP } from '../../constants/index';
+import { resolveDatabaseEndpoint } from './database-endpoint';
+import {
+    createMysqlSocketFactory,
+    createPostgresSocketFactory,
+} from './database-socket';
 
 export interface DatabaseClient {
     query(sql: string, parameters?: unknown[]): Promise<DatabaseQueryResult>;
@@ -23,127 +34,140 @@ export function getDefaultPort(databaseType: DatabaseType): number {
     return DATABASE_DEFAULT_PORTS[databaseType] ?? 0;
 }
 
-/**
- * Normalize a hostname extracted from a DSN connection string.
- * Strips quotes, protocol prefixes, instance names, ports, and IPv6 brackets.
- */
-function normalizeDsnHostname(raw: string): string {
-    let h = raw;
-    h = h.replace(/^['"]|['"]$/g, '');     // Strip quotes: 'host' or "host"
-    h = h.replace(/^tcp:/i, '');            // MSSQL tcp: prefix
-    h = h.replace(/\\.*/g, '');             // MSSQL instance: host\INSTANCE -> host
-    h = h.replace(/,\d+$/, '');             // MSSQL comma-port: host,1433 -> host
-    // Strip IPv6 brackets but preserve the address
-    if (h.startsWith('[') && h.includes(']')) {
-        h = h.slice(1, h.indexOf(']'));
+function resolveBoundedInteger(
+    field: string,
+    value: number | undefined,
+    defaultValue: number,
+    min: number,
+    max: number,
+): number {
+    const resolved = value ?? defaultValue;
+    if (!Number.isSafeInteger(resolved) || resolved < min || resolved > max) {
+        throw new Error(`${field} must be an integer from ${min} to ${max}`);
     }
-    // Strip :port only for non-IPv6 (IPv6 has multiple colons)
-    const colonCount = (h.match(/:/g) || []).length;
-    if (colonCount === 1) {
-        h = h.replace(/:\d+$/, '');         // IPv4 host:port -> host
-    }
-    return h.trim();
+    return resolved;
 }
 
-/**
- * Validate a connection string for SSRF by extracting and checking the hostname
- * against the blocklist. Does not perform DNS resolution.
- */
-function validateConnectionStringSsrf(connectionString: string): void {
-    // Try URL format first (postgres://host:5432/db)
-    try {
-        const url = new URL(connectionString);
-        if (url.hostname && isBlockedHostname(url.hostname)) {
-            throw new Error(`SSRF: connection to ${url.hostname} is blocked`);
+function assertTlsIdentityHostname(
+    config: DatabaseExtractorConfig,
+    hostname: string,
+): void {
+    const verifiesCertificates = config.ssl?.enabled
+        && (config.ssl.rejectUnauthorized ?? true);
+    if (verifiesCertificates && isIP(hostname) !== 0) {
+        throw new Error(
+            'Verified database TLS requires a DNS hostname for certificate identity validation',
+        );
+    }
+}
+
+async function resolveDatabaseTlsOptions(
+    context: ExtractorContext,
+    config: DatabaseExtractorConfig,
+    verifyIdentity = false,
+): Promise<Record<string, unknown> | undefined> {
+    const tlsConfig = config.ssl;
+    const hasTlsSecrets = Boolean(
+        tlsConfig?.caSecretCode
+        || tlsConfig?.certSecretCode
+        || tlsConfig?.keySecretCode,
+    );
+    if (!tlsConfig?.enabled) {
+        if (hasTlsSecrets) {
+            throw new Error(
+                'Database TLS must be enabled when TLS secrets are configured',
+            );
         }
-        return;
-    } catch (e) {
-        if (e instanceof Error && e.message.startsWith('SSRF:')) throw e;
+        return undefined;
+    }
+    if (Boolean(tlsConfig.certSecretCode) !== Boolean(tlsConfig.keySecretCode)) {
+        throw new Error(
+            'Database TLS client certificate and key secrets must be configured together',
+        );
     }
 
-    // Extract and normalize hostname from DSN/key-value formats
-    const patterns = [
-        /\bhost\s*=\s*([^\s;,]+)/i,        // PostgreSQL: host=X
-        /\bhostaddr\s*=\s*([^\s;,]+)/i,    // PostgreSQL: hostaddr=X (IP-only form)
-        /\bServer\s*=\s*([^\s;,]+)/i,      // MSSQL: Server=X
-        /\bData\s+Source\s*=\s*([^\s;,]+)/i, // Oracle/generic: Data Source=X
-    ];
-    for (const pattern of patterns) {
-        const match = connectionString.match(pattern);
-        if (match?.[1]) {
-            const hostname = normalizeDsnHostname(match[1]);
-            if (hostname && isBlockedHostname(hostname)) {
-                throw new Error(`SSRF: connection to ${hostname} is blocked`);
-            }
+    const ssl: Record<string, unknown> = {
+        rejectUnauthorized: tlsConfig.rejectUnauthorized ?? true,
+        ...(verifyIdentity ? { verifyIdentity: true } : {}),
+    };
+    const secretFields = [
+        ['caSecretCode', 'ca'],
+        ['certSecretCode', 'cert'],
+        ['keySecretCode', 'key'],
+    ] as const;
+
+    for (const [configField, sslField] of secretFields) {
+        const secretCode = tlsConfig[configField];
+        if (!secretCode) continue;
+
+        const value = await context.secrets.get(secretCode);
+        if (!value) {
+            throw new Error(
+                `Database TLS ${sslField} secret "${secretCode}" not found`,
+            );
         }
+        ssl[sslField] = value;
     }
+
+    return ssl;
 }
 
 async function createPostgresClient(
     context: ExtractorContext,
     config: DatabaseExtractorConfig,
 ): Promise<DatabaseClient> {
-    if (config.host && isBlockedHostname(config.host)) {
-        throw new Error(`SSRF: connection to ${config.host} is blocked`);
-    }
+    const endpoint = await resolveDatabaseEndpoint(
+        context,
+        config,
+        DatabaseType.POSTGRESQL,
+    );
+    assertTlsIdentityHostname(config, endpoint.hostname);
+    const ssl = await resolveDatabaseTlsOptions(context, config);
+    const remotes = await resolveSafeRemoteAddresses(endpoint.hostname);
 
+    const queryTimeoutMs = resolveBoundedInteger(
+        'queryTimeoutMs',
+        config.queryTimeoutMs,
+        HTTP.TIMEOUT_MS,
+        1,
+        HTTP.MAX_TIMEOUT_MS,
+    );
+    const maxConnections = resolveBoundedInteger(
+        'pool.max',
+        config.pool?.max,
+        CONNECTION_POOL.MAX,
+        CONNECTION_POOL.MIN,
+        CONNECTION_POOL.MAX,
+    );
+    const idleTimeoutMs = resolveBoundedInteger(
+        'pool.idleTimeoutMs',
+        config.pool?.idleTimeoutMs,
+        CONNECTION_POOL.IDLE_TIMEOUT_MS,
+        1,
+        HTTP.MAX_TIMEOUT_MS,
+    );
     const poolConfig: Record<string, unknown> = {
-        host: config.host,
-        port: config.port || DATABASE_DEFAULT_PORTS[DatabaseType.POSTGRESQL],
-        database: config.database,
-        user: config.username,
-        max: config.pool?.max ?? CONNECTION_POOL.MAX,
-        idleTimeoutMillis: config.pool?.idleTimeoutMs ?? CONNECTION_POOL.IDLE_TIMEOUT_MS,
-        connectionTimeoutMillis: config.queryTimeoutMs ?? HTTP.TIMEOUT_MS,
+        host: remotes[0].hostname,
+        port: endpoint.port,
+        database: endpoint.database,
+        user: endpoint.username,
+        password: endpoint.password,
+        stream: createPostgresSocketFactory(remotes, endpoint.port),
+        max: maxConnections,
+        idleTimeoutMillis: idleTimeoutMs,
+        connectionTimeoutMillis: CONNECTION_POOL.ACQUIRE_TIMEOUT_MS,
+        statement_timeout: queryTimeoutMs,
+        query_timeout: queryTimeoutMs,
     };
 
-    if (config.passwordSecretCode) {
-        const password = await context.secrets.get(config.passwordSecretCode);
-        if (!password) {
-            throw new Error(`Secret "${config.passwordSecretCode}" not found - create it in DataHub > Secrets before using this connection`);
-        }
-        poolConfig.password = password;
-    }
-
-    if (config.ssl?.enabled) {
-        const ssl: Record<string, unknown> = {
-            rejectUnauthorized: config.ssl.rejectUnauthorized ?? true,
-        };
-
-        if (config.ssl.caSecretCode) {
-            const ca = await context.secrets.get(config.ssl.caSecretCode);
-            if (ca) {
-                ssl.ca = ca;
-            }
-        }
-        if (config.ssl.certSecretCode) {
-            const cert = await context.secrets.get(config.ssl.certSecretCode);
-            if (cert) {
-                ssl.cert = cert;
-            }
-        }
-        if (config.ssl.keySecretCode) {
-            const key = await context.secrets.get(config.ssl.keySecretCode);
-            if (key) {
-                ssl.key = key;
-            }
-        }
+    if (ssl) {
         poolConfig.ssl = ssl;
     }
 
-    if (config.connectionStringSecretCode) {
-        const connectionString = await context.secrets.get(config.connectionStringSecretCode);
-        if (!connectionString) {
-            throw new Error(`Secret "${config.connectionStringSecretCode}" not found - create it in DataHub > Secrets`);
-        }
-        validateConnectionStringSsrf(connectionString);
-        poolConfig.connectionString = connectionString;
-    } else if (config.connectionString) {
-        validateConnectionStringSsrf(config.connectionString);
-        poolConfig.connectionString = config.connectionString;
-    }
-
     const pool = new PgPool(poolConfig);
+    pool.on('error', error => {
+        context.logger.error('Idle PostgreSQL pool client failed', error);
+    });
 
     return {
         async query(sql: string, params?: unknown[]): Promise<DatabaseQueryResult> {
@@ -167,76 +191,66 @@ async function createMysqlClient(
     context: ExtractorContext,
     config: DatabaseExtractorConfig,
 ): Promise<DatabaseClient> {
-    if (config.host && isBlockedHostname(config.host)) {
-        throw new Error(`SSRF: connection to ${config.host} is blocked`);
-    }
+    const endpoint = await resolveDatabaseEndpoint(
+        context,
+        config,
+        DatabaseType.MYSQL,
+    );
+    assertTlsIdentityHostname(config, endpoint.hostname);
+    const ssl = await resolveDatabaseTlsOptions(context, config, true);
+    const remotes = await resolveSafeRemoteAddresses(endpoint.hostname);
 
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const mysql2 = require('mysql2/promise');
-    const poolConfig: Record<string, unknown> = {
-        host: config.host,
-        port: config.port || DATABASE_DEFAULT_PORTS[DatabaseType.MYSQL],
-        database: config.database,
-        user: config.username,
+    const queryTimeoutMs = resolveBoundedInteger(
+        'queryTimeoutMs',
+        config.queryTimeoutMs,
+        HTTP.TIMEOUT_MS,
+        1,
+        HTTP.MAX_TIMEOUT_MS,
+    );
+    const maxConnections = resolveBoundedInteger(
+        'pool.max',
+        config.pool?.max,
+        CONNECTION_POOL.MAX,
+        CONNECTION_POOL.MIN,
+        CONNECTION_POOL.MAX,
+    );
+    const idleTimeoutMs = resolveBoundedInteger(
+        'pool.idleTimeoutMs',
+        config.pool?.idleTimeoutMs,
+        CONNECTION_POOL.IDLE_TIMEOUT_MS,
+        1,
+        HTTP.MAX_TIMEOUT_MS,
+    );
+    const poolConfig: MysqlPoolOptions = {
+        host: remotes[0].hostname,
+        port: endpoint.port,
+        database: endpoint.database,
+        user: endpoint.username,
+        password: endpoint.password,
+        stream: createMysqlSocketFactory(remotes, endpoint.port),
         waitForConnections: true,
-        connectionLimit: config.pool?.max ?? CONNECTION_POOL.MAX,
+        connectionLimit: maxConnections,
+        maxIdle: maxConnections,
+        idleTimeout: idleTimeoutMs,
         queueLimit: 0,
         enableKeepAlive: true,
         keepAliveInitialDelay: 0,
+        connectTimeout: CONNECTION_POOL.ACQUIRE_TIMEOUT_MS,
     };
 
-    if (config.passwordSecretCode) {
-        const password = await context.secrets.get(config.passwordSecretCode);
-        if (!password) {
-            throw new Error(`Secret "${config.passwordSecretCode}" not found - create it in DataHub > Secrets before using this connection`);
-        }
-        poolConfig.password = password;
-    }
-
-    if (config.ssl?.enabled) {
-        const ssl: Record<string, unknown> = {
-            rejectUnauthorized: config.ssl.rejectUnauthorized ?? true,
-        };
-
-        if (config.ssl.caSecretCode) {
-            const ca = await context.secrets.get(config.ssl.caSecretCode);
-            if (ca) {
-                ssl.ca = ca;
-            }
-        }
-        if (config.ssl.certSecretCode) {
-            const cert = await context.secrets.get(config.ssl.certSecretCode);
-            if (cert) {
-                ssl.cert = cert;
-            }
-        }
-        if (config.ssl.keySecretCode) {
-            const key = await context.secrets.get(config.ssl.keySecretCode);
-            if (key) {
-                ssl.key = key;
-            }
-        }
+    if (ssl) {
         poolConfig.ssl = ssl;
     }
 
-    // SSRF check for MySQL connection strings
-    if (config.connectionStringSecretCode) {
-        const connectionString = await context.secrets.get(config.connectionStringSecretCode);
-        if (!connectionString) {
-            throw new Error(`Secret "${config.connectionStringSecretCode}" not found - create it in DataHub > Secrets`);
-        }
-        validateConnectionStringSsrf(connectionString);
-        poolConfig.uri = connectionString;
-    } else if (config.connectionString) {
-        validateConnectionStringSsrf(config.connectionString);
-        poolConfig.uri = config.connectionString;
-    }
-
-    const pool = mysql2.createPool(poolConfig);
+    const pool = createMysqlPool(poolConfig);
 
     return {
         async query(sql: string, params?: unknown[]): Promise<DatabaseQueryResult> {
-            const [rows, fields] = await pool.query(sql, params);
+            const options: MysqlQueryOptions = {
+                sql,
+                timeout: queryTimeoutMs,
+            };
+            const [rows, fields] = await pool.query(options, params);
             const rowsArray = rows as Record<string, unknown>[];
             return {
                 rows: rowsArray,
@@ -253,6 +267,78 @@ async function createMysqlClient(
     };
 }
 
+interface SqliteStatement {
+    all(...parameters: unknown[]): Record<string, unknown>[];
+    columns(): Array<{ name: string; type: string | null }>;
+}
+
+interface SqliteDatabase {
+    prepare(sql: string): SqliteStatement;
+    close(): void;
+}
+
+interface SqliteDatabaseConstructor {
+    new (
+        filename: string,
+        options: { readonly: boolean; fileMustExist: boolean },
+    ): SqliteDatabase;
+}
+
+async function createSqliteClient(
+    context: ExtractorContext,
+    config: DatabaseExtractorConfig,
+): Promise<DatabaseClient> {
+    if (config.queryTimeoutMs !== undefined) {
+        throw new Error('queryTimeoutMs is not supported for SQLite');
+    }
+    if (config.ssl?.enabled
+        || config.ssl?.caSecretCode
+        || config.ssl?.certSecretCode
+        || config.ssl?.keySecretCode) {
+        throw new Error('TLS is not supported for SQLite');
+    }
+    if (config.pool !== undefined) {
+        throw new Error('Connection pools are not configurable for SQLite');
+    }
+
+    let filename = config.connectionString ?? config.database;
+    if (config.connectionStringSecretCode) {
+        filename = await context.secrets.get(config.connectionStringSecretCode);
+        if (!filename) {
+            throw new Error(`Secret "${config.connectionStringSecretCode}" not found - create it in DataHub > Secrets`);
+        }
+    }
+    if (!filename) {
+        throw new Error('SQLite database path is required');
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const BetterSqlite3 = require('better-sqlite3') as SqliteDatabaseConstructor;
+    const isMemoryDatabase = filename === ':memory:';
+    const database = new BetterSqlite3(filename, {
+        readonly: !isMemoryDatabase,
+        fileMustExist: !isMemoryDatabase,
+    });
+
+    return {
+        async query(sql: string, parameters: unknown[] = []): Promise<DatabaseQueryResult> {
+            const statement = database.prepare(sql);
+            const rows = statement.all(...parameters);
+            return {
+                rows,
+                rowCount: rows.length,
+                fields: statement.columns().map(column => ({
+                    name: column.name,
+                    type: column.type ?? 'unknown',
+                })),
+            };
+        },
+        async close(): Promise<void> {
+            database.close();
+        },
+    };
+}
+
 export async function createDatabaseClient(
     context: ExtractorContext,
     config: DatabaseExtractorConfig,
@@ -265,22 +351,7 @@ export async function createDatabaseClient(
             return createMysqlClient(context, config);
 
         case DatabaseType.SQLITE:
-            throw new Error(
-                'SQLite extraction requires the better-sqlite3 package. ' +
-                    'Install it with: npm install better-sqlite3',
-            );
-
-        case DatabaseType.MSSQL:
-            throw new Error(
-                'SQL Server extraction requires the mssql package. ' +
-                    'Install it with: npm install mssql',
-            );
-
-        case DatabaseType.ORACLE:
-            throw new Error(
-                'Oracle extraction requires the oracledb package. ' +
-                    'Install it with: npm install oracledb',
-            );
+            return createSqliteClient(context, config);
 
         default:
             throw new Error(`Unsupported database type: ${config.databaseType}`);
@@ -292,9 +363,10 @@ export async function testDatabaseConnection(
     config: DatabaseExtractorConfig,
 ): Promise<{ success: boolean; error?: string; latencyMs?: number }> {
     const startTime = Date.now();
-    const client = await createDatabaseClient(context, config);
+    let client: DatabaseClient | undefined;
 
     try {
+        client = await createDatabaseClient(context, config);
         await client.query('SELECT 1');
 
         return {
@@ -307,6 +379,14 @@ export async function testDatabaseConnection(
             error: getErrorMessage(error),
         };
     } finally {
-        await client.close();
+        if (client) {
+            try {
+                await client.close();
+            } catch (error) {
+                context.logger.warn('Failed to close database connection test client', {
+                    error: getErrorMessage(error),
+                });
+            }
+        }
     }
 }

@@ -1,10 +1,13 @@
+import { PDFDocument, PDFFont, StandardFonts } from 'pdf-lib';
 import { AdapterDefinition, JsonObject, AdapterOperatorHelpers, OperatorResult } from '../types';
+import { deepClone, getNestedValue, setNestedValue } from '../helpers';
+import { getErrorMessage } from '../../utils/error.utils';
 
 export const PDF_GENERATE_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'pdfGenerate',
     name: 'PDF Generate',
-    description: 'Generate PDF from HTML template with record data',
+    description: 'Generate a plain-text PDF from a template and record data.',
     category: 'CONVERSION',
     categoryLabel: 'File',
     categoryOrder: 9,
@@ -13,9 +16,9 @@ export const PDF_GENERATE_OPERATOR_DEFINITION: AdapterDefinition = {
     schema: {
         groups: [{ id: 'main', label: 'PDF Settings' }],
         fields: [
-            { key: 'template', label: 'HTML Template', type: 'string', group: 'main', description: 'HTML template with {{field}} placeholders' },
-            { key: 'templateField', label: 'Template Field', type: 'string', group: 'main', description: 'Record field containing HTML template' },
-            { key: 'targetField', label: 'Target Field', type: 'string', required: true, group: 'main' },
+            { key: 'template', label: 'Text Template', type: 'string', group: 'main', description: 'Text with {{field.path}} placeholders. HTML tags are removed.' },
+            { key: 'templateField', label: 'Template Field Path', type: 'string', group: 'main', description: 'Record field path containing the text template.' },
+            { key: 'targetField', label: 'Target Field Path', type: 'string', required: true, group: 'main' },
             {
                 key: 'pageSize', label: 'Page Size', type: 'select', group: 'main', options: [
                     { value: 'A4', label: 'A4' },
@@ -37,74 +40,80 @@ interface PdfGenerateConfig {
     templateField?: string;
     template?: string;
     targetField: string;
-    pageSize?: 'A4' | 'LETTER' | 'A3';
+    pageSize?: keyof typeof PAGE_SIZES;
     orientation?: 'PORTRAIT' | 'LANDSCAPE';
 }
 
-/**
- * Simple template replacement: replaces {{fieldName}} with record values.
- */
-function simpleTemplateReplace(template: string, data: JsonObject): string {
-    return template.replace(/\{\{(\w+)\}\}/g, (_match, key: string) => {
-        const value = data[key];
-        return value != null ? String(value) : '';
-    });
-}
-
-/** Default font size in PDF points */
 const DEFAULT_FONT_SIZE = 12;
-/** Default page margin in PDF points */
 const DEFAULT_MARGIN = 50;
-/** Line spacing multiplier relative to font size */
-const LINE_SPACING_MULTIPLIER = 1.5;
+const LINE_HEIGHT = DEFAULT_FONT_SIZE * 1.5;
 
-/** Page dimensions in PDF points (1 point = 1/72 inch) */
-const PAGE_SIZES: Record<string, [number, number]> = {
+const PAGE_SIZES = {
     A4: [595.28, 841.89],
     LETTER: [612, 792],
     A3: [841.89, 1190.55],
-};
+} as const;
 
-/**
- * Minimal interface for the PDFDocument from pdf-lib.
- * Declared here to avoid requiring pdf-lib types at compile time,
- * since pdf-lib is an optional dependency loaded at runtime.
- */
-interface PdfLibModule {
-    PDFDocument: {
-        create(): Promise<PdfDoc>;
-    };
-    StandardFonts: {
-        Helvetica: string;
-    };
+function replaceTemplateFields(template: string, data: JsonObject): string {
+    return template.replace(/\{\{([\w.]+)\}\}/g, (_match, path: string) => {
+        const value = getNestedValue(data, path);
+        return value == null ? '' : String(value);
+    });
 }
 
-interface PdfDoc {
-    addPage(size: [number, number]): PdfPage;
-    embedFont(font: string): Promise<PdfFont>;
-    save(): Promise<Uint8Array>;
+function toPlainText(value: string): string {
+    return value
+        .replace(/<\s*br\s*\/?>/gi, '\n')
+        .replace(/<\/(p|div|h[1-6]|li)>/gi, '\n')
+        .replace(/<[^>]*>/g, '')
+        .trim();
 }
 
-interface PdfPage {
-    getSize(): { width: number; height: number };
-    drawText(text: string, options: { x: number; y: number; size: number; font: PdfFont }): void;
+function wrapLine(line: string, font: PDFFont, maxWidth: number): string[] {
+    const wrapped: string[] = [];
+    let current = '';
+    for (const word of line.split(/\s+/).filter(Boolean)) {
+        const candidate = current ? `${current} ${word}` : word;
+        if (current && font.widthOfTextAtSize(candidate, DEFAULT_FONT_SIZE) > maxWidth) {
+            wrapped.push(current);
+            current = word;
+        } else {
+            current = candidate;
+        }
+    }
+    wrapped.push(current);
+    return wrapped;
 }
 
-interface PdfFont {
-    widthOfTextAtSize(text: string, size: number): number;
+function pageDimensions(config: PdfGenerateConfig): [number, number] {
+    const dimensions = PAGE_SIZES[config.pageSize ?? 'A4'];
+    return config.orientation === 'LANDSCAPE'
+        ? [dimensions[1], dimensions[0]]
+        : [dimensions[0], dimensions[1]];
 }
 
-async function loadPdfLib(): Promise<PdfLibModule> {
-    try {
-        // Use indirect require to avoid TypeScript module resolution for optional dependency
-        const moduleName = 'pdf-lib';
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const mod = await (Function('moduleName', 'return import(moduleName)')(moduleName)) as PdfLibModule;
-        return mod;
-    } catch {
-        throw new Error(
-            'The "pdf-lib" package is required for PDF generation. Install it with: npm install pdf-lib',
-        );
+function renderPages(pdf: PDFDocument, font: PDFFont, text: string, size: [number, number]): void {
+    const [width, height] = size;
+    const maxWidth = width - DEFAULT_MARGIN * 2;
+    let page = pdf.addPage(size);
+    let y = height - DEFAULT_MARGIN;
+
+    for (const sourceLine of text.split('\n')) {
+        for (const line of wrapLine(sourceLine, font, maxWidth)) {
+            if (y < DEFAULT_MARGIN) {
+                page = pdf.addPage(size);
+                y = height - DEFAULT_MARGIN;
+            }
+            if (line) {
+                page.drawText(line, {
+                    x: DEFAULT_MARGIN,
+                    y,
+                    size: DEFAULT_FONT_SIZE,
+                    font,
+                });
+            }
+            y -= LINE_HEIGHT;
+        }
     }
 }
 
@@ -113,72 +122,35 @@ export async function pdfGenerateOperator(
     config: PdfGenerateConfig,
     _helpers: AdapterOperatorHelpers,
 ): Promise<OperatorResult> {
-    const pdfLib = await loadPdfLib();
     const output: JsonObject[] = [];
+    const errors: NonNullable<OperatorResult['errors']> = [];
 
-    for (const record of records) {
+    for (const [index, record] of records.entries()) {
+        const result = deepClone(record);
         try {
-            const templateStr = config.templateField
-                ? String(record[config.templateField] ?? '')
-                : (config.template ?? '');
-
-            if (!templateStr) {
-                output.push({ ...record });
-                continue;
+            const fieldTemplate = config.templateField
+                ? getNestedValue(record, config.templateField)
+                : undefined;
+            const template = fieldTemplate === undefined ? config.template ?? '' : String(fieldTemplate);
+            if (template) {
+                const pdf = await PDFDocument.create();
+                const font = await pdf.embedFont(StandardFonts.Helvetica);
+                const text = toPlainText(replaceTemplateFields(template, record));
+                renderPages(pdf, font, text, pageDimensions(config));
+                setNestedValue(result, config.targetField, Buffer.from(await pdf.save()).toString('base64'));
             }
-
-            const renderedHtml = simpleTemplateReplace(templateStr, record);
-
-            const pdfDoc = await pdfLib.PDFDocument.create();
-            const pageDimensions = PAGE_SIZES[config.pageSize ?? 'A4'];
-            const [width, height] = config.orientation === 'LANDSCAPE'
-                ? [pageDimensions[1], pageDimensions[0]]
-                : pageDimensions;
-            const page = pdfDoc.addPage([width, height]);
-
-            // Strip HTML tags for plain text PDF (pdf-lib does not render HTML)
-            const plainText = renderedHtml.replace(/<[^>]*>/g, '').trim();
-            const font = await pdfDoc.embedFont(pdfLib.StandardFonts.Helvetica);
-            const fontSize = DEFAULT_FONT_SIZE;
-            const pageHeight = page.getSize().height;
-            const margin = DEFAULT_MARGIN;
-            const maxLineWidth = page.getSize().width - margin * 2;
-
-            // Simple text rendering with basic line wrapping
-            const lines = plainText.split('\n');
-            let y = pageHeight - margin;
-            for (const line of lines) {
-                if (y < margin) break;
-
-                // Basic word-wrapping
-                const words = line.split(' ');
-                let currentLine = '';
-                for (const word of words) {
-                    const testLine = currentLine ? `${currentLine} ${word}` : word;
-                    const testWidth = font.widthOfTextAtSize(testLine, fontSize);
-                    if (testWidth > maxLineWidth && currentLine) {
-                        page.drawText(currentLine, { x: margin, y, size: fontSize, font });
-                        y -= fontSize * LINE_SPACING_MULTIPLIER;
-                        currentLine = word;
-                        if (y < margin) break;
-                    } else {
-                        currentLine = testLine;
-                    }
-                }
-                if (y >= margin && currentLine) {
-                    page.drawText(currentLine, { x: margin, y, size: fontSize, font });
-                    y -= fontSize * LINE_SPACING_MULTIPLIER;
-                }
-            }
-
-            const pdfBytes = await pdfDoc.save();
-            const pdfBase64 = Buffer.from(pdfBytes).toString('base64');
-            output.push({ ...record, [config.targetField]: pdfBase64 });
-        } catch (e: unknown) {
-            // Log warning - keep original record on processing failure
-            output.push({ ...record });
+        } catch (error) {
+            errors.push({
+                message: getErrorMessage(error),
+                field: config.templateField ?? 'template',
+                index,
+            });
         }
+        output.push(result);
     }
 
-    return { records: output };
+    return {
+        records: output,
+        ...(errors.length > 0 ? { errors } : {}),
+    };
 }

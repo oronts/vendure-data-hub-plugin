@@ -9,12 +9,12 @@ import {
     applyValidationErrors,
 } from './helpers';
 import { deepClone } from '../helpers';
-import { VALIDATION_FIELDS } from '../../constants/index';
+import { VALIDATION_FIELDS } from '../../constants/defaults/parsers-defaults';
 
 export const VALIDATE_REQUIRED_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'validateRequired',
-    description: 'Mark records as invalid if required fields are missing.',
+    description: 'Annotate records with validation errors when required fields are missing.',
     category: 'DATA',
     categoryLabel: 'Data',
     categoryOrder: 0,
@@ -31,7 +31,7 @@ export const VALIDATE_REQUIRED_OPERATOR_DEFINITION: AdapterDefinition = {
 export const VALIDATE_FORMAT_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'validateFormat',
-    description: 'Validate field format using regex.',
+    description: 'Annotate records when a non-empty field does not match a regular expression.',
     category: 'DATA',
     categoryLabel: 'Data',
     categoryOrder: 0,

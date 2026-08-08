@@ -1,9 +1,11 @@
 import * as React from 'react';
+import { useLingui } from '@lingui/react/macro';
 import { Badge } from '@vendure/dashboard';
 import { Puzzle, CheckCircle2, Sparkles } from 'lucide-react';
 import { cn } from '../../utils';
 import { resolveIconName } from '../../utils/icon-resolver';
 import type { DataHubAdapter } from '../../types';
+import { AdapterLifecycleBadges } from './AdapterLifecycleBadges';
 
 export const AdapterCard = React.memo(function AdapterCard({
     adapter,
@@ -14,6 +16,7 @@ export const AdapterCard = React.memo(function AdapterCard({
     onSelect: (adapter: DataHubAdapter) => void;
     isBuiltIn?: boolean;
 }>) {
+    const { t } = useLingui();
     const handleClick = React.useCallback(() => {
         onSelect(adapter);
     }, [onSelect, adapter]);
@@ -40,7 +43,7 @@ export const AdapterCard = React.memo(function AdapterCard({
             onKeyDown={handleKeyDown}
             role="button"
             tabIndex={0}
-            aria-label={`View ${adapter.name ?? adapter.code} adapter details`}
+            aria-label={t`View details for the ${adapter.name ?? adapter.code} adapter`}
             data-testid={`datahub-adapter-card-${adapter.code}`}
         >
             {/* Header: icon + code + badges */}
@@ -62,15 +65,19 @@ export const AdapterCard = React.memo(function AdapterCard({
                     )}
                 </div>
                 <div className="flex-shrink-0 flex items-center gap-1">
+                    <AdapterLifecycleBadges
+                        version={adapter.version}
+                        deprecated={adapter.deprecated}
+                    />
                     {isBuiltIn ? (
                         <Badge variant="outline" className="text-[10px] px-1.5 py-0 gap-1">
                             <CheckCircle2 className="w-3 h-3" />
-                            Built-in
+                            {t`Built-in`}
                         </Badge>
                     ) : (
                         <Badge variant="secondary" className="text-[10px] px-1.5 py-0 gap-1">
                             <Sparkles className="w-3 h-3" />
-                            Custom
+                            {t`Custom`}
                         </Badge>
                     )}
                 </div>
@@ -78,22 +85,22 @@ export const AdapterCard = React.memo(function AdapterCard({
 
             {/* Description */}
             <p className="text-xs text-muted-foreground line-clamp-2 mb-3 min-h-[2rem]">
-                {adapter.description || 'No description available'}
+                {adapter.description || t`No description available`}
             </p>
 
             {/* Footer: metadata chips */}
             <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-muted/60">
-                    {fieldCount} field{fieldCount !== 1 ? 's' : ''}
+                    {fieldCount === 1 ? t`${fieldCount} field` : t`${fieldCount} fields`}
                 </span>
                 {requiredCount > 0 && (
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-muted/60">
-                        {requiredCount} required
+                        {t`${requiredCount} required`}
                     </span>
                 )}
                 {adapter.pure && (
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-                        Pure
+                        {t`Pure`}
                     </span>
                 )}
             </div>

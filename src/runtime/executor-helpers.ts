@@ -141,6 +141,7 @@ export interface SandboxHandlerConfig {
     strategy?: LoadStrategy;
     operation?: string;
     lookupFields?: string | string[];
+    skipDuplicates?: boolean;
 }
 
 /**
@@ -187,6 +188,6 @@ export function buildSandboxLoaderContext(
                 ? cfg.lookupFields.split(',').map(f => f.trim())
                 : defaultLookupFields,
         dryRun: false,
-        options: { skipDuplicates: false },
+        options: { skipDuplicates: cfg.skipDuplicates === true },
     };
 }

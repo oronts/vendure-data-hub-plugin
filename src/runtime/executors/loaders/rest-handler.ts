@@ -5,39 +5,28 @@ import * as crypto from 'crypto';
 import { Injectable, Optional } from '@nestjs/common';
 import { RequestContext } from '@vendure/core';
 import { JsonObject, PipelineStepDefinition, ErrorHandlingConfig } from '../../../types/index';
-import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
+import type { RestPostLoaderConfig } from '../../../../shared/types';
+import { RecordObject, OnRecordErrorCallback, LoaderExecutionResult } from '../../executor-types';
 import { SecretService } from '../../../services/config/secret.service';
 import { CircuitBreakerService } from '../../../services/runtime/circuit-breaker.service';
-import { chunk } from '../../utils';
+import { chunk } from '../../../utils/array.utils';
 import { LoaderHandler } from './types';
-import { TIME, LOGGER_CONTEXTS, ConnectionAuthType, HttpMethod, HTTP_HEADERS, CONTENT_TYPES } from '../../../constants/index';
-import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
+import { TIME } from '../../../constants/time';
+import { LOGGER_CONTEXTS } from '../../../constants/core';
+import { ConnectionAuthType } from '../../../constants/enums';
+import { HTTP_HEADERS, CONTENT_TYPES } from '../../../constants/services';
+import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger/datahub-logger';
 import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
-import { assertUrlSafe } from '../../../utils/url-security.utils';
 import { resolveAuthHeaders } from './shared-http-auth';
-import { doHttpFetch, execHttpWithRetry, deriveCircuitKey, resolveHttpRetryConfig, HttpFetchResult } from './shared-http-client';
-
-/**
- * Configuration for REST POST loader step
- */
-interface RestPostConfig {
-    endpoint?: string;
-    method?: string;
-    headers?: Record<string, string>;
-    auth?: string;
-    bearerTokenSecretCode?: string;
-    basicSecretCode?: string;
-    hmacSecretCode?: string;
-    hmacHeader?: string;
-    hmacPayloadTemplate?: string;
-    retries?: number;
-    retryDelayMs?: number;
-    maxRetryDelayMs?: number;
-    backoffMultiplier?: number;
-    timeoutMs?: number;
-    maxBatchSize?: number;
-    batchMode?: string;
-}
+import {
+    doHttpFetch,
+    execHttpWithRetry,
+    deriveCircuitKey,
+    resolveHttpRetryConfig,
+    resolveRestBatchMode,
+    resolveRestWriteMethod,
+    HttpFetchResult,
+} from './shared-http-client';
 
 @Injectable()
 export class RestPostHandler implements LoaderHandler {
@@ -57,66 +46,59 @@ export class RestPostHandler implements LoaderHandler {
         input: RecordObject[],
         onRecordError?: OnRecordErrorCallback,
         errorHandling?: ErrorHandlingConfig,
-    ): Promise<ExecutionResult> {
+    ): Promise<LoaderExecutionResult> {
         let ok = 0, fail = 0;
-        const cfg = (step.config ?? {}) as RestPostConfig;
+        const cfg = (step.config ?? {}) as unknown as RestPostLoaderConfig;
         const endpoint = String(cfg.endpoint ?? '');
-        const method = String(cfg.method ?? HttpMethod.POST).toUpperCase();
+        const method = resolveRestWriteMethod(cfg.method);
         let headers: Record<string, string> = cfg.headers ?? {};
         // Resolve retry/timeout/batch config from step config with pipeline error handling fallbacks
         const { retries, retryDelayMs, maxRetryDelayMs, backoffMultiplier, timeoutMs, maxBatchSize } = resolveHttpRetryConfig(cfg, errorHandling);
 
-        try {
+        const authType = String(cfg.auth ?? ConnectionAuthType.NONE);
+        let hmacSecret: string | undefined;
+        if (authType === ConnectionAuthType.HMAC) {
+            if (!cfg.hmacSecretCode || !cfg.hmacHeader) {
+                throw new Error('HMAC authentication requires hmacSecretCode and hmacHeader');
+            }
+            hmacSecret = await this.secretService.resolve(ctx, cfg.hmacSecretCode) ?? undefined;
+            if (!hmacSecret) {
+                throw new Error(`HMAC authentication secret "${cfg.hmacSecretCode}" is empty or unavailable`);
+            }
+        } else {
             headers = await resolveAuthHeaders(ctx, this.secretService, cfg, headers);
-        } catch (error) {
-            this.logger.warn('Failed to resolve authentication secrets for REST loader', {
-                stepKey: step.key,
-                endpoint,
-                error: getErrorMessage(error),
-            });
         }
 
-        const fetchImpl = globalThis.fetch;
-        if (!fetchImpl) return { ok, fail: input.length };
 
-        await assertUrlSafe(endpoint);
 
         const circuitKey = deriveCircuitKey('rest-loader', endpoint);
 
         /**
          * Build merged headers for a single request, including optional HMAC signing.
          */
-        const buildRequestHeaders = async (body: RecordObject | RecordObject[]): Promise<Record<string, string>> => {
-            let reqHeaders: Record<string, string> = { [HTTP_HEADERS.CONTENT_TYPE]: CONTENT_TYPES.JSON, ...headers };
-            try {
-                if (String(cfg.auth ?? ConnectionAuthType.NONE) === ConnectionAuthType.HMAC && cfg.hmacSecretCode && cfg.hmacHeader) {
-                    const secret = await this.secretService.resolve(ctx, String(cfg.hmacSecretCode));
-                    const urlObj = new URL(endpoint);
-                    const payloadTemplate = String(cfg.hmacPayloadTemplate ?? '${method}:${path}:${timestamp}');
-                    const ts = Math.floor(Date.now() / TIME.SECOND);
-                    const replMap: Record<string, string> = {
-                        '${method}': method,
-                        '${path}': urlObj.pathname,
-                        '${timestamp}': String(ts),
-                        '${body}': JSON.stringify(body),
-                    };
-                    let payloadToSign = payloadTemplate;
-                    for (const [k, v] of Object.entries(replMap)) {
-                        payloadToSign = payloadToSign.split(k).join(v);
-                    }
-                    if (secret) {
-                        const signature = crypto.createHmac('sha256', secret).update(payloadToSign).digest('hex');
-                        reqHeaders = { ...reqHeaders, [String(cfg.hmacHeader)]: signature, 'x-timestamp': String(ts) };
-                    }
-                }
-            } catch (error) {
-                this.logger.warn('Failed to generate HMAC signature for REST request', {
-                    stepKey: step.key,
-                    endpoint,
-                    error: getErrorMessage(error),
-                });
+        const buildRequestHeaders = (body: RecordObject | RecordObject[]): Record<string, string> => {
+            const requestHeaders: Record<string, string> = { [HTTP_HEADERS.CONTENT_TYPE]: CONTENT_TYPES.JSON, ...headers };
+            if (authType !== ConnectionAuthType.HMAC) {
+                return requestHeaders;
             }
-            return reqHeaders;
+            if (!hmacSecret || !cfg.hmacHeader) {
+                throw new Error('HMAC authentication was not initialized');
+            }
+            const urlObj = new URL(endpoint);
+            const payloadTemplate = String(cfg.hmacPayloadTemplate ?? '${method}:${path}:${timestamp}');
+            const timestamp = Math.floor(Date.now() / TIME.SECOND);
+            const replacements: Record<string, string> = {
+                '${method}': method,
+                '${path}': urlObj.pathname,
+                '${timestamp}': String(timestamp),
+                '${body}': JSON.stringify(body),
+            };
+            let payloadToSign = payloadTemplate;
+            for (const [placeholder, value] of Object.entries(replacements)) {
+                payloadToSign = payloadToSign.split(placeholder).join(value);
+            }
+            const signature = crypto.createHmac('sha256', hmacSecret).update(payloadToSign).digest('hex');
+            return { ...requestHeaders, [cfg.hmacHeader]: signature, 'x-timestamp': String(timestamp) };
         };
 
         const fetchWithRetry = async (body: RecordObject | RecordObject[]): Promise<HttpFetchResult> => {
@@ -139,7 +121,7 @@ export class RestPostHandler implements LoaderHandler {
             );
         };
 
-        const batchMode = String(cfg.batchMode ?? 'single');
+        const batchMode = resolveRestBatchMode(cfg.batchMode);
         try {
             if (batchMode === 'array') {
                 const chunks = maxBatchSize > 0 ? chunk(input, maxBatchSize) : [input];
@@ -175,6 +157,6 @@ export class RestPostHandler implements LoaderHandler {
                 if (onRecordError) await onRecordError(step.key, getErrorMessage(e) || 'restPost failed', rec as JsonObject, getErrorStack(e));
             }
         }
-        return { ok, fail };
+        return { ok, fail, skipped: 0 };
     }
 }

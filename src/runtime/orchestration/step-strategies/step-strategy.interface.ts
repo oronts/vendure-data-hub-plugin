@@ -6,13 +6,18 @@
  */
 
 import { RequestContext, ID } from '@vendure/core';
-import { PipelineDefinition, PipelineStepDefinition } from '../../../types/index';
+import {
+    PipelineContext,
+    PipelineDefinition,
+    PipelineStepDefinition,
+} from '../../../types/index';
 import { RecordObject, OnRecordErrorCallback, ExecutorContext } from '../../executor-types';
 import { HookService } from '../../../services/events/hook.service';
 import { DomainEventsService } from '../../../services/events/domain-events.service';
 import { StepLogCallback } from '../types';
 import { getAdapterCode } from '../../../types/step-configs';
 import { getErrorMessage } from '../../../utils/error.utils';
+import type { SeededInputMode } from '../seeded-graph';
 
 /**
  * Context passed to step strategies for execution
@@ -24,6 +29,8 @@ export interface StepExecutionContext {
     definition: PipelineDefinition;
     /** Current step to execute */
     step: PipelineStepDefinition;
+    /** Pipeline defaults merged with per-step and request-context defaults */
+    pipelineContext: PipelineContext;
     /** Input records for the step */
     records: RecordObject[];
     /** Executor context with checkpoint data */
@@ -40,6 +47,8 @@ export interface StepExecutionContext {
     stepLog?: StepLogCallback;
     /** Optional record error callback */
     onRecordError?: OnRecordErrorCallback;
+    /** How seeded input should be consumed by source steps. */
+    seedMode?: SeededInputMode;
 }
 
 /**
@@ -54,6 +63,8 @@ export interface StepStrategyResult {
     succeeded: number;
     /** Number of records failed */
     failed: number;
+    /** Number of records intentionally skipped */
+    skipped?: number;
     /** Step execution detail for reporting */
     detail: import('../../../types/index').JsonObject;
     /** Counter updates (extracted, transformed, loaded, etc.) */

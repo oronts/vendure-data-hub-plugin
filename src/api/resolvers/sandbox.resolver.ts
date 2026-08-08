@@ -13,6 +13,10 @@ import {
 import { PipelineDefinition } from '../../types';
 import { RevisionService } from '../../services/versioning';
 import { RESOLVER_ERROR_MESSAGES } from '../../constants/index';
+import {
+    resolveLineageRecordLimit,
+    revisionsBelongToPipeline,
+} from './sandbox-request.validation';
 
 interface SandboxWithDefinitionInput {
     definition: PipelineDefinition;
@@ -40,9 +44,6 @@ interface SandboxComparisonResult {
         fieldChanges: string[];
     }>;
 }
-
-const DEFAULT_MAX_RECORDS = 100;
-const MAX_COMPARISON_RECORDS = 10000;
 
 @Resolver()
 export class DataHubSandboxResolver {
@@ -87,19 +88,28 @@ export class DataHubSandboxResolver {
         const fromRevision = await this.revisionService.getRevision(ctx, args.fromRevisionId);
         const toRevision = await this.revisionService.getRevision(ctx, args.toRevisionId);
 
-        if (!fromRevision || !toRevision) {
+        if (
+            !fromRevision
+            || !toRevision
+            || !revisionsBelongToPipeline(args.pipelineId, [
+                fromRevision.pipelineId,
+                toRevision.pipelineId,
+            ])
+        ) {
             throw new Error(RESOLVER_ERROR_MESSAGES.REVISION_NOT_FOUND);
         }
 
-        // Add a reasonable limit check before comparison
-        const options = {
-            ...args.options,
-            maxRecords: Math.min(args.options?.maxRecords ?? MAX_COMPARISON_RECORDS, MAX_COMPARISON_RECORDS),
-        };
-
         const [beforeResult, afterResult] = await Promise.all([
-            this.sandboxService.executeWithDefinition(ctx, fromRevision.definition, options),
-            this.sandboxService.executeWithDefinition(ctx, toRevision.definition, options),
+            this.sandboxService.executeWithDefinition(
+                ctx,
+                fromRevision.definition,
+                args.options,
+            ),
+            this.sandboxService.executeWithDefinition(
+                ctx,
+                toRevision.definition,
+                args.options,
+            ),
         ]);
 
         return this.compareResults(beforeResult, afterResult);
@@ -114,7 +124,10 @@ export class DataHubSandboxResolver {
         const result = await this.sandboxService.execute(ctx, args.pipelineId, {
             ...args.options,
             includeLineage: true,
-            maxRecords: Math.max((args.options?.maxRecords || DEFAULT_MAX_RECORDS), args.recordIndex + 1),
+            maxRecords: resolveLineageRecordLimit(
+                args.recordIndex,
+                args.options?.maxRecords,
+            ),
         });
 
         return result.dataLineage.find(l => l.recordIndex === args.recordIndex) || null;

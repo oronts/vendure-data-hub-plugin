@@ -28,12 +28,19 @@ export interface ConsumeResult {
 
 export interface QueueConnectionConfig {
     readonly host: string;
-    readonly port: number;
+    readonly port?: number;
     readonly username?: string;
     readonly password?: string;
     readonly vhost?: string;
     readonly useTls?: boolean;
     readonly [key: string]: unknown;
+}
+
+export interface QueueConsumeOptions {
+    readonly count: number;
+    readonly ackMode: AckMode;
+    readonly prefetch?: number;
+    readonly consumerId?: string;
 }
 
 export interface QueueAdapter {
@@ -50,16 +57,23 @@ export interface QueueAdapter {
     consume(
         connectionConfig: QueueConnectionConfig,
         queueName: string,
-        options: {
-            count: number;
-            ackMode: AckMode;
-            prefetch?: number;
-        },
+        options: QueueConsumeOptions,
     ): Promise<ConsumeResult[]>;
+
+    stopConsumer?(consumerId: string): Promise<void>;
 
     ack(connectionConfig: QueueConnectionConfig, deliveryTag: string): Promise<void>;
 
     nack(connectionConfig: QueueConnectionConfig, deliveryTag: string, requeue: boolean): Promise<void>;
+
+    /**
+     * Extend delivery ownership beyond the next run-observation window.
+     * The adapter must retain settlement state, and redelivery must preserve messageId.
+     */
+    renewLease?(
+        connectionConfig: QueueConnectionConfig,
+        deliveryTag: string,
+    ): Promise<void>;
 
     testConnection(connectionConfig: QueueConnectionConfig): Promise<boolean>;
 

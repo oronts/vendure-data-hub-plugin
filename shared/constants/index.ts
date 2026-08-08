@@ -10,16 +10,18 @@ export {
     EXPORT_FORMAT,
     CLEANUP_STRATEGY,
     COMPRESSION_TYPE,
-    CHECKPOINT_STRATEGY,
     QUEUE_TYPE,
     ACK_MODE,
     RUN_STATUS,
+    DRY_RUN_MESSAGE_LEVEL,
+    DRY_RUN_MESSAGE_CODE,
     STEP_TYPE,
     TRIGGER_TYPE,
     LOAD_STRATEGY,
     CONFLICT_STRATEGY,
     VALIDATION_MODE,
     HOOK_STAGE,
+    CONFIGURATION_SOURCE,
 } from './enums';
 
 export const TIME_UNITS = {
@@ -32,10 +34,14 @@ export const TIME_UNITS = {
 export const PORTS = {
     SFTP: 22,
     FTP: 21,
+    SMTP: 587,
     POSTGRESQL: 5432,
     MYSQL: 3306,
-    MSSQL: 1433,
-    ORACLE: 1521,
+    RABBITMQ: 5672,
+    RABBITMQ_TLS: 5671,
+    RABBITMQ_MANAGEMENT: 15672,
+    RABBITMQ_MANAGEMENT_TLS: 15671,
+    REDIS: 6379,
     MIN: 1,
     MAX: 65535,
 } as const;
@@ -48,6 +54,13 @@ export const SEARCH_SERVICE_PORTS = {
 
 export const DEFAULT_HOSTS = {
     LOCALHOST: 'localhost',
+} as const;
+
+export const WEBHOOK_AUTH_HEADERS = {
+    API_KEY: 'x-api-key',
+    HMAC_SIGNATURE: 'x-datahub-signature',
+    IDEMPOTENCY_KEY: 'x-idempotency-key',
+    JWT: 'authorization',
 } as const;
 
 export const CONFIDENCE_THRESHOLDS = {
@@ -70,12 +83,53 @@ export const HTTP = {
     RETRY_MAX_DELAY_MS: 30_000,
     /** Maximum retry attempts */
     MAX_RETRIES: 3,
+    /** Hard cap for user-configured request timeouts */
+    MAX_TIMEOUT_MS: 5 * 60_000,
+    /** Hard cap for user-configured retry attempts */
+    MAX_RETRY_ATTEMPTS: 10,
+    /** Hard cap for user-configured exponential backoff multipliers */
+    MAX_BACKOFF_MULTIPLIER: 10,
+    /** Hard cap for user-configured requests per second */
+    MAX_REQUESTS_PER_SECOND: 10_000,
     /** Enable exponential backoff for retries */
     EXPONENTIAL_BACKOFF: true,
     /** Backoff multiplier for exponential backoff */
     BACKOFF_MULTIPLIER: 2,
     /** HTTP status codes that should trigger retry */
     RETRYABLE_STATUS_CODES: [408, 429, 500, 502, 503, 504] as readonly number[],
+} as const;
+
+/** Bounded pipeline-level retry defaults and limits. */
+export const PIPELINE_RETRY = {
+    DEFAULT_MAX_RETRIES: 0,
+    DEFAULT_DELAY_MS: 0,
+    DEFAULT_MAX_DELAY_MS: HTTP.RETRY_MAX_DELAY_MS,
+    DEFAULT_BACKOFF_MULTIPLIER: HTTP.BACKOFF_MULTIPLIER,
+    MAX_RETRIES: HTTP.MAX_RETRY_ATTEMPTS,
+    MAX_DELAY_MS: HTTP.MAX_TIMEOUT_MS,
+    MAX_BACKOFF_MULTIPLIER: HTTP.MAX_BACKOFF_MULTIPLIER,
+} as const;
+
+export const PARALLEL_EXECUTION = {
+    DEFAULT_MAX_CONCURRENT_STEPS: 4,
+    MIN_CONCURRENT_STEPS: 1,
+    MAX_CONCURRENT_STEPS: 16,
+    ERROR_POLICIES: ['FAIL_FAST', 'CONTINUE', 'BEST_EFFORT'],
+} as const;
+
+const MIN_THROUGHPUT_PAUSE_INTERVAL_MS = 100;
+
+/** Shared limits for load-batch throughput controls. */
+export const THROUGHPUT_LIMITS = {
+    MIN_BATCH_SIZE: 1,
+    MAX_BATCH_SIZE: 10_000,
+    MIN_RATE_LIMIT_RPS: 0,
+    /** The scheduler starts at most one batch per millisecond. */
+    MAX_RATE_LIMIT_RPS: TIME_UNITS.SECOND,
+    MIN_PAUSE_INTERVAL_SEC:
+        MIN_THROUGHPUT_PAUSE_INTERVAL_MS / TIME_UNITS.SECOND,
+    /** A pause cannot outlive the maximum one-hour pipeline run. */
+    MAX_PAUSE_INTERVAL_SEC: TIME_UNITS.HOUR / TIME_UNITS.SECOND,
 } as const;
 
 /**
@@ -108,8 +162,14 @@ export const RETENTION = {
     ERRORS_DAYS: 90,
     /** Maximum retention days (1 year) */
     MAX_DAYS: 365,
-    /** Minimum retention days */
-    MIN_DAYS: 1,
+    /** Minimum retention days; zero disables cleanup */
+    MIN_DAYS: 0,
+    /** Maximum rows deleted or updated by one database statement */
+    PURGE_BATCH_SIZE: 1_000,
+    /** Maximum rows processed per entity during one purge cycle */
+    MAX_ROWS_PER_ENTITY_PER_PURGE: 10_000,
+    /** Distributed lock key used to serialize purge cycles */
+    PURGE_LOCK_KEY: 'data-hub:retention-purge',
 } as const;
 
 /**
@@ -128,9 +188,7 @@ export const UI_TIMEOUTS = {
 /**
  * Connection types for external services.
  *
- * Core types (HTTP, S3, FTP, SFTP, DATABASE, CUSTOM) are used by both backend
- * and dashboard. Extended types (POSTGRES, MYSQL, MSSQL, MONGODB, REST, GRAPHQL,
- * RABBITMQ, SQS, REDIS) are UI-specific subtypes for richer connection configuration.
+ * This is the canonical set accepted by backend validation and exposed to clients.
  */
 export const CONNECTION_TYPE = {
     /** Generic HTTP connection */
@@ -143,12 +201,6 @@ export const CONNECTION_TYPE = {
     POSTGRES: 'POSTGRES',
     /** MySQL database connection */
     MYSQL: 'MYSQL',
-    /** Microsoft SQL Server connection */
-    MSSQL: 'MSSQL',
-    /** MongoDB connection */
-    MONGO: 'MONGODB',
-    /** Generic database connection (used when specific type unknown) */
-    DATABASE: 'DATABASE',
     /** AWS S3 or S3-compatible storage */
     S3: 'S3',
     /** FTP server connection */
@@ -165,14 +217,8 @@ export const CONNECTION_TYPE = {
     CUSTOM: 'CUSTOM',
 } as const;
 
-/**
- * Union type of all known connection type values.
- * Includes `(string & {})` to allow unknown/future connection types
- * while preserving autocomplete for known values.
- */
-export type UIConnectionType =
-    | typeof CONNECTION_TYPE[keyof typeof CONNECTION_TYPE]
-    | (string & {});
+/** Union type of every connection type accepted by the backend. */
+export type UIConnectionType = typeof CONNECTION_TYPE[keyof typeof CONNECTION_TYPE];
 
 /** Default Vendure channel code used when no specific channel is configured */
 export const DEFAULT_CHANNEL_CODE = '__default_channel__';

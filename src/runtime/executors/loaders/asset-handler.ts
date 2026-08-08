@@ -3,6 +3,7 @@
  */
 import { Injectable } from '@nestjs/common';
 import {
+    ChannelService,
     RequestContext,
     ProductService,
     CollectionService,
@@ -11,26 +12,22 @@ import {
     ID,
     EntityWithAssets,
 } from '@vendure/core';
+import { createChannelCodeRequestContext } from '../../helpers/channel-request-context';
 import { JsonObject, PipelineStepDefinition, ErrorHandlingConfig } from '../../../types/index';
-import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
+import { RecordObject, OnRecordErrorCallback, LoaderExecutionResult } from '../../executor-types';
 import { LoaderHandler } from './types';
 import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
+import { getStringValue } from '../../../loaders/shared-helpers';
+import { VendureEntityType } from '../../../constants/enums';
 
 /**
  * Configuration for asset attachment step
  */
 interface AssetAttachConfig {
-    entity?: string;
+    entity?: VendureEntityType.PRODUCT | VendureEntityType.COLLECTION;
     slugField?: string;
     assetIdField?: string;
     channel?: string;
-}
-
-/**
- * Record with dynamic field access
- */
-interface AssetAttachRecord {
-    [key: string]: unknown;
 }
 
 @Injectable()
@@ -40,6 +37,7 @@ export class AssetAttachHandler implements LoaderHandler {
         private collectionService: CollectionService,
         private assetService: AssetService,
         private requestContextService: RequestContextService,
+        private channelService: ChannelService,
     ) {}
 
     async execute(
@@ -48,18 +46,17 @@ export class AssetAttachHandler implements LoaderHandler {
         input: RecordObject[],
         onRecordError?: OnRecordErrorCallback,
         _errorHandling?: ErrorHandlingConfig,
-    ): Promise<ExecutionResult> {
+    ): Promise<LoaderExecutionResult> {
         let ok = 0, fail = 0;
         const cfg = (step.config ?? {}) as AssetAttachConfig;
 
         for (const rec of input) {
             try {
-                const record = rec as AssetAttachRecord;
                 const entity = cfg.entity;
                 const slugField = cfg.slugField ?? 'slug';
                 const assetIdField = cfg.assetIdField ?? 'assetId';
-                const slug = record[slugField] as string | undefined;
-                const assetId = record[assetIdField] as ID | undefined;
+                const slug = getStringValue(rec, slugField);
+                const assetId = getStringValue(rec, assetIdField) as ID | undefined;
 
                 if (!entity || !slug || !assetId) {
                     if (onRecordError) await onRecordError(step.key, `Missing required field: ${!entity ? 'entity' : !slug ? slugField : assetIdField}`, rec as JsonObject);
@@ -70,11 +67,15 @@ export class AssetAttachHandler implements LoaderHandler {
                 let opCtx = ctx;
                 const channel = cfg.channel;
                 if (channel) {
-                    const req = await this.requestContextService.create({ apiType: ctx.apiType, channelOrToken: channel });
-                    if (req) opCtx = req;
+                    opCtx = await createChannelCodeRequestContext(
+                        this.requestContextService,
+                        this.channelService,
+                        ctx,
+                        channel,
+                    );
                 }
 
-                if (entity === 'product') {
+                if (entity === VendureEntityType.PRODUCT) {
                     const list = await this.productService.findAll(opCtx, { filter: { slug: { eq: slug } }, take: 1 });
                     const product = list.items[0];
                     if (!product) {
@@ -83,7 +84,7 @@ export class AssetAttachHandler implements LoaderHandler {
                         continue;
                     }
                     await this.assetService.updateFeaturedAsset(opCtx, product as unknown as EntityWithAssets, { featuredAssetId: assetId });
-                } else if (entity === 'collection') {
+                } else if (entity === VendureEntityType.COLLECTION) {
                     const existing = await this.collectionService.findOneBySlug(opCtx, slug);
                     if (!existing) {
                         if (onRecordError) await onRecordError(step.key, `Collection not found: ${slug}`, rec as JsonObject);
@@ -102,6 +103,6 @@ export class AssetAttachHandler implements LoaderHandler {
                 fail++;
             }
         }
-        return { ok, fail };
+        return { ok, fail, skipped: 0 };
     }
 }

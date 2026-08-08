@@ -1,25 +1,31 @@
 /** In-process queue adapter for testing and development. Not suitable for multi-instance deployments. */
 
+import { randomUUID } from 'node:crypto';
 import { AckMode } from '../../../constants/enums';
+import { QUEUE } from '../../../constants/defaults/runtime-defaults';
+import { requirePositiveInteger } from './queue-message.utils';
 import {
     QueueAdapter,
     QueueConnectionConfig,
     QueueMessage,
     PublishResult,
     ConsumeResult,
+    QueueConsumeOptions,
 } from './queue-adapter.interface';
 
-/** Module-level buffer: queueName → ordered message list */
-const internalBuffer = new Map<string, QueueMessage[]>();
+interface BufferedMessage {
+    readonly message: QueueMessage;
+    readonly redelivered: boolean;
+}
 
-/** Pending messages awaiting ack/nack: deliveryTag → { queueName, message } */
-const pendingMessages = new Map<string, { queueName: string; message: QueueMessage }>();
+/** Module-level buffer: queueName → ordered delivery list */
+const internalBuffer = new Map<string, BufferedMessage[]>();
 
-/** Track message IDs that have been requeued (nack with requeue=true) */
-const redeliveredIds = new Set<string>();
+/** Pending messages awaiting ack/nack: deliveryTag → { queueName, delivery } */
+const pendingMessages = new Map<string, { queueName: string; delivery: BufferedMessage }>();
 
 /** Return (creating if necessary) the buffer for a given queue */
-function getBuffer(queueName: string): QueueMessage[] {
+function getBuffer(queueName: string): BufferedMessage[] {
     let buf = internalBuffer.get(queueName);
     if (!buf) {
         buf = [];
@@ -42,7 +48,7 @@ class InternalQueueAdapter implements QueueAdapter {
     ): Promise<PublishResult[]> {
         const buf = getBuffer(queueName);
         return messages.map(msg => {
-            buf.push(msg);
+            buf.push({ message: msg, redelivered: false });
             return { success: true, messageId: msg.id };
         });
     }
@@ -50,31 +56,42 @@ class InternalQueueAdapter implements QueueAdapter {
     async consume(
         _connectionConfig: QueueConnectionConfig,
         queueName: string,
-        options: { count: number; ackMode: AckMode; prefetch?: number },
+        options: QueueConsumeOptions,
     ): Promise<ConsumeResult[]> {
         const buf = getBuffer(queueName);
-        const batch = buf.splice(0, options.count);
-        let tagCounter = 0;
-        return batch.map(msg => {
-            const deliveryTag = `${queueName}:${msg.id}:${Date.now()}:${tagCounter++}`;
+        const requestedCount = requirePositiveInteger(
+            options.count,
+            'Internal queue consume count',
+            QUEUE.MAX_MESSAGE_BATCH_SIZE,
+        );
+        const count = options.ackMode === AckMode.MANUAL
+            ? Math.min(
+                requestedCount,
+                Math.max(0, QUEUE.MAX_PENDING_MESSAGES - pendingMessages.size),
+            )
+            : requestedCount;
+        const batch = buf.splice(0, count);
+        return batch.map(delivery => {
+            const deliveryTag = `internal:${queueName}:${randomUUID()}`;
             if (options.ackMode === AckMode.MANUAL) {
-                pendingMessages.set(deliveryTag, { queueName, message: msg });
+                pendingMessages.set(deliveryTag, { queueName, delivery });
             }
-            const redeliveryKey = `${queueName}:${msg.id}`;
             return {
-                messageId: msg.id,
-                payload: msg.payload,
-                headers: msg.headers,
+                messageId: delivery.message.id,
+                payload: delivery.message.payload,
+                headers: delivery.message.headers,
                 deliveryTag: options.ackMode === AckMode.MANUAL ? deliveryTag : undefined,
-                redelivered: redeliveredIds.has(redeliveryKey),
+                redelivered: delivery.redelivered,
             };
         });
     }
 
     async ack(_connectionConfig: QueueConnectionConfig, deliveryTag: string): Promise<void> {
         const pending = pendingMessages.get(deliveryTag);
+        if (!pending) {
+            throw new Error(`No pending message found for delivery tag: ${deliveryTag}`);
+        }
         pendingMessages.delete(deliveryTag);
-        if (pending) redeliveredIds.delete(`${pending.queueName}:${pending.message.id}`);
     }
 
     async nack(
@@ -83,14 +100,23 @@ class InternalQueueAdapter implements QueueAdapter {
         requeue: boolean,
     ): Promise<void> {
         const pending = pendingMessages.get(deliveryTag);
+        if (!pending) {
+            throw new Error(`No pending message found for delivery tag: ${deliveryTag}`);
+        }
         pendingMessages.delete(deliveryTag);
 
-        if (requeue && pending) {
-            redeliveredIds.add(`${pending.queueName}:${pending.message.id}`);
+        if (requeue) {
             const buf = getBuffer(pending.queueName);
-            buf.push(pending.message);
-        } else if (pending) {
-            redeliveredIds.delete(`${pending.queueName}:${pending.message.id}`);
+            buf.push({ message: pending.delivery.message, redelivered: true });
+        }
+    }
+
+    async renewLease(
+        _connectionConfig: QueueConnectionConfig,
+        deliveryTag: string,
+    ): Promise<void> {
+        if (!pendingMessages.has(deliveryTag)) {
+            throw new Error(`No pending message found for delivery tag: ${deliveryTag}`);
         }
     }
 
@@ -101,7 +127,6 @@ class InternalQueueAdapter implements QueueAdapter {
     async destroy(): Promise<void> {
         internalBuffer.clear();
         pendingMessages.clear();
-        redeliveredIds.clear();
     }
 }
 

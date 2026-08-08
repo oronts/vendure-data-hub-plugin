@@ -2,8 +2,8 @@ import { StepConfigSchema } from '../../../shared/types';
 import { PAGINATION } from '../../constants/defaults/ui-defaults';
 import { HTTP } from '../../constants/defaults/http-defaults';
 import { CONNECTION_POOL } from '../../constants/defaults/reliability-defaults';
-import { DatabasePaginationType } from '../../constants/enums';
-import { DATABASE_TYPE_OPTIONS, DATABASE_PAGINATION_TYPE_OPTIONS, INCREMENTAL_COLUMN_TYPE_OPTIONS } from '../../constants/adapter-schema-options';
+import { DatabasePaginationType, DatabaseType } from '../../constants/enums';
+import { DATABASE_TYPE_OPTIONS, DATABASE_PAGINATION_TYPE_OPTIONS } from '../../constants/adapter-schema-options';
 
 export const DATABASE_EXTRACTOR_SCHEMA: StepConfigSchema = {
     groups: [
@@ -90,6 +90,30 @@ export const DATABASE_EXTRACTOR_SCHEMA: StepConfigSchema = {
             group: 'connection',
             dependsOn: { field: 'ssl.enabled', value: true },
         },
+        {
+            key: 'ssl.caSecretCode',
+            label: 'TLS CA Secret',
+            description: 'Secret containing the trusted CA certificate',
+            type: 'secret',
+            group: 'connection',
+            dependsOn: { field: 'ssl.enabled', value: true },
+        },
+        {
+            key: 'ssl.certSecretCode',
+            label: 'TLS Client Certificate',
+            description: 'Secret containing the client certificate for mutual TLS',
+            type: 'secret',
+            group: 'connection',
+            dependsOn: { field: 'ssl.enabled', value: true },
+        },
+        {
+            key: 'ssl.keySecretCode',
+            label: 'TLS Client Key',
+            description: 'Secret containing the client private key for mutual TLS',
+            type: 'secret',
+            group: 'connection',
+            dependsOn: { field: 'ssl.enabled', value: true },
+        },
         // Query
         {
             key: 'query',
@@ -106,14 +130,6 @@ export const DATABASE_EXTRACTOR_SCHEMA: StepConfigSchema = {
             description: 'Parameters for the query (JSON array)',
             type: 'json',
             placeholder: '["2024-01-01"]',
-            group: 'query',
-        },
-        {
-            key: 'schema',
-            label: 'Schema',
-            description: 'Database schema/namespace',
-            type: 'string',
-            placeholder: 'public',
             group: 'query',
         },
         // Pagination
@@ -146,7 +162,16 @@ export const DATABASE_EXTRACTOR_SCHEMA: StepConfigSchema = {
         {
             key: 'pagination.cursorColumn',
             label: 'Cursor Column',
-            description: 'Column to use for cursor-based pagination (usually primary key)',
+            description: 'Primary sort column for cursor pagination; repeated values are ordered by the tie-breaker',
+            type: 'string',
+            placeholder: 'updated_at',
+            group: 'pagination',
+            dependsOn: { field: 'pagination.type', value: DatabasePaginationType.CURSOR },
+        },
+        {
+            key: 'pagination.cursorTieBreakerColumn',
+            label: 'Cursor Tie-Breaker Column',
+            description: 'Required unique and stable column used to order rows with the same cursor value',
             type: 'string',
             placeholder: 'id',
             group: 'pagination',
@@ -165,7 +190,7 @@ export const DATABASE_EXTRACTOR_SCHEMA: StepConfigSchema = {
         {
             key: 'incremental.enabled',
             label: 'Enable Incremental',
-            description: 'Only fetch new/updated records since last run',
+            description: 'Resume cursor pagination after the exact checkpoint from the previous run',
             type: 'boolean',
             defaultValue: false,
             group: 'incremental',
@@ -173,18 +198,9 @@ export const DATABASE_EXTRACTOR_SCHEMA: StepConfigSchema = {
         {
             key: 'incremental.column',
             label: 'Incremental Column',
-            description: 'Column to track for incremental extraction',
+            description: 'Column to track; must match the cursor pagination column',
             type: 'string',
             placeholder: 'updated_at',
-            group: 'incremental',
-            dependsOn: { field: 'incremental.enabled', value: true },
-        },
-        {
-            key: 'incremental.type',
-            label: 'Column Type',
-            type: 'select',
-            options: INCREMENTAL_COLUMN_TYPE_OPTIONS,
-            defaultValue: 'timestamp',
             group: 'incremental',
             dependsOn: { field: 'incremental.enabled', value: true },
         },
@@ -195,14 +211,12 @@ export const DATABASE_EXTRACTOR_SCHEMA: StepConfigSchema = {
             description: 'Maximum time to wait for query execution',
             type: 'number',
             defaultValue: HTTP.TIMEOUT_MS,
-            group: 'advanced',
-        },
-        {
-            key: 'pool.min',
-            label: 'Min Pool Size',
-            description: 'Minimum connections in pool',
-            type: 'number',
-            defaultValue: 1,
+            validation: { min: 1, max: HTTP.MAX_TIMEOUT_MS },
+            dependsOn: {
+                field: 'databaseType',
+                value: DatabaseType.SQLITE,
+                operator: 'ne',
+            },
             group: 'advanced',
         },
         {
@@ -211,14 +225,10 @@ export const DATABASE_EXTRACTOR_SCHEMA: StepConfigSchema = {
             description: 'Maximum connections in pool',
             type: 'number',
             defaultValue: CONNECTION_POOL.MAX,
-            group: 'advanced',
-        },
-        {
-            key: 'includeQueryMetadata',
-            label: 'Include Metadata',
-            description: 'Include query metadata (column types, row count) in results',
-            type: 'boolean',
-            defaultValue: false,
+            validation: {
+                min: CONNECTION_POOL.MIN,
+                max: CONNECTION_POOL.MAX,
+            },
             group: 'advanced',
         },
     ],

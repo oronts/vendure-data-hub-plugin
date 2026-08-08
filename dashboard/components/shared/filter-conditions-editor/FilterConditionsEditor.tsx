@@ -1,9 +1,9 @@
 import * as React from 'react';
 import { useCallback } from 'react';
+import { Trans, useLingui } from '@lingui/react/macro';
 import {
     Button,
     Input,
-    Label,
     Select,
     SelectContent,
     SelectItem,
@@ -12,7 +12,11 @@ import {
     Badge,
 } from '@vendure/dashboard';
 import { Plus, Trash2 } from 'lucide-react';
-import { COMPONENT_WIDTHS, SENTINEL_VALUES } from '../../../constants';
+import {
+    COMPONENT_WIDTHS,
+    COMMON_VALUE_TRANSLATION_IDS,
+    SENTINEL_VALUES,
+} from '../../../constants';
 import type { FilterCondition, FilterOperator } from '../../../types';
 import { useComparisonOperators } from '../../../hooks/api/use-config-options';
 import type { ComparisonOperatorOption } from '../../../hooks/api/use-config-options';
@@ -41,6 +45,7 @@ export interface FilterConditionsEditorProps {
     addLabel?: string;
     /** Compact mode */
     compact?: boolean;
+    allowedOperators?: readonly string[];
 }
 
 /**
@@ -54,58 +59,102 @@ export function FilterConditionsEditor({
     logic = 'AND',
     onLogicChange,
     showLogicSelector = true,
-    fieldPlaceholder = 'Select field...',
-    valuePlaceholder = 'Value',
-    emptyMessage = 'No conditions - all rows pass through',
-    addLabel = 'Add Condition',
+    fieldPlaceholder,
+    valuePlaceholder,
+    emptyMessage,
+    addLabel,
     compact = false,
+    allowedOperators,
 }: FilterConditionsEditorProps) {
+    const { i18n, t } = useLingui();
+    const resolvedFieldPlaceholder = fieldPlaceholder
+        ?? t`Select field...`;
+    const resolvedValuePlaceholder = valuePlaceholder
+        ?? t`Value`;
+    const resolvedEmptyMessage = emptyMessage
+        ?? t`No conditions - all rows pass through`;
+    const resolvedAddLabel = addLabel
+        ?? t`Add Condition`;
     const { operators: comparisonOperators } = useComparisonOperators();
+    const availableOperators = allowedOperators
+        ? comparisonOperators.filter((operator) =>
+              allowedOperators.includes(operator.value),
+          )
+        : comparisonOperators;
     const conditionKeys = useStableKeys(conditions, 'condition');
 
     const addCondition = useCallback(() => {
-        onChange([...conditions, { field: '', operator: 'eq' as FilterOperator, value: '' }]);
+        onChange([
+            ...conditions,
+            { field: '', operator: 'eq' as FilterOperator, value: '' },
+        ]);
     }, [conditions, onChange]);
 
-    const updateCondition = useCallback((index: number, updates: Partial<FilterCondition>) => {
-        const newConditions = [...conditions];
-        newConditions[index] = { ...newConditions[index], ...updates };
-        onChange(newConditions);
-    }, [conditions, onChange]);
+    const updateCondition = useCallback(
+        (index: number, updates: Partial<FilterCondition>) => {
+            const newConditions = [...conditions];
+            newConditions[index] = { ...newConditions[index], ...updates };
+            onChange(newConditions);
+        },
+        [conditions, onChange],
+    );
 
-    const removeCondition = useCallback((index: number) => {
-        onChange(conditions.filter((_, i) => i !== index));
-    }, [conditions, onChange]);
+    const removeCondition = useCallback(
+        (index: number) => {
+            onChange(conditions.filter((_, i) => i !== index));
+        },
+        [conditions, onChange],
+    );
 
     return (
         <div className={compact ? 'space-y-2' : 'space-y-4'}>
             <div className="flex items-center justify-between">
-                <Label className={compact ? 'text-xs' : ''}>Filter Conditions</Label>
+                <h3 className={compact ? 'text-xs' : ''}>
+                    <Trans>Filter Conditions</Trans>
+                </h3>
                 <div className="flex items-center gap-2">
                     {showLogicSelector && onLogicChange && (
                         <Select
                             value={logic}
-                            onValueChange={(v) => onLogicChange(v as 'AND' | 'OR')}
+                            onValueChange={(v) =>
+                                onLogicChange(v as 'AND' | 'OR')
+                            }
                         >
-                            <SelectTrigger className={COMPONENT_WIDTHS.LOGIC_SELECT}>
+                            <SelectTrigger
+                                className={COMPONENT_WIDTHS.LOGIC_SELECT}
+                                aria-label={t`Filter condition logic`}
+                            >
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="AND">AND</SelectItem>
-                                <SelectItem value="OR">OR</SelectItem>
+                                <SelectItem value="AND">
+                                    {i18n._(COMMON_VALUE_TRANSLATION_IDS.AND)}
+                                </SelectItem>
+                                <SelectItem value="OR">
+                                    {i18n._(COMMON_VALUE_TRANSLATION_IDS.OR)}
+                                </SelectItem>
                             </SelectContent>
                         </Select>
                     )}
-                    <Button variant="outline" size="sm" onClick={addCondition} data-testid="datahub-filter-conditions-add-button">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={addCondition}
+                        data-testid="datahub-filter-conditions-add-button"
+                    >
                         <Plus className="w-4 h-4 mr-2" />
-                        {addLabel}
+                        {resolvedAddLabel}
                     </Button>
                 </div>
             </div>
 
             {conditions.length === 0 ? (
-                <div className={`text-center ${compact ? 'py-4' : 'py-6'} text-muted-foreground border-2 border-dashed rounded-lg`}>
-                    <p className={compact ? 'text-xs' : 'text-sm'}>{emptyMessage}</p>
+                <div
+                    className={`text-center ${compact ? 'py-4' : 'py-6'} text-muted-foreground border-2 border-dashed rounded-lg`}
+                >
+                    <p className={compact ? 'text-xs' : 'text-sm'}>
+                        {resolvedEmptyMessage}
+                    </p>
                 </div>
             ) : (
                 <div className={compact ? 'space-y-1.5' : 'space-y-2'}>
@@ -114,13 +163,15 @@ export function FilterConditionsEditor({
                             key={conditionKeys[index]}
                             condition={condition}
                             fields={fields}
-                            comparisonOperators={comparisonOperators}
+                            comparisonOperators={availableOperators}
                             logic={logic}
                             showLogicBadge={showLogicSelector && index > 0}
-                            fieldPlaceholder={fieldPlaceholder}
-                            valuePlaceholder={valuePlaceholder}
+                            fieldPlaceholder={resolvedFieldPlaceholder}
+                            valuePlaceholder={resolvedValuePlaceholder}
                             compact={compact}
-                            onUpdate={(updates) => updateCondition(index, updates)}
+                            onUpdate={(updates) =>
+                                updateCondition(index, updates)
+                            }
                             onRemove={() => removeCondition(index)}
                         />
                     ))}
@@ -155,13 +206,19 @@ function FilterConditionRow({
     onUpdate,
     onRemove,
 }: FilterConditionRowProps) {
-    const operatorDef = comparisonOperators.find((op) => op.value === condition.operator);
+    const { t } = useLingui();
+    const operatorDef = comparisonOperators.find(
+        (op) => op.value === condition.operator,
+    );
     const showValueInput = !operatorDef?.noValue;
 
     return (
         <div className="flex items-center gap-2">
             {showLogicBadge && (
-                <Badge variant="outline" className="w-12 justify-center flex-shrink-0">
+                <Badge
+                    variant="outline"
+                    className="w-12 justify-center flex-shrink-0"
+                >
                     {logic}
                 </Badge>
             )}
@@ -169,13 +226,20 @@ function FilterConditionRow({
             {/* Field Selector */}
             <Select
                 value={condition.field || SENTINEL_VALUES.NONE}
-                onValueChange={(v) => onUpdate({ field: v === SENTINEL_VALUES.NONE ? '' : v })}
+                onValueChange={(v) =>
+                    onUpdate({ field: v === SENTINEL_VALUES.NONE ? '' : v })
+                }
             >
-                <SelectTrigger className={compact ? 'flex-1 h-8' : 'flex-1'}>
+                <SelectTrigger
+                    aria-label={t`Filter field`}
+                    className={compact ? 'flex-1 h-8' : 'flex-1'}
+                >
                     <SelectValue placeholder={fieldPlaceholder} />
                 </SelectTrigger>
                 <SelectContent>
-                    <SelectItem value={SENTINEL_VALUES.NONE}>{fieldPlaceholder}</SelectItem>
+                    <SelectItem value={SENTINEL_VALUES.NONE}>
+                        {fieldPlaceholder}
+                    </SelectItem>
                     {fields.map((f) => (
                         <SelectItem key={f} value={f}>
                             {f}
@@ -187,9 +251,18 @@ function FilterConditionRow({
             {/* Operator Selector */}
             <Select
                 value={condition.operator}
-                onValueChange={(v) => onUpdate({ operator: v as FilterOperator })}
+                onValueChange={(v) =>
+                    onUpdate({ operator: v as FilterOperator })
+                }
             >
-                <SelectTrigger className={compact ? `${COMPONENT_WIDTHS.OPERATOR_SELECT} h-8` : COMPONENT_WIDTHS.OPERATOR_SELECT}>
+                <SelectTrigger
+                    aria-label={t`Filter operator`}
+                    className={
+                        compact
+                            ? `${COMPONENT_WIDTHS.OPERATOR_SELECT} h-8`
+                            : COMPONENT_WIDTHS.OPERATOR_SELECT
+                    }
+                >
                     <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -204,6 +277,7 @@ function FilterConditionRow({
             {/* Value Input (if operator requires it) */}
             {showValueInput && (
                 <Input
+                    aria-label={t`Filter value`}
                     value={String(condition.value ?? '')}
                     onChange={(e) => onUpdate({ value: e.target.value })}
                     placeholder={valuePlaceholder}
@@ -217,9 +291,15 @@ function FilterConditionRow({
                 size="icon"
                 className={compact ? 'h-8 w-8' : ''}
                 onClick={onRemove}
-                aria-label="Remove condition"
+                aria-label={t`Remove condition`}
             >
-                <Trash2 className={compact ? 'w-3.5 h-3.5 text-destructive' : 'w-4 h-4 text-destructive'} />
+                <Trash2
+                    className={
+                        compact
+                            ? 'w-3.5 h-3.5 text-destructive'
+                            : 'w-4 h-4 text-destructive'
+                    }
+                />
             </Button>
         </div>
     );

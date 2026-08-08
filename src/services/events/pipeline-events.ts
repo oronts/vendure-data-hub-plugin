@@ -5,7 +5,7 @@
  * by using event-based communication instead of direct service injection.
  */
 
-import { VendureEvent, ID } from '@vendure/core';
+import { VendureEvent, ID, RequestContext } from '@vendure/core';
 import { JsonObject } from '../../types/index';
 
 /**
@@ -19,6 +19,7 @@ import { JsonObject } from '../../types/index';
  */
 export class PipelineQueueRequestEvent extends VendureEvent {
     constructor(
+        public readonly ctx: RequestContext,
         public readonly runId: ID,
         public readonly pipelineId: ID,
         public readonly triggeredBy: string,

@@ -9,8 +9,12 @@ import {
     SLUG_PATTERN,
     PHONE_PATTERN,
     SQL_IDENTIFIER_PATTERN,
+    XML_ELEMENT_NAME_PATTERN,
 } from './patterns';
-import { CONFIDENCE_THRESHOLDS } from '../../shared/constants';
+import {
+    CONFIDENCE_THRESHOLDS,
+    THROUGHPUT_LIMITS,
+} from '../../shared/constants';
 
 export const VALIDATION_PATTERNS = {
     /** Email address pattern - from patterns.ts */
@@ -33,6 +37,9 @@ export const VALIDATION_PATTERNS = {
 
     /** SQL identifier (table/column name) */
     SQL_IDENTIFIER: SQL_IDENTIFIER_PATTERN,
+
+    /** XML element name accepted by configurable exporters */
+    XML_ELEMENT_NAME: XML_ELEMENT_NAME_PATTERN,
 } as const;
 
 /**
@@ -76,8 +83,8 @@ export const FIELD_LIMITS = {
     ASSETS_MAX: 500,
 
     // Collection limits
-    BATCH_SIZE_MIN: 1,
-    BATCH_SIZE_MAX: 10000,
+    BATCH_SIZE_MIN: THROUGHPUT_LIMITS.MIN_BATCH_SIZE,
+    BATCH_SIZE_MAX: THROUGHPUT_LIMITS.MAX_BATCH_SIZE,
     PAGE_SIZE_MIN: 1,
     PAGE_SIZE_MAX: 1000,
 } as const;

@@ -9,19 +9,77 @@
  * Or with the package.json script:
  *   npm run dev
  */
-import { bootstrap, JobQueueService, ChannelService, LanguageCode, CurrencyCode, RequestContextService, TransactionalConnection, ShippingMethod } from '@vendure/core';
+import {
+    bootstrap,
+    ChannelService,
+    CurrencyCode,
+    JobQueueService,
+    LanguageCode,
+    RequestContext,
+    RequestContextService,
+    RoleService,
+    ShippingMethod,
+    StockLocationService,
+    TransactionalConnection,
+    ZoneService,
+} from '@vendure/core';
 import { populate } from '@vendure/core/cli';
-import { fork } from 'child_process';
-import { config } from '../vendure-config.dev';
+import { config, DEV_DATABASE_PATH } from '../vendure-config.dev';
 import { initialData } from './initial-data';
 import * as path from 'path';
 import * as fs from 'fs';
+import { MockServerSupervisor } from './mock-supervisor';
+import {
+    DEV_CHANNEL_DEFINITIONS,
+    ensureDevChannelAssignments,
+    ensureDevChannels,
+} from './dev-channels';
 
-const dbPath = path.join(__dirname, 'vendure.sqlite');
+type DevServerApp = Awaited<ReturnType<typeof bootstrap>>;
+
+let app: DevServerApp | undefined;
+let shuttingDown = false;
+
+const mockSupervisor = new MockServerSupervisor(
+    path.join(__dirname, 'mock'),
+    failure => {
+        console.error(
+            `Mock server ${failure.file} stopped unexpectedly `
+            + `(code=${String(failure.exitCode)}, signal=${String(failure.signal)})`,
+        );
+        void shutdown(1);
+    },
+);
+
+async function closeIfStartupCancelled(
+    startingApp: DevServerApp,
+): Promise<boolean> {
+    if (!shuttingDown) {
+        return false;
+    }
+
+    await startingApp.close();
+    return true;
+}
+
+async function ensureDevDefaultZone(
+    startingApp: DevServerApp,
+    ctx: RequestContext,
+) {
+    const zoneService = startingApp.get(ZoneService);
+    const defaultZoneName = initialData.defaultZone;
+    const zones = await zoneService.getAllWithMembers(ctx);
+    const existingZone = zones.find(zone => zone.name === defaultZoneName);
+
+    return existingZone ?? zoneService.create(ctx, {
+        name: defaultZoneName,
+        memberIds: [],
+    });
+}
 
 async function runServer() {
     // Check if database exists - if not, populate with initial data
-    const needsPopulate = !fs.existsSync(dbPath);
+    const needsPopulate = !fs.existsSync(DEV_DATABASE_PATH);
 
     if (needsPopulate) {
         console.log('  First run detected - populating database with initial data...');
@@ -30,30 +88,60 @@ async function runServer() {
             initialData,
         );
         await populateApp.close();
+        if (shuttingDown) {
+            return;
+        }
         console.log('  Database populated successfully!');
     }
 
-    const app = await bootstrap(config);
-    await app.get(JobQueueService).start();
+    const startingApp = await bootstrap(config);
+    if (await closeIfStartupCancelled(startingApp)) {
+        return;
+    }
+
+    await startingApp.get(JobQueueService).start();
+    if (await closeIfStartupCancelled(startingApp)) {
+        return;
+    }
 
     // Configure default channel for multi-language and multi-currency testing
     try {
-        const channelService = app.get(ChannelService);
-        const requestContextService = app.get(RequestContextService);
+        const channelService = startingApp.get(ChannelService);
+        const requestContextService = startingApp.get(RequestContextService);
         const ctx = await requestContextService.create({ apiType: 'admin' });
         const defaultChannel = await channelService.getDefaultChannel(ctx);
+        const defaultZone = await ensureDevDefaultZone(startingApp, ctx);
         await channelService.update(ctx, {
             id: defaultChannel.id,
             availableLanguageCodes: [LanguageCode.en, LanguageCode.de, LanguageCode.fr],
             availableCurrencyCodes: [CurrencyCode.EUR, CurrencyCode.USD, CurrencyCode.CHF, CurrencyCode.GBP],
             defaultCurrencyCode: CurrencyCode.EUR,
+            defaultTaxZoneId: defaultZone.id,
+            defaultShippingZoneId: defaultZone.id,
         });
-        console.log('  Default channel configured: languages=[en, de, fr], currencies=[EUR, USD, CHF, GBP]');
+        const devChannels = await ensureDevChannels(
+            channelService,
+            ctx,
+            defaultZone.id,
+        );
+        await ensureDevChannelAssignments(
+            channelService,
+            startingApp.get(RoleService),
+            startingApp.get(StockLocationService),
+            ctx,
+            devChannels,
+        );
+        console.log(
+            `  Default channel configured: languages=[en, de, fr], currencies=[EUR, USD, CHF, GBP], zone=${defaultZone.name}`,
+        );
+        console.log(
+            `  Additional channels configured: ${DEV_CHANNEL_DEFINITIONS.map(channel => channel.code).join(', ')}`,
+        );
 
         // Fix shipping method calculator args — Vendure's populate() only stores the 'rate' arg
         // but the default-shipping-calculator also requires 'taxRate' and 'includesTax'.
         // Missing args cause NaN in order price calculations (shippingWithTax).
-        const connection = app.get(TransactionalConnection);
+        const connection = startingApp.get(TransactionalConnection);
         const shippingMethods = await connection.getRepository(ctx, ShippingMethod).find();
         for (const sm of shippingMethods) {
             const calcArgs = sm.calculator?.args ?? [];
@@ -74,9 +162,19 @@ async function runServer() {
         console.warn('  Warning: Could not configure default channel languages/currencies:', (e as Error).message);
     }
 
+    if (await closeIfStartupCancelled(startingApp)) {
+        return;
+    }
+
+    app = startingApp;
+
     // Start mock API servers unless explicitly disabled
     if (process.env.START_MOCKS !== 'false') {
-        startMockServers();
+        await mockSupervisor.start();
+        if (shuttingDown) {
+            return;
+        }
+        console.log('  Mock API servers are ready');
     }
 
     console.log('\n========================================');
@@ -90,36 +188,26 @@ async function runServer() {
     console.log('========================================\n');
 }
 
-function startMockServers() {
-    const mockDir = path.join(__dirname, 'mock');
-    const mockFiles = [
-        'mock-pimcore-api.ts',
-        'mock-magento-api.ts',
-        'mock-shopify-api.ts',
-        'mock-edge-case-api.ts',
-    ].filter(f => {
-        try { require.resolve(path.join(mockDir, f)); return true; } catch { return false; }
-    });
-
-    for (const file of mockFiles) {
-        const fullPath = path.join(mockDir, file);
-        try {
-            const child = fork(fullPath, [], { execArgv: ['-r', 'ts-node/register'] });
-            child.on('error', (err) => console.warn(`Mock server ${file} failed: ${err.message}`));
-            console.log(`[DataHub Dev] Started mock server: ${file}`);
-        } catch (e) {
-            console.warn(`[DataHub Dev] Could not start ${file}: ${(e as Error).message}`);
-        }
+async function shutdown(exitCode = 0): Promise<void> {
+    if (shuttingDown) {
+        return;
     }
+
+    shuttingDown = true;
+    console.log('\nShutting down...');
+    await mockSupervisor.stop();
+    await app?.close();
+    process.exitCode = exitCode;
 }
 
-runServer().catch(err => {
+void runServer().catch(async err => {
+    if (shuttingDown) {
+        return;
+    }
     console.error('Failed to start server:', err);
-    process.exit(1);
+    await shutdown(1);
 });
 
 // Graceful shutdown
-process.on('SIGINT', async () => {
-    console.log('\nShutting down...');
-    process.exit(0);
-});
+process.on('SIGINT', () => void shutdown());
+process.on('SIGTERM', () => void shutdown());

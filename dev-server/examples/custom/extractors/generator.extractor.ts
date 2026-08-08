@@ -1,4 +1,4 @@
-import { JsonObject, ExtractorAdapter, ExtractContext, RecordEnvelope, StepConfigSchema, sleep } from '../../../../src';
+import { CURRENT_ADAPTER_API_VERSION, JsonObject, ExtractorAdapter, ExtractContext, RecordEnvelope, StepConfigSchema, sleep } from '../../../../src';
 
 export const generatorExtractorSchema: StepConfigSchema = {
     fields: [
@@ -37,13 +37,14 @@ function processTemplate(template: unknown, index: number): unknown {
 
 export const generatorExtractor: ExtractorAdapter<GeneratorExtractorConfig> = {
     type: 'EXTRACTOR',
-    code: 'generator',
+    code: 'demoGenerator',
     name: 'Data Generator',
     description: 'Generate test/sample records using templates (streaming)',
     category: 'DATA_SOURCE',
     schema: generatorExtractorSchema,
     icon: 'sparkles',
     version: '1.0.0',
+    apiVersion: CURRENT_ADAPTER_API_VERSION,
     batchable: true,
 
     async *extract(context: ExtractContext, config: GeneratorExtractorConfig): AsyncGenerator<RecordEnvelope, void, undefined> {

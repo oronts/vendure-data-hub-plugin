@@ -28,15 +28,19 @@
  * Run:  npx ts-node dev-server/mock/mock-pimcore-api.ts
  */
 import express from 'express';
-import { MOCK_PORTS } from '../ports';
+import { DEFAULT_DEV_PIMCORE_API_KEY } from '../dev-credentials';
+import { MOCK_PORTS, MOCK_ROUTES } from '../ports';
 
-const app = express();
+export const app = express();
 app.use(express.json());
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
-const API_KEY = 'test-pimcore-api-key';
+const API_KEY = process.env.PIMCORE_API_KEY ?? DEFAULT_DEV_PIMCORE_API_KEY;
 function authenticate(req: express.Request): boolean {
-    const key = req.headers['apikey'] || req.query.apiKey;
+    const key = req.headers['x-api-key']
+        ?? req.headers['apikey']
+        ?? req.query.apikey
+        ?? req.query.apiKey;
     return key === API_KEY;
 }
 function lang(req: express.Request): string {
@@ -1330,8 +1334,9 @@ app.get('/api/stock', (req, res) => {
     if (!authenticate(req)) return res.status(401).json({ error: 'Unauthorized' });
     const stockItems: Array<{ sku: string; location: string; qty: number }> = [];
     for (const p of products) {
+        if (!p.published || p.deletedAt) continue;
         for (const v of p.variants) {
-            if (v.deletedAt) continue;
+            if (!v.published || v.deletedAt) continue;
             for (const [location, qty] of Object.entries(v.stock)) {
                 stockItems.push({ sku: v.itemNumber, location, qty });
             }
@@ -1542,7 +1547,7 @@ app.post('/api/webhook/notify', (req, res) => {
     res.json({ received: true, timestamp: new Date().toISOString() });
 });
 
-app.get('/api/health', (_req, res) => {
+app.get(MOCK_ROUTES.PIMCORE_HEALTH, (_req, res) => {
     res.json({
         status: 'ok',
         products: products.filter(p => !p.deletedAt).length,
@@ -1562,6 +1567,7 @@ app.get('/api/health', (_req, res) => {
 
 // ── Start ────────────────────────────────────────────────────────────────────
 const PORT = MOCK_PORTS.PIMCORE;
+if (require.main === module) {
 app.listen(PORT, () => {
     const variantCount = products.reduce((sum, p) => sum + p.variants.filter(v => !v.deletedAt).length, 0);
     const deletedCount = products.reduce((sum, p) => sum + p.variants.filter(v => v.deletedAt).length, 0);
@@ -1574,5 +1580,8 @@ app.listen(PORT, () => {
     console.log(`  Orders: ${orders.length}, Shipping: ${shippingMethods.length}, Payment: ${paymentMethods.length}`);
     console.log(`  Tax Rates: ${taxRates.length}, Customer Groups: ${groups.length}, Deletions: ${deletions.length}`);
     console.log(`  Channels: ${channels.map(c => c.code).join(', ')}`);
-    console.log(`  API Key: ${API_KEY}\n`);
+    console.log('');
 });
+}
+
+export default app;

@@ -6,27 +6,31 @@
 
 import { RequestContext } from '@vendure/core';
 import { TransactionalConnection } from '@vendure/core';
-import { SERVICE_DEFAULTS, TRANSFORM_LIMITS } from '../../constants/index';
 import {
     FeedConfig,
     FeedFieldMapping,
     VariantWithCustomFields,
     ProductWithCustomFields,
     CustomFieldValue,
+    FeedGenerationDiagnostics,
 } from './feed-types';
 import {
     formatPrice,
     buildProductUrl,
+    getFeedBaseUrl,
     getImageUrl,
     extractFacetValue,
     getProductType,
     getOptionValue,
-    getStockOnHand,
+    getFeedStockQuantity,
+    getSaleableStockLevel,
     stripHtml,
 } from './feed-helpers';
 import { FIELD_PREFIX, FEED_DEFAULTS, GENERIC_AVAILABILITY } from './feed-constants';
 import { LOGGER_CONTEXTS } from '../../constants/core';
 import { DataHubLoggerFactory } from '../../services/logger';
+import { minorToMajorUnits } from '../../utils/money.utils';
+import { recordFeedItemWarning, recordGeneratedFeedItem } from './feed-diagnostics';
 
 const feedLogger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.FEED_GENERATOR);
 
@@ -36,6 +40,7 @@ const feedLogger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.FEED_GENERATOR);
 export interface CSVFieldConfig {
     header: string;
     source: string;
+    default?: CustomFieldValue;
     transform?: (value: CustomFieldValue | string, variant: VariantWithCustomFields, product?: ProductWithCustomFields) => string;
 }
 
@@ -81,10 +86,11 @@ function getFieldValue(
     _ctx: RequestContext,
     config: FeedConfig,
     _connection: TransactionalConnection,
+    moneyPrecision: number,
     productType?: string,
 ): string {
-    const baseUrl = config.options?.baseUrl || SERVICE_DEFAULTS.EXAMPLE_BASE_URL;
-    const currency = config.options?.currency || FEED_DEFAULTS.CURRENCY;
+    const baseUrl = getFeedBaseUrl(config);
+    const currency = String(variant.currencyCode ?? config.options?.currency ?? FEED_DEFAULTS.CURRENCY);
 
     switch (source) {
         case 'id':
@@ -96,19 +102,19 @@ function getFieldValue(
         case 'description':
             return stripHtml(product?.description || '');
         case 'price':
-            return (variant.priceWithTax / TRANSFORM_LIMITS.CURRENCY_MINOR_UNITS_MULTIPLIER).toFixed(TRANSFORM_LIMITS.CURRENCY_DECIMAL_PLACES);
+            return minorToMajorUnits(variant.priceWithTax, moneyPrecision).toFixed(moneyPrecision);
         case 'price_formatted':
-            return formatPrice(variant.priceWithTax, currency) ?? '';
+            return formatPrice(variant.priceWithTax, currency, moneyPrecision) ?? '';
         case 'currency':
             return currency;
         case 'availability':
-            return getStockOnHand(variant) > 0 ? GENERIC_AVAILABILITY.IN_STOCK : GENERIC_AVAILABILITY.OUT_OF_STOCK;
+            return getSaleableStockLevel(variant) > 0 ? GENERIC_AVAILABILITY.IN_STOCK : GENERIC_AVAILABILITY.OUT_OF_STOCK;
         case 'stock':
-            return getStockOnHand(variant).toString();
+            return getFeedStockQuantity(variant)?.toString() ?? '';
         case 'url':
             return buildProductUrl(baseUrl, variant, config.options?.utmParams);
         case 'image_url':
-            return getImageUrl(variant, product, baseUrl);
+            return getImageUrl(variant, product, baseUrl, config.options?.imageSize);
         case 'category':
             return productType || '';
         case 'brand':
@@ -161,6 +167,7 @@ function buildFieldsFromMappings(
         return {
             header,
             source: mapping.source,
+            default: mapping.default,
         };
     });
 }
@@ -173,8 +180,11 @@ export async function generateCSVFeed(
     products: VariantWithCustomFields[],
     config: FeedConfig,
     connection: TransactionalConnection,
+    moneyPrecision: number,
     options?: CSVGeneratorOptions,
+    diagnostics?: FeedGenerationDiagnostics,
 ): Promise<string> {
+    getFeedBaseUrl(config);
     const delimiter = options?.delimiter ?? ',';
     const includeHeader = options?.includeHeader ?? true;
     const lineEnding = options?.lineEnding ?? '\n';
@@ -210,25 +220,36 @@ export async function generateCSVFeed(
                 if (productTypeCache.has(cacheKey)) {
                     productType = productTypeCache.get(cacheKey);
                 } else {
-                    productType = await getProductType(ctx, product, connection);
+                    productType = getProductType(product);
                     productTypeCache.set(cacheKey, productType);
                 }
             }
 
             const row = fields.map(field => {
+                const value = getFieldValue(
+                    field.source,
+                    variant,
+                    product,
+                    ctx,
+                    config,
+                    connection,
+                    moneyPrecision,
+                    productType,
+                );
+                const resolvedValue = value !== '' || field.default === undefined
+                    ? value
+                    : String(field.default ?? '');
                 if (field.transform) {
-                    return field.transform(
-                        getFieldValue(field.source, variant, product, ctx, config, connection, productType),
-                        variant,
-                        product,
-                    );
+                    return field.transform(resolvedValue, variant, product);
                 }
-                return getFieldValue(field.source, variant, product, ctx, config, connection, productType);
+                return resolvedValue;
             });
 
             rows.push(row);
+            recordGeneratedFeedItem(diagnostics);
         } catch (error) {
-            feedLogger.warn(`Failed to process variant ${variant.id}: ${error}`);
+            const warning = `Failed to process variant ${variant.id}: ${String(error)}`;
+            feedLogger.warn(recordFeedItemWarning(diagnostics, warning));
         }
     }
 
@@ -256,9 +277,10 @@ export async function generateCustomCSVFeed(
     config: FeedConfig,
     connection: TransactionalConnection,
     customFields: CSVFieldConfig[],
+    moneyPrecision: number,
     options?: Omit<CSVGeneratorOptions, 'fields'>,
 ): Promise<string> {
-    return generateCSVFeed(ctx, products, config, connection, {
+    return generateCSVFeed(ctx, products, config, connection, moneyPrecision, {
         ...options,
         fields: customFields,
     });

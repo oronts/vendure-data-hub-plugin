@@ -1,14 +1,17 @@
 import * as React from 'react';
+import { Trans, useLingui } from '@lingui/react/macro';
 import {
     Badge,
     Button,
     DataTable,
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
     PageBlock,
     PermissionGuard,
     Select,
@@ -25,13 +28,15 @@ import {
     DrawerHeader,
     DrawerTitle,
     DrawerDescription,
+    PageLayout,
+    usePermissions,
 } from '@vendure/dashboard';
 import { Link } from '@tanstack/react-router';
 import { ColumnDef, SortingState } from '@tanstack/react-table';
 import { toast } from 'sonner';
 import { Eye, ScrollText, Play, XCircle, ShieldCheck } from 'lucide-react';
 import { ErrorState, LoadingState } from '../../components/shared';
-import { formatDateTime } from '../../utils';
+import { formatDateTime, isTerminalRunStatus } from '../../utils';
 import {
     DATAHUB_PERMISSIONS,
     QUERY_LIMITS,
@@ -39,38 +44,43 @@ import {
     RUN_STATUS,
     FILTER_VALUES,
     SELECT_WIDTHS,
-    TOAST_PIPELINE,
+    RUN_STATUS_TRANSLATION_IDS,
     getRunStatusBadgeVariant,
 } from '../../constants';
 import {
     usePipelineRuns,
     useCancelRun,
     useRunPipeline,
-    handleMutationError,
 } from '../../hooks';
 import { useOptionValues } from '../../hooks/api/use-config-options';
 import { RunDetailsPanel } from './RunDetailsPanel';
+import { normalizeRunMetrics } from './run-metrics';
 import { getErrorMessage } from '../../../shared';
 import type { RunRow } from '../../types';
 
-/**
- * Terminal run statuses, intentionally hardcoded rather than derived from backend.
- * These are a fundamental system invariant: a run is either still in progress or it has
- * reached one of these four terminal states. Adding `isFinished` metadata to the GraphQL
- * `DataHubOptionValue` type would require schema + codegen changes for no practical benefit,
- * since the set of terminal statuses is fixed by the execution engine contract.
- */
-const FINISHED_STATUSES = [RUN_STATUS.COMPLETED, RUN_STATUS.FAILED, RUN_STATUS.CANCELLED, RUN_STATUS.TIMEOUT] as string[];
+type PipelineRunRow = Omit<RunRow, 'id'> & { id: string };
 
-export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
+export function PipelineRunsBlock({
+    pipelineId,
+    canRunPublishedRevision,
+    currentRevisionId,
+}: {
+    pipelineId?: string;
+    canRunPublishedRevision: boolean;
+    currentRevisionId?: string | number | null;
+}) {
+    const { i18n, t } = useLingui();
+    const locale = i18n.locale;
+    const { hasPermissions } = usePermissions();
+    const canViewRuns = hasPermissions([DATAHUB_PERMISSIONS.VIEW_RUNS]);
     const { options: statusOptions } = useOptionValues('runStatuses');
     const [page, setPage] = React.useState(1);
-    const [itemsPerPage, setItemsPerPage] = React.useState(QUERY_LIMITS.PAGINATION_DEFAULT);
+    const [itemsPerPage, setItemsPerPage] = React.useState<number>(QUERY_LIMITS.PAGINATION_DEFAULT);
     const [sorting, setSorting] = React.useState<SortingState>([
         { id: 'startedAt', desc: true },
     ]);
     const [status, setStatus] = React.useState<string>('');
-    const [selectedRun, setSelectedRun] = React.useState<RunRow | null>(null);
+    const [selectedRun, setSelectedRun] = React.useState<PipelineRunRow | null>(null);
     const [cancelConfirmRunId, setCancelConfirmRunId] = React.useState<string | null>(null);
     const [cancellingRunId, setCancellingRunId] = React.useState<string | null>(null);
 
@@ -78,7 +88,7 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
         ? { [sorting[0].id]: sorting[0].desc ? 'DESC' : 'ASC' }
         : undefined;
 
-    const { data, isLoading, isError, error, refetch } = usePipelineRuns(pipelineId, {
+    const { data, isLoading, isError, error, refetch } = usePipelineRuns(canViewRuns ? pipelineId : undefined, {
         take: itemsPerPage,
         skip: (page - 1) * itemsPerPage,
         sort: sortVar as Record<string, 'ASC' | 'DESC'> | undefined,
@@ -87,11 +97,26 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
 
     const cancelRun = useCancelRun();
     const runPipeline = useRunPipeline();
+    const { mutate: cancelPipelineRun } = cancelRun;
+    const { mutate: startPipelineRun } = runPipeline;
 
-    const runs: RunRow[] = data?.items ?? [];
+    const translateRunStatus = React.useCallback((value: string, fallback = value) => {
+        const id = RUN_STATUS_TRANSLATION_IDS[
+            value as keyof typeof RUN_STATUS_TRANSLATION_IDS
+        ];
+        return id ? i18n._(id) : fallback;
+    }, [i18n]);
+
+    const runs = React.useMemo<PipelineRunRow[]>(() => (
+        (data?.items ?? []).map(run => ({
+            ...run,
+            id: String(run.id),
+            metrics: normalizeRunMetrics(run.metrics),
+        }))
+    ), [data?.items]);
     const totalItems = data?.totalItems ?? 0;
 
-    const handleSelectRun = React.useCallback((run: RunRow) => {
+    const handleSelectRun = React.useCallback((run: PipelineRunRow) => {
         setSelectedRun(run);
     }, []);
 
@@ -102,13 +127,13 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
     const handleConfirmCancel = React.useCallback(() => {
         if (!cancelConfirmRunId) return;
         setCancellingRunId(cancelConfirmRunId);
-        cancelRun.mutate(cancelConfirmRunId, {
+        cancelPipelineRun(cancelConfirmRunId, {
             onSettled: () => {
                 setCancellingRunId(null);
             },
         });
         setCancelConfirmRunId(null);
-    }, [cancelConfirmRunId, cancelRun.mutate]);
+    }, [cancelConfirmRunId, cancelPipelineRun]);
 
     const handleStatusChange = React.useCallback((v: string) => {
         setPage(1);
@@ -128,14 +153,19 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
         if (!open) setSelectedRun(null);
     }, []);
 
-    const handleRerun = React.useCallback((id: string) => {
-        runPipeline.mutate(id, {
-            onSuccess: () => toast.success(TOAST_PIPELINE.RUN_STARTED),
-            onError: (err) => handleMutationError('start pipeline run', err),
+    const handleRerun = React.useCallback((
+        id: string,
+        expectedRevisionId = currentRevisionId,
+    ) => {
+        if (expectedRevisionId == null) return;
+        startPipelineRun({ pipelineId: id, expectedRevisionId }, {
+            onSuccess: () => toast.success(
+                t`Run started`,
+            ),
         });
-    }, [runPipeline.mutate]);
+    }, [currentRevisionId, startPipelineRun, t]);
 
-    const columns: ColumnDef<RunRow, unknown>[] = React.useMemo(() => [
+    const columns: ColumnDef<PipelineRunRow, unknown>[] = React.useMemo(() => [
         {
             id: 'id',
             header: 'ID',
@@ -145,7 +175,7 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
                     type="button"
                     className="font-mono text-muted-foreground underline-offset-2 hover:underline"
                     onClick={() => handleSelectRun(row.original)}
-                    aria-label={`View run ${row.original.id}`}
+                    aria-label={t`View run ${row.original.id}`}
                 >
                     {row.original.id}
                 </button>
@@ -154,7 +184,7 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
         },
         {
             id: 'status',
-            header: 'Status',
+            header: t`Status`,
             accessorFn: row => row.status,
             cell: ({ row }) => {
                 const st = row.original.status;
@@ -164,36 +194,38 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
                         variant={getRunStatusBadgeVariant(st) as 'default' | 'secondary' | 'destructive' | 'outline'}
                         className={isPaused ? 'border-amber-400 dark:border-amber-600 text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30' : undefined}
                     >
-                        {isPaused ? 'AWAITING APPROVAL' : st}
+                        {isPaused
+                            ? <Trans>Awaiting approval</Trans>
+                            : translateRunStatus(st)}
                     </Badge>
                 );
             },
         },
         {
             id: 'startedAt',
-            header: 'Started',
+            header: t`Started`,
             accessorFn: row => row.startedAt ?? '',
-            cell: ({ row }) => formatDateTime(row.original.startedAt),
+            cell: ({ row }) => formatDateTime(row.original.startedAt, undefined, locale),
         },
         {
             id: 'finishedAt',
-            header: 'Finished',
+            header: t`Finished`,
             accessorFn: row => row.finishedAt ?? '',
-            cell: ({ row }) => formatDateTime(row.original.finishedAt),
+            cell: ({ row }) => formatDateTime(row.original.finishedAt, undefined, locale),
         },
         {
             id: 'processed',
-            header: 'Processed',
+            header: t`Processed`,
             accessorFn: row => Number((row.metrics?.processed ?? 0)),
             cell: ({ row }) => Number(row.original.metrics?.processed ?? 0),
             enableSorting: false,
         },
         {
             id: 'actions',
-            header: 'Actions',
+            header: t`Actions`,
             cell: ({ row }) => {
                 const st = row.original.status;
-                const isFinished = FINISHED_STATUSES.includes(st);
+                const isFinished = isTerminalRunStatus(st);
                 const canCancel = st === RUN_STATUS.RUNNING || st === RUN_STATUS.PENDING;
                 const isPaused = st === RUN_STATUS.PAUSED;
 
@@ -201,44 +233,48 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
                     <div className="flex items-center gap-0.5">
                         <Tooltip>
                             <TooltipTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleSelectRun(row.original)} aria-label="View details">
+                                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleSelectRun(row.original)} aria-label={t`View details`}>
                                     <Eye className="h-3.5 w-3.5" />
                                 </Button>
                             </TooltipTrigger>
-                            <TooltipContent>View details</TooltipContent>
+                            <TooltipContent><Trans>View details</Trans></TooltipContent>
                         </Tooltip>
 
                         <Tooltip>
                             <TooltipTrigger asChild>
                                 <Button variant="ghost" size="icon" className="h-7 w-7" asChild>
-                                    <Link to={`${ROUTES.LOGS}?runId=${row.original.id}`} aria-label="View logs">
+                                    <Link
+                                        to={ROUTES.LOGS}
+                                        search={{ runId: String(row.original.id) }}
+                                        aria-label={t`View logs`}
+                                    >
                                         <ScrollText className="h-3.5 w-3.5" />
                                     </Link>
                                 </Button>
                             </TooltipTrigger>
-                            <TooltipContent>View logs</TooltipContent>
+                            <TooltipContent><Trans>View logs</Trans></TooltipContent>
                         </Tooltip>
 
                         {isPaused && (
                             <Tooltip>
                                 <TooltipTrigger asChild>
-                                    <Button variant="ghost" size="icon" className="h-7 w-7 text-amber-600 dark:text-amber-400" onClick={() => handleSelectRun(row.original)} aria-label="Approve gate">
+                                    <Button variant="ghost" size="icon" className="h-7 w-7 text-amber-600 dark:text-amber-400" onClick={() => handleSelectRun(row.original)} aria-label={t`Approve gate`}>
                                         <ShieldCheck className="h-3.5 w-3.5" />
                                     </Button>
                                 </TooltipTrigger>
-                                <TooltipContent>Approve gate</TooltipContent>
+                                <TooltipContent><Trans>Approve gate</Trans></TooltipContent>
                             </Tooltip>
                         )}
 
-                        {isFinished && pipelineId && (
+                        {isFinished && pipelineId && canRunPublishedRevision && (
                             <PermissionGuard requires={[DATAHUB_PERMISSIONS.RUN_PIPELINE]}>
                                 <Tooltip>
                                     <TooltipTrigger asChild>
-                                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleRerun(pipelineId)} aria-label="Re-run pipeline">
+                                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleRerun(pipelineId)} aria-label={t`Re-run pipeline`}>
                                             <Play className="h-3.5 w-3.5" />
                                         </Button>
                                     </TooltipTrigger>
-                                    <TooltipContent>Re-run pipeline</TooltipContent>
+                                    <TooltipContent><Trans>Re-run pipeline</Trans></TooltipContent>
                                 </Tooltip>
                             </PermissionGuard>
                         )}
@@ -247,11 +283,11 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
                             <PermissionGuard requires={[DATAHUB_PERMISSIONS.RUN_PIPELINE]}>
                                 <Tooltip>
                                     <TooltipTrigger asChild>
-                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleCancelRun(row.original.id)} disabled={cancellingRunId === row.original.id} aria-label="Cancel run">
+                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleCancelRun(row.original.id)} disabled={cancellingRunId === row.original.id} aria-label={t`Cancel run`}>
                                             <XCircle className="h-3.5 w-3.5" />
                                         </Button>
                                     </TooltipTrigger>
-                                    <TooltipContent>Cancel run</TooltipContent>
+                                    <TooltipContent><Trans>Cancel run</Trans></TooltipContent>
                                 </Tooltip>
                             </PermissionGuard>
                         )}
@@ -260,7 +296,17 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
             },
             enableSorting: false,
         },
-    ], [handleSelectRun, handleCancelRun, handleRerun, cancellingRunId, pipelineId]);
+    ], [
+        cancellingRunId,
+        canRunPublishedRevision,
+        handleCancelRun,
+        handleRerun,
+        handleSelectRun,
+        locale,
+        pipelineId,
+        t,
+        translateRunStatus,
+    ]);
 
     let content: React.ReactNode;
 
@@ -268,7 +314,7 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
         content = (
             <PageBlock column="main" blockId="runs-error">
                 <ErrorState
-                    title="Failed to load pipeline runs"
+                    title={t`Failed to load pipeline runs`}
                     message={getErrorMessage(error)}
                     onRetry={() => refetch()}
                 />
@@ -277,55 +323,77 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
     } else if (isLoading && runs.length === 0) {
         content = (
             <PageBlock column="main" blockId="runs-loading">
-                <LoadingState type="table" rows={5} message="Loading pipeline runs..." />
+                <LoadingState
+                    type="table"
+                    rows={5}
+                    message={t`Loading pipeline runs...`}
+                />
             </PageBlock>
         );
     } else {
         content = (
-            <>
-                <PageBlock column="main" blockId="runs">
-                    <div className="flex items-center justify-between mb-2">
-                        <h3 className="text-base font-semibold">Runs</h3>
-                        <div className="flex items-center gap-2">
-                            <Select value={status || FILTER_VALUES.ALL} onValueChange={handleStatusChange}>
-                                <SelectTrigger className={SELECT_WIDTHS.RUN_STATUS} data-testid="datahub-run-status-filter">
-                                    <SelectValue placeholder="All statuses" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value={FILTER_VALUES.ALL}>All</SelectItem>
-                                    {statusOptions.map(opt => (
-                                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                            <Button variant="ghost" onClick={() => refetch()} disabled={isLoading} data-testid="datahub-run-history-refresh-button">
-                                Refresh
-                            </Button>
-                        </div>
+            <PageBlock column="main" blockId="runs">
+                <div className="mb-2 flex flex-col items-stretch justify-between gap-2 sm:flex-row sm:items-center">
+                    <h3 className="text-base font-semibold">
+                        <Trans>Runs</Trans>
+                    </h3>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <Select value={status || FILTER_VALUES.ALL} onValueChange={handleStatusChange}>
+                            <SelectTrigger className={SELECT_WIDTHS.RUN_STATUS} data-testid="datahub-run-status-filter">
+                                <SelectValue placeholder={t`All statuses`} />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value={FILTER_VALUES.ALL}>
+                                    <Trans>All</Trans>
+                                </SelectItem>
+                                {statusOptions.map(opt => (
+                                    <SelectItem key={opt.value} value={opt.value}>
+                                        {translateRunStatus(opt.value, opt.label)}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <Button variant="ghost" onClick={() => refetch()} disabled={isLoading} data-testid="datahub-run-history-refresh-button">
+                            <Trans>Refresh</Trans>
+                        </Button>
                     </div>
-                    <TooltipProvider>
-                        <DataTable
-                            columns={columns}
-                            data={runs}
-                            totalItems={totalItems}
-                            isLoading={isLoading}
-                            page={page}
-                            itemsPerPage={itemsPerPage}
-                            sorting={sorting}
-                            onPageChange={handlePageChange}
-                            onSortChange={handleSortChange}
-                            onRefresh={refetch}
-                            disableViewOptions
-                            data-testid="datahub-run-history-table"
-                        />
-                    </TooltipProvider>
-                </PageBlock>
+                </div>
+                <TooltipProvider>
+                    <DataTable
+                        columns={columns}
+                        data={runs}
+                        totalItems={totalItems}
+                        isLoading={isLoading}
+                        page={page}
+                        itemsPerPage={itemsPerPage}
+                        sorting={sorting}
+                        onPageChange={handlePageChange}
+                        onSortChange={handleSortChange}
+                        onRefresh={refetch}
+                        disableViewOptions
+                        data-testid="datahub-run-history-table"
+                    />
+                </TooltipProvider>
+            </PageBlock>
+        );
+    }
+
+    return (
+        <PermissionGuard requires={[DATAHUB_PERMISSIONS.VIEW_RUNS]}>
+            <div id="runs">
+                <PageLayout>
+                    {content}
+                </PageLayout>
                 <Drawer open={!!selectedRun} onOpenChange={handleCloseDrawer}>
                     <DrawerContent>
                         <DrawerHeader>
-                            <DrawerTitle>Run details</DrawerTitle>
+                            <DrawerTitle>
+                                <Trans>Run details</Trans>
+                            </DrawerTitle>
                             <DrawerDescription>
-                                {selectedRun ? `Run ${selectedRun.id}` : 'Details'}
+                                {selectedRun
+                                    ? <Trans>Run {selectedRun.id}</Trans>
+                                    : <Trans>Details</Trans>}
                             </DrawerDescription>
                         </DrawerHeader>
                         {selectedRun && (
@@ -334,43 +402,35 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
                                 initialData={selectedRun}
                                 onCancel={handleCancelRun}
                                 onRerun={handleRerun}
+                                canRerun={canRunPublishedRevision}
                                 isCancelling={cancellingRunId === selectedRun.id}
                             />
                         )}
                     </DrawerContent>
                 </Drawer>
-                <Dialog open={!!cancelConfirmRunId} onOpenChange={(open) => { if (!open) setCancelConfirmRunId(null); }}>
-                    <DialogContent className="max-w-md">
-                        <DialogHeader>
-                            <DialogTitle>Cancel Pipeline Run</DialogTitle>
-                            <DialogDescription>
-                                This will request cancellation of the running pipeline. This action cannot be undone.
-                            </DialogDescription>
-                        </DialogHeader>
-                        <DialogFooter>
-                            <Button
-                                variant="outline"
-                                onClick={() => setCancelConfirmRunId(null)}
-                            >
-                                Keep Running
-                            </Button>
-                            <Button
-                                variant="destructive"
+                <AlertDialog open={!!cancelConfirmRunId} onOpenChange={(open) => { if (!open) setCancelConfirmRunId(null); }}>
+                    <AlertDialogContent className="max-w-md">
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>
+                                <Trans>Cancel pipeline run</Trans>
+                            </AlertDialogTitle>
+                            <AlertDialogDescription>
+                                <Trans>This will request cancellation of the running pipeline. This action cannot be undone.</Trans>
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                            <AlertDialogCancel>
+                                <Trans>Keep running</Trans>
+                            </AlertDialogCancel>
+                            <AlertDialogAction
+                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                                 onClick={handleConfirmCancel}
                             >
-                                Cancel Run
-                            </Button>
-                        </DialogFooter>
-                    </DialogContent>
-                </Dialog>
-            </>
-        );
-    }
-
-    return (
-        <PermissionGuard requires={[DATAHUB_PERMISSIONS.VIEW_RUNS]}>
-            <div id="runs">
-                {content}
+                                <Trans>Cancel run</Trans>
+                            </AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
             </div>
         </PermissionGuard>
     );

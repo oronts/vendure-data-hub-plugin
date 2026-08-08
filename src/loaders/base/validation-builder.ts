@@ -95,17 +95,6 @@ export class ValidationBuilder {
     private recordIdentifier?: string;
     private recordLineNumber?: number;
 
-    /**
-     * Extract the source line/row number from a record's metadata fields.
-     *
-     * Records produced by file extractors (CSV, Excel, etc.) carry `_lineNumber`
-     * or `_rowIndex` metadata. This helper reads those fields in a type-safe way,
-     * eliminating the `(record as any)._lineNumber || (record as any)._rowIndex`
-     * pattern that was duplicated across loaders.
-     *
-     * @param record - The input record (typed as a generic object)
-     * @returns The line number if present, otherwise undefined
-     */
     static getLineNumber(record: Record<string, unknown>): number | undefined {
         return (typeof record._lineNumber === 'number' ? record._lineNumber : undefined)
             ?? (typeof record._rowIndex === 'number' ? record._rowIndex : undefined);
@@ -306,8 +295,12 @@ export class ValidationBuilder {
             this.addError(field, message || `${field} is required`, VALIDATION_ERROR_CODE.REQUIRED);
             return this;
         }
-        const num = Number(value);
-        if (Number.isNaN(num) || num < 0) {
+        const num = typeof value === 'number'
+            ? value
+            : typeof value === 'string' && value.trim() !== ''
+                ? Number(value)
+                : Number.NaN;
+        if (!Number.isFinite(num) || num < 0) {
             const received = typeof value === 'string' ? `"${value}"` : String(value);
             const defaultMsg = `${field} must be a positive number (expected: number >= 0, received: ${received})`;
             this.addError(field, message || defaultMsg, VALIDATION_ERROR_CODE.INVALID_VALUE);

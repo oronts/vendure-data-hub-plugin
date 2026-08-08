@@ -37,8 +37,8 @@ Common issues and solutions for Data Hub.
    - Test API manually with same parameters
    - Check authentication credentials
 
-2. **Items field path**
-   - Verify `itemsField` points to correct path in response
+2. **Data path**
+   - Verify `dataPath` points to the records array in the response
    - Use browser dev tools to inspect actual response
 
 3. **Connection issues**
@@ -136,26 +136,43 @@ Common issues and solutions for Data Hub.
 
 ### Secret Value Not Resolving
 
-**Symptoms:** API calls fail with auth errors
+Check the secret detail status and runtime source before changing the database row:
 
-**Check:**
-
-1. Secret code matches configuration exactly
-2. For env provider: environment variable is set
-3. For inline provider: value is correct
-4. Server was restarted after env var change
+1. Confirm the pipeline code matches exactly.
+2. If the row says **Code-first active**, runtime uses the in-memory definition; database edits are intentionally blocked.
+3. For ENV, confirm the referenced variable exists in the exact API server or worker process executing the pipeline.
+4. For database INLINE, confirm every process uses the same DATAHUB_MASTER_KEY.
+5. Restart processes after environment changes.
 
 ### Environment Variable Not Found
 
-**Symptoms:** "Environment variable X not found"
+A stored ENV reference only proves that the variable name is syntactically valid. It does not prove the variable exists.
 
-**Solutions:**
+1. Verify the variable in the service manager, container, and worker environment, not only an interactive shell.
+2. Check that the env file is loaded by the production process.
+3. Restart every API server and worker after changes.
+4. Use printenv in the same runtime context without printing the secret into shared logs.
 
-1. Verify variable is exported in shell
-2. Check .env file is loaded
-3. Restart server after changes
-4. Use `printenv` to verify
+### Encrypted Value Cannot Be Decrypted
 
+This means the configured key is missing, different from the encryption key, or the stored envelope is corrupt. Restore the correct key or replace the credential.
+
+1. Stop mixed-key processes.
+2. Restore the correct durable key on every process, or re-enter the known plaintext under the intended new key.
+3. If the old key and plaintext are both unavailable, clear or delete the unrecoverable row and obtain a replacement from the credential authority.
+4. Test representative connections before resuming pipelines.
+
+### Unencrypted Inline Status
+
+Runtime resolution rejects unencrypted database INLINE values. Configure a durable master key and enter a replacement value to create a new encrypted envelope. The UI never returns the old value.
+
+### Code-First Secret Removed but Old Credential Became Active
+
+A historical same-code database row can become the fallback after a code-first definition is removed. Before removal, inspect rows marked **Code-first active** and delete or deliberately migrate the inactive database row.
+
+### Config File Prevents Startup
+
+When configPath is set, missing, unreadable, unsupported, malformed, or non-object JSON/YAML is fatal by design. Fix the path relative to the process working directory, file permissions, extension, syntax, root object, duplicate codes, or invalid secret definition. The previous in-memory snapshot is never partially replaced.
 ## Performance Issues
 
 ### Slow Pipeline Execution
@@ -295,30 +312,31 @@ DataHubPlugin.init({
 
 ### Migration Failures
 
-**Symptoms:** Migrations fail to run or partially complete
+**Symptoms:** A host-project Vendure migration fails or only part of its DDL is
+visible.
 
 **Solutions:**
 
-1. **Check migration status:**
+1. Stop API and worker processes that can use the affected schema.
+2. Restore or verify the pre-migration backup before attempting another change.
+3. From the host Vendure project, inspect the generated migration and the
+   database migration table.
+4. Run reviewed pending migrations with the current Vendure CLI:
+
    ```bash
-   npm run migration:show
+   npx vendure migrate -r
    ```
 
-2. **Manual migration:**
+5. Revert only when the last migration's `down()` method has been reviewed and
+   will not discard production data:
+
    ```bash
-   npm run migration:run
+   npx vendure migrate --revert
    ```
 
-3. **Rollback if needed:**
-   ```bash
-   npm run migration:revert
-   ```
-
-4. **Clear migration cache:**
-   ```bash
-   rm -rf dist/migrations
-   npm run build
-   ```
+Do not enable `synchronize` or delete compiled migration files as a production
+repair. See [Database and Upgrade Migrations](./migrations.md) for generation,
+backup, deployment, and rollback procedures.
 
 ### Connection Pool Exhaustion
 
@@ -427,7 +445,6 @@ DataHubPlugin.init({
 
 2. **Check header name:**
    - X-Signature-256 (HMAC-SHA256)
-   - X-Signature-1 (HMAC-SHA1)
    - Custom header if configured
 
 3. **Verify secret storage:**
@@ -445,7 +462,10 @@ DataHubPlugin.init({
    ```typescript
    trigger: {
        type: 'WEBHOOK',
-       idempotencyKey: 'X-Request-ID',
+       authentication: 'HMAC',
+       secretCode: 'webhook-secret',
+       requireIdempotencyKey: true,
+       idempotencyKeyHeader: 'X-Request-ID',
    }
    ```
 
@@ -522,18 +542,18 @@ DataHubPlugin.init({
    event: 'ProductEvent'  // Must match Vendure event class
    ```
 
-2. **Event filter matches:**
-   ```typescript
-   filter: {
-       type: 'updated'  // Must match event property
-   }
-   ```
+   The value must be one of the event class names offered by the Dashboard.
+   Wildcards, action suffixes such as `.updated`, and trigger-level `filter`
+   fields are rejected. Filter seeded records in a downstream pipeline step.
 
-3. **Event subscription is active:**
-   - Check plugin is loaded
-   - Verify event handlers registered
+2. **Transactional handoff is active:**
+   - Check the plugin registered all blocking EVENT handlers
+   - Confirm the host migration created `data_hub_event_trigger_outbox`
+   - Inspect pending rows, `attempts`, and `lastError` for enqueue failures
+   - Confirm a worker consumes `data-hub.event-trigger-outbox` and `data-hub.run`
+   - Use a persistent Vendure job-queue strategy in production
 
-4. **Check pipeline run logs for event trigger errors:**
+3. **Check pipeline run logs for event trigger errors:**
    ```graphql
    query {
      dataHubLogs(options: { take: 10 }) {
@@ -551,87 +571,49 @@ DataHubPlugin.init({
 
 ## File Processing Issues
 
-### File Not Found
+### Uploaded File Not Found
 
-**Symptoms:** "ENOENT: no such file or directory"
+**Symptoms:** The extractor logs that an uploaded file is missing or empty and returns no records.
 
 **Solutions:**
 
-1. **Use absolute paths:**
+1. Confirm the step uses the format-specific adapter and a Data Hub file ID:
+
    ```typescript
-   path: '/var/data/imports/file.csv'  // Absolute
-   // Not: './imports/file.csv'         // Relative
+   .extract('parse-csv', {
+       adapterCode: 'csv',
+       fileId: 'uploaded-file-id',
+       hasHeader: true,
+   })
    ```
 
-2. **Check permissions:**
-   ```bash
-   ls -la /var/data/imports/
-   # Ensure vendure process can read
-   ```
-
-3. **Verify file exists:**
-   ```bash
-   stat /var/data/imports/file.csv
-   ```
+2. Upload the file again in the import wizard or with `POST /data-hub/upload`. Copy `file.id` from the response; a filename or server path is not a valid `fileId`.
+3. Use `GET /data-hub/files` to verify that the ID still exists. Uploaded files can expire according to the configured retention policy.
+4. Verify that the administrator has `ManageDataHubFiles` to upload and `ReadDataHubFiles` to list or inspect files.
 
 ### File Parsing Errors
 
-**Symptoms:** "Invalid CSV" or "Parse error"
+**Symptoms:** The extractor returns no records or logs a CSV, JSON, XML, or spreadsheet parse error.
 
-**Common causes:**
+**Checks:**
 
-1. **Encoding issues:**
-   ```typescript
-   extract: {
-       encoding: 'utf-8',  // or 'iso-8859-1', 'windows-1252'
-   }
-   ```
-
-2. **Delimiter mismatch:**
-   ```typescript
-   delimiter: ';'  // European CSV
-   delimiter: '\t'  // TSV
-   ```
-
-3. **Malformed data:**
-   - Unescaped quotes
-   - Inconsistent columns
-   - Binary data in text file
-
-4. **BOM (Byte Order Mark):**
-   - Some editors add BOM
-   - Can break parsing
-   - Strip BOM or configure parser
+1. Match the adapter to the uploaded format: `csv`, `json`, `xml`, or `xlsx`.
+2. For CSV, verify `delimiter` and `hasHeader`. TSV has no separate adapter; set `delimiter: '\t'` on the CSV adapter.
+3. For JSON, verify that `itemsPath` points to the array of records.
+4. For XML, verify that `recordPath` points to the repeated record elements.
+5. For XLSX, verify `sheetName` and whether the sheet contains a header row.
+6. Save text files as UTF-8 and check malformed quoting, inconsistent columns, invalid JSON/XML, or binary content in a text upload.
 
 ### Large File Memory Issues
 
-**Symptoms:** Out of memory errors with large files
+**Symptoms:** Out-of-memory errors with large uploads.
 
-**Solutions:**
+Uploaded files are currently parsed into memory before downstream batches execute. Reducing `throughput.batchSize` can reduce downstream processing pressure but does not make parsing streaming.
 
-1. **Use streaming:**
-   - Extractors already stream by default
-   - Don't load entire file into memory
-
-2. **Reduce batch size:**
-   ```typescript
-   throughput: {
-       batchSize: 100,  // Smaller batches
-   }
-   ```
-
-3. **Enable checkpointing:**
-   ```typescript
-   checkpointing: {
-       enabled: true,
-       intervalRecords: 5000,
-   }
-   ```
-
-4. **Split large files:**
-   ```bash
-   split -l 10000 large-file.csv chunk-
-   ```
+- Split oversized source files before uploading them.
+- Keep the upload size limit aligned with available worker memory.
+- Load-test CSV, JSON, XML, and XLSX independently because their memory overhead differs.
+- File extractors persist record offsets automatically. A later run still parses the uploaded file before applying its saved offset; set `resetCheckpoint: true` on the extractor to start from the beginning.
 
 ## API Integration Issues
 
@@ -703,18 +685,26 @@ DataHubPlugin.init({
    brew upgrade openssl
    ```
 
-2. **Disable SSL verification (development only):**
+2. **Use a scoped trust store or Secret Code:**
    ```typescript
-   // NOT recommended for production
-   process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-   ```
-
-3. **Use custom CA:**
-   ```typescript
-   connectionConfig: {
-       ca: fs.readFileSync('/path/to/ca.pem'),
+   ssl: {
+       enabled: true,
+       rejectUnauthorized: true,
+       caSecretCode: 'database-ca',
    }
    ```
+
+   Store the PEM CA certificate under the referenced Secret Code. For mutual
+   TLS, configure both `ssl.certSecretCode` and `ssl.keySecretCode`. For generic
+   Node.js HTTPS clients that use the system trust store, provide a scoped
+   process trust bundle through `NODE_EXTRA_CA_CERTS` at process startup.
+
+3. **Verify name and validity:** confirm the requested hostname is present in
+   the certificate SAN, the full chain is served, clocks are synchronized, and
+   no certificate has expired.
+
+Never set `NODE_TLS_REJECT_UNAUTHORIZED=0`. It disables certificate verification
+for every TLS client in the process, including unrelated integrations.
 
 ## Search Index Issues
 
@@ -724,23 +714,21 @@ DataHubPlugin.init({
 
 **Solutions:**
 
-1. **Rebuild index:**
-   ```graphql
-   mutation {
-     rebuildDataHubSearchIndex(indexName: "products") {
-       success
-       itemsIndexed
-     }
-   }
-   ```
+1. **Run the controlled reindex path:**
+   - confirm which external sink or Vendure search plugin owns the index;
+   - use that system's documented reindex operation, or run a published Data Hub
+     pipeline whose source intentionally reads the complete catalog;
+   - verify checkpoint and incremental-source settings before starting; and
+   - inspect the run's processed/failed counts and the target index count.
 
-2. **Check sync pipeline status:**
-   - Verify sync pipeline is enabled
-   - Check for errors in recent runs
+   Data Hub does not expose a `rebuildDataHubSearchIndex` mutation. Do not clear
+   an external index unless the replacement pipeline and rollback plan have been
+   tested.
 
-3. **Verify index mapping:**
-   - Check field types match
-   - Verify tokenization settings
+2. **Check the sync pipeline:**
+   - verify it is enabled and published;
+   - check recent run errors and sink responses; and
+   - confirm mappings match the target index schema.
 
 ### Indexing Failures
 
@@ -750,7 +738,7 @@ DataHubPlugin.init({
 
 1. **Bulk size too large:**
    ```typescript
-   bulkSize: 500  // Reduce if failing
+   batchSize: 500  // Reduce if failing
    ```
 
 2. **Document structure:**
@@ -807,13 +795,21 @@ DataHubPlugin.init({
    timeoutSeconds: 3600  // 1 hour
    ```
 
-2. **Check scheduler is running:**
-   - Timeout checking runs periodically
-   - Verify scheduler service
+   `timeoutSeconds` must be an integer between 1 and 31,536,000 and is required
+   when `approvalType` is `TIMEOUT`.
+
+2. **Check gate maintenance on the server process:**
+   - Timeout checking runs independently of Vendure scheduled tasks
+   - Due rows are polled every 30 seconds in batches of 100
+   - Verify the host migration added `gateStepKey`, `gateTimeoutAt`,
+     `gateTimeoutLeaseToken`, and `gateTimeoutLeaseExpiresAt` plus both status
+     indexes to `data_hub_pipeline_run`
 
 3. **Review gate status:**
    - May be approved manually before timeout
-   - Check approval logs
+   - Inspect the run's gate key and deadline through `dataHubPipelineRun`
+   - A failed timeout attempt is retried after its 60-second lease expires
+   - Check approval and timeout logs
 
 ## Custom Adapter Issues
 
@@ -999,23 +995,22 @@ WHERE pipeline_id = 'pipeline-id';
 
 ### Profile Performance
 
+Hook contexts are recreated at every stage, so values written to `context` in a
+before hook are not available to its matching after hook. Use persisted log
+timestamps and run analytics for duration measurements; hooks can add boundary
+markers:
+
 ```typescript
 .hooks({
     BEFORE_TRANSFORM: [{
-        type: 'INTERCEPTOR',
-        code: `
-            context.startTime = Date.now();
-            return records;
-        `,
+        type: 'LOG',
+        level: 'INFO',
+        message: 'Transform step started',
     }],
     AFTER_TRANSFORM: [{
-        type: 'INTERCEPTOR',
-        code: `
-            const duration = Date.now() - context.startTime;
-            const rps = Math.round(records.length / (duration / 1000));
-            console.log(\`Transform: \${duration}ms, \${rps} rec/sec\`);
-            return records;
-        `,
+        type: 'LOG',
+        level: 'INFO',
+        message: 'Transform step completed',
     }],
 })
 ```
@@ -1029,39 +1024,43 @@ WHERE pipeline_id = 'pipeline-id';
    - Click "Cancel" button
 
 2. **Cancel via GraphQL:**
+
    ```graphql
    mutation {
      cancelDataHubPipelineRun(id: "run-id") {
-       success
+       id
+       status
      }
    }
    ```
 
-3. **Force kill (last resort):**
-   ```bash
-   # Find process
-   ps aux | grep vendure
+3. **Stop processing safely if cancellation cannot complete:**
+   - pause the trigger source;
+   - stop the affected worker through the deployment's process manager;
+   - inspect the run and Vendure job state before restarting; and
+   - inspect the adapter-specific checkpoint before starting a new run; use an
+     adapter reset option where one is documented.
 
-   # Kill process
-   kill -9 PID
-   ```
+   A forced process termination can leave a run marked `RUNNING`; it is not a
+   substitute for cancellation and recovery.
 
 ### Recover from Failed Migration
 
-1. **Restore from backup:**
+1. Keep APIs, workers, schedules, and external triggers stopped.
+2. Inspect the failed migration and database state. MySQL/MariaDB DDL may be
+   partially applied even when the migration reports failure.
+3. Restore the tested pre-deployment database backup when schema or data integrity
+   is uncertain.
+4. Restore the previous application artifact, configuration, lockfile,
+   environment, and `DATAHUB_MASTER_KEY` as one release unit.
+5. Reinstall exactly from the restored lockfile when required:
+
    ```bash
-   psql vendure_db < backup.sql
+   npm ci
    ```
 
-2. **Rollback package:**
-   ```bash
-   npm install @oronts/vendure-data-hub-plugin@1.5.0
-   ```
-
-3. **Restart server:**
-   ```bash
-   pm2 restart vendure
-   ```
+6. Start the previous API and worker build and repeat the validation checklist in
+   [Database and Upgrade Migrations](./migrations.md#validation-checklist).
 
 ### Clear Stuck Queue
 

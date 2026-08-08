@@ -1,13 +1,12 @@
-import { Column, Entity, Index } from 'typeorm';
-import { DeepPartial, VendureEntity } from '@vendure/core';
+import { Column, Entity, Index, JoinTable, ManyToMany } from 'typeorm';
+import { Channel, ChannelAware, DeepPartial, VendureEntity } from '@vendure/core';
 import type { JsonObject } from '../../types/index';
-import { ConnectionType } from '../../constants/enums';
+import { ConfigurationSource, ConnectionType } from '../../constants/enums';
 import { TABLE_NAMES } from '../../constants/table-names';
 
 @Entity(TABLE_NAMES.CONNECTION)
 @Index(['type'])
-@Index(['code']) // Index for code lookups (unique constraint doesn't auto-create index on all DBs)
-export class DataHubConnection extends VendureEntity {
+export class DataHubConnection extends VendureEntity implements ChannelAware {
     constructor(input?: DeepPartial<DataHubConnection>) {
         super(input);
     }
@@ -17,6 +16,17 @@ export class DataHubConnection extends VendureEntity {
 
     @Column({ type: 'varchar', length: 50, default: ConnectionType.HTTP })
     type!: ConnectionType;
+
+    @Column({
+        type: 'varchar',
+        length: 20,
+        default: ConfigurationSource.DATABASE,
+    })
+    configurationSource!: ConfigurationSource;
+
+    @ManyToMany(() => Channel)
+    @JoinTable()
+    channels!: Channel[];
 
     @Column({ type: 'simple-json' })
     config!: JsonObject;

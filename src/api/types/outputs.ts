@@ -22,6 +22,8 @@ export interface ExtractorOutput {
     description?: string;
     category: string;
     version?: string;
+    deprecated: boolean;
+    deprecatedMessage?: string;
     icon?: string;
     supportsPagination: boolean;
     supportsIncremental: boolean;

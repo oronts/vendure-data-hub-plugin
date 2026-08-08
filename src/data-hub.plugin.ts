@@ -3,11 +3,11 @@ import { DATAHUB_PLUGIN_OPTIONS } from './constants/index';
 import { DataHubPluginOptions } from './types/index';
 import { DEFAULT_IMPORT_TEMPLATES } from './templates';
 // Pipeline entities
-import { Pipeline, PipelineRun, PipelineRevision, PipelineLog } from './entities/pipeline';
+import { DataHubEventTriggerOutbox, DataHubWebhookDelivery, Pipeline, PipelineRun, PipelineRevision, PipelineLog } from './entities/pipeline';
 // Data entities
 import { DataHubCheckpoint, DataHubRecordError, DataHubRecordRetryAudit } from './entities/data';
 // Config entities
-import { DataHubConnection, DataHubSecret, DataHubSettings, DataHubLock } from './entities/config';
+import { DataHubConnection, DataHubExportDestination, DataHubFeed, DataHubSchema, DataHubSecret, DataHubSettings, DataHubLock } from './entities/config';
 import { adminApiExtensions } from './api/api-extensions';
 import { DataHubPipelineAdminResolver } from './api/resolvers/pipeline.resolver';
 import { DataHubAdapterAdminResolver } from './api/resolvers/adapter.resolver';
@@ -17,20 +17,38 @@ import { DataHubSecretAdminResolver } from './api/resolvers/secret.resolver';
 import { DataHubHookAdminResolver } from './api/resolvers/hook.resolver';
 import { DataHubQueueAdminResolver } from './api/resolvers/queue.resolver';
 import { DataHubWebhookController } from './api/controllers/webhook.controller';
+import { dataHubJsonBodyParser } from './api/controllers/webhook-body.middleware';
 import {
+    PipelineQueryService,
+    PipelineMutationService,
+    PipelineLifecycleService,
+    PipelineRunCreationService,
+    PipelineRunGateService,
+    PipelineRunService,
     PipelineService,
+    PipelineExecutionPermissionService,
+    PipelineExecutionProcessorService,
+    PipelineRunOutcomeService,
     PipelineRunnerService,
+    RemoteSourceAcknowledgementService,
+    RemoteSourceAcknowledgementRecoveryService,
+    GateTimeoutService,
     DefinitionValidationService,
     PipelineFormatService,
     RecordErrorService,
     CheckpointService,
+    RecordRetryService,
     RecordRetryAuditService,
     ErrorReplayService,
     SecretService,
     HookService,
+    HookScriptRegistryService,
     DataHubEventTriggerService,
+    EventTriggerOutboxService,
     DataHubRetentionService,
     ConnectionService,
+    ManagedResourceChannelService,
+    ResourceReferenceService,
     DataHubSettingsService,
     DomainEventsService,
     PipelineLogService,
@@ -41,14 +59,19 @@ import {
     RateLimitService,
     MessageConsumerService,
     StepTestService,
+    SchemaRegistryService,
     TemplateRegistryService,
+    FileWatchSourceService,
     FileWatchService,
 } from './services';
 import { RateLimitServiceHolder } from './decorators';
 import { DATAHUB_PERMISSION_DEFINITIONS } from './permissions';
 import { DataHubRunQueueHandler, DataHubScheduleHandler } from './jobs';
+import { ScheduledPipelineExecutionService } from './jobs/handlers/schedule-execution.service';
+import { ScheduleTimerService } from './jobs/handlers/schedule-timer.service';
 import { DataHubRegistryService } from './sdk/registry.service';
 import { AdapterBootstrapService, ConfigSyncService } from './bootstrap';
+import { AdapterUpgradeGuardService } from './services/pipeline/adapter-upgrade-guard.service';
 import { AdapterRuntimeService } from './runtime/adapter-runtime.service';
 import { DataHubConnectionAdminResolver } from './api/resolvers/connection.resolver';
 import { DataHubSettingsAdminResolver } from './api/resolvers/settings.resolver';
@@ -58,15 +81,21 @@ import { DataHubTestAdminResolver } from './api/resolvers/test.resolver';
 import { FileParserService } from './parsers/file-parser.service';
 import { FieldMapperService, AutoMapperService } from './mappers';
 import { FeedGeneratorService } from './feeds/feed-generator.service';
+import { FeedCatalogService } from './feeds/feed-catalog.service';
+import { FeedPersistenceService } from './feeds/feed-persistence.service';
+import { FeedScheduleService } from './feeds/feed-schedule.service';
 import { DataHubFeedAdminResolver } from './api/resolvers/feed.resolver';
 import { DataHubAnalyticsAdminResolver } from './api/resolvers/analytics.resolver';
 import { DataHubFileUploadController } from './api/controllers/file-upload.controller';
 // Transform and Loader services
-import { TransformExecutor } from './transforms/transform-executor';
 import { ENTITY_LOADER_PROVIDERS } from './loaders/entity-loader-registry';
 import { LoaderRegistryService } from './loaders/registry';
 // Logger Service
-import { DataHubLoggerFactory, ExecutionLogger } from './services/logger';
+import {
+    DataHubLoggerFactory,
+    ExecutionLogger,
+    OtlpExporterService,
+} from './services/logger';
 // Extractor Services (auto-discovered via EXTRACTOR_HANDLER_REGISTRY)
 import { ExtractorRegistryService } from './extractors/extractor-registry.service';
 import { EXTRACTOR_PROVIDERS } from './extractors/extractor-handler-registry';
@@ -77,13 +106,19 @@ import { DataHubSandboxResolver } from './api/resolvers/sandbox.resolver';
 import { DataHubGateAdminResolver } from './api/resolvers/gate.resolver';
 import { DataHubTemplateAdminResolver } from './api/resolvers/template.resolver';
 import { DataHubConfigOptionsAdminResolver } from './api/resolvers/config-options.resolver';
+import { DataHubSchemaAdminResolver } from './api/resolvers/schema-registry.resolver';
 // Versioning Services
 import { DiffService, RevisionService, ImpactAnalysisService, RiskAssessmentService, SandboxService } from './services/versioning';
 // Runtime Services
-import { RuntimeConfigService, CircuitBreakerService, BatchRollbackService, DistributedLockService } from './services/runtime';
+import {
+    RuntimeConfigService,
+    CircuitBreakerService,
+    DistributedLockService,
+    SecureFetchLifecycleService,
+} from './services/runtime';
 // Runtime Executors
 import { ExtractExecutor } from './runtime/executors/extract.executor';
-import { TransformExecutor as RuntimeTransformExecutor } from './runtime/executors/transform.executor';
+import { TransformExecutor } from './runtime/executors/transform.executor';
 import { LoadExecutor } from './runtime/executors/load.executor';
 import { ExportExecutor } from './runtime/executors/export.executor';
 import { FeedExecutor } from './runtime/executors/feed.executor';
@@ -92,6 +127,7 @@ import { GateExecutor } from './runtime/executors/gate.executor';
 import { GateStepStrategy } from './runtime/orchestration/step-strategies';
 // Loader Handler Registry (used by LoadExecutor - auto-discovered via LOADER_HANDLER_REGISTRY)
 import { LOADER_HANDLER_PROVIDERS } from './runtime/executors/loaders';
+import { HttpLookupLifecycleService } from './operators/enrichment/http-lookup-lifecycle';
 
 /**
  * Data Hub Plugin - ETL (Extract, Transform, Load) data integration plugin for Vendure.
@@ -107,24 +143,37 @@ import { LOADER_HANDLER_PROVIDERS } from './runtime/executors/loaders';
  * - Transform operators for data manipulation
  * - Feed generators (Google, Meta, Amazon, Custom)
  * - Search sinks (Elasticsearch, MeiliSearch, Algolia, Typesense)
- * - Scheduling, checkpointing, and real-time monitoring
+ * - Scheduling, adapter checkpoint persistence, and real-time monitoring
  *
  * @category Plugin
  */
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [Pipeline, PipelineRun, DataHubRecordError, DataHubCheckpoint, DataHubRecordRetryAudit, DataHubSecret, PipelineRevision, DataHubConnection, DataHubSettings, PipelineLog, DataHubLock],
+    entities: [Pipeline, PipelineRun, DataHubEventTriggerOutbox, DataHubWebhookDelivery, DataHubRecordError, DataHubCheckpoint, DataHubRecordRetryAudit, DataHubSecret, PipelineRevision, DataHubConnection, DataHubSettings, PipelineLog, DataHubLock, DataHubExportDestination, DataHubFeed, DataHubSchema],
     providers: [
         // Runtime Configuration Services
         RuntimeConfigService,
         CircuitBreakerService,
-        BatchRollbackService,
         DistributedLockService,
+        SecureFetchLifecycleService,
         // Core Services
+        PipelineExecutionPermissionService,
+        PipelineRunCreationService,
+        PipelineRunGateService,
+        PipelineRunService,
+        PipelineQueryService,
+        PipelineMutationService,
+        PipelineLifecycleService,
         PipelineService,
+        PipelineExecutionProcessorService,
+        PipelineRunOutcomeService,
         PipelineRunnerService,
+        RemoteSourceAcknowledgementService,
+        RemoteSourceAcknowledgementRecoveryService,
+        GateTimeoutService,
         AdapterRuntimeService,
         DataHubRegistryService,
+        AdapterUpgradeGuardService,
         AdapterBootstrapService,
         ConfigSyncService,
         DataHubRunQueueHandler,
@@ -132,26 +181,35 @@ import { LOADER_HANDLER_PROVIDERS } from './runtime/executors/loaders';
         CheckpointService,
         RecordRetryAuditService,
         ErrorReplayService,
+        RecordRetryService,
+        ScheduledPipelineExecutionService,
+        ScheduleTimerService,
         DataHubScheduleHandler,
         SecretService,
+        HookScriptRegistryService,
         HookService,
+        EventTriggerOutboxService,
         DataHubEventTriggerService,
         MessageConsumerService,
+        FileWatchSourceService,
         FileWatchService,
         DataHubRetentionService,
         ConnectionService,
+        ManagedResourceChannelService,
+        ResourceReferenceService,
         DomainEventsService,
         DataHubSettingsService,
         PipelineLogService,
+        SchemaRegistryService,
         // File & Mapping Services
         FileParserService,
         FieldMapperService,
         AutoMapperService,
         // Transform & Loader Services
-        TransformExecutor,
         // Runtime Executors (for AdapterRuntimeService)
         ExtractExecutor,
-        RuntimeTransformExecutor,
+        TransformExecutor,
+        HttpLookupLifecycleService,
         LoadExecutor,
         ExportExecutor,
         FeedExecutor,
@@ -165,6 +223,7 @@ import { LOADER_HANDLER_PROVIDERS } from './runtime/executors/loaders';
         // Loader Registry
         LoaderRegistryService,
         // Logger Factory and Execution Logger
+        OtlpExporterService,
         DataHubLoggerFactory,
         ExecutionLogger,
         // Rate Limiting Service
@@ -178,7 +237,10 @@ import { LOADER_HANDLER_PROVIDERS } from './runtime/executors/loaders';
         WebhookRetryService,
         ExportDestinationService,
         AnalyticsService,
+        FeedPersistenceService,
+        FeedCatalogService,
         FeedGeneratorService,
+        FeedScheduleService,
         // Resolvers
         DataHubFeedAdminResolver,
         DataHubAnalyticsAdminResolver,
@@ -197,7 +259,6 @@ import { LOADER_HANDLER_PROVIDERS } from './runtime/executors/loaders';
         EntitySchemaAdminResolver,
         DataHubVersioningResolver,
         DataHubSandboxResolver,
-        // DataHubSubscriptionResolver -- not registered until subscription schema is uncommented
         DataHubTestAdminResolver,
         DataHubGateAdminResolver,
         // Versioning Services
@@ -216,6 +277,7 @@ import { LOADER_HANDLER_PROVIDERS } from './runtime/executors/loaders';
         TemplateRegistryService,
         DataHubTemplateAdminResolver,
         DataHubConfigOptionsAdminResolver,
+        DataHubSchemaAdminResolver,
         {
             provide: DATAHUB_PLUGIN_OPTIONS,
             useFactory: () => DataHubPlugin.options,
@@ -245,17 +307,28 @@ import { LOADER_HANDLER_PROVIDERS } from './runtime/executors/loaders';
             DataHubGateAdminResolver,
             DataHubTemplateAdminResolver,
             DataHubConfigOptionsAdminResolver,
+            DataHubSchemaAdminResolver,
         ],
     },
     controllers: [DataHubWebhookController, DataHubFileUploadController],
+    exports: [FieldMapperService, AutoMapperService],
     dashboard: '../dashboard/index.tsx',
     configuration: config => {
         // Register custom permissions
         const existing = config.authOptions.customPermissions ?? [];
         config.authOptions.customPermissions = [...existing, ...DATAHUB_PERMISSION_DEFINITIONS];
+        const existingMiddleware = config.apiOptions.middleware ?? [];
+        config.apiOptions.middleware = [
+            {
+                handler: dataHubJsonBodyParser,
+                route: '*splat',
+                beforeListen: true,
+            },
+            ...existingMiddleware,
+        ];
         return config;
     },
-    compatibility: '^3.0.0',
+    compatibility: '^3.5.7',
 })
 export class DataHubPlugin {
     /** @internal */

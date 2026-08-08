@@ -1,247 +1,141 @@
-/**
- * AWS SQS Queue Adapter
- *
- * Production-ready AWS SQS adapter for message queue operations.
- * Features:
- * - Standard and FIFO queue support
- * - Message batching for efficient publishing
- * - Long polling for efficient consumption
- * - Proper message acknowledgment via deleteMessage
- * - Dead-letter queue support
- * - Automatic retry with exponential backoff
- */
-
-import {
+import { createHash, randomUUID } from 'node:crypto';
+import { AckMode } from '../../../constants/enums';
+import { INTERNAL_TIMINGS } from '../../../constants/defaults/core-defaults';
+import { QUEUE } from '../../../constants/defaults/runtime-defaults';
+import { TIME } from '../../../constants/time';
+import type { AwsRequestHandlerFactory } from '../../../utils/aws-request-handler.utils';
+import { getErrorMessage } from '../../../utils/error.utils';
+import type {
+    ConsumeResult,
+    PublishResult,
     QueueAdapter,
     QueueConnectionConfig,
+    QueueConsumeOptions,
     QueueMessage,
-    PublishResult,
-    ConsumeResult,
 } from './queue-adapter.interface';
-import { JsonObject } from '../../../types/index';
-import { AckMode, INTERNAL_TIMINGS, TIME } from '../../../constants';
-import { getErrorMessage } from '../../../utils/error.utils';
-import { isBlockedHostname } from '../../../utils/url-security.utils';
+import { parseJsonObject, requirePositiveInteger } from './queue-message.utils';
+import {
+    type SqsBatchEntry,
+    SqsClientPool,
+    type SqsConnectionConfig,
+    buildSqsQueueUrl,
+    loadSqsModule,
+    sqsConnectionIdentity,
+} from './sqs.client';
 
-/** Queue name used for SQS connection tests */
 const SQS_TEST_CONNECTION_QUEUE = 'data-hub-test-connection';
+const SQS_VISIBILITY_TIMEOUT_SECONDS = 300;
+const SQS_LONG_POLL_SECONDS = 20;
+const SQS_BATCH_SIZE = 10;
+const SQS_MAX_DELAY_SECONDS = 900;
+const SQS_MAX_FIFO_ID_LENGTH = 128;
+const SQS_FIFO_ID_PATTERN = /^[\x21-\x7e]+$/;
+const MISSING_BATCH_RESULT = 'SQS did not return a result for this batch entry';
 
-/** Error message when SQS module fails to load (type narrowing guard) */
-const SQS_MODULE_NOT_LOADED = 'SQS module not loaded';
-
-/**
- * SQS-specific connection configuration
- */
-interface SqsConnectionConfig extends QueueConnectionConfig {
-    /** AWS region (e.g., 'us-east-1') */
-    region?: string;
-    /** AWS access key ID */
-    accessKeyId?: string;
-    /** AWS secret access key */
-    secretAccessKey?: string;
-    /** Optional endpoint URL for LocalStack or custom endpoints */
-    endpoint?: string;
-    /** Account ID for queue URL construction */
-    accountId?: string;
-}
-
-/**
- * SQS client types (from @aws-sdk/client-sqs)
- */
-type SQSClient = {
-    send(command: unknown): Promise<unknown>;
-    destroy(): void;
-};
-
-type SendMessageBatchCommand = {
-    new (input: {
-        QueueUrl: string;
-        Entries: Array<{
-            Id: string;
-            MessageBody: string;
-            DelaySeconds?: number;
-            MessageAttributes?: Record<string, { DataType: string; StringValue: string }>;
-            MessageGroupId?: string;
-            MessageDeduplicationId?: string;
-        }>;
-    }): unknown;
-};
-
-type ReceiveMessageCommand = {
-    new (input: {
-        QueueUrl: string;
-        MaxNumberOfMessages?: number;
-        WaitTimeSeconds?: number;
-        VisibilityTimeout?: number;
-        MessageAttributeNames?: string[];
-        AttributeNames?: string[];
-    }): unknown;
-};
-
-type DeleteMessageCommand = {
-    new (input: {
-        QueueUrl: string;
-        ReceiptHandle: string;
-    }): unknown;
-};
-
-type ChangeMessageVisibilityCommand = {
-    new (input: {
-        QueueUrl: string;
-        ReceiptHandle: string;
-        VisibilityTimeout: number;
-    }): unknown;
-};
-
-type GetQueueUrlCommand = {
-    new (input: {
-        QueueName: string;
-    }): unknown;
-};
-
-/**
- * Cache for SQS clients
- */
-const MAX_CLIENTS = 100;
-const clientCache = new Map<string, { client: SQSClient; lastUsed: number }>();
-
-/**
- * Pending receipt handles for manual acknowledgment
- */
 interface PendingReceipt {
     queueUrl: string;
     receiptHandle: string;
+    connectionIdentity: string;
     createdAt: number;
 }
-const pendingReceipts = new Map<string, PendingReceipt>();
 
-/**
- * Generate cache key for connection config
- */
-function getCacheKey(config: SqsConnectionConfig): string {
-    return `${config.region ?? 'us-east-1'}:${config.accessKeyId ?? 'default'}:${config.endpoint ?? 'aws'}`;
+interface ReceivedMessage {
+    MessageId?: string;
+    Body?: string;
+    ReceiptHandle?: string;
+    MessageAttributes?: Record<string, { StringValue?: string }>;
+    Attributes?: Record<string, string>;
 }
 
-/**
- * Build queue URL from config and queue name
- */
-function buildQueueUrl(config: SqsConnectionConfig, queueName: string): string {
-    if (!config.accountId) {
-        throw new Error(
-            'SQS accountId is required in connection config. ' +
-            'Provide your AWS account ID (e.g., "123456789012") to construct the queue URL.',
+interface PreparedBatchEntry {
+    entry: SqsBatchEntry;
+    message: QueueMessage;
+    batchIndex: number;
+}
+
+function isFifoIdentifier(value: string): boolean {
+    return value.length <= SQS_MAX_FIFO_ID_LENGTH && SQS_FIFO_ID_PATTERN.test(value);
+}
+
+function toDeduplicationId(messageId: string): string {
+    return isFifoIdentifier(messageId)
+        ? messageId
+        : createHash('sha256').update(messageId).digest('hex');
+}
+
+function prepareBatchEntry(
+    message: QueueMessage,
+    batchIndex: number,
+    isFifo: boolean,
+): SqsBatchEntry {
+    const body = JSON.stringify(message.payload);
+    if (body === undefined) throw new Error('SQS message payload is not serializable');
+    const entry: SqsBatchEntry = { Id: String(batchIndex), MessageBody: body };
+
+    if (message.delayMs !== undefined) {
+        if (!Number.isSafeInteger(message.delayMs) || message.delayMs < 0) {
+            throw new Error('SQS message delay must be a non-negative integer');
+        }
+        const delaySeconds = Math.ceil(message.delayMs / TIME.SECOND);
+        if (delaySeconds > SQS_MAX_DELAY_SECONDS) {
+            throw new Error(`SQS message delay must not exceed ${SQS_MAX_DELAY_SECONDS} seconds`);
+        }
+        if (isFifo) {
+            throw new Error('SQS FIFO queues do not support per-message delays');
+        }
+        entry.DelaySeconds = delaySeconds;
+    }
+
+    if (message.headers) {
+        entry.MessageAttributes = Object.fromEntries(
+            Object.entries(message.headers).map(([key, value]) => [key, {
+                DataType: 'String',
+                StringValue: value,
+            }]),
         );
     }
-    const accountId = config.accountId;
-
-    if (config.endpoint) {
-        // LocalStack or custom endpoint
-        return `${config.endpoint}/${accountId}/${queueName}`;
+    if (isFifo) {
+        const groupId = message.routingKey ?? 'default';
+        if (!isFifoIdentifier(groupId)) {
+            throw new Error(
+                `SQS FIFO message group ID must be 1-${SQS_MAX_FIFO_ID_LENGTH} printable ASCII characters`,
+            );
+        }
+        entry.MessageGroupId = groupId;
+        entry.MessageDeduplicationId = toDeduplicationId(message.id);
     }
-    const region = config.region ?? 'us-east-1';
-    return `https://sqs.${region}.amazonaws.com/${accountId}/${queueName}`;
+    return entry;
 }
 
-/**
- * Dynamically loaded SQS module
- */
-let sqsModule: {
-    SQSClient: new (config: Record<string, unknown>) => SQSClient;
-    SendMessageBatchCommand: SendMessageBatchCommand;
-    ReceiveMessageCommand: ReceiveMessageCommand;
-    DeleteMessageCommand: DeleteMessageCommand;
-    ChangeMessageVisibilityCommand: ChangeMessageVisibilityCommand;
-    GetQueueUrlCommand: GetQueueUrlCommand;
-} | null = null;
-
-/**
- * Load AWS SQS module dynamically
- */
-async function loadSqsModule(): Promise<typeof sqsModule> {
-    if (sqsModule) return sqsModule;
-
-    try {
-        // Dynamic import - @aws-sdk/client-sqs is an optional dependency
-        const mod = await (Function('return import("@aws-sdk/client-sqs")')() as Promise<typeof sqsModule>);
-        sqsModule = mod;
-        return mod;
-    } catch {
-        throw new Error(
-            'AWS SQS adapter requires @aws-sdk/client-sqs package. ' +
-            'Install it with: npm install @aws-sdk/client-sqs'
-        );
+function responseResults(
+    response: {
+        Successful?: Array<{ Id?: string }>;
+        Failed?: Array<{ Id?: string; Message?: string }>;
+    },
+): Map<string, { success: boolean; error?: string }> {
+    const results = new Map<string, { success: boolean; error?: string }>();
+    for (const success of response.Successful ?? []) {
+        if (success.Id !== undefined) results.set(success.Id, { success: true });
     }
+    for (const failure of response.Failed ?? []) {
+        if (failure.Id !== undefined) {
+            results.set(failure.Id, {
+                success: false,
+                error: failure.Message ?? 'SQS rejected this batch entry',
+            });
+        }
+    }
+    return results;
 }
 
-/**
- * Get or create SQS client
- */
-async function getClient(config: SqsConnectionConfig): Promise<SQSClient> {
-    const key = getCacheKey(config);
-    const cached = clientCache.get(key);
-
-    if (cached) {
-        cached.lastUsed = Date.now();
-        return cached.client;
-    }
-
-    const sqs = await loadSqsModule();
-    if (!sqs) throw new Error(SQS_MODULE_NOT_LOADED);
-
-    const clientConfig: Record<string, unknown> = {
-        region: config.region ?? 'us-east-1',
-    };
-
-    if (config.accessKeyId && config.secretAccessKey) {
-        clientConfig.credentials = {
-            accessKeyId: config.accessKeyId,
-            secretAccessKey: config.secretAccessKey,
-        };
-    }
-
-    if (config.endpoint) {
-        // SSRF validation for custom SQS endpoint URLs
-        try {
-            const endpointUrl = new URL(config.endpoint);
-            if (isBlockedHostname(endpointUrl.hostname)) {
-                throw new Error(`SSRF protection: endpoint hostname '${endpointUrl.hostname}' is blocked for security reasons`);
-            }
-        } catch (e) {
-            if (e instanceof Error && e.message.startsWith('SSRF protection:')) {
-                throw e;
-            }
-            throw new Error(`Invalid SQS endpoint URL: ${config.endpoint}`);
-        }
-        clientConfig.endpoint = config.endpoint;
-    }
-
-    const client = new sqs.SQSClient(clientConfig) as unknown as SQSClient;
-
-    // Evict oldest client if cache is at capacity
-    if (clientCache.size >= MAX_CLIENTS) {
-        let oldestKey: string | null = null;
-        let oldestTime = Infinity;
-        for (const [k, entry] of clientCache.entries()) {
-            if (entry.lastUsed < oldestTime) {
-                oldestTime = entry.lastUsed;
-                oldestKey = k;
-            }
-        }
-        if (oldestKey) {
-            const stale = clientCache.get(oldestKey);
-            if (stale) {
-                stale.client.destroy();
-            }
-            clientCache.delete(oldestKey);
-        }
-    }
-
-    clientCache.set(key, {
-        client,
-        lastUsed: Date.now(),
-    });
-
-    return client;
+function extractHeaders(message: ReceivedMessage): Record<string, string> | undefined {
+    if (!message.MessageAttributes) return undefined;
+    const headers = Object.entries(message.MessageAttributes).flatMap(
+        ([key, attribute]) => attribute.StringValue === undefined
+            ? []
+            : [[key, attribute.StringValue] as const],
+    );
+    return headers.length > 0 ? Object.fromEntries(headers) : undefined;
 }
 
 export class SqsAdapter implements QueueAdapter {
@@ -249,55 +143,40 @@ export class SqsAdapter implements QueueAdapter {
     readonly name = 'AWS SQS';
     readonly description = 'AWS Simple Queue Service adapter';
 
+    private readonly clientPool: SqsClientPool;
+    private readonly pendingReceipts = new Map<string, PendingReceipt>();
+    private pendingReceiptReservations = 0;
     private cleanupHandle?: ReturnType<typeof setInterval>;
 
-    /**
-     * Start the periodic cleanup interval for idle clients and stale pending receipts.
-     * Called automatically on first use; safe to call multiple times.
-     */
+    constructor(
+        private readonly moduleLoader: typeof loadSqsModule = loadSqsModule,
+        requestHandlerFactory?: AwsRequestHandlerFactory,
+    ) {
+        this.clientPool = new SqsClientPool(moduleLoader, requestHandlerFactory);
+    }
+
     startCleanup(): void {
         if (this.cleanupHandle) return;
         this.cleanupHandle = setInterval(() => {
             const now = Date.now();
-            for (const [key, entry] of clientCache.entries()) {
-                if (now - entry.lastUsed > INTERNAL_TIMINGS.CONNECTION_MAX_IDLE_MS) {
-                    entry.client.destroy();
-                    clientCache.delete(key);
-                }
-            }
-
-            // Cleanup stale pending receipts
-            for (const [key, pending] of pendingReceipts.entries()) {
+            this.clientPool.cleanupIdle(now);
+            for (const [key, pending] of this.pendingReceipts.entries()) {
                 if (now - pending.createdAt > INTERNAL_TIMINGS.PENDING_MESSAGES_MAX_AGE_MS) {
-                    pendingReceipts.delete(key);
+                    this.pendingReceipts.delete(key);
                 }
             }
         }, INTERNAL_TIMINGS.CLEANUP_INTERVAL_MS);
-
-        if (typeof this.cleanupHandle.unref === 'function') {
-            this.cleanupHandle.unref();
-        }
+        this.cleanupHandle.unref?.();
     }
 
-    /**
-     * Stop the periodic cleanup interval and destroy all cached clients.
-     * Call during graceful shutdown to prevent the interval from keeping the process alive.
-     */
     async destroy(): Promise<void> {
         if (this.cleanupHandle) {
             clearInterval(this.cleanupHandle);
             this.cleanupHandle = undefined;
         }
-
-        for (const [key, entry] of clientCache.entries()) {
-            try {
-                entry.client.destroy();
-            } catch {
-                // Ignore destroy errors during shutdown
-            }
-            clientCache.delete(key);
-        }
-        pendingReceipts.clear();
+        await this.clientPool.destroy();
+        this.pendingReceipts.clear();
+        this.pendingReceiptReservations = 0;
     }
 
     async publish(
@@ -307,286 +186,248 @@ export class SqsAdapter implements QueueAdapter {
     ): Promise<PublishResult[]> {
         this.startCleanup();
         const config = connectionConfig as SqsConnectionConfig;
-        const client = await getClient(config);
-        const queueUrl = buildQueueUrl(config, queueName);
-        const isFifo = queueName.endsWith('.fifo');
+        const queueUrl = buildSqsQueueUrl(config, queueName);
+        const client = await this.clientPool.get(config);
+        const module = await this.moduleLoader();
+        const isFifo = queueName.endsWith('.fifo') ||
+            new URL(queueUrl).pathname.endsWith('.fifo');
+        const results = new Array<PublishResult | undefined>(messages.length);
 
-        const sqs = await loadSqsModule();
-        if (!sqs) throw new Error(SQS_MODULE_NOT_LOADED);
-        const SendCmd = sqs.SendMessageBatchCommand;
-
-        const results: PublishResult[] = [];
-
-        // SQS allows max 10 messages per batch
-        const batchSize = 10;
-        for (let i = 0; i < messages.length; i += batchSize) {
-            const batch = messages.slice(i, i + batchSize);
-
-            const entries = batch.map((msg) => {
-                const entry: {
-                    Id: string;
-                    MessageBody: string;
-                    DelaySeconds?: number;
-                    MessageAttributes?: Record<string, { DataType: string; StringValue: string }>;
-                    MessageGroupId?: string;
-                    MessageDeduplicationId?: string;
-                } = {
-                    Id: msg.id,
-                    MessageBody: JSON.stringify(msg.payload),
-                };
-
-                // Delay (0-900 seconds)
-                if (msg.delayMs) {
-                    entry.DelaySeconds = Math.min(900, Math.floor(msg.delayMs / TIME.SECOND));
+        for (let offset = 0; offset < messages.length; offset += SQS_BATCH_SIZE) {
+            const batch = messages.slice(offset, offset + SQS_BATCH_SIZE);
+            const prepared: PreparedBatchEntry[] = [];
+            batch.forEach((message, batchIndex) => {
+                try {
+                    prepared.push({
+                        entry: prepareBatchEntry(message, batchIndex, isFifo),
+                        message,
+                        batchIndex,
+                    });
+                } catch (error) {
+                    results[offset + batchIndex] = {
+                        success: false,
+                        messageId: message.id,
+                        error: getErrorMessage(error),
+                    };
                 }
-
-                // Message attributes for headers
-                if (msg.headers) {
-                    entry.MessageAttributes = {};
-                    for (const [key, value] of Object.entries(msg.headers)) {
-                        entry.MessageAttributes[key] = {
-                            DataType: 'String',
-                            StringValue: value,
-                        };
-                    }
-                }
-
-                // FIFO queue requirements
-                if (isFifo) {
-                    entry.MessageGroupId = msg.routingKey ?? 'default';
-                    entry.MessageDeduplicationId = msg.id;
-                }
-
-                return entry;
             });
+            if (prepared.length === 0) continue;
 
             try {
-                const response = await client.send(new SendCmd({
+                const response = await client.send(new module.SendMessageBatchCommand({
                     QueueUrl: queueUrl,
-                    Entries: entries,
-                })) as { Successful?: Array<{ Id: string; MessageId: string }>; Failed?: Array<{ Id: string; Message: string }> };
-
-                // Process successful messages
-                for (const success of response.Successful ?? []) {
-                    results.push({
-                        success: true,
-                        messageId: success.Id,
-                    });
-                }
-
-                // Process failed messages
-                for (const failure of response.Failed ?? []) {
-                    results.push({
-                        success: false,
-                        messageId: failure.Id,
-                        error: failure.Message,
-                    });
+                    Entries: prepared.map(item => item.entry),
+                })) as {
+                    Successful?: Array<{ Id?: string }>;
+                    Failed?: Array<{ Id?: string; Message?: string }>;
+                };
+                const reported = responseResults(response);
+                for (const item of prepared) {
+                    const outcome = reported.get(item.entry.Id);
+                    results[offset + item.batchIndex] = {
+                        success: outcome?.success ?? false,
+                        messageId: item.message.id,
+                        error: outcome === undefined ? MISSING_BATCH_RESULT : outcome.error,
+                    };
                 }
             } catch (error) {
-                // All messages in batch failed
-                for (const msg of batch) {
-                    results.push({
+                for (const item of prepared) {
+                    results[offset + item.batchIndex] = {
                         success: false,
-                        messageId: msg.id,
+                        messageId: item.message.id,
                         error: getErrorMessage(error),
-                    });
+                    };
                 }
             }
         }
 
-        return results;
+        return results.map((result, index) => result ?? ({
+            success: false,
+            messageId: messages[index].id,
+            error: MISSING_BATCH_RESULT,
+        }));
     }
 
     async consume(
         connectionConfig: QueueConnectionConfig,
         queueName: string,
-        options: {
-            count: number;
-            ackMode: AckMode;
-            prefetch?: number;
-        },
+        options: QueueConsumeOptions,
     ): Promise<ConsumeResult[]> {
         this.startCleanup();
+        const requestedCount = requirePositiveInteger(
+            options.count,
+            'SQS consume count',
+            QUEUE.MAX_MESSAGE_BATCH_SIZE,
+        );
         const config = connectionConfig as SqsConnectionConfig;
-        const client = await getClient(config);
-        const queueUrl = buildQueueUrl(config, queueName);
+        const queueUrl = buildSqsQueueUrl(config, queueName);
+        const client = await this.clientPool.get(config);
+        const connectionIdentity = sqsConnectionIdentity(config);
+        const module = await this.moduleLoader();
+        const reservedCapacity = options.ackMode === AckMode.MANUAL
+            ? this.reservePendingCapacity(Math.min(SQS_BATCH_SIZE, requestedCount))
+            : 0;
+        if (options.ackMode === AckMode.MANUAL && reservedCapacity === 0) return [];
+        const maxMessages = options.ackMode === AckMode.AUTO ? 1 : reservedCapacity;
 
-        const sqs = await loadSqsModule();
-        if (!sqs) throw new Error(SQS_MODULE_NOT_LOADED);
-        const ReceiveCmd = sqs.ReceiveMessageCommand;
-        const DeleteCmd = sqs.DeleteMessageCommand;
-
-        // SQS max is 10 messages per receive
-        const maxMessages = Math.min(10, options.count);
-
-        const response = await client.send(new ReceiveCmd({
-            QueueUrl: queueUrl,
-            MaxNumberOfMessages: maxMessages,
-            WaitTimeSeconds: 20, // Long polling
-            VisibilityTimeout: 300, // 5 minutes
-            MessageAttributeNames: ['All'],
-            AttributeNames: ['All'],
-        })) as { Messages?: Array<{
-            MessageId?: string;
-            Body?: string;
-            ReceiptHandle?: string;
-            MessageAttributes?: Record<string, { StringValue?: string }>;
-            Attributes?: Record<string, string>;
-        }> };
-
-        const results: ConsumeResult[] = [];
-
-        for (const msg of response.Messages ?? []) {
-            let payload: JsonObject;
-            try {
-                payload = JSON.parse(msg.Body ?? '{}');
-            } catch {
-                payload = { rawPayload: msg.Body ?? '' };
+        try {
+            const response = await client.send(new module.ReceiveMessageCommand({
+                QueueUrl: queueUrl,
+                MaxNumberOfMessages: maxMessages,
+                WaitTimeSeconds: SQS_LONG_POLL_SECONDS,
+                VisibilityTimeout: SQS_VISIBILITY_TIMEOUT_SECONDS,
+                MessageAttributeNames: ['All'],
+                AttributeNames: ['All'],
+            })) as { Messages?: ReceivedMessage[] };
+            const messages = response.Messages ?? [];
+            if (messages.length > maxMessages) {
+                throw new Error('SQS returned more messages than requested');
+            }
+            for (const message of messages) {
+                if (!message.MessageId?.trim()) {
+                    throw new Error('SQS returned a message without MessageId');
+                }
+                if (!message.ReceiptHandle?.trim()) {
+                    throw new Error('SQS returned a message without ReceiptHandle');
+                }
+                if (message.Body === undefined) {
+                    throw new Error('SQS returned a message without Body');
+                }
             }
 
-            const messageId = msg.MessageId ?? crypto.randomUUID();
-            const receiptHandle = msg.ReceiptHandle ?? '';
-            const now = Date.now();
-
-            // Auto-ack: delete immediately
-            if (options.ackMode === AckMode.AUTO) {
-                try {
-                    await client.send(new DeleteCmd({
+            const results: ConsumeResult[] = [];
+            for (const message of messages) {
+                const messageId = message.MessageId!;
+                const receiptHandle = message.ReceiptHandle!;
+                let tag: string | undefined;
+                if (options.ackMode === AckMode.AUTO) {
+                    await client.send(new module.DeleteMessageCommand({
                         QueueUrl: queueUrl,
                         ReceiptHandle: receiptHandle,
                     }));
-                } catch {
-                    // Ignore delete errors for auto-ack
+                } else {
+                    tag = `sqs:${connectionIdentity}:${randomUUID()}`;
+                    this.pendingReceipts.set(tag, {
+                        queueUrl,
+                        receiptHandle,
+                        connectionIdentity,
+                        createdAt: Date.now(),
+                    });
                 }
-            } else {
-                // Evict oldest pending receipt if at capacity
-                const maxPending = INTERNAL_TIMINGS.MAX_PENDING_MESSAGES ?? 10_000;
-                if (pendingReceipts.size >= maxPending) {
-                    let oldestKey: string | null = null;
-                    let oldestTime = Infinity;
-                    for (const [key, entry] of pendingReceipts.entries()) {
-                        if (entry.createdAt < oldestTime) {
-                            oldestTime = entry.createdAt;
-                            oldestKey = key;
-                        }
-                    }
-                    if (oldestKey) {
-                        pendingReceipts.delete(oldestKey);
-                    }
-                }
-
-                // Manual ack: store receipt handle
-                const deliveryTag = `sqs:${messageId}:${now}`;
-                pendingReceipts.set(deliveryTag, {
-                    queueUrl,
-                    receiptHandle,
-                    createdAt: now,
+                const receiveCount = Number.parseInt(
+                    message.Attributes?.ApproximateReceiveCount ?? '1',
+                    10,
+                );
+                results.push({
+                    messageId,
+                    payload: parseJsonObject(message.Body),
+                    headers: extractHeaders(message),
+                    deliveryTag: tag,
+                    redelivered: Number.isFinite(receiveCount) && receiveCount > 1,
                 });
             }
-
-            // Extract headers from message attributes
-            const headers: Record<string, string> = {};
-            if (msg.MessageAttributes) {
-                for (const [key, attr] of Object.entries(msg.MessageAttributes)) {
-                    if (attr.StringValue) {
-                        headers[key] = attr.StringValue;
-                    }
-                }
-            }
-
-            results.push({
-                messageId,
-                payload,
-                headers: Object.keys(headers).length > 0 ? headers : undefined,
-                deliveryTag: options.ackMode === AckMode.MANUAL
-                    ? `sqs:${messageId}:${now}`
-                    : undefined,
-                redelivered: parseInt(msg.Attributes?.ApproximateReceiveCount ?? '1', 10) > 1,
-            });
+            return results;
+        } finally {
+            this.releasePendingCapacity(reservedCapacity);
         }
-
-        return results;
     }
 
-    async ack(
-        connectionConfig: QueueConnectionConfig,
-        deliveryTag: string,
-    ): Promise<void> {
-        const pending = pendingReceipts.get(deliveryTag);
-        if (!pending) {
-            throw new Error(`No pending message found for delivery tag: ${deliveryTag}`);
-        }
-
-        const config = connectionConfig as SqsConnectionConfig;
-        const client = await getClient(config);
-
-        const sqs = await loadSqsModule();
-        if (!sqs) throw new Error(SQS_MODULE_NOT_LOADED);
-
-        await client.send(new sqs.DeleteMessageCommand({
+    async ack(connectionConfig: QueueConnectionConfig, tag: string): Promise<void> {
+        const { pending, config } = this.requirePending(connectionConfig, tag);
+        const client = await this.clientPool.get(config);
+        const module = await this.moduleLoader();
+        await client.send(new module.DeleteMessageCommand({
             QueueUrl: pending.queueUrl,
             ReceiptHandle: pending.receiptHandle,
         }));
-
-        pendingReceipts.delete(deliveryTag);
+        this.pendingReceipts.delete(tag);
     }
 
     async nack(
         connectionConfig: QueueConnectionConfig,
-        deliveryTag: string,
+        tag: string,
         requeue: boolean,
     ): Promise<void> {
-        const pending = pendingReceipts.get(deliveryTag);
-        if (!pending) {
-            throw new Error(`No pending message found for delivery tag: ${deliveryTag}`);
-        }
-
-        const config = connectionConfig as SqsConnectionConfig;
-        const client = await getClient(config);
-
-        const sqs = await loadSqsModule();
-        if (!sqs) throw new Error(SQS_MODULE_NOT_LOADED);
-
+        const { pending, config } = this.requirePending(connectionConfig, tag);
+        const client = await this.clientPool.get(config);
+        const module = await this.moduleLoader();
         if (requeue) {
-            // Set visibility timeout to 0 to make message immediately available
-            await client.send(new sqs.ChangeMessageVisibilityCommand({
+            await client.send(new module.ChangeMessageVisibilityCommand({
                 QueueUrl: pending.queueUrl,
                 ReceiptHandle: pending.receiptHandle,
                 VisibilityTimeout: 0,
             }));
         } else {
-            // Delete the message (it won't be requeued)
-            await client.send(new sqs.DeleteMessageCommand({
+            await client.send(new module.DeleteMessageCommand({
                 QueueUrl: pending.queueUrl,
                 ReceiptHandle: pending.receiptHandle,
             }));
         }
+        this.pendingReceipts.delete(tag);
+    }
 
-        pendingReceipts.delete(deliveryTag);
+    async renewLease(
+        connectionConfig: QueueConnectionConfig,
+        tag: string,
+    ): Promise<void> {
+        const { pending, config } = this.requirePending(connectionConfig, tag);
+        const client = await this.clientPool.get(config);
+        const module = await this.moduleLoader();
+        await client.send(new module.ChangeMessageVisibilityCommand({
+            QueueUrl: pending.queueUrl,
+            ReceiptHandle: pending.receiptHandle,
+            VisibilityTimeout: SQS_VISIBILITY_TIMEOUT_SECONDS,
+        }));
+        pending.createdAt = Date.now();
     }
 
     async testConnection(connectionConfig: QueueConnectionConfig): Promise<boolean> {
         this.startCleanup();
         try {
             const config = connectionConfig as SqsConnectionConfig;
-            const client = await getClient(config);
-
-            // Try to get queue URL as a connection test
-            const sqs = await loadSqsModule();
-            if (!sqs) throw new Error(SQS_MODULE_NOT_LOADED);
-
-            await client.send(new sqs.GetQueueUrlCommand({
+            const client = await this.clientPool.get(config);
+            const module = await this.moduleLoader();
+            await client.send(new module.GetQueueUrlCommand({
                 QueueName: SQS_TEST_CONNECTION_QUEUE,
             }));
-
             return true;
         } catch (error) {
-            // Queue not found is OK - means connection works
-            if ((error as Error).name === 'QueueDoesNotExist') {
-                return true;
-            }
-            return false;
+            return error instanceof Error && error.name === 'QueueDoesNotExist';
         }
+    }
+
+    private reservePendingCapacity(requested: number): number {
+        const available = Math.max(
+            0,
+            QUEUE.MAX_PENDING_MESSAGES -
+            this.pendingReceipts.size -
+            this.pendingReceiptReservations,
+        );
+        const reserved = Math.min(requested, available);
+        this.pendingReceiptReservations += reserved;
+        return reserved;
+    }
+
+    private releasePendingCapacity(reserved: number): void {
+        this.pendingReceiptReservations = Math.max(
+            0,
+            this.pendingReceiptReservations - reserved,
+        );
+    }
+
+    private requirePending(
+        connectionConfig: QueueConnectionConfig,
+        tag: string,
+    ): { pending: PendingReceipt; config: SqsConnectionConfig } {
+        const pending = this.pendingReceipts.get(tag);
+        if (!pending) {
+            throw new Error(`No pending message found for delivery tag: ${tag}`);
+        }
+        const config = connectionConfig as SqsConnectionConfig;
+        if (pending.connectionIdentity !== sqsConnectionIdentity(config)) {
+            throw new Error('SQS delivery tag belongs to a different connection');
+        }
+        return { pending, config };
     }
 }
 

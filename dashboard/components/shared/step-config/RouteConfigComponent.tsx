@@ -1,16 +1,16 @@
 import React, { useCallback } from 'react';
+import { Trans, useLingui } from '@lingui/react/macro';
 import { Plus, Trash2, AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react';
 import {
     Button,
     Input,
-    Label,
     Select,
     SelectContent,
     SelectItem,
     SelectTrigger,
     SelectValue,
 } from '@vendure/dashboard';
-import { ROUTE_BRANCH_DEFAULTS, ERROR_MESSAGES } from '../../../constants';
+import { ROUTE_BRANCH_DEFAULTS } from '../../../constants';
 import { useStableKeys, useStableIndexIds } from '../../../hooks';
 import { useComparisonOperators } from '../../../hooks/api/use-config-options';
 import type { ComparisonOperatorOption } from '../../../hooks/api/use-config-options';
@@ -37,7 +37,11 @@ export function RouteConfigComponent({
     onChange,
     showDuplicateWarning = true,
 }: RouteConfigComponentProps) {
-    const branches = (config.branches as Branch[]) ?? [];
+    const { t } = useLingui();
+    const branches = React.useMemo(
+        () => (config.branches as Branch[]) ?? [],
+        [config.branches],
+    );
     const branchKeys = useStableKeys(branches, 'branch');
     const { operators: comparisonOperators } = useComparisonOperators();
 
@@ -89,10 +93,12 @@ export function RouteConfigComponent({
     return (
         <div className="space-y-3">
             <div className="flex items-center justify-between">
-                <Label className="text-sm font-medium">Routing Branches</Label>
+                <h4 className="text-sm font-medium">
+                    <Trans>Routing branches</Trans>
+                </h4>
                 <Button variant="outline" size="sm" onClick={addBranch}>
                     <Plus className="h-3 w-3 mr-1" />
-                    Add Branch
+                    <Trans>Add branch</Trans>
                 </Button>
             </div>
 
@@ -100,10 +106,10 @@ export function RouteConfigComponent({
                 <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md">
                     <div className="flex items-center gap-2 text-amber-800 dark:text-amber-400">
                         <AlertTriangle className="h-4 w-4" />
-                        <span className="text-sm font-medium">Duplicate branch names detected</span>
+                        <span className="text-sm font-medium"><Trans>Duplicate branch names detected</Trans></span>
                     </div>
                     <p className="text-xs text-amber-700 dark:text-amber-500 mt-1">
-                        {ERROR_MESSAGES.DUPLICATE_BRANCH_NAMES}. Duplicate: {Array.from(duplicates).join(', ')}
+                        {t`Branch names must be unique. Duplicates: ${Array.from(duplicates).join(', ')}`}
                     </p>
                 </div>
             )}
@@ -122,7 +128,7 @@ export function RouteConfigComponent({
 
             {branches.length === 0 && (
                 <p className="text-sm text-muted-foreground">
-                    Add branches to route records based on conditions.
+                    <Trans>Add branches to route records based on conditions.</Trans>
                 </p>
             )}
         </div>
@@ -146,7 +152,8 @@ function BranchEditor({
     onRemove,
     index,
 }: BranchEditorProps) {
-    const conditions = branch.when ?? [];
+    const { t } = useLingui();
+    const conditions = React.useMemo(() => branch.when ?? [], [branch.when]);
     const conditionKeys = useStableIndexIds(conditions, `branch-${index}-cond`);
     const [expanded, setExpanded] = React.useState(conditions.length > 0);
 
@@ -173,30 +180,35 @@ function BranchEditor({
                     type="button"
                     className="flex items-center text-muted-foreground hover:text-foreground transition-colors"
                     onClick={() => setExpanded(!expanded)}
-                    aria-label={expanded ? 'Collapse conditions' : 'Expand conditions'}
+                    aria-label={expanded ? t`Collapse conditions` : t`Expand conditions`}
                 >
                     {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
                 </button>
                 <div className="flex-1">
                     <Input
+                        aria-label={t`Branch name`}
                         value={branch.name}
                         onChange={(e) => onUpdate({ name: e.target.value })}
-                        placeholder="Branch name"
+                        placeholder={t`Branch name`}
                         className={`h-8 ${isDuplicate ? 'border-amber-300 focus:border-amber-500' : ''}`}
                     />
                     {!branch.name.trim() && (
-                        <p className="text-xs text-destructive mt-1">{ERROR_MESSAGES.BRANCH_NAME_EMPTY}</p>
+                        <p className="text-xs text-destructive mt-1"><Trans>Branch name is required.</Trans></p>
                     )}
                 </div>
                 <span className="text-xs text-muted-foreground tabular-nums whitespace-nowrap">
-                    {conditions.length === 0 ? 'catch-all' : `${conditions.length} rule${conditions.length !== 1 ? 's' : ''}`}
+                    {conditions.length === 0
+                        ? t`catch-all`
+                        : conditions.length === 1
+                            ? t`${conditions.length} rule`
+                            : t`${conditions.length} rules`}
                 </span>
                 <Button
                     variant="ghost"
                     size="sm"
                     onClick={onRemove}
                     className="text-destructive h-8 w-8 p-0"
-                    aria-label={`Remove branch ${branch.name || index + 1}`}
+                    aria-label={t`Remove branch ${branch.name || index + 1}`}
                 >
                     <Trash2 className="h-4 w-4" />
                 </Button>
@@ -206,12 +218,12 @@ function BranchEditor({
                 <div className="p-2 space-y-2 border-t">
                     {conditions.length === 0 ? (
                         <p className="text-xs text-muted-foreground italic py-1">
-                            All records (catch-all) -- add conditions to filter records into this branch
+                            <Trans>All records (catch-all) — add conditions to filter records into this branch.</Trans>
                         </p>
                     ) : (
                         <>
                             <p className="text-xs text-muted-foreground font-medium">
-                                Conditions (all must match):
+                                <Trans>Conditions (all must match):</Trans>
                             </p>
                             {conditions.map((cond, ci) => (
                                 <ConditionRow
@@ -226,7 +238,7 @@ function BranchEditor({
                     )}
                     <Button variant="outline" size="sm" className="h-7 text-xs" onClick={addCondition}>
                         <Plus className="h-3 w-3 mr-1" />
-                        Add Condition
+                        <Trans>Add condition</Trans>
                     </Button>
                 </div>
             )}
@@ -242,6 +254,7 @@ interface ConditionRowProps {
 }
 
 function ConditionRow({ condition, comparisonOperators, onUpdate, onRemove }: ConditionRowProps) {
+    const { t } = useLingui();
     const operatorDef = comparisonOperators.find((op) => op.value === condition.cmp);
     const showValueInput = !operatorDef?.noValue;
 
@@ -249,6 +262,7 @@ function ConditionRow({ condition, comparisonOperators, onUpdate, onRemove }: Co
         <div className="flex items-center gap-1.5">
             {/* Field path */}
             <Input
+                aria-label={t`Field name`}
                 value={condition.field}
                 onChange={(e) => onUpdate({ field: e.target.value })}
                 placeholder="field.path"
@@ -272,9 +286,10 @@ function ConditionRow({ condition, comparisonOperators, onUpdate, onRemove }: Co
             {/* Value */}
             {showValueInput && (
                 <Input
+                    aria-label={t`Select...`}
                     value={formatConditionValue(condition.value)}
                     onChange={(e) => onUpdate({ value: parseConditionValue(e.target.value) })}
-                    placeholder="value"
+                    placeholder={t`Select...`}
                     className="flex-1 h-7 text-xs"
                 />
             )}
@@ -285,7 +300,7 @@ function ConditionRow({ condition, comparisonOperators, onUpdate, onRemove }: Co
                 size="sm"
                 className="h-7 w-7 p-0 shrink-0"
                 onClick={onRemove}
-                aria-label="Remove condition"
+                aria-label={t`Remove condition`}
             >
                 <Trash2 className="h-3 w-3 text-destructive" />
             </Button>

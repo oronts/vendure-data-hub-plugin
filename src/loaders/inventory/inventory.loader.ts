@@ -13,26 +13,31 @@ import {
     EntityFieldSchema,
     TargetOperation,
 } from '../../types/index';
-import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
-import { LOGGER_CONTEXTS } from '../../constants/index';
+import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger/datahub-logger';
+import { LOGGER_CONTEXTS } from '../../constants/core';
 import { VendureEntityType } from '../../constants/enums';
 import {
     BaseEntityLoader,
     ExistingEntityLookupResult,
+    getLoaderExecutionCache,
+    LoaderExecutionState,
     LoaderMetadata,
     ValidationBuilder,
 } from '../base';
 import { InventoryInput, INVENTORY_LOADER_METADATA } from './types';
-import { findVariantBySku, resolveStockLocationId } from './helpers';
+import {
+    findVariantBySku,
+    resolveDefaultStockLocationId,
+    resolveStockLocationId,
+} from './helpers';
+
+const LOCATION_CACHE_NAMESPACE = 'inventory-loader:locations';
 
 /** Loads Inventory (stock level) records via StockMovementService. Supports UPDATE, UPSERT. */
 @Injectable()
 export class InventoryLoader extends BaseEntityLoader<InventoryInput, ProductVariant> {
     protected readonly logger: DataHubLogger;
     protected readonly metadata: LoaderMetadata = INVENTORY_LOADER_METADATA;
-
-    // Cache for resolved stock location IDs
-    private locationCache = new Map<string, ID>();
 
     constructor(
         private productVariantService: ProductVariantService,
@@ -42,11 +47,6 @@ export class InventoryLoader extends BaseEntityLoader<InventoryInput, ProductVar
     ) {
         super();
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.INVENTORY_LOADER);
-    }
-
-    protected preprocessRecords(records: InventoryInput[]): InventoryInput[] {
-        this.locationCache.clear();
-        return records;
     }
 
     protected getDuplicateErrorMessage(record: InventoryInput): string {
@@ -106,7 +106,7 @@ export class InventoryLoader extends BaseEntityLoader<InventoryInput, ProductVar
                     key: 'stockLocationName',
                     label: 'Stock Location Name',
                     type: 'string',
-                    description: 'Name of the stock location (uses default if not specified)',
+                    description: 'Exact stock location name (uses the oldest location in the active channel if omitted)',
                     example: 'Main Warehouse',
                 },
                 {
@@ -134,20 +134,31 @@ export class InventoryLoader extends BaseEntityLoader<InventoryInput, ProductVar
         throw new Error(`Cannot adjust inventory for non-existent SKU "${record.sku}". Variant must exist before stock can be adjusted.`);
     }
 
-    protected async updateEntity(context: LoaderContext, variantId: ID, record: InventoryInput): Promise<void> {
+    protected async updateEntity(
+        context: LoaderContext,
+        variantId: ID,
+        record: InventoryInput,
+        executionState?: LoaderExecutionState,
+    ): Promise<void> {
         const { ctx } = context;
+        const locationCache = getLoaderExecutionCache(
+            executionState,
+            LOCATION_CACHE_NAMESPACE,
+        );
 
         const stockLocationId = await resolveStockLocationId(
             this.stockLocationService,
             ctx,
             record,
-            this.locationCache,
+            locationCache,
         );
 
         let targetLocationId = stockLocationId;
         if (!targetLocationId) {
-            const locations = await this.stockLocationService.findAll(ctx, {});
-            targetLocationId = locations.totalItems > 0 ? locations.items[0].id : undefined;
+            targetLocationId = await resolveDefaultStockLocationId(
+                this.stockLocationService,
+                ctx,
+            );
         }
 
         if (!targetLocationId) {

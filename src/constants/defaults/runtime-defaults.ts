@@ -1,6 +1,7 @@
 /**
  * Runtime execution, analysis, and processing defaults
  */
+export { PARALLEL_EXECUTION } from '../../../shared/constants';
 
 /**
  * Sandbox execution defaults
@@ -12,6 +13,19 @@ export const SANDBOX = {
     MAX_SAMPLES_PER_STEP: 10,
     /** Default timeout in milliseconds */
     DEFAULT_TIMEOUT_MS: 60000,
+    /** Maximum sandbox execution budget in milliseconds */
+    MAX_TIMEOUT_MS: 300000,
+} as const;
+
+export const MEMORY_EXTRACTOR = {
+    DEFAULT_GENERATOR_COUNT: 10,
+    MAX_GENERATOR_COUNT: 100_000,
+} as const;
+
+export const OPERATOR_LIMITS = {
+    DEFAULT_MULTI_JOIN_OUTPUT_RECORDS: 10_000,
+    MAX_MULTI_JOIN_OUTPUT_RECORDS: 100_000,
+    MAX_MULTI_JOIN_RIGHT_RECORDS: 10_000,
 } as const;
 
 /**
@@ -20,6 +34,14 @@ export const SANDBOX = {
 export const HOOK = {
     /** Default timeout for interceptor/script hooks */
     INTERCEPTOR_TIMEOUT_MS: 5_000,
+    /** Minimum configured interceptor/script timeout */
+    MIN_TIMEOUT_MS: 1,
+    /** Prevent hook actions from retaining a pipeline indefinitely */
+    MAX_TIMEOUT_MS: 300_000,
+    /** Maximum configured event name length */
+    MAX_EVENT_NAME_LENGTH: 255,
+    /** Maximum configured log message length */
+    MAX_LOG_MESSAGE_LENGTH: 4_096,
     /** Maximum compiled Script entries to cache (prevents unbounded memory growth) */
     MAX_SCRIPT_CACHE: 100,
 } as const;
@@ -32,6 +54,8 @@ export const SPAN_TRACKER = {
     MAX_COMPLETED_SPANS: 100,
     /** Maximum active spans to track before eviction */
     MAX_ACTIVE_SPANS: 500,
+    /** Maximum retained events per span; later events are counted as dropped */
+    MAX_EVENTS_PER_SPAN: 128,
     /** Maximum span duration before timeout (10 minutes) */
     SPAN_TIMEOUT_MS: 10 * 60 * 1000,
 } as const;
@@ -39,9 +63,53 @@ export const SPAN_TRACKER = {
 /**
  * Queue/admin query defaults
  */
+const MAX_QUEUE_CONSUMERS = 500;
+const MAX_QUEUE_MESSAGE_CONCURRENCY = 32;
+
 export const QUEUE = {
+    /** Maximum number of concurrently configured message consumers */
+    MAX_CONSUMERS: MAX_QUEUE_CONSUMERS,
+    /** Maximum number of pooled native RabbitMQ connections */
+    RABBITMQ_MAX_CONNECTIONS: 100,
     /** Default limit for recent failed runs query */
     DEFAULT_RECENT_FAILED_LIMIT: 10,
+    /** Default messages requested per broker poll */
+    DEFAULT_MESSAGE_BATCH_SIZE: 10,
+    /** Minimum messages requested per broker poll */
+    MIN_MESSAGE_BATCH_SIZE: 1,
+    /** Maximum messages requested per broker poll */
+    MAX_MESSAGE_BATCH_SIZE: 100,
+    /** Default number of deliveries processed in parallel */
+    DEFAULT_MESSAGE_CONCURRENCY: 1,
+    /** Minimum number of deliveries processed in parallel */
+    MIN_MESSAGE_CONCURRENCY: 1,
+    /** Maximum number of deliveries processed in parallel */
+    MAX_MESSAGE_CONCURRENCY: MAX_QUEUE_MESSAGE_CONCURRENCY,
+    /** Retain settlement handles for every supported in-flight delivery */
+    MAX_PENDING_MESSAGES:
+        MAX_QUEUE_CONSUMERS * MAX_QUEUE_MESSAGE_CONCURRENCY,
+    /** Minimum broker prefetch window */
+    MIN_MESSAGE_PREFETCH: 1,
+    /** Maximum broker prefetch window */
+    MAX_MESSAGE_PREFETCH: 1_000,
+    /** Default and minimum broker poll interval */
+    DEFAULT_MESSAGE_POLL_INTERVAL_MS: 1_000,
+    /** Maximum broker poll interval */
+    MAX_MESSAGE_POLL_INTERVAL_MS: 5 * 60 * 1_000,
+    /** Retry attempts after the initial pipeline enqueue failure */
+    DEFAULT_MESSAGE_RETRIES: 3,
+    /** Prevent a malformed definition from creating an excessive retry loop */
+    MAX_MESSAGE_RETRIES: 10,
+    /** Poll interval while a queue delivery waits for its correlated run */
+    RUN_STATUS_POLL_INTERVAL_MS: 5_000,
+    /** Observation window before logging that a correlated run remains active */
+    RUN_STATUS_WAIT_TIMEOUT_MS: 4 * 60 * 1_000,
+    /** Maximum time to retain consumer ownership while in-flight deliveries stop */
+    CONSUMER_DRAIN_TIMEOUT_MS: 30_000,
+    /** Poll interval while waiting for in-flight deliveries to stop */
+    CONSUMER_DRAIN_POLL_INTERVAL_MS: 50,
+    /** Redeliveries reuse their correlated run for this duration */
+    RUN_IDEMPOTENCY_TTL_SECONDS: 7 * 24 * 60 * 60,
 } as const;
 
 /**
@@ -112,6 +180,12 @@ export const IMPACT_ANALYSIS = {
     MAX_SAMPLE_FLOWS: 10,
     /** Maximum sample field values to collect */
     MAX_SAMPLE_FIELD_VALUES: 3,
+    /** Maximum object depth exposed in impact-analysis entity snapshots */
+    SNAPSHOT_MAX_DEPTH: 4,
+    /** Maximum array entries exposed in one impact-analysis snapshot */
+    SNAPSHOT_MAX_ARRAY_ITEMS: 50,
+    /** Maximum object keys exposed at each impact-analysis snapshot level */
+    SNAPSHOT_MAX_OBJECT_KEYS: 100,
     /** Minimum runs needed for HIGH confidence */
     HIGH_CONFIDENCE_MIN_RUNS: 3,
     /** Fallback duration multiplier for sampling-based estimates */

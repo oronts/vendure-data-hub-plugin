@@ -1,5 +1,5 @@
 export type Maybe<T> = T;
-export type InputMaybe<T> = T;
+export type InputMaybe<T> = T | undefined;
 export type Exact<T extends { [key: string]: unknown }> = { [K in keyof T]: T[K] };
 export type MakeOptional<T, K extends keyof T> = Omit<T, K> & { [SubKey in K]?: Maybe<T[SubKey]> };
 export type MakeMaybe<T, K extends keyof T> = Omit<T, K> & { [SubKey in K]: Maybe<T[SubKey]> };
@@ -12,9 +12,13 @@ export type Scalars = {
   Boolean: { input: boolean; output: boolean; }
   Int: { input: number; output: number; }
   Float: { input: number; output: number; }
+  /** A date-time string at UTC, such as 2007-12-03T10:15:30Z, compliant with the `date-time` format outlined in section 5.6 of the RFC 3339 profile of the ISO 8601 standard for representation of dates and times using the Gregorian calendar. */
   DateTime: { input: string; output: string; }
+  /** The `JSON` scalar type represents JSON values as specified by [ECMA-404](http://www.ecma-international.org/publications/files/ECMA-ST/ECMA-404.pdf). */
   JSON: { input: Record<string, unknown>; output: Record<string, unknown>; }
+  /** The `Money` scalar type represents monetary values and supports signed double-precision fractional values as specified by [IEEE 754](https://en.wikipedia.org/wiki/IEEE_floating_point). */
   Money: { input: number; output: number; }
+  /** The `Upload` scalar type represents a file upload. */
   Upload: { input: File; output: File; }
 };
 
@@ -254,6 +258,26 @@ export type AssignAssetsToChannelInput = {
 export type AssignCollectionsToChannelInput = {
   channelId: Scalars['ID']['input'];
   collectionIds: Array<Scalars['ID']['input']>;
+};
+
+export type AssignDataHubConnectionsToChannelInput = {
+  channelId: Scalars['ID']['input'];
+  connectionIds: Array<Scalars['ID']['input']>;
+};
+
+export type AssignDataHubPipelinesToChannelInput = {
+  channelId: Scalars['ID']['input'];
+  pipelineIds: Array<Scalars['ID']['input']>;
+};
+
+export type AssignDataHubSchemasToChannelInput = {
+  channelId: Scalars['ID']['input'];
+  schemaIds: Array<Scalars['ID']['input']>;
+};
+
+export type AssignDataHubSecretsToChannelInput = {
+  channelId: Scalars['ID']['input'];
+  secretIds: Array<Scalars['ID']['input']>;
 };
 
 export type AssignFacetsToChannelInput = {
@@ -835,7 +859,7 @@ export type CreateDataHubPipelineInput = {
   code: Scalars['String']['input'];
   /** Pipeline definition: { version: number, steps: Step[], edges?: Edge[], trigger?: Trigger } */
   definition: Scalars['JSON']['input'];
-  /** Whether the pipeline can be triggered (default: true) */
+  /** Runtime enable switch (default: true); the pipeline must also be PUBLISHED to run */
   enabled?: InputMaybe<Scalars['Boolean']['input']>;
   /** Human-readable pipeline name */
   name: Scalars['String']['input'];
@@ -843,11 +867,19 @@ export type CreateDataHubPipelineInput = {
   version?: InputMaybe<Scalars['Int']['input']>;
 };
 
+export type CreateDataHubSchemaInput = {
+  compatibility?: InputMaybe<DataHubSchemaCompatibility>;
+  definition: Scalars['JSON']['input'];
+  metadata?: InputMaybe<Scalars['JSON']['input']>;
+  schemaId: Scalars['String']['input'];
+  version: Scalars['String']['input'];
+};
+
 export type CreateDataHubSecretInput = {
   code: Scalars['String']['input'];
   metadata?: InputMaybe<Scalars['JSON']['input']>;
   provider?: InputMaybe<Scalars['String']['input']>;
-  value?: InputMaybe<Scalars['String']['input']>;
+  value: Scalars['String']['input'];
 };
 
 export type CreateFacetInput = {
@@ -1542,34 +1574,9 @@ export type CustomerSortParameter = {
   updatedAt?: InputMaybe<SortOrder>;
 };
 
-export type DashboardMetricSummary = {
-  __typename?: 'DashboardMetricSummary';
-  entries: Array<DashboardMetricSummaryEntry>;
-  title: Scalars['String']['output'];
-  type: DashboardMetricType;
-};
-
-export type DashboardMetricSummaryEntry = {
-  __typename?: 'DashboardMetricSummaryEntry';
-  label: Scalars['String']['output'];
-  value: Scalars['Float']['output'];
-};
-
-export type DashboardMetricSummaryInput = {
-  endDate: Scalars['DateTime']['input'];
-  refresh?: InputMaybe<Scalars['Boolean']['input']>;
-  startDate: Scalars['DateTime']['input'];
-  types: Array<DashboardMetricType>;
-};
-
-export enum DashboardMetricType {
-  AverageOrderValue = 'AverageOrderValue',
-  OrderCount = 'OrderCount',
-  OrderTotal = 'OrderTotal'
-}
-
 export type DataHubAdapter = {
   __typename?: 'DataHubAdapter';
+  apiVersion?: Maybe<Scalars['Int']['output']>;
   async?: Maybe<Scalars['Boolean']['output']>;
   batchable?: Maybe<Scalars['Boolean']['output']>;
   builtIn?: Maybe<Scalars['Boolean']['output']>;
@@ -1606,8 +1613,8 @@ export type DataHubAdapterCodeMapping = {
 /** Analytics API - Stats and metrics */
 export type DataHubAnalyticsOverview = {
   __typename?: 'DataHubAnalyticsOverview';
-  activePipelines: Scalars['Int']['output'];
   avgDurationMsToday: Scalars['Float']['output'];
+  enabledPipelines: Scalars['Int']['output'];
   recordsFailedToday: Scalars['Int']['output'];
   recordsProcessedToday: Scalars['Int']['output'];
   runsThisWeek: Scalars['Int']['output'];
@@ -1722,7 +1729,8 @@ export type DataHubConfigOptions = {
   approvalTypes: Array<DataHubTypedOptionValue>;
   authTypes: Array<DataHubOptionValue>;
   backoffStrategies: Array<DataHubOptionValue>;
-  checkpointStrategies: Array<DataHubOptionValue>;
+  /** Channel selection strategies used by pipeline and step contexts */
+  channelStrategies: Array<DataHubOptionValue>;
   cleanupStrategies: Array<DataHubOptionValue>;
   comparisonOperators: Array<DataHubComparisonOperator>;
   compressionTypes: Array<DataHubOptionValue>;
@@ -1752,13 +1760,14 @@ export type DataHubConfigOptions = {
   /** Export query type options for the source step */
   queryTypeOptions: Array<DataHubOptionValue>;
   queueTypes: Array<DataHubOptionValue>;
-  runModes: Array<DataHubOptionValue>;
   /** Run status options for filter dropdowns */
   runStatuses: Array<DataHubOptionValue>;
   stepTypes: Array<DataHubStepTypeConfig>;
   triggerTypes: Array<DataHubTypedOptionValue>;
   validationModes: Array<DataHubOptionValue>;
   validationRuleTypes: Array<DataHubTypedOptionValue>;
+  /** Validation strictness values used by pipeline and load contexts */
+  validationStrictnesses: Array<DataHubOptionValue>;
   vendureEvents: Array<DataHubOptionValue>;
   /** Wizard strategy mappings: existingRecords wizard value to backend load/conflict strategies */
   wizardStrategyMappings: Array<DataHubWizardStrategyMapping>;
@@ -1766,8 +1775,11 @@ export type DataHubConfigOptions = {
 
 export type DataHubConnection = Node & {
   __typename?: 'DataHubConnection';
+  channels: Array<Channel>;
   code: Scalars['String']['output'];
   config: Scalars['JSON']['output'];
+  /** Persisted ownership source: DATABASE or CODE_FIRST */
+  configurationSource: Scalars['String']['output'];
   createdAt: Scalars['DateTime']['output'];
   id: Scalars['ID']['output'];
   type: Scalars['String']['output'];
@@ -1778,6 +1790,7 @@ export type DataHubConnectionFilterParameter = {
   _and?: InputMaybe<Array<DataHubConnectionFilterParameter>>;
   _or?: InputMaybe<Array<DataHubConnectionFilterParameter>>;
   code?: InputMaybe<StringOperators>;
+  configurationSource?: InputMaybe<StringOperators>;
   createdAt?: InputMaybe<DateOperators>;
   id?: InputMaybe<IdOperators>;
   type?: InputMaybe<StringOperators>;
@@ -1818,6 +1831,8 @@ export type DataHubConnectionSchemaField = {
   description?: Maybe<Scalars['String']['output']>;
   key: Scalars['String']['output'];
   label: Scalars['String']['output'];
+  max?: Maybe<Scalars['Float']['output']>;
+  min?: Maybe<Scalars['Float']['output']>;
   options?: Maybe<Array<DataHubOption>>;
   /** Reference to a dynamic option list served by configOptions (e.g. authTypes, queueTypes, vendureEvents) */
   optionsRef?: Maybe<Scalars['String']['output']>;
@@ -1828,6 +1843,7 @@ export type DataHubConnectionSchemaField = {
 
 export type DataHubConnectionSortParameter = {
   code?: InputMaybe<SortOrder>;
+  configurationSource?: InputMaybe<SortOrder>;
   createdAt?: InputMaybe<SortOrder>;
   id?: InputMaybe<SortOrder>;
   type?: InputMaybe<SortOrder>;
@@ -1837,12 +1853,18 @@ export type DataHubConnectionSortParameter = {
 /** Message consumer status for queue-triggered pipelines */
 export type DataHubConsumerStatus = {
   __typename?: 'DataHubConsumerStatus';
+  /** Trigger definition default used when no durable manual override exists */
+  autoStart: Scalars['Boolean']['output'];
+  /** Durable global start/stop intent; this can be true while isActive is false on this replica */
+  desiredEnabled: Scalars['Boolean']['output'];
+  /** True only when the API replica answering this query currently owns and runs the consumer */
   isActive: Scalars['Boolean']['output'];
   lastMessageAt?: Maybe<Scalars['DateTime']['output']>;
   messagesFailed: Scalars['Int']['output'];
   messagesProcessed: Scalars['Int']['output'];
   pipelineCode: Scalars['String']['output'];
   queueName: Scalars['String']['output'];
+  triggerKey: Scalars['String']['output'];
 };
 
 export type DataHubDeadLetterResult = {
@@ -1863,6 +1885,30 @@ export type DataHubDeliveryResult = {
   success: Scalars['Boolean']['output'];
 };
 
+export type DataHubDestinationAuth = {
+  __typename?: 'DataHubDestinationAuth';
+  headerName?: Maybe<Scalars['String']['output']>;
+  secretCode?: Maybe<Scalars['String']['output']>;
+  type: DataHubDestinationAuthType;
+  username?: Maybe<Scalars['String']['output']>;
+  usernameSecretCode?: Maybe<Scalars['String']['output']>;
+};
+
+export type DataHubDestinationAuthInput = {
+  headerName?: InputMaybe<Scalars['String']['input']>;
+  secretCode?: InputMaybe<Scalars['String']['input']>;
+  type: DataHubDestinationAuthType;
+  username?: InputMaybe<Scalars['String']['input']>;
+  usernameSecretCode?: InputMaybe<Scalars['String']['input']>;
+};
+
+export enum DataHubDestinationAuthType {
+  API_KEY = 'API_KEY',
+  BASIC = 'BASIC',
+  BEARER = 'BEARER',
+  NONE = 'NONE'
+}
+
 export type DataHubDestinationSchema = {
   __typename?: 'DataHubDestinationSchema';
   /** Key in the wizard destination state object (e.g. sftpConfig, s3Config) */
@@ -1879,6 +1925,25 @@ export type DataHubDestinationSchema = {
   type: Scalars['String']['output'];
 };
 
+export type DataHubDestinationSmtp = {
+  __typename?: 'DataHubDestinationSmtp';
+  host: Scalars['String']['output'];
+  passwordSecretCode?: Maybe<Scalars['String']['output']>;
+  port: Scalars['Int']['output'];
+  secure?: Maybe<Scalars['Boolean']['output']>;
+  username?: Maybe<Scalars['String']['output']>;
+  usernameSecretCode?: Maybe<Scalars['String']['output']>;
+};
+
+export type DataHubDestinationSmtpInput = {
+  host: Scalars['String']['input'];
+  passwordSecretCode?: InputMaybe<Scalars['String']['input']>;
+  port: Scalars['Int']['input'];
+  secure?: InputMaybe<Scalars['Boolean']['input']>;
+  username?: InputMaybe<Scalars['String']['input']>;
+  usernameSecretCode?: InputMaybe<Scalars['String']['input']>;
+};
+
 export type DataHubDestinationTestResult = {
   __typename?: 'DataHubDestinationTestResult';
   latencyMs?: Maybe<Scalars['Int']['output']>;
@@ -1886,12 +1951,10 @@ export type DataHubDestinationTestResult = {
   success: Scalars['Boolean']['output'];
 };
 
-/** Export Destinations API - S3, SFTP, HTTP, etc. */
+/** Export destinations resolve credential values from Data Hub Secret Codes only. */
 export enum DataHubDestinationType {
-  DOWNLOAD = 'DOWNLOAD',
   EMAIL = 'EMAIL',
   FTP = 'FTP',
-  GCS = 'GCS',
   HTTP = 'HTTP',
   LOCAL = 'LOCAL',
   S3 = 'S3',
@@ -1922,13 +1985,33 @@ export enum DataHubDiffType {
   TRIGGER = 'TRIGGER'
 }
 
+export type DataHubDryRunMessage = {
+  __typename?: 'DataHubDryRunMessage';
+  /** Stable code for client-side localization and handling */
+  code: Scalars['String']['output'];
+  /** Raw runtime detail when the message originates from an adapter or record */
+  detail?: Maybe<Scalars['String']['output']>;
+  /** Machine-readable severity */
+  level: DataHubDryRunMessageLevel;
+  /** Step that produced the message, when applicable */
+  stepKey?: Maybe<Scalars['String']['output']>;
+  /** Structured interpolation values for the message code */
+  values?: Maybe<Scalars['JSON']['output']>;
+};
+
+export enum DataHubDryRunMessageLevel {
+  ERROR = 'ERROR',
+  INFO = 'INFO',
+  WARNING = 'WARNING'
+}
+
 /** Result of a dry run execution */
 export type DataHubDryRunResult = {
   __typename?: 'DataHubDryRunResult';
+  /** Structured informational, warning, and error messages */
+  messages: Array<DataHubDryRunMessage>;
   /** Execution metrics: { recordsProcessed, duration, stepMetrics } */
   metrics: Scalars['JSON']['output'];
-  /** Informational notes about the dry run */
-  notes: Array<Scalars['String']['output']>;
   /** Sample records showing transformation at each step */
   sampleRecords?: Maybe<Array<DataHubDryRunSampleRecord>>;
 };
@@ -1998,20 +2081,36 @@ export type DataHubEvent = {
 
 export type DataHubExportDestination = {
   __typename?: 'DataHubExportDestination';
-  authType?: Maybe<Scalars['String']['output']>;
+  accessKeyIdSecretCode?: Maybe<Scalars['String']['output']>;
+  acl?: Maybe<Scalars['String']['output']>;
+  auth?: Maybe<DataHubDestinationAuth>;
+  bcc?: Maybe<Array<Scalars['String']['output']>>;
+  body?: Maybe<Scalars['String']['output']>;
   bucket?: Maybe<Scalars['String']['output']>;
+  cc?: Maybe<Array<Scalars['String']['output']>>;
   directory?: Maybe<Scalars['String']['output']>;
   enabled: Scalars['Boolean']['output'];
   endpoint?: Maybe<Scalars['String']['output']>;
+  from?: Maybe<Scalars['String']['output']>;
+  headerSecretCodes?: Maybe<Scalars['JSON']['output']>;
+  headers?: Maybe<Scalars['JSON']['output']>;
   host?: Maybe<Scalars['String']['output']>;
+  hostKeyFingerprintSecretCode?: Maybe<Scalars['String']['output']>;
   id: Scalars['String']['output'];
   method?: Maybe<Scalars['String']['output']>;
   name: Scalars['String']['output'];
+  passphraseSecretCode?: Maybe<Scalars['String']['output']>;
+  passwordSecretCode?: Maybe<Scalars['String']['output']>;
   port?: Maybe<Scalars['Int']['output']>;
   prefix?: Maybe<Scalars['String']['output']>;
+  privateKeySecretCode?: Maybe<Scalars['String']['output']>;
   region?: Maybe<Scalars['String']['output']>;
   remotePath?: Maybe<Scalars['String']['output']>;
+  secretAccessKeySecretCode?: Maybe<Scalars['String']['output']>;
+  secure?: Maybe<Scalars['Boolean']['output']>;
+  smtp?: Maybe<DataHubDestinationSmtp>;
   subject?: Maybe<Scalars['String']['output']>;
+  timeout?: Maybe<Scalars['Int']['output']>;
   to?: Maybe<Array<Scalars['String']['output']>>;
   type: DataHubDestinationType;
   url?: Maybe<Scalars['String']['output']>;
@@ -2019,34 +2118,60 @@ export type DataHubExportDestination = {
 };
 
 export type DataHubExportDestinationInput = {
-  accessKeyId?: InputMaybe<Scalars['String']['input']>;
+  accessKeyIdSecretCode?: InputMaybe<Scalars['String']['input']>;
   acl?: InputMaybe<Scalars['String']['input']>;
-  authConfig?: InputMaybe<Scalars['JSON']['input']>;
-  authType?: InputMaybe<Scalars['String']['input']>;
+  auth?: InputMaybe<DataHubDestinationAuthInput>;
+  bcc?: InputMaybe<Array<Scalars['String']['input']>>;
   body?: InputMaybe<Scalars['String']['input']>;
   bucket?: InputMaybe<Scalars['String']['input']>;
   cc?: InputMaybe<Array<Scalars['String']['input']>>;
   directory?: InputMaybe<Scalars['String']['input']>;
   enabled?: InputMaybe<Scalars['Boolean']['input']>;
   endpoint?: InputMaybe<Scalars['String']['input']>;
+  from?: InputMaybe<Scalars['String']['input']>;
+  headerSecretCodes?: InputMaybe<Scalars['JSON']['input']>;
   headers?: InputMaybe<Scalars['JSON']['input']>;
   host?: InputMaybe<Scalars['String']['input']>;
+  hostKeyFingerprintSecretCode?: InputMaybe<Scalars['String']['input']>;
   id: Scalars['String']['input'];
   method?: InputMaybe<Scalars['String']['input']>;
   name: Scalars['String']['input'];
-  password?: InputMaybe<Scalars['String']['input']>;
+  passphraseSecretCode?: InputMaybe<Scalars['String']['input']>;
+  passwordSecretCode?: InputMaybe<Scalars['String']['input']>;
   port?: InputMaybe<Scalars['Int']['input']>;
   prefix?: InputMaybe<Scalars['String']['input']>;
-  privateKey?: InputMaybe<Scalars['String']['input']>;
+  privateKeySecretCode?: InputMaybe<Scalars['String']['input']>;
   region?: InputMaybe<Scalars['String']['input']>;
   remotePath?: InputMaybe<Scalars['String']['input']>;
-  secretAccessKey?: InputMaybe<Scalars['String']['input']>;
+  secretAccessKeySecretCode?: InputMaybe<Scalars['String']['input']>;
   secure?: InputMaybe<Scalars['Boolean']['input']>;
+  smtp?: InputMaybe<DataHubDestinationSmtpInput>;
   subject?: InputMaybe<Scalars['String']['input']>;
+  timeout?: InputMaybe<Scalars['Int']['input']>;
   to?: InputMaybe<Array<Scalars['String']['input']>>;
   type: DataHubDestinationType;
   url?: InputMaybe<Scalars['String']['input']>;
   username?: InputMaybe<Scalars['String']['input']>;
+};
+
+/** Field emitted by the built-in Vendure query extractor. */
+export type DataHubExportEntityField = {
+  __typename?: 'DataHubExportEntityField';
+  description?: Maybe<Scalars['String']['output']>;
+  key: Scalars['String']['output'];
+  label: Scalars['String']['output'];
+  /** Can this field be used in database filters and ordering? */
+  queryable: Scalars['Boolean']['output'];
+  type: Scalars['String']['output'];
+};
+
+/** Entity and field contract supported by the built-in Vendure query extractor. */
+export type DataHubExportEntitySchema = {
+  __typename?: 'DataHubExportEntitySchema';
+  description: Scalars['String']['output'];
+  entityType: Scalars['String']['output'];
+  fields: Array<DataHubExportEntityField>;
+  name: Scalars['String']['output'];
 };
 
 /** Export template (built-in or custom) for the export wizard */
@@ -2066,6 +2191,8 @@ export type DataHubExtractor = {
   __typename?: 'DataHubExtractor';
   category: DataHubExtractorCategory;
   code: Scalars['String']['output'];
+  deprecated: Scalars['Boolean']['output'];
+  deprecatedMessage?: Maybe<Scalars['String']['output']>;
   description?: Maybe<Scalars['String']['output']>;
   icon?: Maybe<Scalars['String']['output']>;
   isBatch: Scalars['Boolean']['output'];
@@ -2130,10 +2257,14 @@ export type DataHubFeed = Node & {
   channelToken?: Maybe<Scalars['String']['output']>;
   code: Scalars['String']['output'];
   createdAt: Scalars['DateTime']['output'];
+  customGeneratorCode?: Maybe<Scalars['String']['output']>;
+  downloadUrl?: Maybe<Scalars['String']['output']>;
   fieldMappings?: Maybe<Scalars['JSON']['output']>;
   filters?: Maybe<Scalars['JSON']['output']>;
   format: DataHubFeedFormat;
   id: Scalars['ID']['output'];
+  lastGeneratedAt?: Maybe<Scalars['DateTime']['output']>;
+  lastItemCount?: Maybe<Scalars['Int']['output']>;
   name: Scalars['String']['output'];
   options?: Maybe<Scalars['JSON']['output']>;
   schedule?: Maybe<DataHubFeedSchedule>;
@@ -2141,15 +2272,11 @@ export type DataHubFeed = Node & {
 };
 
 export enum DataHubFeedFormat {
-  AMAZON = 'AMAZON',
-  BING_SHOPPING = 'BING_SHOPPING',
   CSV = 'CSV',
   CUSTOM = 'CUSTOM',
   GOOGLE_SHOPPING = 'GOOGLE_SHOPPING',
   JSON = 'JSON',
   META_CATALOG = 'META_CATALOG',
-  PINTEREST = 'PINTEREST',
-  TIKTOK = 'TIKTOK',
   XML = 'XML'
 }
 
@@ -2173,6 +2300,7 @@ export type DataHubFeedGenerationResult = {
 export type DataHubFeedInput = {
   channelToken?: InputMaybe<Scalars['String']['input']>;
   code: Scalars['String']['input'];
+  customGeneratorCode?: InputMaybe<Scalars['String']['input']>;
   fieldMappings?: InputMaybe<Scalars['JSON']['input']>;
   filters?: InputMaybe<Scalars['JSON']['input']>;
   format: DataHubFeedFormat;
@@ -2192,11 +2320,13 @@ export type DataHubFeedSchedule = {
   __typename?: 'DataHubFeedSchedule';
   cron: Scalars['String']['output'];
   enabled: Scalars['Boolean']['output'];
+  timezone?: Maybe<Scalars['String']['output']>;
 };
 
 export type DataHubFeedScheduleInput = {
   cron: Scalars['String']['input'];
   enabled: Scalars['Boolean']['input'];
+  timezone?: InputMaybe<Scalars['String']['input']>;
 };
 
 /** Field change preview */
@@ -2243,6 +2373,8 @@ export type DataHubFileFormatMetadata = {
   label: Scalars['String']['output'];
   /** MIME types for validation and HTML accept attribute */
   mimeTypes: Array<Scalars['String']['output']>;
+  /** Whether the runtime has an import parser for this format */
+  parseable: Scalars['Boolean']['output'];
   /** Whether frontend needs JavaScript parser (vs backend-only parsing) */
   requiresClientParser: Scalars['Boolean']['output'];
   /** Whether this format supports client-side preview in ImportWizard */
@@ -2272,6 +2404,30 @@ export type DataHubGateActionResult = {
   /** Whether the action was successful */
   success: Scalars['Boolean']['output'];
 };
+
+export type DataHubHookExecutionFailure = {
+  __typename?: 'DataHubHookExecutionFailure';
+  action: Scalars['String']['output'];
+  error: Scalars['String']['output'];
+  type: Scalars['String']['output'];
+};
+
+export type DataHubHookExecutionResult = {
+  __typename?: 'DataHubHookExecutionResult';
+  configured: Scalars['Int']['output'];
+  errors: Array<DataHubHookExecutionFailure>;
+  executed: Scalars['Int']['output'];
+  failed: Scalars['Int']['output'];
+  skipped: Scalars['Int']['output'];
+  status: DataHubHookExecutionStatus;
+};
+
+export enum DataHubHookExecutionStatus {
+  EXECUTED = 'EXECUTED',
+  FAILED = 'FAILED',
+  PARTIAL = 'PARTIAL',
+  SKIPPED = 'SKIPPED'
+}
 
 export type DataHubHookStage = {
   __typename?: 'DataHubHookStage';
@@ -2310,7 +2466,7 @@ export type DataHubImpactAnalysis = {
   entityBreakdown: Array<DataHubEntityImpact>;
   estimatedDuration: DataHubDurationEstimate;
   fullDatasetSize?: Maybe<Scalars['Int']['output']>;
-  resourceUsage: DataHubResourceEstimate;
+  resourceUsage?: Maybe<DataHubResourceEstimate>;
   riskAssessment: DataHubRiskAssessment;
   sampleRecords: Array<DataHubSampleRecordFlow>;
   sampleSize: Scalars['Int']['output'];
@@ -2446,18 +2602,6 @@ export type DataHubLog = Node & {
   stepKey?: Maybe<Scalars['String']['output']>;
 };
 
-export type DataHubLogEntry = {
-  __typename?: 'DataHubLogEntry';
-  id: Scalars['ID']['output'];
-  level: DataHubLogLevel;
-  message: Scalars['String']['output'];
-  metadata?: Maybe<Scalars['JSON']['output']>;
-  pipelineCode?: Maybe<Scalars['String']['output']>;
-  runId?: Maybe<Scalars['ID']['output']>;
-  stepKey?: Maybe<Scalars['String']['output']>;
-  timestamp: Scalars['DateTime']['output'];
-};
-
 export type DataHubLogFilterParameter = {
   _and?: InputMaybe<Array<DataHubLogFilterParameter>>;
   _or?: InputMaybe<Array<DataHubLogFilterParameter>>;
@@ -2551,15 +2695,20 @@ export type DataHubOptionValue = {
 /** A data pipeline configuration defining steps, triggers, and execution flow */
 export type DataHubPipeline = Node & {
   __typename?: 'DataHubPipeline';
+  channels: Array<Channel>;
   /** Unique identifier for webhook/API access */
   code: Scalars['String']['output'];
+  /** Persisted ownership source: DATABASE or CODE_FIRST */
+  configurationSource: Scalars['String']['output'];
   createdAt: Scalars['DateTime']['output'];
+  /** Selected published revision; executable only while the pipeline is runnable */
+  currentRevisionId?: Maybe<Scalars['ID']['output']>;
   /**
    * Pipeline definition containing steps, edges, triggers, and context.
    * Structure: { version: number, steps: Step[], edges?: Edge[], trigger?: Trigger, context?: Record<string, any> }
    */
   definition: Scalars['JSON']['output'];
-  /** Whether the pipeline can be triggered */
+  /** Runtime enable switch; an active published revision must also exist */
   enabled: Scalars['Boolean']['output'];
   id: Scalars['ID']['output'];
   /** Human-readable pipeline name */
@@ -2568,10 +2717,35 @@ export type DataHubPipeline = Node & {
   publishedAt?: Maybe<Scalars['DateTime']['output']>;
   /** User ID who published the pipeline */
   publishedByUserId?: Maybe<Scalars['String']['output']>;
+  /** Number of the selected published version; zero before first publication */
+  publishedVersionCount: Scalars['Int']['output'];
+  /** Effective permissions declared by the pipeline and its registered adapters */
+  requiredCapabilities: Array<Scalars['String']['output']>;
   status: DataHubPipelineStatus;
   updatedAt: Scalars['DateTime']['output'];
   /** Schema version for definition format */
   version: Scalars['Int']['output'];
+  /** Declared data domains this pipeline writes */
+  writeCapabilities: Array<Scalars['String']['output']>;
+};
+
+export type DataHubPipelineCapabilityOperators = {
+  /** Matches when any capability code contains this text */
+  contains?: InputMaybe<Scalars['String']['input']>;
+  /** Matches a capability code exactly */
+  eq?: InputMaybe<Scalars['String']['input']>;
+  /** Matches when any capability code is in this set */
+  in?: InputMaybe<Array<Scalars['String']['input']>>;
+  /** Matches pipelines with no capabilities when true, or at least one when false */
+  isNull?: InputMaybe<Scalars['Boolean']['input']>;
+  /** Excludes pipelines with a capability code containing this text */
+  notContains?: InputMaybe<Scalars['String']['input']>;
+  /** Excludes a capability code exactly */
+  notEq?: InputMaybe<Scalars['String']['input']>;
+  /** Excludes pipelines containing any capability code in this set */
+  notIn?: InputMaybe<Array<Scalars['String']['input']>>;
+  /** Matches when any capability code satisfies this safe regular expression */
+  regex?: InputMaybe<Scalars['String']['input']>;
 };
 
 export type DataHubPipelineErrorCount = {
@@ -2584,15 +2758,20 @@ export type DataHubPipelineFilterParameter = {
   _and?: InputMaybe<Array<DataHubPipelineFilterParameter>>;
   _or?: InputMaybe<Array<DataHubPipelineFilterParameter>>;
   code?: InputMaybe<StringOperators>;
+  configurationSource?: InputMaybe<StringOperators>;
   createdAt?: InputMaybe<DateOperators>;
+  currentRevisionId?: InputMaybe<IdOperators>;
   enabled?: InputMaybe<BooleanOperators>;
   id?: InputMaybe<IdOperators>;
   name?: InputMaybe<StringOperators>;
   publishedAt?: InputMaybe<DateOperators>;
   publishedByUserId?: InputMaybe<StringOperators>;
+  publishedVersionCount?: InputMaybe<NumberOperators>;
+  requiredCapabilities?: InputMaybe<DataHubPipelineCapabilityOperators>;
   status?: InputMaybe<StringOperators>;
   updatedAt?: InputMaybe<DateOperators>;
   version?: InputMaybe<NumberOperators>;
+  writeCapabilities?: InputMaybe<DataHubPipelineCapabilityOperators>;
 };
 
 export type DataHubPipelineList = PaginatedList & {
@@ -2675,7 +2854,10 @@ export type DataHubPipelineRevisionExtended = Node & {
 /** A single execution instance of a pipeline */
 export type DataHubPipelineRun = Node & {
   __typename?: 'DataHubPipelineRun';
-  /** Checkpoint data for resumable pipelines: { lastProcessedId, cursor, state } */
+  /**
+   * Per-run seeded graph input when the run was started with seed records; null for ordinary runs.
+   * Durable adapter checkpoints are stored separately as DataHubCheckpoint records.
+   */
   checkpoint?: Maybe<Scalars['JSON']['output']>;
   /** Alias for finishedAt — when the run reached a terminal state */
   completedAt?: Maybe<Scalars['DateTime']['output']>;
@@ -2685,10 +2867,16 @@ export type DataHubPipelineRun = Node & {
   /** Alias for error — error message if the run failed */
   errorMessage?: Maybe<Scalars['String']['output']>;
   finishedAt?: Maybe<Scalars['DateTime']['output']>;
+  /** Exact GATE step awaiting action while the run is PAUSED */
+  gateStepKey?: Maybe<Scalars['String']['output']>;
+  /** Durable auto-approval deadline for a paused TIMEOUT gate */
+  gateTimeoutAt?: Maybe<Scalars['DateTime']['output']>;
   id: Scalars['ID']['output'];
   /** Execution metrics: { recordsProcessed, recordsFailed, stepMetrics, duration, etc. } */
   metrics?: Maybe<Scalars['JSON']['output']>;
   pipeline: DataHubPipeline;
+  /** Immutable published revision executed by this run */
+  revisionId?: Maybe<Scalars['ID']['output']>;
   startedAt?: Maybe<Scalars['DateTime']['output']>;
   /** User ID who started the run (null for automated triggers) */
   startedByUserId?: Maybe<Scalars['String']['output']>;
@@ -2706,7 +2894,10 @@ export type DataHubPipelineRunFilterParameter = {
   error?: InputMaybe<StringOperators>;
   errorMessage?: InputMaybe<StringOperators>;
   finishedAt?: InputMaybe<DateOperators>;
+  gateStepKey?: InputMaybe<StringOperators>;
+  gateTimeoutAt?: InputMaybe<DateOperators>;
   id?: InputMaybe<IdOperators>;
+  revisionId?: InputMaybe<IdOperators>;
   startedAt?: InputMaybe<DateOperators>;
   startedByUserId?: InputMaybe<StringOperators>;
   status?: InputMaybe<StringOperators>;
@@ -2739,36 +2930,26 @@ export type DataHubPipelineRunSortParameter = {
   error?: InputMaybe<SortOrder>;
   errorMessage?: InputMaybe<SortOrder>;
   finishedAt?: InputMaybe<SortOrder>;
+  gateStepKey?: InputMaybe<SortOrder>;
+  gateTimeoutAt?: InputMaybe<SortOrder>;
   id?: InputMaybe<SortOrder>;
+  revisionId?: InputMaybe<SortOrder>;
   startedAt?: InputMaybe<SortOrder>;
   startedByUserId?: InputMaybe<SortOrder>;
   triggeredBy?: InputMaybe<SortOrder>;
   updatedAt?: InputMaybe<SortOrder>;
 };
 
-/** Real-time Subscriptions for Pipeline Monitoring */
-export type DataHubPipelineRunUpdate = {
-  __typename?: 'DataHubPipelineRunUpdate';
-  currentStep?: Maybe<Scalars['String']['output']>;
-  error?: Maybe<Scalars['String']['output']>;
-  finishedAt?: Maybe<Scalars['DateTime']['output']>;
-  pipelineCode: Scalars['String']['output'];
-  progressMessage?: Maybe<Scalars['String']['output']>;
-  progressPercent: Scalars['Int']['output'];
-  recordsFailed: Scalars['Int']['output'];
-  recordsProcessed: Scalars['Int']['output'];
-  runId: Scalars['ID']['output'];
-  startedAt?: Maybe<Scalars['DateTime']['output']>;
-  status: DataHubRunStatus;
-};
-
 export type DataHubPipelineSortParameter = {
   code?: InputMaybe<SortOrder>;
+  configurationSource?: InputMaybe<SortOrder>;
   createdAt?: InputMaybe<SortOrder>;
+  currentRevisionId?: InputMaybe<SortOrder>;
   id?: InputMaybe<SortOrder>;
   name?: InputMaybe<SortOrder>;
   publishedAt?: InputMaybe<SortOrder>;
   publishedByUserId?: InputMaybe<SortOrder>;
+  publishedVersionCount?: InputMaybe<SortOrder>;
   updatedAt?: InputMaybe<SortOrder>;
   version?: InputMaybe<SortOrder>;
 };
@@ -2779,7 +2960,7 @@ export enum DataHubPipelineStatus {
   ARCHIVED = 'ARCHIVED',
   /** Initial state - pipeline is being designed */
   DRAFT = 'DRAFT',
-  /** Pipeline is live and can be triggered */
+  /** Working copy matches the selected published revision */
   PUBLISHED = 'PUBLISHED',
   /** Pipeline submitted for review before publishing */
   REVIEW = 'REVIEW'
@@ -2840,6 +3021,7 @@ export type DataHubRecordDetail = {
   diff?: Maybe<Scalars['JSON']['output']>;
   entityType: Scalars['String']['output'];
   operation: DataHubRecordOperation;
+  /** Normalized loader input preview; final persistence can differ */
   proposedState: Scalars['JSON']['output'];
   recordId: Scalars['String']['output'];
   validationErrors: Array<Scalars['String']['output']>;
@@ -2863,10 +3045,20 @@ export type DataHubRecordError = Node & {
   updatedAt: Scalars['DateTime']['output'];
 };
 
+export type DataHubRecordErrorPage = {
+  __typename?: 'DataHubRecordErrorPage';
+  endCursor?: Maybe<Scalars['String']['output']>;
+  hasNextPage: Scalars['Boolean']['output'];
+  items: Array<DataHubRecordError>;
+  totalItems: Scalars['Int']['output'];
+};
+
 export enum DataHubRecordOperation {
   CREATE = 'CREATE',
   DELETE = 'DELETE',
+  ERROR = 'ERROR',
   SKIP = 'SKIP',
+  UNKNOWN = 'UNKNOWN',
   UPDATE = 'UPDATE'
 }
 
@@ -2882,7 +3074,7 @@ export type DataHubRecordRetryAudit = Node & {
   createdAt: Scalars['DateTime']['output'];
   error: DataHubRecordError;
   id: Scalars['ID']['output'];
-  /** JSON Patch operations applied */
+  /** Accepted field patch applied to the retried payload */
   patch: Scalars['JSON']['output'];
   /** Record state before the retry patch */
   previousPayload: Scalars['JSON']['output'];
@@ -2891,6 +3083,38 @@ export type DataHubRecordRetryAudit = Node & {
   updatedAt: Scalars['DateTime']['output'];
   /** User ID who performed the retry */
   userId?: Maybe<Scalars['ID']['output']>;
+};
+
+export enum DataHubRecordRetryOutcome {
+  APPLIED = 'APPLIED',
+  PATCH_REJECTED = 'PATCH_REJECTED',
+  PIPELINE_NOT_FOUND = 'PIPELINE_NOT_FOUND',
+  RECORD_NOT_FOUND = 'RECORD_NOT_FOUND',
+  REPLAY_FAILED = 'REPLAY_FAILED',
+  RUN_NOT_FOUND = 'RUN_NOT_FOUND',
+  STEP_NOT_FOUND = 'STEP_NOT_FOUND'
+}
+
+/** Structured result of retrying one quarantined record. */
+export type DataHubRecordRetryResult = {
+  __typename?: 'DataHubRecordRetryResult';
+  adapterCode?: Maybe<Scalars['String']['output']>;
+  /** The accepted field patch. Empty when validation rejects the request before replay. */
+  appliedPatch: Scalars['JSON']['output'];
+  auditId?: Maybe<Scalars['ID']['output']>;
+  auditRecorded: Scalars['Boolean']['output'];
+  definitionVersion?: Maybe<Scalars['Int']['output']>;
+  errorId: Scalars['ID']['output'];
+  failed: Scalars['Int']['output'];
+  message: Scalars['String']['output'];
+  outcome: DataHubRecordRetryOutcome;
+  processed: Scalars['Int']['output'];
+  /** Requested field names rejected by the loader patch policy. */
+  rejectedPatchKeys: Array<Scalars['String']['output']>;
+  runId?: Maybe<Scalars['ID']['output']>;
+  stepKey?: Maybe<Scalars['String']['output']>;
+  succeeded: Scalars['Int']['output'];
+  success: Scalars['Boolean']['output'];
 };
 
 export type DataHubRegisterDestinationResult = {
@@ -2988,8 +3212,6 @@ export enum DataHubRunStatus {
   PAUSED = 'PAUSED',
   /** Run created but not yet started */
   PENDING = 'PENDING',
-  /** Run queued for execution */
-  QUEUED = 'QUEUED',
   /** Run currently executing */
   RUNNING = 'RUNNING',
   /** Run exceeded time limit */
@@ -3166,9 +3388,9 @@ export type DataHubSandboxMetrics = {
 export type DataHubSandboxOptions = {
   /** Include full data lineage (default: true) */
   includeLineage?: InputMaybe<Scalars['Boolean']['input']>;
-  /** Maximum records to process (default: 100) */
+  /** Maximum records to process (integer from 1 to 100; default: 100) */
   maxRecords?: InputMaybe<Scalars['Int']['input']>;
-  /** Maximum samples per step (default: 10) */
+  /** Maximum samples per step (integer from 1 to 10; default: 10) */
   maxSamplesPerStep?: InputMaybe<Scalars['Int']['input']>;
   /** Custom seed data to use */
   seedData?: InputMaybe<Array<Scalars['JSON']['input']>>;
@@ -3178,7 +3400,7 @@ export type DataHubSandboxOptions = {
   startFromStep?: InputMaybe<Scalars['String']['input']>;
   /** Stop on first error (default: false) */
   stopOnError?: InputMaybe<Scalars['Boolean']['input']>;
-  /** Timeout in milliseconds (default: 60000) */
+  /** Overall budget checked between steps (1 to 300000 ms; default: 60000). Active adapters enforce their own timeout or cancellation. */
   timeoutMs?: InputMaybe<Scalars['Int']['input']>;
 };
 
@@ -3378,16 +3600,91 @@ export type DataHubSaveDraftInput = {
   pipelineId: Scalars['ID']['input'];
 };
 
+export type DataHubSchema = Node & {
+  __typename?: 'DataHubSchema';
+  channels: Array<Channel>;
+  compatibility: DataHubSchemaCompatibility;
+  createdAt: Scalars['DateTime']['output'];
+  definition: Scalars['JSON']['output'];
+  id: Scalars['ID']['output'];
+  metadata?: Maybe<Scalars['JSON']['output']>;
+  schemaId: Scalars['String']['output'];
+  updatedAt: Scalars['DateTime']['output'];
+  usedBy: Array<DataHubSchemaUsage>;
+  version: Scalars['String']['output'];
+};
+
+export enum DataHubSchemaCompatibility {
+  BACKWARD = 'BACKWARD',
+  PERMISSIVE = 'PERMISSIVE',
+  STRICT = 'STRICT'
+}
+
+export type DataHubSchemaFilterParameter = {
+  _and?: InputMaybe<Array<DataHubSchemaFilterParameter>>;
+  _or?: InputMaybe<Array<DataHubSchemaFilterParameter>>;
+  compatibility?: InputMaybe<StringOperators>;
+  createdAt?: InputMaybe<DateOperators>;
+  id?: InputMaybe<IdOperators>;
+  schemaId?: InputMaybe<StringOperators>;
+  updatedAt?: InputMaybe<DateOperators>;
+  version?: InputMaybe<StringOperators>;
+};
+
+export type DataHubSchemaList = PaginatedList & {
+  __typename?: 'DataHubSchemaList';
+  items: Array<DataHubSchema>;
+  totalItems: Scalars['Int']['output'];
+};
+
+export type DataHubSchemaListOptions = {
+  /** Allows the results to be filtered */
+  filter?: InputMaybe<DataHubSchemaFilterParameter>;
+  /** Specifies whether multiple top-level "filter" fields should be combined with a logical AND or OR operation. Defaults to AND. */
+  filterOperator?: InputMaybe<LogicalOperator>;
+  /** Skips the first n results, for use in pagination */
+  skip?: InputMaybe<Scalars['Int']['input']>;
+  /** Specifies which properties to sort the results by */
+  sort?: InputMaybe<DataHubSchemaSortParameter>;
+  /** Takes n results, for use in pagination */
+  take?: InputMaybe<Scalars['Int']['input']>;
+};
+
+export type DataHubSchemaSortParameter = {
+  createdAt?: InputMaybe<SortOrder>;
+  id?: InputMaybe<SortOrder>;
+  schemaId?: InputMaybe<SortOrder>;
+  updatedAt?: InputMaybe<SortOrder>;
+  version?: InputMaybe<SortOrder>;
+};
+
+export type DataHubSchemaUsage = {
+  __typename?: 'DataHubSchemaUsage';
+  pipelineCode: Scalars['String']['output'];
+  pipelineId: Scalars['ID']['output'];
+  pipelineName: Scalars['String']['output'];
+  pipelineStatus: Scalars['String']['output'];
+  revisionId?: Maybe<Scalars['ID']['output']>;
+  revisionType: Scalars['String']['output'];
+  runId?: Maybe<Scalars['ID']['output']>;
+  runStatus?: Maybe<Scalars['String']['output']>;
+  stepKey: Scalars['String']['output'];
+  stepType: Scalars['String']['output'];
+};
+
 /** Secrets API */
 export type DataHubSecret = Node & {
   __typename?: 'DataHubSecret';
+  channels: Array<Channel>;
   code: Scalars['String']['output'];
   createdAt: Scalars['DateTime']['output'];
+  hasValue: Scalars['Boolean']['output'];
   id: Scalars['ID']['output'];
+  isOverridden: Scalars['Boolean']['output'];
   metadata?: Maybe<Scalars['JSON']['output']>;
   provider: Scalars['String']['output'];
   updatedAt: Scalars['DateTime']['output'];
-  value?: Maybe<Scalars['String']['output']>;
+  valueStatus: Scalars['String']['output'];
 };
 
 export type DataHubSecretFilterParameter = {
@@ -3395,10 +3692,12 @@ export type DataHubSecretFilterParameter = {
   _or?: InputMaybe<Array<DataHubSecretFilterParameter>>;
   code?: InputMaybe<StringOperators>;
   createdAt?: InputMaybe<DateOperators>;
+  hasValue?: InputMaybe<BooleanOperators>;
   id?: InputMaybe<IdOperators>;
+  isOverridden?: InputMaybe<BooleanOperators>;
   provider?: InputMaybe<StringOperators>;
   updatedAt?: InputMaybe<DateOperators>;
-  value?: InputMaybe<StringOperators>;
+  valueStatus?: InputMaybe<StringOperators>;
 };
 
 export type DataHubSecretList = PaginatedList & {
@@ -3420,13 +3719,33 @@ export type DataHubSecretListOptions = {
   take?: InputMaybe<Scalars['Int']['input']>;
 };
 
+export type DataHubSecretReference = {
+  __typename?: 'DataHubSecretReference';
+  code: Scalars['String']['output'];
+  provider: Scalars['String']['output'];
+  source: Scalars['String']['output'];
+};
+
+export type DataHubSecretReferenceList = {
+  __typename?: 'DataHubSecretReferenceList';
+  items: Array<DataHubSecretReference>;
+  totalItems: Scalars['Int']['output'];
+};
+
+export type DataHubSecretSecurity = {
+  __typename?: 'DataHubSecretSecurity';
+  codeFirstInlineAllowed: Scalars['Boolean']['output'];
+  inlineStorageAvailable: Scalars['Boolean']['output'];
+  mode: Scalars['String']['output'];
+};
+
 export type DataHubSecretSortParameter = {
   code?: InputMaybe<SortOrder>;
   createdAt?: InputMaybe<SortOrder>;
   id?: InputMaybe<SortOrder>;
   provider?: InputMaybe<SortOrder>;
   updatedAt?: InputMaybe<SortOrder>;
-  value?: InputMaybe<SortOrder>;
+  valueStatus?: InputMaybe<SortOrder>;
 };
 
 export type DataHubSettings = {
@@ -3480,17 +3799,6 @@ export type DataHubStepConfigSchemaField = {
 export type DataHubStepErrorCount = {
   __typename?: 'DataHubStepErrorCount';
   count: Scalars['Int']['output'];
-  stepKey: Scalars['String']['output'];
-};
-
-export type DataHubStepProgress = {
-  __typename?: 'DataHubStepProgress';
-  durationMs: Scalars['Int']['output'];
-  recordsFailed: Scalars['Int']['output'];
-  recordsIn: Scalars['Int']['output'];
-  recordsOut: Scalars['Int']['output'];
-  runId: Scalars['ID']['output'];
-  status: Scalars['String']['output'];
   stepKey: Scalars['String']['output'];
 };
 
@@ -3591,7 +3899,7 @@ export type DataHubTemplateCategory = {
 export type DataHubThroughputMetrics = {
   __typename?: 'DataHubThroughputMetrics';
   peakThroughput: Scalars['Float']['output'];
-  peakThroughputAt: Scalars['DateTime']['output'];
+  peakThroughputAt?: Maybe<Scalars['DateTime']['output']>;
   recordsPerHour: Scalars['Float']['output'];
   recordsPerMinute: Scalars['Float']['output'];
   recordsPerSecond: Scalars['Float']['output'];
@@ -3706,14 +4014,13 @@ export type DataHubWebhookDelivery = {
   createdAt: Scalars['DateTime']['output'];
   deliveredAt?: Maybe<Scalars['DateTime']['output']>;
   error?: Maybe<Scalars['String']['output']>;
-  headers: Scalars['JSON']['output'];
   id: Scalars['String']['output'];
   lastAttemptAt?: Maybe<Scalars['DateTime']['output']>;
   maxAttempts: Scalars['Int']['output'];
   method: Scalars['String']['output'];
   nextRetryAt?: Maybe<Scalars['DateTime']['output']>;
-  payload: Scalars['JSON']['output'];
-  responseBody?: Maybe<Scalars['String']['output']>;
+  payloadBytes: Scalars['Int']['output'];
+  payloadHash: Scalars['String']['output'];
   responseStatus?: Maybe<Scalars['Int']['output']>;
   status: DataHubWebhookDeliveryStatus;
   url: Scalars['String']['output'];
@@ -3744,17 +4051,6 @@ export type DataHubWebhookStats = {
   pending: Scalars['Int']['output'];
   retrying: Scalars['Int']['output'];
   total: Scalars['Int']['output'];
-};
-
-export type DataHubWebhookUpdate = {
-  __typename?: 'DataHubWebhookUpdate';
-  attempts: Scalars['Int']['output'];
-  deliveryId: Scalars['String']['output'];
-  error?: Maybe<Scalars['String']['output']>;
-  lastAttemptAt?: Maybe<Scalars['DateTime']['output']>;
-  responseStatus?: Maybe<Scalars['Int']['output']>;
-  status: DataHubWebhookDeliveryStatus;
-  webhookId: Scalars['String']['output'];
 };
 
 export type DataHubWizardStrategyMapping = {
@@ -5018,6 +5314,10 @@ export type Mutation = {
   assignAssetsToChannel: Array<Asset>;
   /** Assigns Collections to the specified Channel */
   assignCollectionsToChannel: Array<Collection>;
+  assignDataHubConnectionsToChannel: Array<DataHubConnection>;
+  assignDataHubPipelinesToChannel: Array<DataHubPipeline>;
+  assignDataHubSchemasToChannel: Array<DataHubSchema>;
+  assignDataHubSecretsToChannel: Array<DataHubSecret>;
   /** Assigns Facets to the specified Channel */
   assignFacetsToChannel: Array<Facet>;
   /** Assigns PaymentMethods to the specified Channel */
@@ -5059,6 +5359,7 @@ export type Mutation = {
   createDataHubConnection: DataHubConnection;
   createDataHubFeed: DataHubFeed;
   createDataHubPipeline: DataHubPipeline;
+  createDataHubSchema: DataHubSchema;
   createDataHubSecret: DataHubSecret;
   /** Creates a draft Order */
   createDraftOrder: Order;
@@ -5096,6 +5397,7 @@ export type Mutation = {
   createTaxRate: TaxRate;
   /** Create a new Zone */
   createZone: Zone;
+  dataHubDeleteExportDestination: DeletionResponse;
   dataHubDeliverToDestination: DataHubDeliveryResult;
   /** Prune old draft revisions */
   dataHubPruneDrafts: Scalars['Int']['output'];
@@ -5147,7 +5449,9 @@ export type Mutation = {
   /** Deletes Customers */
   deleteCustomers: Array<DeletionResponse>;
   deleteDataHubConnection: DeletionResponse;
+  deleteDataHubFeed: DeletionResponse;
   deleteDataHubPipeline: DeletionResponse;
+  deleteDataHubSchema: DeletionResponse;
   deleteDataHubSecret: DeletionResponse;
   /** Deletes a draft Order */
   deleteDraftOrder: DeletionResponse;
@@ -5228,10 +5532,12 @@ export type Mutation = {
   modifyOrder: ModifyOrderResult;
   /** Move a Collection to a different parent or index */
   moveCollection: Collection;
-  /** Preview extract step - runs extractor and returns sample records */
+  /** Preview extract step - runs extractor and returns 1 to 1000 sample records */
   previewDataHubExtract: DataHubPreviewResult;
+  /** Generate a complete, valid preview for 1 to 1000 items (default: 10), up to 1 MiB. */
   previewDataHubFeed: DataHubFeedPreview;
   publishDataHubPipeline: DataHubPipeline;
+  reactivateDataHubPipeline: DataHubPipeline;
   refundOrder: RefundOrderResult;
   reindex: Job;
   /** Reject a GATE step, cancelling the paused pipeline run */
@@ -5243,6 +5549,10 @@ export type Mutation = {
   removeCouponCodeFromDraftOrder?: Maybe<Order>;
   /** Remove Customers from a CustomerGroup */
   removeCustomersFromGroup: CustomerGroup;
+  removeDataHubConnectionsFromChannel: Array<DataHubConnection>;
+  removeDataHubPipelinesFromChannel: Array<DataHubPipeline>;
+  removeDataHubSchemasFromChannel: Array<DataHubSchema>;
+  removeDataHubSecretsFromChannel: Array<DataHubSecret>;
   /** Remove an OrderLine from the draft Order */
   removeDraftOrderLine: RemoveOrderItemsResult;
   /** Removes Facets from the specified Channel */
@@ -5272,9 +5582,9 @@ export type Mutation = {
   removeStockLocationsFromChannel: Array<StockLocation>;
   /** Reset AutoMapper configuration to defaults (global or per-pipeline) */
   resetDataHubAutoMapperConfig: DataHubAutoMapperConfig;
-  retryDataHubRecord: Scalars['Boolean']['output'];
+  retryDataHubRecord: DataHubRecordRetryResult;
   revertDataHubPipelineToRevision: DataHubPipeline;
-  runDataHubHookTest: Scalars['Boolean']['output'];
+  runDataHubHookTest: DataHubHookExecutionResult;
   runPendingSearchIndexUpdates: Success;
   runScheduledTask: Success;
   setCustomerForDraftOrder: SetCustomerForDraftOrderResult;
@@ -5340,7 +5650,9 @@ export type Mutation = {
   updateDataHubAutoMapperConfig: DataHubAutoMapperConfig;
   updateDataHubCheckpoint: DataHubCheckpoint;
   updateDataHubConnection: DataHubConnection;
+  updateDataHubFeed: DataHubFeed;
   updateDataHubPipeline: DataHubPipeline;
+  updateDataHubSchema: DataHubSchema;
   updateDataHubSecret: DataHubSecret;
   updateDataHubSettings: DataHubSettings;
   /** Update an existing Facet */
@@ -5469,6 +5781,26 @@ export type MutationAssignCollectionsToChannelArgs = {
 };
 
 
+export type MutationAssignDataHubConnectionsToChannelArgs = {
+  input: AssignDataHubConnectionsToChannelInput;
+};
+
+
+export type MutationAssignDataHubPipelinesToChannelArgs = {
+  input: AssignDataHubPipelinesToChannelInput;
+};
+
+
+export type MutationAssignDataHubSchemasToChannelArgs = {
+  input: AssignDataHubSchemasToChannelInput;
+};
+
+
+export type MutationAssignDataHubSecretsToChannelArgs = {
+  input: AssignDataHubSecretsToChannelInput;
+};
+
+
 export type MutationAssignFacetsToChannelArgs = {
   input: AssignFacetsToChannelInput;
 };
@@ -5593,6 +5925,11 @@ export type MutationCreateDataHubPipelineArgs = {
 };
 
 
+export type MutationCreateDataHubSchemaArgs = {
+  input: CreateDataHubSchemaInput;
+};
+
+
 export type MutationCreateDataHubSecretArgs = {
   input: CreateDataHubSecretInput;
 };
@@ -5685,6 +6022,11 @@ export type MutationCreateTaxRateArgs = {
 
 export type MutationCreateZoneArgs = {
   input: CreateZoneInput;
+};
+
+
+export type MutationDataHubDeleteExportDestinationArgs = {
+  id: Scalars['String']['input'];
 };
 
 
@@ -5841,7 +6183,17 @@ export type MutationDeleteDataHubConnectionArgs = {
 };
 
 
+export type MutationDeleteDataHubFeedArgs = {
+  id: Scalars['ID']['input'];
+};
+
+
 export type MutationDeleteDataHubPipelineArgs = {
+  id: Scalars['ID']['input'];
+};
+
+
+export type MutationDeleteDataHubSchemaArgs = {
   id: Scalars['ID']['input'];
 };
 
@@ -6066,6 +6418,11 @@ export type MutationPublishDataHubPipelineArgs = {
 };
 
 
+export type MutationReactivateDataHubPipelineArgs = {
+  id: Scalars['ID']['input'];
+};
+
+
 export type MutationRefundOrderArgs = {
   input: RefundOrderInput;
 };
@@ -6096,6 +6453,26 @@ export type MutationRemoveCouponCodeFromDraftOrderArgs = {
 export type MutationRemoveCustomersFromGroupArgs = {
   customerGroupId: Scalars['ID']['input'];
   customerIds: Array<Scalars['ID']['input']>;
+};
+
+
+export type MutationRemoveDataHubConnectionsFromChannelArgs = {
+  input: AssignDataHubConnectionsToChannelInput;
+};
+
+
+export type MutationRemoveDataHubPipelinesFromChannelArgs = {
+  input: AssignDataHubPipelinesToChannelInput;
+};
+
+
+export type MutationRemoveDataHubSchemasFromChannelArgs = {
+  input: AssignDataHubSchemasToChannelInput;
+};
+
+
+export type MutationRemoveDataHubSecretsFromChannelArgs = {
+  input: AssignDataHubSecretsToChannelInput;
 };
 
 
@@ -6249,25 +6626,26 @@ export type MutationSettleRefundArgs = {
 
 
 export type MutationSimulateDataHubLoadArgs = {
-  records: Scalars['JSON']['input'];
+  records: Array<Scalars['JSON']['input']>;
   step: Scalars['JSON']['input'];
 };
 
 
 export type MutationSimulateDataHubTransformArgs = {
-  records: Scalars['JSON']['input'];
+  records: Array<Scalars['JSON']['input']>;
   step: Scalars['JSON']['input'];
 };
 
 
 export type MutationSimulateDataHubValidateArgs = {
-  records: Scalars['JSON']['input'];
+  records: Array<Scalars['JSON']['input']>;
   step: Scalars['JSON']['input'];
 };
 
 
 export type MutationStartDataHubConsumerArgs = {
   pipelineCode: Scalars['String']['input'];
+  triggerKey?: InputMaybe<Scalars['String']['input']>;
 };
 
 
@@ -6277,12 +6655,14 @@ export type MutationStartDataHubPipelineDryRunArgs = {
 
 
 export type MutationStartDataHubPipelineRunArgs = {
+  expectedRevisionId?: InputMaybe<Scalars['ID']['input']>;
   pipelineId: Scalars['ID']['input'];
 };
 
 
 export type MutationStopDataHubConsumerArgs = {
   pipelineCode: Scalars['String']['input'];
+  triggerKey?: InputMaybe<Scalars['String']['input']>;
 };
 
 
@@ -6385,8 +6765,19 @@ export type MutationUpdateDataHubConnectionArgs = {
 };
 
 
+export type MutationUpdateDataHubFeedArgs = {
+  id: Scalars['ID']['input'];
+  input: DataHubFeedInput;
+};
+
+
 export type MutationUpdateDataHubPipelineArgs = {
   input: UpdateDataHubPipelineInput;
+};
+
+
+export type MutationUpdateDataHubSchemaArgs = {
+  input: UpdateDataHubSchemaInput;
 };
 
 
@@ -7075,6 +7466,8 @@ export enum Permission {
   CreateCustomerGroup = 'CreateCustomerGroup',
   /** Grants permission to create DataHubPipeline */
   CreateDataHubPipeline = 'CreateDataHubPipeline',
+  /** Grants permission to create DataHubSchema */
+  CreateDataHubSchema = 'CreateDataHubSchema',
   /** Grants permission to create DataHubSecret */
   CreateDataHubSecret = 'CreateDataHubSecret',
   /** Grants permission to create Facet */
@@ -7123,6 +7516,8 @@ export enum Permission {
   DeleteCustomerGroup = 'DeleteCustomerGroup',
   /** Grants permission to delete DataHubPipeline */
   DeleteDataHubPipeline = 'DeleteDataHubPipeline',
+  /** Grants permission to delete DataHubSchema */
+  DeleteDataHubSchema = 'DeleteDataHubSchema',
   /** Grants permission to delete DataHubSecret */
   DeleteDataHubSecret = 'DeleteDataHubSecret',
   /** Grants permission to delete Facet */
@@ -7189,12 +7584,12 @@ export enum Permission {
   ReadCustomer = 'ReadCustomer',
   /** Grants permission to read CustomerGroup */
   ReadCustomerGroup = 'ReadCustomerGroup',
-  /** Grants permission to read DashboardGlobalViews */
-  ReadDashboardGlobalViews = 'ReadDashboardGlobalViews',
   /** Grants permissions on ReadDataHubFiles operations */
   ReadDataHubFiles = 'ReadDataHubFiles',
   /** Grants permission to read DataHubPipeline */
   ReadDataHubPipeline = 'ReadDataHubPipeline',
+  /** Grants permission to read DataHubSchema */
+  ReadDataHubSchema = 'ReadDataHubSchema',
   /** Grants permission to read DataHubSecret */
   ReadDataHubSecret = 'ReadDataHubSecret',
   /** Grants permission to read Facet */
@@ -7227,14 +7622,10 @@ export enum Permission {
   ReadZone = 'ReadZone',
   /** Grants permissions on ReplayDataHubRecord operations */
   ReplayDataHubRecord = 'ReplayDataHubRecord',
-  /** Grants permissions on RetryDataHubRecord operations */
-  RetryDataHubRecord = 'RetryDataHubRecord',
   /** Grants permissions on ReviewDataHubPipeline operations */
   ReviewDataHubPipeline = 'ReviewDataHubPipeline',
   /** Grants permissions on RunDataHubPipeline operations */
   RunDataHubPipeline = 'RunDataHubPipeline',
-  /** Grants permissions on SubscribeDataHubEvents operations */
-  SubscribeDataHubEvents = 'SubscribeDataHubEvents',
   /** SuperAdmin has unrestricted access to all operations */
   SuperAdmin = 'SuperAdmin',
   /** Grants permission to update Administrator */
@@ -7255,6 +7646,8 @@ export enum Permission {
   UpdateCustomerGroup = 'UpdateCustomerGroup',
   /** Grants permission to update DataHubPipeline */
   UpdateDataHubPipeline = 'UpdateDataHubPipeline',
+  /** Grants permission to update DataHubSchema */
+  UpdateDataHubSchema = 'UpdateDataHubSchema',
   /** Grants permission to update DataHubSecret */
   UpdateDataHubSecret = 'UpdateDataHubSecret',
   /** Grants permissions on UpdateDataHubSettings operations */
@@ -7289,6 +7682,10 @@ export enum Permission {
   UpdateTaxRate = 'UpdateTaxRate',
   /** Grants permission to update Zone */
   UpdateZone = 'UpdateZone',
+  /** Grants permissions on UseDataHubConnection operations */
+  UseDataHubConnection = 'UseDataHubConnection',
+  /** Grants permissions on UseDataHubSecret operations */
+  UseDataHubSecret = 'UseDataHubSecret',
   /** Grants permissions on ViewDataHubAnalytics operations */
   ViewDataHubAnalytics = 'ViewDataHubAnalytics',
   /** Grants permissions on ViewDataHubEntitySchemas operations */
@@ -7296,9 +7693,7 @@ export enum Permission {
   /** Grants permissions on ViewDataHubQuarantine operations */
   ViewDataHubQuarantine = 'ViewDataHubQuarantine',
   /** Grants permissions on ViewDataHubRuns operations */
-  ViewDataHubRuns = 'ViewDataHubRuns',
-  /** Grants permission to write DashboardGlobalViews */
-  WriteDashboardGlobalViews = 'WriteDashboardGlobalViews'
+  ViewDataHubRuns = 'ViewDataHubRuns'
 }
 
 export type PermissionDefinition = {
@@ -7821,8 +8216,6 @@ export type Query = {
   customerGroup?: Maybe<CustomerGroup>;
   customerGroups: CustomerGroupList;
   customers: CustomerList;
-  /** Get metrics for the given date range and metric types. */
-  dashboardMetricSummary: Array<DashboardMetricSummary>;
   dataHubAdapters: Array<DataHubAdapter>;
   dataHubAnalyticsOverview: DataHubAnalyticsOverview;
   /** Get the current AutoMapper configuration (global or per-pipeline) */
@@ -7838,11 +8231,13 @@ export type Query = {
   dataHubConnections: DataHubConnectionList;
   dataHubConsumers: Array<DataHubConsumerStatus>;
   dataHubDeadLetterQueue: Array<DataHubWebhookDelivery>;
-  dataHubDeadLetters: Array<DataHubRecordError>;
+  dataHubDeadLetters: DataHubRecordErrorPage;
   dataHubErrorAnalytics: DataHubErrorAnalytics;
   dataHubEvents: Array<DataHubEvent>;
   dataHubExportDestination?: Maybe<DataHubExportDestination>;
   dataHubExportDestinations: Array<DataHubExportDestination>;
+  /** List the entities and output fields supported by the built-in Vendure query extractor. */
+  dataHubExportEntitySchemas: Array<DataHubExportEntitySchema>;
   /** List all export templates (built-in + custom) */
   dataHubExportTemplates: Array<DataHubExportTemplate>;
   /** Get a specific extractor by code */
@@ -7853,6 +8248,7 @@ export type Query = {
   dataHubExtractors: Array<DataHubExtractor>;
   /** Get extractors grouped by category for UI display */
   dataHubExtractorsByCategory: Array<DataHubExtractorsByCategory>;
+  dataHubFeed?: Maybe<DataHubFeed>;
   dataHubFeedFormats: Array<DataHubFeedFormatInfo>;
   dataHubFeeds: Array<DataHubFeed>;
   /** Check if pipeline has unpublished changes */
@@ -7889,7 +8285,7 @@ export type Query = {
   dataHubPipelineRevisions: Array<DataHubPipelineRevision>;
   dataHubPipelineRun?: Maybe<DataHubPipelineRun>;
   dataHubPipelineRuns: DataHubPipelineRunList;
-  /** Get timeline of revisions for a pipeline */
+  /** Get the latest 1 to 500 revisions for a pipeline (default: 50) */
   dataHubPipelineTimeline: Array<DataHubTimelineEntry>;
   dataHubPipelines: DataHubPipelineList;
   dataHubQueueStats: DataHubQueueStats;
@@ -7904,7 +8300,7 @@ export type Query = {
   dataHubRevision?: Maybe<DataHubPipelineRevisionExtended>;
   /** Get diff between two revisions */
   dataHubRevisionDiff: DataHubRevisionDiff;
-  dataHubRunErrors: Array<DataHubRecordError>;
+  dataHubRunErrors: DataHubRecordErrorPage;
   dataHubRunLogs: Array<DataHubLog>;
   /**
    * Execute a sandbox/dry run for a pipeline
@@ -7913,7 +8309,12 @@ export type Query = {
   dataHubSandbox: DataHubSandboxResult;
   /** Execute sandbox with a custom definition (for testing unpublished changes) */
   dataHubSandboxWithDefinition: DataHubSandboxResult;
+  dataHubSchema?: Maybe<DataHubSchema>;
+  dataHubSchemaVersions: Array<DataHubSchema>;
+  dataHubSchemas: DataHubSchemaList;
   dataHubSecret?: Maybe<DataHubSecret>;
+  dataHubSecretReferences: DataHubSecretReferenceList;
+  dataHubSecretSecurity: DataHubSecretSecurity;
   dataHubSecrets: DataHubSecretList;
   dataHubSettings: DataHubSettings;
   /** Analyze impact of a specific step */
@@ -8080,11 +8481,6 @@ export type QueryCustomersArgs = {
 };
 
 
-export type QueryDashboardMetricSummaryArgs = {
-  input?: InputMaybe<DashboardMetricSummaryInput>;
-};
-
-
 export type QueryDataHubAutoMapperConfigArgs = {
   pipelineId?: InputMaybe<Scalars['ID']['input']>;
 };
@@ -8113,6 +8509,12 @@ export type QueryDataHubConnectionsArgs = {
 };
 
 
+export type QueryDataHubDeadLettersArgs = {
+  after?: InputMaybe<Scalars['String']['input']>;
+  first?: InputMaybe<Scalars['Int']['input']>;
+};
+
+
 export type QueryDataHubErrorAnalyticsArgs = {
   pipelineId?: InputMaybe<Scalars['ID']['input']>;
   timeRange?: InputMaybe<Scalars['String']['input']>;
@@ -8136,6 +8538,11 @@ export type QueryDataHubExtractorArgs = {
 
 export type QueryDataHubExtractorSchemaArgs = {
   code: Scalars['String']['input'];
+};
+
+
+export type QueryDataHubFeedArgs = {
+  id: Scalars['ID']['input'];
 };
 
 
@@ -8245,6 +8652,7 @@ export type QueryDataHubRecordLineageDetailArgs = {
 
 export type QueryDataHubRecordRetryAuditsArgs = {
   errorId: Scalars['ID']['input'];
+  limit?: InputMaybe<Scalars['Int']['input']>;
 };
 
 
@@ -8260,6 +8668,8 @@ export type QueryDataHubRevisionDiffArgs = {
 
 
 export type QueryDataHubRunErrorsArgs = {
+  after?: InputMaybe<Scalars['String']['input']>;
+  first?: InputMaybe<Scalars['Int']['input']>;
   runId: Scalars['ID']['input'];
 };
 
@@ -8280,8 +8690,30 @@ export type QueryDataHubSandboxWithDefinitionArgs = {
 };
 
 
+export type QueryDataHubSchemaArgs = {
+  id: Scalars['ID']['input'];
+};
+
+
+export type QueryDataHubSchemaVersionsArgs = {
+  schemaId: Scalars['String']['input'];
+};
+
+
+export type QueryDataHubSchemasArgs = {
+  options?: InputMaybe<DataHubSchemaListOptions>;
+};
+
+
 export type QueryDataHubSecretArgs = {
   id: Scalars['ID']['input'];
+};
+
+
+export type QueryDataHubSecretReferencesArgs = {
+  search?: InputMaybe<Scalars['String']['input']>;
+  skip?: InputMaybe<Scalars['Int']['input']>;
+  take?: InputMaybe<Scalars['Int']['input']>;
 };
 
 
@@ -9689,7 +10121,13 @@ export type UpdateDataHubPipelineInput = {
   version?: InputMaybe<Scalars['Int']['input']>;
 };
 
+export type UpdateDataHubSchemaInput = {
+  id: Scalars['ID']['input'];
+  metadata?: InputMaybe<Scalars['JSON']['input']>;
+};
+
 export type UpdateDataHubSecretInput = {
+  clearValue?: Scalars['Boolean']['input'];
   code?: InputMaybe<Scalars['String']['input']>;
   id: Scalars['ID']['input'];
   metadata?: InputMaybe<Scalars['JSON']['input']>;

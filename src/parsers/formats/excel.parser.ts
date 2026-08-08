@@ -12,7 +12,13 @@ export async function parseExcel(
     try {
         // Dynamic import for xlsx library
         const XLSX = await import('xlsx');
-        const workbook = XLSX.read(content, { type: 'buffer' });
+        const previewRows = options.preview === undefined
+            ? undefined
+            : Math.max(1, Math.floor(options.preview)) + (options.header === false ? 0 : 1);
+        const workbook = XLSX.read(content, {
+            type: 'buffer',
+            sheetRows: previewRows,
+        });
 
         // Get the sheet
         let sheetName: string;

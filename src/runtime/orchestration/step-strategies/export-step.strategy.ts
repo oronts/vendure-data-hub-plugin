@@ -69,8 +69,15 @@ export class ExportStepStrategy implements StepStrategy {
     }
 
     private async executeExport(context: StepExecutionContext, records: RecordObject[]): Promise<{ ok: number; fail: number }> {
-        const { ctx, step, onRecordError } = context;
-        return this.exportExecutor.execute(ctx, step, records, onRecordError);
+        const { ctx, step, onRecordError, pipelineContext, executorCtx } = context;
+        return this.exportExecutor.execute(
+            ctx,
+            step,
+            records,
+            onRecordError,
+            pipelineContext,
+            executorCtx,
+        );
     }
 
     private async runAfterHook(context: StepExecutionContext, records: RecordObject[]): Promise<RecordObject[]> {

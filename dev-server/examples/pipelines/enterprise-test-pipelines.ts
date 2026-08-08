@@ -12,9 +12,10 @@
  */
 
 import { createPipeline } from '../../../src';
-import { MOCK_PORTS, mockUrl } from '../../ports';
-
-const PIMCORE_API_URL = process.env.PIMCORE_API_URL || mockUrl(MOCK_PORTS.PIMCORE);
+import {
+    PIMCORE_API_CONNECTION_CODE,
+    PIMCORE_API_URL,
+} from '../../pimcore-api';
 
 // =============================================================================
 // ET-1: OPERATOR STRESS TEST
@@ -232,17 +233,22 @@ export const operatorStressTest = createPipeline()
 export const customerLifecycleTest = createPipeline()
     .name('ET-2: Customer Lifecycle Test')
     .description('Tests customer routing (active vs inactive), group assignment, multi-address, and email dedup')
-    .capabilities({ requires: ['UpdateCustomer'] })
+    .capabilities({ requires: ['UpdateCustomer'], writes: ['CUSTOMERS'] })
 
     .trigger('manual', { type: 'MANUAL' })
 
     // Extract ALL customers including inactive ones
     .extract('fetch-all-customers', {
-        adapterCode: 'httpApi',
-        url: `${PIMCORE_API_URL}/api/customers?activeOnly=false`,
-        method: 'GET',
-        headers: { apiKey: 'test-pimcore-api-key' },
-        itemsField: 'customers',
+       adapterCode: 'httpApi',
+      url: `${PIMCORE_API_URL}/api/customers?activeOnly=false`,
+      method: 'GET',
+        connectionCode: PIMCORE_API_CONNECTION_CODE,
+      auth: {
+          type: 'API_KEY',
+           secretCode: 'pimcore-api-key',
+            headerName: 'apiKey',
+        },
+        dataPath: 'customers',
     })
 
     // Validate email and name
@@ -380,17 +386,25 @@ export const customerLifecycleTest = createPipeline()
 export const orderImportStateTest = createPipeline()
     .name('ET-3: Order Import State Test')
     .description('Tests order import with state transitions, notes, line items, and re-import idempotency')
-    .capabilities({ requires: ['UpdateOrder', 'UpdateCustomer'] })
+    .capabilities({
+        requires: ['UpdateOrder', 'UpdateCustomer'],
+        writes: ['ORDERS'],
+    })
 
     .trigger('manual', { type: 'MANUAL' })
 
     // Extract orders from mock API
     .extract('fetch-orders', {
-        adapterCode: 'httpApi',
-        url: `${PIMCORE_API_URL}/api/orders`,
-        method: 'GET',
-        headers: { apiKey: 'test-pimcore-api-key' },
-        itemsField: 'orders',
+       adapterCode: 'httpApi',
+      url: `${PIMCORE_API_URL}/api/orders`,
+      method: 'GET',
+        connectionCode: PIMCORE_API_CONNECTION_CODE,
+      auth: {
+          type: 'API_KEY',
+           secretCode: 'pimcore-api-key',
+            headerName: 'apiKey',
+        },
+        dataPath: 'orders',
     })
 
     // Validate required order fields
@@ -543,11 +557,16 @@ export const multiStepTransformChain = createPipeline()
 
     // Extract products from mock API
     .extract('fetch-products', {
-        adapterCode: 'httpApi',
-        url: `${PIMCORE_API_URL}/api/products?includeTranslations=true&limit=50`,
-        method: 'GET',
-        headers: { apiKey: 'test-pimcore-api-key' },
-        itemsField: 'products',
+       adapterCode: 'httpApi',
+      url: `${PIMCORE_API_URL}/api/products?includeTranslations=true&limit=50`,
+      method: 'GET',
+        connectionCode: PIMCORE_API_CONNECTION_CODE,
+      auth: {
+          type: 'API_KEY',
+           secretCode: 'pimcore-api-key',
+            headerName: 'apiKey',
+        },
+        dataPath: 'products',
     })
 
     // Step 1: Identity and naming
@@ -733,7 +752,7 @@ export const reconciliationAudit = createPipeline()
     .extract('query-vendure-variants', {
         adapterCode: 'vendureQuery',
         entity: 'PRODUCT_VARIANT',
-        relations: 'product,product.translations,translations,stockLevels,facetValues',
+        relations: ['product', 'product.translations', 'translations', 'stockLevels', 'facetValues'],
         batchSize: 200,
     })
 
@@ -772,11 +791,16 @@ export const reconciliationAudit = createPipeline()
 
     // ── Branch B: PIM catalog snapshot ──────────────────────────────────────
     .extract('fetch-pim-products', {
-        adapterCode: 'httpApi',
-        url: `${PIMCORE_API_URL}/api/products?includeTranslations=true&limit=100`,
-        method: 'GET',
-        headers: { apiKey: 'test-pimcore-api-key' },
-        itemsField: 'products',
+       adapterCode: 'httpApi',
+      url: `${PIMCORE_API_URL}/api/products?includeTranslations=true&limit=100`,
+      method: 'GET',
+        connectionCode: PIMCORE_API_CONNECTION_CODE,
+      auth: {
+          type: 'API_KEY',
+           secretCode: 'pimcore-api-key',
+            headerName: 'apiKey',
+        },
+        dataPath: 'products',
     })
 
     .transform('normalize-pim', {

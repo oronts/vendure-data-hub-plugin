@@ -44,6 +44,8 @@ import { SinkStepStrategy } from './sink-step.strategy';
 import { GateStepStrategy } from './gate-step.strategy';
 import { LOGGER_CONTEXTS } from '../../../constants/core';
 import { DataHubLoggerFactory } from '../../../services/logger';
+import type { SeededInputMode } from '../seeded-graph';
+import { resolveEffectiveStepContext } from '../effective-context';
 
 const logger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.STEP_DISPATCHER);
 
@@ -78,6 +80,7 @@ export interface StepExecutionParams {
     pipelineId?: ID;
     runId?: ID;
     stepLog?: StepLogCallback;
+    seedMode?: SeededInputMode;
 }
 
 /**
@@ -126,7 +129,7 @@ export class StepDispatcher {
 
         switch (step.type) {
             case StepType.TRIGGER:
-                return this.executeTrigger(key);
+                return this.executeSeededInput(step, key, input, params.seedMode !== undefined);
 
             case StepType.EXTRACT:
                 return this.executeWithStrategy(this.extractStrategy, context);
@@ -171,6 +174,11 @@ export class StepDispatcher {
             ctx: params.ctx,
             definition: params.definition,
             step: params.step,
+            pipelineContext: resolveEffectiveStepContext(
+                params.ctx,
+                params.definition.context,
+                params.step.context,
+            ),
             records: params.input,
             executorCtx: params.executorCtx,
             hookService: params.hookService,
@@ -179,20 +187,26 @@ export class StepDispatcher {
             runId: params.runId,
             stepLog: params.stepLog,
             onRecordError: params.onRecordError,
+            seedMode: params.seedMode,
         };
     }
 
-    /**
-     * Execute TRIGGER step (no-op, returns empty)
-     */
-    private executeTrigger(key: string): StepExecutionResult {
+    private executeSeededInput(
+        step: PipelineStepDefinition,
+        key: string,
+        input: RecordObject[],
+        seeded: boolean,
+    ): StepExecutionResult {
+        const output = seeded ? input : [];
+        const extracted = step.type === StepTypeEnum.EXTRACT ? output.length : 0;
         return {
-            output: [],
-            detail: { stepKey: key, type: StepTypeEnum.TRIGGER },
+            output,
+            detail: { stepKey: key, type: step.type, seeded },
             processed: 0,
             succeeded: 0,
             failed: 0,
-            counters: {},
+            skipped: 0,
+            counters: extracted > 0 ? { extracted } : {},
         };
     }
 
@@ -219,6 +233,7 @@ export class StepDispatcher {
             processed: result.processed,
             succeeded: result.succeeded,
             failed: result.failed,
+            skipped: result.skipped ?? 0,
             counters: result.counters,
             event: result.event,
         };
@@ -237,6 +252,7 @@ export class StepDispatcher {
             processed: 0,
             succeeded: 0,
             failed: 0,
+            skipped: 0,
             counters: {},
         };
     }
@@ -251,6 +267,7 @@ export class StepDispatcher {
             processed: result.processed,
             succeeded: result.succeeded,
             failed: result.failed,
+            skipped: result.skipped ?? 0,
             counters: result.counters,
             event: result.event,
         };

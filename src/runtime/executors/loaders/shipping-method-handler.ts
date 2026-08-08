@@ -15,19 +15,25 @@ import {
 } from '@vendure/core';
 import { LanguageCode } from '@vendure/common/lib/generated-types';
 import { PipelineStepDefinition, ErrorHandlingConfig, JsonObject } from '../../../types/index';
-import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
+import { RecordObject, OnRecordErrorCallback, LoaderExecutionResult } from '../../executor-types';
 import { LoaderHandler } from './types';
+import { assertCreateDuplicateCanBeSkipped, CreateDuplicateHandlingConfig } from './duplicate-handling';
 import { LoadStrategy } from '../../../constants/enums';
 import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
 import { getStringValue, getObjectValue } from '../../../loaders/shared-helpers';
-import { parseTranslationsInput, resolveChannelIds, toConfigurableOperation } from './shared-lookups';
-import { LOGGER_CONTEXTS } from '../../../constants/index';
-import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
+import {
+    getTranslationString,
+    parseTranslationsInput,
+    resolveChannelIds,
+    toConfigurableOperation,
+} from './shared-lookups';
+import { LOGGER_CONTEXTS } from '../../../constants/core';
+import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger/datahub-logger';
 
 /**
  * Configuration for the shipping method handler step (mirrors loader-handler-registry.ts schema)
  */
-interface ShippingMethodHandlerConfig {
+interface ShippingMethodHandlerConfig extends CreateDuplicateHandlingConfig {
     nameField?: string;
     codeField?: string;
     descriptionField?: string;
@@ -69,9 +75,10 @@ export class ShippingMethodHandler implements LoaderHandler {
         input: RecordObject[],
         onRecordError?: OnRecordErrorCallback,
         _errorHandling?: ErrorHandlingConfig,
-    ): Promise<ExecutionResult> {
+    ): Promise<LoaderExecutionResult> {
         let ok = 0;
         let fail = 0;
+        let skipped = 0;
         const cfg = getConfig(step.config);
         const channelCache = new Map<string, ID>();
 
@@ -92,8 +99,8 @@ export class ShippingMethodHandler implements LoaderHandler {
                     const raw = rec[cfg.translationsField];
                     if (raw) {
                         const parsed = parseTranslationsInput(raw);
-                        if (parsed.length > 0 && parsed[0].name) {
-                            name = String(parsed[0].name);
+                        if (parsed[0]) {
+                            name = getTranslationString(parsed[0], 'name');
                         }
                     }
                 }
@@ -124,7 +131,8 @@ export class ShippingMethodHandler implements LoaderHandler {
 
                 if (existing) {
                     if (strategy === LoadStrategy.CREATE) {
-                        ok++;
+                        assertCreateDuplicateCanBeSkipped(cfg, 'shipping method', code);
+                        skipped++;
                         continue;
                     }
                     const updateInput: Record<string, unknown> = {
@@ -198,7 +206,14 @@ export class ShippingMethodHandler implements LoaderHandler {
                         if (channelIds.length > 0) {
                             try {
                                 await this.channelService.assignToChannels(ctx, ShippingMethod, smId, channelIds);
-                            } catch { /* channel assignment is best-effort */ }
+                            } catch (error) {
+                                this.logger.warn('Failed to assign shipping method to record channels', {
+                                    shippingMethodId: smId,
+                                    channelIds,
+                                    error: getErrorMessage(error),
+                                });
+                                throw error;
+                            }
                         }
                     }
                 }
@@ -211,7 +226,7 @@ export class ShippingMethodHandler implements LoaderHandler {
                 fail++;
             }
         }
-        return { ok, fail };
+        return { ok, fail, skipped };
     }
 
     /**
@@ -231,9 +246,9 @@ export class ShippingMethodHandler implements LoaderHandler {
                 const parsed = parseTranslationsInput(raw);
                 if (parsed.length > 0) {
                     return parsed.map(t => ({
-                        languageCode: String(t.languageCode) as LanguageCode,
-                        name: String(t.name ?? name),
-                        description: t.description != null ? String(t.description) : '',
+                        languageCode: t.languageCode as LanguageCode,
+                        name: getTranslationString(t, 'name', name),
+                        description: getTranslationString(t, 'description', ''),
                     }));
                 }
             }

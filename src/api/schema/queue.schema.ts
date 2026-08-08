@@ -32,8 +32,14 @@ export const queueSchema = `
     """
     type DataHubConsumerStatus {
         pipelineCode: String!
+        triggerKey: String!
         queueName: String!
+        "True only when the API replica answering this query currently owns and runs the consumer"
         isActive: Boolean!
+        "Trigger definition default used when no durable manual override exists"
+        autoStart: Boolean!
+        "Durable global start/stop intent; this can be true while isActive is false on this replica"
+        desiredEnabled: Boolean!
         messagesProcessed: Int!
         messagesFailed: Int!
         lastMessageAt: DateTime
@@ -83,7 +89,7 @@ export const queueQueries = `
 export const queueMutations = `
     extend type Mutation {
         updateDataHubSettings(input: DataHubSettingsInput!): DataHubSettings!
-        startDataHubConsumer(pipelineCode: String!): Boolean!
-        stopDataHubConsumer(pipelineCode: String!): Boolean!
+        startDataHubConsumer(pipelineCode: String!, triggerKey: String): Boolean!
+        stopDataHubConsumer(pipelineCode: String!, triggerKey: String): Boolean!
     }
 `;

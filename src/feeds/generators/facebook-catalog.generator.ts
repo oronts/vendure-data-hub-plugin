@@ -8,20 +8,23 @@
 import { RequestContext } from '@vendure/core';
 import { TransactionalConnection } from '@vendure/core';
 import { XMLBuilder } from 'fast-xml-parser';
-import { SERVICE_DEFAULTS, FEED_NAMESPACES } from '../../constants/index';
+import { FEED_NAMESPACES } from '../../constants/index';
 import {
     FeedConfig,
     VariantWithCustomFields,
     FacebookCatalogItem,
+    FeedGenerationDiagnostics,
 } from './feed-types';
 import {
     getFacebookAvailability,
+    getFeedBaseUrl,
     csvEscape,
 } from './feed-helpers';
 import { PRODUCT_CONDITIONS } from './feed-constants';
 import { LOGGER_CONTEXTS } from '../../constants/core';
 import { DataHubLoggerFactory } from '../../services/logger';
 import { buildBaseFeedItem } from './feed-item-builder';
+import { recordFeedItemWarning, recordGeneratedFeedItem } from './feed-diagnostics';
 
 const feedLogger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.FEED_GENERATOR);
 
@@ -63,28 +66,32 @@ export async function generateFacebookCatalogFeed(
     products: VariantWithCustomFields[],
     config: FeedConfig,
     connection: TransactionalConnection,
+    moneyPrecision: number,
+    diagnostics?: FeedGenerationDiagnostics,
 ): Promise<string> {
+    getFeedBaseUrl(config);
     const rows: string[][] = [FACEBOOK_CATALOG_HEADERS];
 
     for (const variant of products) {
         try {
             const sku = variant.sku || variant.id.toString();
-            const item = await buildBaseFeedItem(ctx, variant, config, connection, getFacebookAvailability, PRODUCT_CONDITIONS.NEW);
+            const item = await buildBaseFeedItem(variant, config, getFacebookAvailability, PRODUCT_CONDITIONS.NEW, moneyPrecision);
             if (!item) {
-                feedLogger.warn(`Skipping variant ${sku}: invalid price (${variant.priceWithTax}) or currency ("${config.options?.currency || ''}")`);
+                const warning = `Skipping variant ${sku}: invalid price (${variant.priceWithTax}) or currency ("${config.options?.currency || ''}")`;
+                feedLogger.warn(recordFeedItemWarning(diagnostics, warning));
                 continue;
             }
 
             const row = [
                 item.id,
-                csvEscape(item.title),
-                csvEscape(item.description),
+                item.title,
+                item.description,
                 item.availability,
                 item.condition,
                 item.price,
                 item.link,
                 item.imageUrl,
-                csvEscape(item.brand || ''),
+                item.brand || '',
                 item.gtin || '',
                 item.mpn || '',
                 item.googleProductCategory || '',
@@ -103,13 +110,16 @@ export async function generateFacebookCatalogFeed(
             ];
 
             rows.push(row);
+            recordGeneratedFeedItem(diagnostics);
         } catch (error) {
-            feedLogger.warn(`Failed to process variant ${variant.id}: ${error}`);
+            const warning = `Failed to process variant ${variant.id}: ${String(error)}`;
+            feedLogger.warn(recordFeedItemWarning(diagnostics, warning));
         }
     }
 
-    // Facebook uses tab-separated values
-    return rows.map(row => row.join('\t')).join('\n');
+    return rows
+        .map(row => row.map(value => csvEscape(value, '\t')).join('\t'))
+        .join('\n');
 }
 
 /**
@@ -120,17 +130,20 @@ export async function generateFacebookCatalogXMLFeed(
     products: VariantWithCustomFields[],
     config: FeedConfig,
     connection: TransactionalConnection,
+    moneyPrecision: number,
+    diagnostics?: FeedGenerationDiagnostics,
 ): Promise<string> {
-    const baseUrl = config.options?.baseUrl || SERVICE_DEFAULTS.EXAMPLE_BASE_URL;
+    const baseUrl = getFeedBaseUrl(config);
 
     const items: FacebookCatalogItem[] = [];
 
     for (const variant of products) {
         try {
             const sku = variant.sku || variant.id.toString();
-            const item = await buildBaseFeedItem(ctx, variant, config, connection, getFacebookAvailability, PRODUCT_CONDITIONS.NEW);
+            const item = await buildBaseFeedItem(variant, config, getFacebookAvailability, PRODUCT_CONDITIONS.NEW, moneyPrecision);
             if (!item) {
-                feedLogger.warn(`Skipping variant ${sku}: invalid price (${variant.priceWithTax}) or currency ("${config.options?.currency || ''}")`);
+                const warning = `Skipping variant ${sku}: invalid price (${variant.priceWithTax}) or currency ("${config.options?.currency || ''}")`;
+                feedLogger.warn(recordFeedItemWarning(diagnostics, warning));
                 continue;
             }
 
@@ -165,8 +178,10 @@ export async function generateFacebookCatalogXMLFeed(
             if (item.customLabels.customLabel4) fbItem.custom_label_4 = item.customLabels.customLabel4;
 
             items.push(fbItem);
+            recordGeneratedFeedItem(diagnostics);
         } catch (error) {
-            feedLogger.warn(`Failed to process variant ${variant.id}: ${error}`);
+            const warning = `Failed to process variant ${variant.id}: ${String(error)}`;
+            feedLogger.warn(recordFeedItemWarning(diagnostics, warning));
         }
     }
 

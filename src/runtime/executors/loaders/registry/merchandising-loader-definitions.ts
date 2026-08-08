@@ -1,0 +1,183 @@
+import { VendureEntityType } from "../../../../constants/enums";
+import {
+    ACTIONS_MODE_OPTIONS,
+    ASSET_ENTITY_TYPE_OPTIONS,
+    CONDITIONS_MODE_OPTIONS,
+    LOAD_STRATEGY_OPTIONS,
+} from "../../../../constants/adapter-schema-options";
+import { LoaderDefinitionEntry, SKIP_DUPLICATES_FIELD, toEntityCode } from "./loader-registry.shared";
+
+export const MERCHANDISING_LOADER_DEFINITIONS: LoaderDefinitionEntry[] = [
+    ['collectionUpsert', {
+        definition: {
+            type: 'LOADER',
+            code: 'collectionUpsert',
+            description: 'Upsert Collection by slug/code; supports create/update/upsert strategy, channel, multi-language, multi-channel, and custom fields.',
+            requires: ['UpdateCatalog'],
+            icon: 'layers',
+            color: '#8b5cf6',
+            entityType: toEntityCode(VendureEntityType.COLLECTION),
+            patchableFields: ['slug', 'name', 'description', 'parentSlug', 'customFields'],
+            schema: {
+                fields: [
+                    { key: 'channel', label: 'Channel code', type: 'string' },
+                    { key: 'strategy', label: 'Load strategy', type: 'select', options: LOAD_STRATEGY_OPTIONS, description: 'UPSERT: create or update. CREATE: only create new. UPDATE: only update existing.' },
+                    SKIP_DUPLICATES_FIELD,
+                    { key: 'slugField', label: 'Slug field', type: 'string', required: true },
+                    { key: 'nameField', label: 'Name field', type: 'string', required: true },
+                    { key: 'parentSlugField', label: 'Parent slug field', type: 'string' },
+                    { key: 'descriptionField', label: 'Description field', type: 'string' },
+                    { key: 'applyFilters', label: 'Apply filters job', type: 'boolean' },
+                    { key: 'customFieldsField', label: 'Custom fields field (object)', type: 'string', description: 'Record field containing custom field values (defaults to "customFields")' },
+                    { key: 'translationsField', label: 'Translations field', type: 'string', description: 'Record field containing multi-language translations (array or object map). Overrides name/slug/description fields.' },
+                    { key: 'channelsField', label: 'Channels field (array/string)', type: 'string', description: 'Record field containing channel codes for dynamic per-record channel assignment (array or comma-separated)' },
+                    { key: 'isPrivateField', label: 'Private flag field', type: 'string', description: 'Record field containing isPrivate boolean flag' },
+                ],
+            },
+        },
+    }],
+    ['promotionUpsert', {
+        definition: {
+            type: 'LOADER',
+            code: 'promotionUpsert',
+            description: 'Upsert Promotion by couponCode; create/update enabled dates/actions/conditions. Supports custom fields.',
+            requires: ['UpdatePromotion'],
+            icon: 'zap',
+            color: '#ec4899',
+            entityType: toEntityCode(VendureEntityType.PROMOTION),
+            patchableFields: ['code', 'name', 'enabled', 'startsAt', 'endsAt', 'customFields'],
+            schema: {
+                fields: [
+                    { key: 'strategy', label: 'Load strategy', type: 'select', options: LOAD_STRATEGY_OPTIONS, description: 'UPSERT: create or update. CREATE: only create new. UPDATE: only update existing.' },
+                    SKIP_DUPLICATES_FIELD,
+                    { key: 'codeField', label: 'Coupon code field', type: 'string', required: true },
+                    { key: 'nameField', label: 'Name field', type: 'string' },
+                    { key: 'enabledField', label: 'Enabled field', type: 'string' },
+                    { key: 'startsAtField', label: 'Starts at field', type: 'string' },
+                    { key: 'endsAtField', label: 'Ends at field', type: 'string' },
+                    { key: 'conditionsField', label: 'Conditions field (JSON)', type: 'string' },
+                    { key: 'conditionsMode', label: 'Conditions update mode', type: 'select', options: CONDITIONS_MODE_OPTIONS },
+                    { key: 'actionsField', label: 'Actions field (JSON)', type: 'string', required: true, description: 'Creation requires at least one valid promotion action.' },
+                    { key: 'actionsMode', label: 'Actions update mode', type: 'select', options: ACTIONS_MODE_OPTIONS },
+                    { key: 'channel', label: 'Channel code', type: 'string' },
+                    { key: 'customFieldsField', label: 'Custom fields field (object)', type: 'string', description: 'Record field containing custom field values (defaults to "customFields")' },
+                    { key: 'descriptionField', label: 'Description field', type: 'string', description: 'Record field containing promotion description (defaults to "description")' },
+                    { key: 'perCustomerUsageLimitField', label: 'Per-customer usage limit field', type: 'string', description: 'Record field containing the per-customer usage limit (integer)' },
+                    { key: 'translationsField', label: 'Translations field', type: 'string', description: 'Record field containing multi-language translations (array or object map). Overrides name/description fields.' },
+                    { key: 'channelsField', label: 'Channels field (array/string)', type: 'string', description: 'Record field containing channel codes for dynamic per-record channel assignment (array or comma-separated)' },
+                ],
+            },
+        },
+    }],
+    ['orderTransition', {
+        definition: {
+            type: 'LOADER',
+            code: 'orderTransition',
+            description: 'Transition an order to a new state by id/code.',
+            requires: ['UpdateOrder'],
+            icon: 'shopping-cart',
+            color: '#f97316',
+            entityType: toEntityCode(VendureEntityType.ORDER),
+            patchableFields: ['orderId', 'orderCode', 'state', 'note'],
+            schema: {
+                fields: [
+                    { key: 'orderIdField', label: 'Order id field', type: 'string' },
+                    { key: 'orderCodeField', label: 'Order code field', type: 'string' },
+                    { key: 'state', label: 'Target state', type: 'string', description: 'Static target state; required when State field is not configured' },
+                    { key: 'stateField', label: 'State field', type: 'string', description: 'Record field containing the target state; required when Target state is not configured' },
+                ],
+            },
+        },
+    }],
+    ['assetAttach', {
+        definition: {
+            type: 'LOADER',
+            code: 'assetAttach',
+            description: 'Attach existing Asset (by id) as featured asset to a Product/Collection by slug.',
+            requires: ['UpdateCatalog'],
+            icon: 'file',
+            color: '#64748b',
+            entityType: toEntityCode(VendureEntityType.ASSET),
+            patchableFields: ['source', 'name', 'description', 'focalPoint'],
+            schema: {
+                fields: [
+                    { key: 'entity', label: 'Entity type', type: 'select', required: true, options: ASSET_ENTITY_TYPE_OPTIONS },
+                    { key: 'slugField', label: 'Slug field', type: 'string', required: true },
+                    { key: 'assetIdField', label: 'Asset ID field', type: 'string', required: true },
+                    { key: 'channel', label: 'Channel code', type: 'string' },
+                ],
+            },
+        },
+    }],
+    ['assetImport', {
+        definition: {
+            type: 'LOADER',
+            code: 'assetImport',
+            description: 'Import Asset from URL. Downloads file and creates asset in Vendure.',
+            requires: ['UpdateCatalog'],
+            icon: 'download',
+            color: '#64748b',
+            entityType: toEntityCode(VendureEntityType.ASSET),
+            patchableFields: ['source', 'name', 'description', 'focalPoint'],
+            schema: {
+                fields: [
+                    { key: 'sourceUrlField', label: 'Source URL field', type: 'string', required: true },
+                    { key: 'filenameField', label: 'Filename field', type: 'string' },
+                    { key: 'nameField', label: 'Name field', type: 'string' },
+                    { key: 'tagsField', label: 'Tags field (array)', type: 'string', description: 'Record field containing an array of nonblank tag strings' },
+                    { key: 'channel', label: 'Channel code', type: 'string' },
+                ],
+            },
+        },
+    }],
+    ['facetUpsert', {
+        definition: {
+            type: 'LOADER',
+            code: 'facetUpsert',
+            description: 'Upsert Facet by code; create or update facet. Supports custom fields.',
+            requires: ['UpdateCatalog'],
+            icon: 'filter',
+            color: '#3b82f6',
+            entityType: toEntityCode(VendureEntityType.FACET),
+            patchableFields: ['code', 'name', 'translations', 'customFields'],
+            schema: {
+                fields: [
+                    { key: 'strategy', label: 'Load strategy', type: 'select', options: LOAD_STRATEGY_OPTIONS, description: 'UPSERT: create or update. CREATE: only create new. UPDATE: only update existing.' },
+                    SKIP_DUPLICATES_FIELD,
+                    { key: 'codeField', label: 'Code field', type: 'string', required: true },
+                    { key: 'nameField', label: 'Name field', type: 'string', required: true },
+                    { key: 'privateField', label: 'Private field', type: 'string' },
+                    { key: 'channel', label: 'Channel code', type: 'string' },
+                    { key: 'customFieldsField', label: 'Custom fields field (object)', type: 'string', description: 'Record field containing custom field values (defaults to "customFields")' },
+                    { key: 'translationsField', label: 'Translations field', type: 'string', description: 'Record field containing multi-language translations (array or object map). Overrides name field.' },
+                    { key: 'channelsField', label: 'Channels field (array/string)', type: 'string', description: 'Record field containing channel codes for dynamic per-record channel assignment (array or comma-separated)' },
+                ],
+            },
+        },
+    }],
+    ['facetValueUpsert', {
+        definition: {
+            type: 'LOADER',
+            code: 'facetValueUpsert',
+            description: 'Upsert FacetValue by code; requires facet to exist. Supports custom fields.',
+            requires: ['UpdateCatalog'],
+            icon: 'filter',
+            color: '#3b82f6',
+            entityType: toEntityCode(VendureEntityType.FACET_VALUE),
+            patchableFields: ['code', 'name', 'facetCode', 'translations', 'customFields'],
+            schema: {
+                fields: [
+                    { key: 'strategy', label: 'Load strategy', type: 'select', options: LOAD_STRATEGY_OPTIONS, description: 'UPSERT: create or update. CREATE: only create new. UPDATE: only update existing.' },
+                    SKIP_DUPLICATES_FIELD,
+                    { key: 'facetCodeField', label: 'Facet code field', type: 'string', required: true },
+                    { key: 'codeField', label: 'Value code field', type: 'string', required: true },
+                    { key: 'nameField', label: 'Value name field', type: 'string', required: true },
+                    { key: 'channel', label: 'Channel code', type: 'string' },
+                    { key: 'customFieldsField', label: 'Custom fields field (object)', type: 'string', description: 'Record field containing custom field values (defaults to "customFields")' },
+                    { key: 'translationsField', label: 'Translations field', type: 'string', description: 'Record field containing multi-language translations (array or object map). Overrides name field.' },
+                    { key: 'channelsField', label: 'Channels field (array/string)', type: 'string', description: 'Record field containing channel codes for dynamic per-record channel assignment (array or comma-separated)' },
+                ],
+            },
+        },
+    }],
+];

@@ -1,4 +1,4 @@
-import { JsonObject, SingleRecordOperator, AdapterOperatorHelpers, StepConfigSchema } from '../../../../src';
+import { CURRENT_ADAPTER_API_VERSION, JsonObject, SingleRecordOperator, AdapterOperatorHelpers, StepConfigSchema } from '../../../../src';
 
 const EXCHANGE_RATES: Record<string, Record<string, number>> = {
     USD: { EUR: 0.92, GBP: 0.79, JPY: 149.50, CAD: 1.36 },
@@ -54,6 +54,7 @@ export const currencyConvertOperator: SingleRecordOperator<CurrencyConvertConfig
     schema: currencyConvertSchema,
     icon: 'currency-exchange',
     version: '1.0.0',
+    apiVersion: CURRENT_ADAPTER_API_VERSION,
 
     applyOne(record: JsonObject, config: CurrencyConvertConfig, helpers: AdapterOperatorHelpers): JsonObject | null {
         const { field, from, to, targetField, round = 2 } = config;

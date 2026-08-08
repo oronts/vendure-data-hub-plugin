@@ -16,7 +16,9 @@ export function StringField({ field, value, onChange, compact, disabled }: Strin
     const fieldType = normalizeFieldType(field.type);
     const inputType = fieldType === 'password' ? 'password' :
                       fieldType === 'email' ? 'email' :
-                      fieldType === 'url' ? 'url' : 'text';
+                      fieldType === 'url' ? 'url' :
+                      fieldType === 'date' ? 'date' :
+                      fieldType === 'datetime' ? 'datetime-local' : 'text';
 
     const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
         onChange(e.target.value);
@@ -30,6 +32,10 @@ export function StringField({ field, value, onChange, compact, disabled }: Strin
             onChange={handleChange}
             placeholder={field.placeholder}
             disabled={disabled}
+            required={field.required && field.default !== ''}
+            minLength={field.validation?.minLength}
+            maxLength={field.validation?.maxLength}
+            pattern={field.validation?.pattern}
             className={compact ? 'h-8 text-sm' : ''}
         />
     );

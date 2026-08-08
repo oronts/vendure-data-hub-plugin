@@ -14,9 +14,17 @@ import {
     ValidationIssueSeverity,
     LineageOutcome,
     RecordProcessingState,
-    SANDBOX,
 } from '../../constants/index';
 import { SandboxStepExecutor, DataLineageTracker } from './sandbox';
+import { DefinitionValidationService } from '../validation/definition-validation.service';
+import { PipelineExecutionPermissionService } from '../pipeline/pipeline-execution-permission.service';
+import {
+    normalizeSandboxOptions,
+    type NormalizedSandboxOptions,
+    type SandboxOptions,
+} from './sandbox/sandbox-options';
+
+export type { SandboxOptions } from './sandbox/sandbox-options';
 
 /**
  * Detailed step execution result for sandbox
@@ -156,28 +164,6 @@ export interface RecordState {
     notes?: string;
 }
 
-export interface SandboxOptions {
-    maxRecords?: number;
-    maxSamplesPerStep?: number;
-    includeLineage?: boolean;
-    seedData?: Record<string, unknown>[];
-    stopOnError?: boolean;
-    timeoutMs?: number;
-    skipSteps?: string[];
-    startFromStep?: string;
-}
-
-const DEFAULT_SANDBOX_OPTIONS: Required<SandboxOptions> = {
-    maxRecords: SANDBOX.MAX_RECORDS,
-    maxSamplesPerStep: SANDBOX.MAX_SAMPLES_PER_STEP,
-    includeLineage: true,
-    seedData: [],
-    stopOnError: false,
-    timeoutMs: SANDBOX.DEFAULT_TIMEOUT_MS,
-    skipSteps: [],
-    startFromStep: '',
-};
-
 /**
  * Service for sandbox execution and impact preview.
  * Runs pipeline steps in sandbox mode with lineage tracking.
@@ -190,6 +176,8 @@ export class SandboxService {
     constructor(
         private connection: TransactionalConnection,
         private adapterRuntime: AdapterRuntimeService,
+        private definitionValidator: DefinitionValidationService,
+        private executionPermissions: PipelineExecutionPermissionService,
         loggerFactory: DataHubLoggerFactory,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.PIPELINE_SERVICE);
@@ -200,7 +188,12 @@ export class SandboxService {
      * Execute a full sandbox run
      */
     async execute(ctx: RequestContext, pipelineId: ID, options: SandboxOptions = {}): Promise<SandboxResult> {
-        const pipeline = await this.connection.getRepository(ctx, Pipeline).findOne({ where: { id: pipelineId } });
+        const pipeline = await this.connection.findOneInChannel(
+            ctx,
+            Pipeline,
+            pipelineId,
+            ctx.channelId,
+        );
         if (!pipeline) {
             throw new Error(`Pipeline ${pipelineId} not found`);
         }
@@ -211,12 +204,17 @@ export class SandboxService {
      * Execute sandbox with a specific definition (for testing unpublished changes)
      */
     async executeWithDefinition(ctx: RequestContext, definition: PipelineDefinition, options: SandboxOptions = {}): Promise<SandboxResult> {
-        const opts = { ...DEFAULT_SANDBOX_OPTIONS, ...options };
+        this.definitionValidator.validate(definition);
+        await this.executionPermissions.assertAllowed(ctx, definition);
+        const opts = normalizeSandboxOptions(options);
         const startTime = Date.now();
         const result = this.createInitialResult();
         const lineageTracker = new DataLineageTracker(opts);
 
         const records: Record<string, unknown>[] = opts.seedData.length > 0 ? [...opts.seedData] : [];
+        if (records.length > 0) {
+            lineageTracker.initialize(records);
+        }
 
         try {
             const startIdx = this.findStartStepIndex(definition, opts);
@@ -245,7 +243,7 @@ export class SandboxService {
         };
     }
 
-    private findStartStepIndex(definition: PipelineDefinition, opts: Required<SandboxOptions>): number {
+    private findStartStepIndex(definition: PipelineDefinition, opts: NormalizedSandboxOptions): number {
         if (!opts.startFromStep) return 0;
 
         const idx = definition.steps.findIndex(s => s.key === opts.startFromStep);
@@ -259,7 +257,7 @@ export class SandboxService {
         definition: PipelineDefinition,
         startIdx: number,
         records: Record<string, unknown>[],
-        opts: Required<SandboxOptions>,
+        opts: NormalizedSandboxOptions,
         lineageTracker: DataLineageTracker,
         result: SandboxResult,
         startTime: number,
@@ -328,14 +326,25 @@ export class SandboxService {
     }
 
     private updateMetrics(result: SandboxResult, stepResult: StepExecutionResult): void {
-        result.metrics.totalRecordsProcessed += stepResult.recordsIn;
+        result.metrics.totalRecordsProcessed = Math.max(
+            result.metrics.totalRecordsProcessed,
+            stepResult.recordsIn,
+            stepResult.recordsOut
+                + stepResult.recordsFiltered
+                + stepResult.recordsErrored,
+        );
         result.metrics.totalRecordsFiltered += stepResult.recordsFiltered;
         result.metrics.totalRecordsFailed += stepResult.recordsErrored;
     }
 
-    private finalizeResult(result: SandboxResult, opts: Required<SandboxOptions>, lineageTracker: DataLineageTracker): void {
+    private finalizeResult(result: SandboxResult, opts: NormalizedSandboxOptions, lineageTracker: DataLineageTracker): void {
         if (opts.includeLineage) result.dataLineage = lineageTracker.getLineageRecords();
-        result.metrics.totalRecordsSucceeded = result.metrics.totalRecordsProcessed - result.metrics.totalRecordsFailed - result.metrics.totalRecordsFiltered;
+        result.metrics.totalRecordsSucceeded = Math.max(
+            0,
+            result.metrics.totalRecordsProcessed
+                - result.metrics.totalRecordsFailed
+                - result.metrics.totalRecordsFiltered,
+        );
         if (result.errors.length > 0) result.status = SandboxStatus.ERROR;
         else if (result.warnings.length > 0) result.status = SandboxStatus.WARNING;
     }

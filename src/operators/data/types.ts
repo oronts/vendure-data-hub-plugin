@@ -33,7 +33,7 @@ export interface TemplateOperatorConfig extends BaseOperatorConfig {
 /**
  * Hash algorithm types supported by the hash operator.
  */
-export type HashAlgorithm = 'md5' | 'sha1' | 'sha256' | 'sha512';
+export type HashAlgorithm = 'sha256' | 'sha512';
 
 /**
  * Configuration for generating hash of field values.
@@ -43,7 +43,7 @@ export interface HashOperatorConfig extends BaseOperatorConfig {
     readonly source: string | string[];
     /** Target field path for the hash result */
     readonly target: string;
-    /** Hash algorithm: md5, sha1, sha256, sha512. Default: sha256 */
+    /** Hash algorithm: sha256 or sha512. Default: sha256 */
     readonly algorithm?: HashAlgorithm;
     /** Output encoding: hex, base64. Default: hex */
     readonly encoding?: 'hex' | 'base64';

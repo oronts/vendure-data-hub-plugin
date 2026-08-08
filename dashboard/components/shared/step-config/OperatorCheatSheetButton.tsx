@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { Trans, useLingui } from '@lingui/react/macro';
 import { Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Separator } from '@vendure/dashboard';
 import { BookOpen } from 'lucide-react';
 import { useComparisonOperators } from '../../../hooks/api/use-config-options';
@@ -6,7 +7,8 @@ import { useComparisonOperators } from '../../../hooks/api/use-config-options';
 type ButtonSize = 'sm' | 'default' | 'lg' | 'icon';
 type ButtonVariant = 'default' | 'destructive' | 'outline' | 'secondary' | 'ghost' | 'link';
 
-export function OperatorCheatSheetButton({ label = 'Operator cheat-sheet', size = 'sm', variant = 'outline' }: { label?: string; size?: ButtonSize; variant?: ButtonVariant }) {
+export function OperatorCheatSheetButton({ label, size = 'sm', variant = 'outline' }: { label?: string; size?: ButtonSize; variant?: ButtonVariant }) {
+    const { t } = useLingui();
     const [open, setOpen] = React.useState(false);
     const { operators } = useComparisonOperators();
 
@@ -14,7 +16,7 @@ export function OperatorCheatSheetButton({ label = 'Operator cheat-sheet', size 
         <>
             <Button variant={variant} size={size} className="gap-1.5" onClick={() => setOpen(true)}>
                 <BookOpen className="w-3.5 h-3.5" />
-                {label}
+                {label ?? t`Operator cheat sheet`}
             </Button>
             <Dialog open={open} onOpenChange={setOpen}>
                 <DialogContent className="max-w-lg">
@@ -24,8 +26,8 @@ export function OperatorCheatSheetButton({ label = 'Operator cheat-sheet', size 
                                 <BookOpen className="w-4 h-4 text-primary" />
                             </div>
                             <div>
-                                <DialogTitle>Operator Cheat Sheet</DialogTitle>
-                                <DialogDescription>Quick reference for comparison operators in filter rules</DialogDescription>
+                                <DialogTitle><Trans>Operator Cheat Sheet</Trans></DialogTitle>
+                                <DialogDescription><Trans>Quick reference for comparison operators in filter rules</Trans></DialogDescription>
                             </div>
                         </div>
                     </DialogHeader>
@@ -40,7 +42,7 @@ export function OperatorCheatSheetButton({ label = 'Operator cheat-sheet', size 
                                     <span className="text-foreground">{op.description}</span>
                                     {op.example && (
                                         <span className="text-muted-foreground ml-1.5 font-mono text-[11px]">
-                                            e.g. {op.example}
+                                            {t`e.g. ${op.example}`}
                                         </span>
                                     )}
                                 </div>

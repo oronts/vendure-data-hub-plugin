@@ -55,3 +55,12 @@ export function hasMoreByRecordCount(
 ): boolean {
     return recordCount >= pageSize;
 }
+
+export function resolveBoundedLimit(
+    value: number,
+    defaultValue: number,
+    maximum: number,
+): number {
+    if (!Number.isFinite(value)) return defaultValue;
+    return Math.max(1, Math.min(Math.floor(value), maximum));
+}

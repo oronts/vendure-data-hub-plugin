@@ -25,5 +25,3 @@ export const TEST_STATUS = {
     ERROR: 'error',
     WARNING: 'warning',
 } as const;
-
-export { CHECKPOINT_STRATEGY } from '../../shared/constants';

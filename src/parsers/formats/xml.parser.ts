@@ -2,62 +2,19 @@ import { ParseResult, ParseError, XmlParseOptions } from '../types';
 import { XML_PARSER } from '../../constants/defaults/parsers-defaults';
 import { extractFields } from '../helpers/field-extraction';
 import { getErrorMessage } from '../../utils/error.utils';
+import { XMLParser, XMLValidator } from 'fast-xml-parser';
 
 const DEFAULT_RECORD_TAGS: readonly string[] = XML_PARSER.DEFAULT_RECORD_TAGS;
 const DEFAULT_ATTR_PREFIX = XML_PARSER.DEFAULT_ATTR_PREFIX;
-const MAX_TAG_NAME_LENGTH = XML_PARSER.MAX_TAG_NAME_LENGTH;
 
-/** Validates a tag name to prevent ReDoS and injection attacks */
-function isValidTagName(tagName: string): boolean {
-    // Check length to prevent ReDoS
-    if (!tagName || tagName.length > MAX_TAG_NAME_LENGTH) {
-        return false;
-    }
-    // Only allow alphanumeric, underscore, hyphen, and colon (for namespaces)
-    return /^[a-zA-Z_][a-zA-Z0-9_\-:]*$/.test(tagName);
+interface ElementMatch {
+    readonly name: string;
+    readonly value: unknown;
 }
 
-export function parseXmlElement(
-    xml: string,
-    attrPrefix: string = DEFAULT_ATTR_PREFIX,
-): Record<string, unknown> | null {
-    const result: Record<string, unknown> = {};
-
-    // Extract attributes from root element
-    const rootMatch = xml.match(/^<([^\s>]+)([^>]*)>/);
-    if (rootMatch) {
-        const attrs = rootMatch[2];
-        const attrRegex = /(\w+)=["']([^"']*)["']/g;
-        let attrMatch;
-        while ((attrMatch = attrRegex.exec(attrs)) !== null) {
-            result[attrPrefix + attrMatch[1]] = parseXmlValue(attrMatch[2]);
-        }
-    }
-
-    // Extract child elements with simple values
-    const childRegex = /<(\w+)(?:[^>]*)>([^<]*)<\/\1>/g;
-    let childMatch;
-    while ((childMatch = childRegex.exec(xml)) !== null) {
-        const key = childMatch[1];
-        const value = childMatch[2].trim();
-        result[key] = parseXmlValue(value);
-    }
-
-    // Extract self-closing elements with attributes
-    const selfClosingRegex = /<(\w+)\s+([^/>]+)\/>/g;
-    let selfMatch;
-    while ((selfMatch = selfClosingRegex.exec(xml)) !== null) {
-        const tagName = selfMatch[1];
-        const attrs = selfMatch[2];
-
-        // Extract value attribute first
-        const valueMatch = attrs.match(/value=["']([^"']*)["']/);
-        if (valueMatch) {
-            result[tagName] = parseXmlValue(valueMatch[1]);
-        }
-    }
-
-    return Object.keys(result).length > 0 ? result : null;
+interface RecordPath {
+    readonly descendant: boolean;
+    readonly segments: readonly string[];
 }
 
 function parseXmlValue(value: string): string | number | boolean | null {
@@ -79,50 +36,194 @@ function parseXmlValue(value: string): string | number | boolean | null {
     return trimmed;
 }
 
-function extractRecords(
-    content: string,
-    tagNames: readonly string[],
-    attrPrefix: string,
-): Record<string, unknown>[] {
-    const records: Record<string, unknown>[] = [];
-
-    for (const tagName of tagNames) {
-        // Validate tag name to prevent ReDoS attacks
-        if (!isValidTagName(tagName)) {
-            continue;
-        }
-
-        // Escape special regex characters in tag name (belt and suspenders after validation)
-        const escapedTagName = tagName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-        // Match both self-closing and content tags
-        const regex = new RegExp(`<${escapedTagName}[^>]*(?:>[\\s\\S]*?<\\/${escapedTagName}>|\\/>)`, 'gi');
-        let match;
-
-        while ((match = regex.exec(content)) !== null) {
-            const record = parseXmlElement(match[0], attrPrefix);
-            if (record) {
-                records.push(record);
-            }
-        }
-
-        // Stop if we found records
-        if (records.length > 0) break;
-    }
-
-    return records;
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function parseRecordPath(recordPath?: string): readonly string[] {
-    if (!recordPath) {
-        return DEFAULT_RECORD_TAGS;
+function normalizeXmlValue(value: unknown): unknown {
+    if (typeof value === 'string') {
+        return parseXmlValue(value);
+    }
+    if (Array.isArray(value)) {
+        return value.map(normalizeXmlValue);
+    }
+    if (isRecord(value)) {
+        return Object.fromEntries(
+            Object.entries(value).map(([key, child]) => [
+                key,
+                normalizeXmlValue(child),
+            ]),
+        );
+    }
+    return value;
+}
+
+function createXmlParser(attrPrefix: string): XMLParser {
+    return new XMLParser({
+        attributeNamePrefix: attrPrefix,
+        ignoreAttributes: false,
+        parseAttributeValue: false,
+        parseTagValue: false,
+        processEntities: true,
+        removeNSPrefix: false,
+        trimValues: true,
+    });
+}
+
+function parseDocument(
+    content: string,
+    attrPrefix: string,
+): Record<string, unknown> {
+    const document: unknown = createXmlParser(attrPrefix).parse(content);
+    return isRecord(document)
+        ? normalizeXmlValue(document) as Record<string, unknown>
+        : {};
+}
+
+function expandMatch(name: string, value: unknown): ElementMatch[] {
+    return Array.isArray(value)
+        ? value.map(item => ({ name, value: item }))
+        : [{ name, value }];
+}
+
+function matchesElementName(actual: string, requested: string): boolean {
+    if (actual === requested) {
+        return true;
+    }
+    return !requested.includes(':') && actual.split(':').at(-1) === requested;
+}
+
+function findDirectMatches(value: unknown, segment: string): ElementMatch[] {
+    if (Array.isArray(value)) {
+        return value.flatMap(item => findDirectMatches(item, segment));
+    }
+    if (!isRecord(value)) {
+        return [];
     }
 
-    // Handle pipe-separated alternatives
+    return Object.entries(value).flatMap(([name, child]) =>
+        matchesElementName(name, segment) ? expandMatch(name, child) : [],
+    );
+}
+
+function followPath(
+    value: unknown,
+    segments: readonly string[],
+): ElementMatch[] {
+    let matches: ElementMatch[] = [{ name: '', value }];
+
+    for (const segment of segments) {
+        matches = matches.flatMap(match =>
+            findDirectMatches(match.value, segment),
+        );
+        if (matches.length === 0) {
+            break;
+        }
+    }
+
+    return matches;
+}
+
+function findDescendantMatches(
+    value: unknown,
+    segments: readonly string[],
+): ElementMatch[] {
+    if (segments.length === 0) {
+        return [];
+    }
+
+    const matches: ElementMatch[] = [];
+
+    const visit = (candidate: unknown): void => {
+        if (Array.isArray(candidate)) {
+            candidate.forEach(visit);
+            return;
+        }
+        if (!isRecord(candidate)) {
+            return;
+        }
+
+        for (const [name, child] of Object.entries(candidate)) {
+            if (matchesElementName(name, segments[0])) {
+                const initialMatches = expandMatch(name, child);
+                matches.push(
+                    ...(segments.length === 1
+                        ? initialMatches
+                        : initialMatches.flatMap(match =>
+                            followPath(match.value, segments.slice(1)),
+                        )),
+                );
+            }
+            visit(child);
+        }
+    };
+
+    visit(value);
+    return matches;
+}
+
+function parseRecordPaths(recordPath?: string): readonly RecordPath[] {
+    if (!recordPath) {
+        return DEFAULT_RECORD_TAGS.map(tagName => ({
+            descendant: true,
+            segments: [tagName],
+        }));
+    }
+
     return recordPath
         .split('|')
-        .map(p => p.replace(/^\/\//, '').split('/').pop() ?? '')
-        .filter(Boolean);
+        .map(path => path.trim())
+        .filter(Boolean)
+        .map(path => ({
+            descendant: path.startsWith('//'),
+            segments: path
+                .replace(/^\.?\/+/, '')
+                .split(/[/.]/)
+                .map(segment => segment.trim())
+                .filter(Boolean),
+        }))
+        .filter(path => path.segments.length > 0);
+}
+
+function toRecord(match: ElementMatch): Record<string, unknown> {
+    return isRecord(match.value)
+        ? match.value
+        : { [match.name]: match.value };
+}
+
+function extractRecords(
+    document: Record<string, unknown>,
+    paths: readonly RecordPath[],
+): Record<string, unknown>[] {
+    for (const path of paths) {
+        const matches = path.descendant
+            ? findDescendantMatches(document, path.segments)
+            : followPath(document, path.segments);
+        if (matches.length > 0) {
+            return matches.map(toRecord);
+        }
+    }
+
+    return [];
+}
+
+function getRootMatch(
+    document: Record<string, unknown>,
+): ElementMatch | undefined {
+    const root = Object.entries(document)[0];
+    return root ? { name: root[0], value: root[1] } : undefined;
+}
+
+export function parseXmlElement(
+    xml: string,
+    attrPrefix: string = DEFAULT_ATTR_PREFIX,
+): Record<string, unknown> | null {
+    try {
+        const root = getRootMatch(parseDocument(xml, attrPrefix));
+        return root ? toRecord(root) : null;
+    } catch {
+        return null;
+    }
 }
 
 
@@ -134,10 +235,29 @@ export function parseXml(
     const warnings: string[] = [];
 
     try {
+        const validation = XMLValidator.validate(content);
+        if (validation !== true) {
+            return {
+                success: false,
+                format: 'XML' as const,
+                records: [],
+                fields: [],
+                totalRows: 0,
+                errors: [{ message: validation.err.msg }],
+                warnings: [],
+            };
+        }
         const attrPrefix = options.attributePrefix ?? DEFAULT_ATTR_PREFIX;
-        const tagNames = parseRecordPath(options.recordPath);
+        const document = parseDocument(content, attrPrefix);
+        const paths = parseRecordPaths(options.recordPath);
 
-        const records = extractRecords(content, tagNames, attrPrefix);
+        const extractedRecords = extractRecords(document, paths);
+        const previewLimit = options.preview === undefined || !Number.isFinite(options.preview)
+            ? undefined
+            : Math.max(1, Math.floor(options.preview));
+        const records = previewLimit === undefined
+            ? extractedRecords
+            : extractedRecords.slice(0, previewLimit);
 
         if (records.length === 0) {
             if (options.recordPath) {
@@ -155,7 +275,7 @@ export function parseXml(
             format: 'XML' as const,
             records,
             fields,
-            totalRows: records.length,
+            totalRows: extractedRecords.length,
             errors,
             warnings,
         };
@@ -178,58 +298,25 @@ export function isXml(content: string): boolean {
 }
 
 export function getRootElement(content: string): string | undefined {
-    // Skip XML declaration
-    let xml = content.trim();
-    if (xml.startsWith('<?xml')) {
-        const endDecl = xml.indexOf('?>');
-        if (endDecl !== -1) {
-            xml = xml.slice(endDecl + 2).trim();
-        }
+    try {
+        return getRootMatch(parseDocument(content, DEFAULT_ATTR_PREFIX))?.name;
+    } catch {
+        return undefined;
     }
-
-    // Skip comments
-    while (xml.startsWith('<!--')) {
-        const endComment = xml.indexOf('-->');
-        if (endComment === -1) break;
-        xml = xml.slice(endComment + 3).trim();
-    }
-
-    // Get root element name
-    const rootMatch = xml.match(/^<(\w+)/);
-    return rootMatch?.[1];
 }
 
 export function getChildElementNames(content: string): string[] {
-    const root = getRootElement(content);
-    if (!root || !isValidTagName(root)) return [];
-
-    // Escape special regex characters in root element name
-    const escapedRoot = root.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-    // Find content inside root element
-    const startTagRegex = new RegExp(`<${escapedRoot}[^>]*>`);
-    const endTagRegex = new RegExp(`</${escapedRoot}>`);
-
-    const startMatch = startTagRegex.exec(content);
-    const endMatch = endTagRegex.exec(content);
-
-    if (!startMatch || !endMatch) return [];
-
-    const innerContent = content.slice(
-        startMatch.index + startMatch[0].length,
-        endMatch.index,
-    );
-
-    // Find all element names
-    const names = new Set<string>();
-    const elementRegex = /<(\w+)[\s>]/g;
-    let match;
-
-    while ((match = elementRegex.exec(innerContent)) !== null) {
-        names.add(match[1]);
+    try {
+        const root = getRootMatch(parseDocument(content, DEFAULT_ATTR_PREFIX));
+        if (!root || !isRecord(root.value)) {
+            return [];
+        }
+        return Object.keys(root.value).filter(
+            name => name !== '#text' && !name.startsWith(DEFAULT_ATTR_PREFIX),
+        );
+    } catch {
+        return [];
     }
-
-    return Array.from(names);
 }
 
 export function escapeXml(value: string): string {

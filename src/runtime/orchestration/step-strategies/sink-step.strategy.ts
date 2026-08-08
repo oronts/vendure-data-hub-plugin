@@ -69,8 +69,14 @@ export class SinkStepStrategy implements StepStrategy {
     }
 
     private async executeSink(context: StepExecutionContext, records: RecordObject[]): Promise<{ ok: number; fail: number }> {
-        const { ctx, step, onRecordError } = context;
-        return this.sinkExecutor.execute(ctx, step, records, onRecordError);
+        const { ctx, step, onRecordError, pipelineContext } = context;
+        return this.sinkExecutor.execute(
+            ctx,
+            step,
+            records,
+            onRecordError,
+            pipelineContext,
+        );
     }
 
     private async runAfterHook(context: StepExecutionContext, records: RecordObject[]): Promise<RecordObject[]> {

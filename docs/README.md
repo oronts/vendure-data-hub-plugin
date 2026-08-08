@@ -32,7 +32,7 @@ New to Data Hub? Start here for installation, basic setup, and your first pipeli
 - [Core Concepts](./getting-started/concepts.md)
 
 ### [User Guide](./user-guide/README.md)
-Learn how to use the Data Hub Admin UI to create and manage pipelines.
+Learn how to use Data Hub in the Vendure Dashboard to create and manage pipelines.
 
 - [Creating Pipelines](./user-guide/pipelines.md)
 - [Import/Export Wizards](./user-guide/wizards.md) - Step-by-step wizard guides
@@ -55,6 +55,7 @@ For developers who want to use the code-first DSL or extend the plugin.
   - [Operators](./developer-guide/dsl/operators.md)
   - [Examples](./developer-guide/dsl/examples.md)
 - [Testing Guide](./developer-guide/testing.md) - Unit, integration, and E2E testing
+- [Programmatic Field Mapping](./developer-guide/field-mapping.md) - Typed mapping services for custom plugins
 - [Extending the Plugin](./developer-guide/extending/README.md)
   - [Custom Extractors](./developer-guide/extending/custom-extractors.md)
   - [Custom Loaders](./developer-guide/extending/custom-loaders.md)
@@ -91,7 +92,7 @@ Complete reference documentation for all adapters and operators.
 |------|---------------|
 | Install the plugin | [Installation](./getting-started/installation.md) |
 | Create your first pipeline | [Quick Start](./getting-started/quick-start.md) |
-| Import products from API | [REST API Extractor](./reference/extractors.md#rest-api-extractor) |
+| Import products from API | [HTTP API Extractor](./reference/extractors.md#http-api-extractor) |
 | Use import/export wizards | [Wizards Guide](./user-guide/wizards.md) |
 | Real-world pipeline examples | [Advanced Recipes](./user-guide/recipes.md) |
 | Sync to search engine | [Search Sinks](./reference/sinks.md) |
@@ -99,6 +100,7 @@ Complete reference documentation for all adapters and operators.
 | Use code-first DSL | [Pipeline Builder](./developer-guide/dsl/pipeline-builder.md) |
 | DSL type reference | [Schema Reference](./developer-guide/dsl/schema-reference.md) |
 | Test your pipelines | [Testing Guide](./developer-guide/testing.md) |
+| Map records in a custom plugin | [Programmatic Field Mapping](./developer-guide/field-mapping.md) |
 | Create custom extractor | [Custom Extractors](./developer-guide/extending/custom-extractors.md) |
 | Register pipeline hooks | [Configuration](./deployment/configuration.md#scripts) |
 | Add custom templates | [Extending](./developer-guide/extending/README.md#template-registration) |

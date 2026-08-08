@@ -39,6 +39,8 @@ vitest.config.*
 # Build artifacts
 *.map
 *.tsbuildinfo
+dist/dashboard/assets/
+dist/dashboard/index.html
 
 # Misc
 .DS_Store

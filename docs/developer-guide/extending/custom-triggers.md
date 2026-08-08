@@ -1,995 +1,174 @@
-# Custom Triggers
-
-Create custom trigger types to start pipelines from new event sources.
-
-## Overview
-
-Data Hub supports several built-in trigger types:
-
-| Type | Description | Status |
-|------|-------------|--------|
-| `MANUAL` | Triggered via UI or API | ✅ Implemented |
-| `SCHEDULE` | Cron-based scheduling | ✅ Implemented |
-| `WEBHOOK` | HTTP webhook endpoint | ✅ Implemented |
-| `EVENT` | Vendure event subscription | ✅ Implemented |
-| `FILE` | File watch (FTP/S3/SFTP) | ✅ Implemented |
-| `MESSAGE` | Queue/messaging | ✅ Implemented |
-
-This guide covers how to implement custom trigger handlers. For production use, the built-in FILE and MESSAGE triggers cover most event-driven scenarios.
-
-## Trigger Architecture
-
-```
-┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
-│  Trigger Source │────▶│  Trigger Handler │────▶│ Pipeline Engine │
-│  (Queue/Event)  │     │  (Your Code)     │     │  (Execution)    │
-└─────────────────┘     └──────────────────┘     └─────────────────┘
-```
-
-## Implementing a Trigger Handler
-
-### Step 1: Define Trigger Configuration
-
-```typescript
-// src/triggers/message-trigger.types.ts
-
-import { TriggerType } from '@oronts/vendure-data-hub-plugin';
-
-export interface MessageTriggerConfig {
-    /** Connection code for queue system */
-    connectionCode: string;
-    /** Queue or topic name */
-    queue: string;
-    /** Consumer group (for Kafka) */
-    consumerGroup?: string;
-    /** Batch size for consuming messages */
-    batchSize?: number;
-    /** Acknowledgment mode */
-    ackMode?: 'AUTO' | 'MANUAL';
-    /** Dead letter queue for failed messages */
-    deadLetterQueue?: string;
-    /** Max retries before DLQ */
-    maxRetries?: number;
-}
-
-export interface MessagePayload {
-    id: string;
-    body: unknown;
-    headers?: Record<string, string>;
-    timestamp: string;
-    retryCount?: number;
-}
-```
-
-### Step 2: Create the Trigger Handler
-
-```typescript
-// src/triggers/message-trigger.handler.ts
-
-import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
-import { RequestContext, TransactionalConnection } from '@vendure/core';
-import {
-    PipelineExecutionService,
-    ConnectionService,
-    DataHubLogger,
-    DataHubLoggerFactory,
-} from '@oronts/vendure-data-hub-plugin';
-import { MessageTriggerConfig, MessagePayload } from './message-trigger.types';
-
-@Injectable()
-export class MessageTriggerHandler implements OnModuleInit, OnModuleDestroy {
-    private readonly logger: DataHubLogger;
-    private consumers: Map<string, QueueConsumer> = new Map();
-    private isRunning = false;
-
-    constructor(
-        private pipelineService: PipelineExecutionService,
-        private connectionService: ConnectionService,
-        private connection: TransactionalConnection,
-        loggerFactory: DataHubLoggerFactory,
-    ) {
-        this.logger = loggerFactory.createLogger('MessageTriggerHandler');
-    }
-
-    async onModuleInit() {
-        // Load all pipelines with message triggers and start consumers
-        await this.initializeConsumers();
-        this.isRunning = true;
-    }
-
-    async onModuleDestroy() {
-        this.isRunning = false;
-        await this.stopAllConsumers();
-    }
-
-    /**
-     * Initialize consumers for all pipelines with message triggers
-     */
-    private async initializeConsumers() {
-        const ctx = RequestContext.empty();
-        const pipelines = await this.pipelineService.findPipelinesWithTriggerType(ctx, 'message');
-
-        for (const pipeline of pipelines) {
-            // Find message trigger by TYPE in steps array
-            const messageTriggers = findEnabledTriggersByType(pipeline.definition, 'message');
-            for (const trigger of messageTriggers) {
-                const config = trigger.config as MessageTriggerConfig;
-                await this.startConsumer(pipeline.id, pipeline.code, config);
-            }
-        }
-
-        this.logger.info(`Initialized ${this.consumers.size} message consumers`);
-    }
-
-    /**
-     * Start a consumer for a specific pipeline
-     */
-    async startConsumer(pipelineId: string, pipelineCode: string, config: MessageTriggerConfig) {
-        const key = `${pipelineCode}:${config.queue}`;
-
-        if (this.consumers.has(key)) {
-            this.logger.warn(`Consumer already exists for ${key}`);
-            return;
-        }
-
-        try {
-            // Get connection configuration
-            const ctx = RequestContext.empty();
-            const connection = await this.connectionService.findByCode(ctx, config.connectionCode);
-
-            if (!connection) {
-                throw new Error(`Connection not found: ${config.connectionCode}`);
-            }
-
-            // Create appropriate consumer based on connection type
-            const consumer = await this.createConsumer(connection.type, connection.config, config);
-
-            // Set up message handler
-            consumer.onMessage(async (message: MessagePayload) => {
-                await this.handleMessage(pipelineId, pipelineCode, config, message);
-            });
-
-            // Start consuming
-            await consumer.start();
-
-            this.consumers.set(key, consumer);
-            this.logger.info(`Started consumer for ${key}`);
-        } catch (error) {
-            this.logger.error(`Failed to start consumer for ${key}`, error);
-        }
-    }
-
-    /**
-     * Stop a consumer
-     */
-    async stopConsumer(pipelineCode: string, queue: string) {
-        const key = `${pipelineCode}:${queue}`;
-        const consumer = this.consumers.get(key);
-
-        if (consumer) {
-            await consumer.stop();
-            this.consumers.delete(key);
-            this.logger.info(`Stopped consumer for ${key}`);
-        }
-    }
-
-    /**
-     * Stop all consumers
-     */
-    private async stopAllConsumers() {
-        for (const [key, consumer] of this.consumers) {
-            await consumer.stop();
-            this.logger.info(`Stopped consumer for ${key}`);
-        }
-        this.consumers.clear();
-    }
-
-    /**
-     * Handle incoming message
-     */
-    private async handleMessage(
-        pipelineId: string,
-        pipelineCode: string,
-        config: MessageTriggerConfig,
-        message: MessagePayload,
-    ) {
-        const ctx = RequestContext.empty();
-
-        try {
-            this.logger.debug(`Received message for ${pipelineCode}`, {
-                messageId: message.id,
-                queue: config.queue,
-            });
-
-            // Create trigger payload
-            const triggerPayload = {
-                type: 'MESSAGE' as const,
-                timestamp: new Date().toISOString(),
-                data: message.body,
-                meta: {
-                    messageId: message.id,
-                    queue: config.queue,
-                    headers: message.headers,
-                    retryCount: message.retryCount || 0,
-                },
-            };
-
-            // Execute pipeline
-            const result = await this.pipelineService.executePipeline(
-                ctx,
-                pipelineCode,
-                { triggerPayload },
-            );
-
-            this.logger.info(`Pipeline ${pipelineCode} completed`, {
-                messageId: message.id,
-                status: result.status,
-                recordsProcessed: result.metrics?.totalRecords,
-            });
-
-            return { success: true };
-        } catch (error) {
-            this.logger.error(`Pipeline ${pipelineCode} failed`, {
-                messageId: message.id,
-                error: error.message,
-            });
-
-            // Handle retry logic
-            const retryCount = (message.retryCount || 0) + 1;
-            if (retryCount < (config.maxRetries || 3)) {
-                return { success: false, retry: true, retryCount };
-            }
-
-            // Send to DLQ if configured
-            if (config.deadLetterQueue) {
-                // Implement DLQ sending
-            }
-
-            return { success: false, retry: false };
-        }
-    }
-
-    /**
-     * Create consumer based on connection type
-     */
-    private async createConsumer(
-        type: string,
-        connectionConfig: any,
-        triggerConfig: MessageTriggerConfig,
-    ): Promise<QueueConsumer> {
-        switch (type) {
-            case 'redis':
-                return new RedisConsumer(connectionConfig, triggerConfig);
-            case 'rabbitmq':
-                return new RabbitMQConsumer(connectionConfig, triggerConfig);
-            case 'kafka':
-                return new KafkaConsumer(connectionConfig, triggerConfig);
-            case 'sqs':
-                return new SQSConsumer(connectionConfig, triggerConfig);
-            default:
-                throw new Error(`Unsupported queue type: ${type}`);
-        }
-    }
-}
-
-// Consumer interface
-interface QueueConsumer {
-    onMessage(handler: (message: MessagePayload) => Promise<{ success: boolean; retry?: boolean }>): void;
-    start(): Promise<void>;
-    stop(): Promise<void>;
-}
-```
-
-### Step 3: Implement Queue-Specific Consumers
-
-#### Redis Consumer (using BullMQ)
-
-```typescript
-// src/triggers/consumers/redis-consumer.ts
-
-import { Queue, Worker } from 'bullmq';
-import { MessagePayload, MessageTriggerConfig } from '../message-trigger.types';
-
-interface RedisConnectionConfig {
-    host: string;
-    port: number;
-    password?: string;
-    db?: number;
-}
-
-export class RedisConsumer implements QueueConsumer {
-    private worker: Worker | null = null;
-    private messageHandler: ((message: MessagePayload) => Promise<any>) | null = null;
-
-    constructor(
-        private connectionConfig: RedisConnectionConfig,
-        private triggerConfig: MessageTriggerConfig,
-    ) {}
-
-    onMessage(handler: (message: MessagePayload) => Promise<any>) {
-        this.messageHandler = handler;
-    }
-
-    async start() {
-        const connection = {
-            host: this.connectionConfig.host,
-            port: this.connectionConfig.port,
-            password: this.connectionConfig.password,
-            db: this.connectionConfig.db || 0,
-        };
-
-        this.worker = new Worker(
-            this.triggerConfig.queue,
-            async (job) => {
-                if (!this.messageHandler) return;
-
-                const message: MessagePayload = {
-                    id: job.id || '',
-                    body: job.data,
-                    timestamp: new Date(job.timestamp).toISOString(),
-                    retryCount: job.attemptsMade,
-                };
-
-                const result = await this.messageHandler(message);
-
-                if (!result.success && result.retry) {
-                    throw new Error('Retry requested');
-                }
-            },
-            {
-                connection,
-                concurrency: this.triggerConfig.batchSize || 1,
-            },
-        );
-
-        this.worker.on('error', (err) => {
-            console.error('Worker error:', err);
-        });
-    }
-
-    async stop() {
-        if (this.worker) {
-            await this.worker.close();
-            this.worker = null;
-        }
-    }
-}
-```
-
-#### RabbitMQ Consumer
-
-```typescript
-// src/triggers/consumers/rabbitmq-consumer.ts
-
-import * as amqp from 'amqplib';
-import { MessagePayload, MessageTriggerConfig } from '../message-trigger.types';
-
-interface RabbitMQConnectionConfig {
-    url: string;
-    // or individual fields
-    host?: string;
-    port?: number;
-    username?: string;
-    password?: string;
-    vhost?: string;
-}
-
-export class RabbitMQConsumer implements QueueConsumer {
-    private connection: amqp.Connection | null = null;
-    private channel: amqp.Channel | null = null;
-    private messageHandler: ((message: MessagePayload) => Promise<any>) | null = null;
-
-    constructor(
-        private connectionConfig: RabbitMQConnectionConfig,
-        private triggerConfig: MessageTriggerConfig,
-    ) {}
-
-    onMessage(handler: (message: MessagePayload) => Promise<any>) {
-        this.messageHandler = handler;
-    }
-
-    async start() {
-        const url = this.connectionConfig.url || this.buildUrl();
-        this.connection = await amqp.connect(url);
-        this.channel = await this.connection.createChannel();
-
-        // Ensure queue exists
-        await this.channel.assertQueue(this.triggerConfig.queue, { durable: true });
-
-        // Set prefetch for batch processing
-        await this.channel.prefetch(this.triggerConfig.batchSize || 1);
-
-        // Start consuming
-        await this.channel.consume(
-            this.triggerConfig.queue,
-            async (msg) => {
-                if (!msg || !this.messageHandler) return;
-
-                const message: MessagePayload = {
-                    id: msg.properties.messageId || msg.properties.correlationId || '',
-                    body: JSON.parse(msg.content.toString()),
-                    headers: msg.properties.headers as Record<string, string>,
-                    timestamp: new Date().toISOString(),
-                    retryCount: (msg.properties.headers?.['x-retry-count'] as number) || 0,
-                };
-
-                try {
-                    const result = await this.messageHandler(message);
-
-                    if (result.success || !result.retry) {
-                        this.channel?.ack(msg);
-                    } else {
-                        // Requeue with retry count
-                        this.channel?.nack(msg, false, true);
-                    }
-                } catch (error) {
-                    this.channel?.nack(msg, false, true);
-                }
-            },
-            { noAck: this.triggerConfig.ackMode === 'AUTO' },
-        );
-    }
-
-    async stop() {
-        if (this.channel) {
-            await this.channel.close();
-            this.channel = null;
-        }
-        if (this.connection) {
-            await this.connection.close();
-            this.connection = null;
-        }
-    }
-
-    private buildUrl(): string {
-        const { host, port, username, password, vhost } = this.connectionConfig;
-        const auth = username ? `${username}:${password}@` : '';
-        return `amqp://${auth}${host || 'localhost'}:${port || 5672}/${vhost || ''}`;
-    }
-}
-```
-
-### Step 4: Register the Trigger Handler
-
-```typescript
-// src/triggers/message-trigger.module.ts
-
-import { Module } from '@nestjs/common';
-import { MessageTriggerHandler } from './message-trigger.handler';
-
-@Module({
-    providers: [MessageTriggerHandler],
-    exports: [MessageTriggerHandler],
-})
-export class MessageTriggerModule {}
-```
-
-```typescript
-// In your plugin
-import { VendurePlugin } from '@vendure/core';
-import { DataHubPlugin } from '@oronts/vendure-data-hub-plugin';
-import { MessageTriggerModule } from './triggers/message-trigger.module';
-
-@VendurePlugin({
-    imports: [DataHubPlugin, MessageTriggerModule],
-})
-export class MyQueueTriggersPlugin {}
-```
-
-## Using Message Triggers in Pipelines
-
-### Pipeline Definition
-
-```typescript
+# Trigger Integrations
+
+Data Hub has built-in pipeline triggers for manual runs, schedules, webhooks,
+Vendure events, watched files, and message brokers. A third-party custom trigger
+adapter is not currently a supported runtime extension point.
+
+The public SDK does not expose a custom trigger runtime adapter. Registering
+trigger metadata cannot start a consumer or enqueue a run, so do not present
+metadata-only trigger definitions as an operational integration contract.
+
+## Choose a Supported Trigger
+
+| Source | Trigger | Use when |
+| ------ | ------- | -------- |
+| Administrator or automation | `MANUAL` | A caller starts a published pipeline explicitly |
+| Time | `SCHEDULE` | A cron expression starts recurring work |
+| HTTP sender | `WEBHOOK` | The upstream system can deliver a request |
+| Vendure domain event | `EVENT` | A supported Vendure entity event starts work |
+| File arrival | `FILE` | A configured watch source detects a new file |
+| Broker message | `MESSAGE` | A supported queue connection supplies records |
+
+GraphQL subscriptions are not registered in the current Admin API. An `EVENT`
+trigger means an internal Vendure event subscription, not a public GraphQL
+subscription transport.
+
+## Integrating a New External Source
+
+### HTTP Producers
+
+Use a `WEBHOOK` trigger when the source can send HTTP:
+
+1. create a pipeline with a webhook trigger;
+2. publish and enable it;
+3. configure HMAC, JWT, or another supported authentication mode;
+4. give the upstream system the deterministic pipeline endpoint;
+5. send a stable event identifier in the configured idempotency header when the
+   source supports one; and
+6. monitor the queued run and record failures.
+
+Treat webhook delivery as at-least-once. Make downstream loaders idempotent and
+deduplicate with a stable source key. Never use unauthenticated webhooks for
+sensitive or write-capable pipelines.
+
+### Message Brokers
+
+Use a `MESSAGE` trigger for a broker supported by the connection and message
+consumer implementation. Configure the connection, queue/topic, consumer
+identity, and acknowledgement behavior through the built-in schema.
+
+Acknowledge a source message only after the pipeline run has been durably
+accepted according to the selected adapter's contract. Validate this failure
+path in staging by stopping the worker between receipt and processing; do not
+infer durability from a successful happy-path run.
+
+### Vendure Events
+
+Use an `EVENT` trigger with an exact event class name exposed by the Data Hub
+configuration catalog. The pipeline should declare the catalog/order/customer
+permissions required by its downstream steps in addition to its run permission.
+
+Data Hub registers a blocking Vendure handler that writes one outbox row per
+matching pipeline trigger through the event's transaction-bound `RequestContext`.
+The row contains the channel context and safe seed records; if that write fails,
+the publishing operation fails rather than silently losing the trigger. After
+commit, a leased worker creates one idempotent pipeline run and awaits its run-queue
+enqueue. Queue errors retain attempt and error details and retry with backoff.
+
+Use a persistent Vendure job-queue strategy in production and activate both
+`data-hub.event-trigger-outbox` and `data-hub.run` on a worker. An in-memory queue
+cannot preserve an already-enqueued run across a process crash. See Vendure's
+[EventBus](https://docs.vendure.io/current/core/reference/typescript-api/events/event-bus)
+and [JobQueueService](https://docs.vendure.io/current/core/reference/typescript-api/job-queue/job-queue-service) documentation.
+
+
+### Outgoing Observation Hooks
+
+A `WEBHOOK` hook is different from an incoming `WEBHOOK` trigger. It stores one
+`data_hub_webhook_delivery` row in the active channel and queues only the row ID
+plus a lease token on `data-hub.webhook-retry`. Enable that queue on a worker
+and use a persistent Vendure job-queue strategy in production.
+
+Set the same `DATAHUB_MASTER_KEY` and Secret Code providers on every API and
+worker. Replay request material is encrypted; signing and sensitive header
+values stay as Secret Code references and are resolved for each attempt.
+Idempotency is scoped by channel, and conflicting key reuse is rejected.
+
+### File Producers
+
+Use a `FILE` trigger only for watch transports supported by the configured
+connection. Confirm whether the deployment uses local files, FTP/SFTP, or object
+storage and test that exact transport.
+
+A file cursor must advance only after durable acceptance. Test duplicate file
+names, partial uploads, reconnects, worker restart, and poison files. Archive or
+move processed files according to an explicit retention policy.
+
+## Example Webhook Pipeline
+
+```ts
 import { createPipeline } from '@oronts/vendure-data-hub-plugin';
 
-const orderSyncPipeline = createPipeline()
-    .name('order-queue-sync')
-    .description('Process orders from message queue')
-    .trigger('queue-trigger', {
-        type: 'MESSAGE',
-        message: {
-            connectionCode: 'rabbitmq-main',
-            queue: 'orders.created',
-            batchSize: 10,
-            ackMode: 'MANUAL',
-            deadLetterQueue: 'orders.dead-letter',
-            maxRetries: 3,
-        },
+export const supplierWebhook = createPipeline()
+    .name('Supplier webhook')
+    .capabilities({ requires: ['UpdateCatalog'] })
+    .trigger('supplier-event', {
+        type: 'WEBHOOK',
+        authentication: 'HMAC',
+        secretCode: 'supplier-webhook-secret',
     })
-    .extract('from-payload', {
-        adapterCode: 'inMemory',
-        // Data comes from trigger payload
-    })
-    .transform('validate', {
-        adapterCode: 'validateRequired',
-        fields: ['orderId', 'customerId', 'items'],
-    })
-    .load('create-order', {
-        adapterCode: 'orderLoader',
-    })
-    .build();
-```
-
-### Connection Configuration
-
-```typescript
-DataHubPlugin.init({
-    connections: [
-        {
-            code: 'rabbitmq-main',
-            type: 'rabbitmq',
-            config: {
-                host: 'localhost',
-                port: 5672,
-                username: 'guest',
-                password: 'guest',
-                vhost: '/',
-            },
-        },
-        {
-            code: 'redis-queue',
-            type: 'redis',
-            config: {
-                host: 'localhost',
-                port: 6379,
-                password: 'secret',
-            },
-        },
-        {
-            code: 'kafka-cluster',
-            type: 'kafka',
-            config: {
-                brokers: ['kafka1:9092', 'kafka2:9092'],
-                clientId: 'vendure-datahub',
-                ssl: true,
-                sasl: {
-                    mechanism: 'plain',
-                    username: 'user',
-                    password: 'pass',
+    .transform('normalize', {
+        operators: [
+            {
+                op: 'map',
+                args: {
+                    mapping: {
+                        sku: 'externalSku',
+                        name: 'title',
+                    },
                 },
-            },
-        },
-    ],
-});
-```
-
-## Bi-directional Queue Integration
-
-### Consuming + Producing
-
-```typescript
-const fullQueuePipeline = createPipeline()
-    .name('queue-to-queue')
-    .description('Consume from one queue, process, produce to another')
-    // Consume from input queue
-    .trigger('input-queue', {
-        type: 'MESSAGE',
-        message: {
-            connectionCode: 'rabbitmq-main',
-            queue: 'orders.pending',
-        },
-    })
-    .extract('from-payload', { adapterCode: 'inMemory' })
-    .transform('process', {
-        adapterCode: 'map',
-        mapping: {
-            'orderId': 'id',
-            'status': '"processed"',
-            'processedAt': 'new Date().toISOString()',
-        },
-    })
-    // Produce to output queue
-    .sink('output-queue', {
-        adapterCode: 'queue-producer',  // Custom sink
-        connectionCode: 'rabbitmq-main',
-        queue: 'orders.processed',
-    })
-    .build();
-```
-
-### Queue Producer Sink
-
-```typescript
-import { SinkAdapter, SinkContext, SinkResult } from '@oronts/vendure-data-hub-plugin';
-
-export const queueProducerSink: SinkAdapter = {
-    type: 'SINK',
-    code: 'queue-producer',
-    name: 'Queue Producer',
-    sinkType: 'CUSTOM',
-    schema: {
-        fields: [
-            { key: 'connectionCode', type: 'string', required: true, label: 'Connection' },
-            { key: 'queue', type: 'string', required: true, label: 'Queue/Topic' },
-            { key: 'routingKey', type: 'string', label: 'Routing Key' },
-        ],
-    },
-
-    async index(context, config, records): Promise<SinkResult> {
-        const connection = await context.connections.get(config.connectionCode);
-
-        // Implement queue-specific producer logic
-        // ...
-
-        return { indexed: records.length, deleted: 0, failed: 0 };
-    },
-};
-```
-
-## Error Handling
-
-### Retry Configuration
-
-```typescript
-trigger('queue-trigger', {
-    type: 'MESSAGE',
-    message: {
-        connectionCode: 'rabbitmq-main',
-        queue: 'orders',
-        maxRetries: 5,
-        deadLetterQueue: 'orders.dlq',
-    },
-})
-```
-
-### Dead Letter Queue Processing
-
-```typescript
-const dlqProcessingPipeline = createPipeline()
-    .name('dlq-processor')
-    .trigger('dlq-trigger', {
-        type: 'MESSAGE',
-        message: {
-            connectionCode: 'rabbitmq-main',
-            queue: 'orders.dlq',
-        },
-    })
-    .extract('from-payload', { adapterCode: 'inMemory' })
-    .load('log-error', {
-        adapterCode: 'webhook',
-        url: 'https://monitoring.example.com/dlq-alert',
-    })
-    .build();
-```
-
-## FILE Triggers - Automatic File Detection
-
-FILE triggers automatically monitor remote file systems (FTP, SFTP, S3) and trigger pipelines when new files are detected.
-
-### How It Works
-
-1. **Poll for Files**: Service polls remote path at configured intervals
-2. **Pattern Matching**: Filters files using glob patterns (e.g., `*.csv`, `orders-*.json`)
-3. **Change Detection**: Tracks processed files using timestamps
-4. **Auto-Trigger**: Executes pipeline with file metadata when new files appear
-5. **Distributed Lock**: Prevents duplicate processing in multi-instance deployments
-
-### Configuration
-
-```typescript
-import { createPipeline } from '@oronts/vendure-data-hub-plugin';
-
-const autoImportPipeline = createPipeline()
-    .name('auto-import-orders')
-    .description('Automatically import orders from FTP when files arrive')
-    .trigger('file-watcher', {
-        type: 'FILE',
-        fileWatch: {
-            connectionCode: 'sftp-main',      // FTP/SFTP/S3 connection
-            path: '/incoming/orders',          // Remote path to watch
-            pattern: 'orders-*.csv',           // Glob pattern (optional)
-            pollIntervalMs: 60000,             // Poll every 60 seconds
-            minFileAge: 30,                    // Wait 30 sec after modification
-            recursive: true,                   // Watch subdirectories
-        },
-    })
-    .extract('read-file', {
-        adapterCode: 'ftp',
-        connectionCode: 'sftp-main',
-        remotePath: '{{ triggerData.path }}',  // Use detected file path
-        format: 'csv',
-    })
-    .transform('validate', {
-        adapterCode: 'validateRequired',
-        fields: ['orderId', 'customerId'],
-    })
-    .load('create-orders', {
-        adapterCode: 'orderLoader',
-    })
-    .build();
-```
-
-### Connection Setup
-
-#### FTP/SFTP Connection
-
-```typescript
-DataHubPlugin.init({
-    connections: [
-        {
-            code: 'sftp-main',
-            type: 'sftp',
-            name: 'SFTP Server',
-            config: {
-                host: 'ftp.example.com',
-                port: 22,
-                username: 'ftpuser',
-                password: 'secret',
-                // Or use private key
-                // privateKey: fs.readFileSync('/path/to/key'),
-            },
-        },
-    ],
-});
-```
-
-#### S3 Connection
-
-```typescript
-DataHubPlugin.init({
-    connections: [
-        {
-            code: 's3-bucket',
-            type: 's3',
-            name: 'AWS S3',
-            config: {
-                region: 'us-east-1',
-                bucket: 'my-data-bucket',
-                accessKeyId: 'AKIA...',
-                secretAccessKey: 'secret',
-            },
-        },
-    ],
-});
-```
-
-### Trigger Payload
-
-When a file is detected, the pipeline receives:
-
-```typescript
-{
-    type: 'FILE',
-    timestamp: '2026-02-23T10:30:00.000Z',
-    data: {
-        path: '/incoming/orders/orders-2026-02-23.csv',
-        name: 'orders-2026-02-23.csv',
-        modifiedAt: '2026-02-23T10:29:45.000Z',
-        size: 1024000,  // bytes
-        connectionCode: 'sftp-main',
-    },
-    meta: {
-        triggerKey: 'file-watcher',
-        watchPath: '/incoming/orders',
-        pattern: 'orders-*.csv',
-    },
-}
-```
-
-### Accessing File Data in Pipeline
-
-Use template expressions to access trigger data:
-
-```typescript
-.extract('read-file', {
-    adapterCode: 'ftp',
-    connectionCode: '{{ triggerData.connectionCode }}',
-    remotePath: '{{ triggerData.path }}',  // Detected file path
-    format: 'csv',
-})
-```
-
-### Glob Patterns
-
-FILE triggers support powerful glob patterns:
-
-| Pattern | Matches | Example |
-|---------|---------|---------|
-| `*.csv` | All CSV files | `orders.csv`, `products.csv` |
-| `orders-*.json` | Files starting with "orders-" | `orders-2026-02-23.json` |
-| `**/*.xml` | XML files in any subdirectory | `2026/02/data.xml` |
-| `{orders,products}-*.csv` | Multiple prefixes | `orders-*.csv`, `products-*.csv` |
-
-### Advanced Configuration
-
-#### Multiple Watch Paths
-
-Create separate triggers for different paths:
-
-```typescript
-const pipeline = createPipeline()
-    .name('multi-source-import')
-    .trigger('watch-orders', {
-        type: 'FILE',
-        fileWatch: {
-            connectionCode: 'sftp-main',
-            path: '/incoming/orders',
-            pattern: '*.csv',
-            pollIntervalMs: 60000,
-        },
-    })
-    .trigger('watch-products', {
-        type: 'FILE',
-        fileWatch: {
-            connectionCode: 'sftp-main',
-            path: '/incoming/products',
-            pattern: '*.json',
-            pollIntervalMs: 120000,  // Poll less frequently
-        },
-    })
-    // ... extraction and loading steps
-    .build();
-```
-
-#### Conditional Processing with ROUTE Step
-
-Process different file types differently:
-
-```typescript
-const pipeline = createPipeline()
-    .name('smart-file-processor')
-    .trigger('watch-all', {
-        type: 'FILE',
-        fileWatch: {
-            connectionCode: 's3-bucket',
-            path: '/incoming',
-            pattern: '*',  // Watch all files
-        },
-    })
-    .extract('read-file', {
-        adapterCode: 's3',
-        // ... config
-    })
-    .route('by-file-type', {
-        routes: [
-            {
-                condition: '{{ triggerData.name.endsWith(".csv") }}',
-                stepKey: 'csv-transform',
-            },
-            {
-                condition: '{{ triggerData.name.endsWith(".json") }}',
-                stepKey: 'json-transform',
             },
         ],
     })
-    // ... different transform steps
+    .load('products', {
+        adapterCode: 'productUpsert',
+        strategy: 'UPSERT',
+        skuField: 'sku',
+        nameField: 'name',
+    })
+    .edge('supplier-event', 'normalize')
+    .edge('normalize', 'products')
     .build();
 ```
 
-### File Age Filtering
+Register the definition through `DataHubPlugin.init({ pipelines: [...] })` or
+create it through the Admin API/dashboard. Secret values are configured
+separately; the definition stores only the secret code.
 
-`minFileAge` prevents processing files that are still being written:
+## When a New First-Class Trigger Type Is Required
 
-```typescript
-fileWatch: {
-    minFileAge: 60,  // Wait 60 seconds after last modification
-}
-```
+A new trigger type currently requires a change to Data Hub itself, not only
+consumer-side SDK registration. A complete implementation must include:
 
-**Why This Matters:**
-- Large files take time to upload
-- Prevents processing incomplete files
-- Ensures data integrity
+- a canonical trigger type and configuration schema;
+- backend validation and permission derivation;
+- lifecycle ownership for API versus worker processes;
+- durable source acknowledgement and idempotency;
+- secret and connection resolution without value disclosure;
+- enqueueing through the normal immutable pipeline-run path;
+- shutdown, reconnect, retry, and dead-letter behavior;
+- dashboard configuration and unavailable-capability states;
+- documentation generated from the registered schema; and
+- integration tests for duplicate delivery, crash recovery, authorization,
+  invalid configuration, and multi-process startup.
 
-### Polling Interval Tuning
+Until that contract exists, adapt the source to `WEBHOOK`, `MESSAGE`,
+`EVENT`, or `FILE` rather than creating a metadata-only trigger adapter.
 
-Choose based on your requirements:
+## Verification Checklist
 
-| Interval | Use Case | Trade-off |
-|----------|----------|-----------|
-| 30s | Real-time processing | Higher load on file system |
-| 5 min | Standard batch imports | Balanced |
-| 1 hour | Large file processing | Lower overhead |
+For every trigger integration, verify:
 
-**Minimum:** 30 seconds (enforced)
+- the pipeline must be published and enabled;
+- an unauthorized caller cannot invoke or configure it;
+- required secrets and connections resolve in every executing process;
+- the event is durably accepted before the source is acknowledged;
+- repeated delivery does not create unintended duplicate changes;
+- a worker restart does not lose accepted work;
+- invalid payloads become visible failures rather than successful empty runs;
+- cancellation and retry preserve a clear audit trail; and
+- logs and errors do not expose credentials or sensitive payload fields.
 
-### Checkpoint Management
-
-FILE triggers automatically track processed files:
-- Stores timestamp of last processed file
-- On restart, resumes from last checkpoint
-- Prevents duplicate processing
-- Checkpoint per pipeline + trigger combination
-
-### Distributed Deployment
-
-FILE triggers use distributed locks:
-- ✅ Safe for multi-instance Vendure deployments
-- ✅ Only one instance processes each file
-- ✅ Automatic failover if instance crashes
-- ⚠️ Requires Redis or database-backed DistributedLockService
-
-### Error Handling
-
-If file processing fails:
-1. Error logged with file details
-2. Checkpoint NOT updated (file will be retried on next poll)
-3. Configure pipeline-level retry/error handling
-4. Use GATE step for manual review of problematic files
-
-### Monitoring
-
-Monitor file trigger activity:
-- Pipeline run logs show `triggerType: FILE`
-- File path and size in run metadata
-- Track files processed per day via analytics
-- Set up alerts for processing failures
-
-### Best Practices
-
-1. **Use Specific Patterns**: Narrow patterns reduce false matches
-   ```typescript
-   pattern: 'orders-YYYY-MM-DD-*.csv'  // Good
-   pattern: '*'                          // Too broad
-   ```
-
-2. **Set Appropriate minFileAge**: Allow time for uploads to complete
-   ```typescript
-   minFileAge: 60  // Good for large files
-   minFileAge: 0   // Risk processing incomplete files
-   ```
-
-3. **Test Poll Intervals**: Balance responsiveness vs. system load
-   ```typescript
-   pollIntervalMs: 300000  // 5 min - good default
-   ```
-
-4. **Use Archive Pattern**: Move processed files to archive folder
-   ```typescript
-   // After successful load, use webhook or custom step to archive
-   .sink('archive-file', {
-       adapterCode: 'ftp',
-       operation: 'move',
-       sourcePath: '{{ triggerData.path }}',
-       targetPath: '/archive/{{ triggerData.name }}',
-   })
-   ```
-
-5. **Handle File Conflicts**: Use timestamps in filenames
-   ```typescript
-   pattern: 'orders-{{ timestamp }}-*.csv'  // Prevents overwrites
-   ```
-
-## Testing Triggers
-
-```typescript
-import { describe, it, expect, vi } from 'vitest';
-import { MessageTriggerHandler } from './message-trigger.handler';
-
-describe('MessageTriggerHandler', () => {
-    it('should handle message and execute pipeline', async () => {
-        const mockPipelineService = {
-            executePipeline: vi.fn().mockResolvedValue({
-                status: 'COMPLETED',
-                metrics: { totalRecords: 5 },
-            }),
-        };
-
-        const handler = new MessageTriggerHandler(
-            mockPipelineService as any,
-            {} as any,
-            {} as any,
-            { createLogger: () => mockLogger } as any,
-        );
-
-        await handler.handleMessage(
-            'pipeline-1',
-            'test-pipeline',
-            { connectionCode: 'test', queue: 'test' },
-            { id: 'msg-1', body: { orderId: '123' }, timestamp: new Date().toISOString() },
-        );
-
-        expect(mockPipelineService.executePipeline).toHaveBeenCalledWith(
-            expect.anything(),
-            'test-pipeline',
-            expect.objectContaining({
-                triggerPayload: expect.objectContaining({
-                    type: 'MESSAGE',
-                    data: { orderId: '123' },
-                }),
-            }),
-        );
-    });
-});
-```
+See [Scheduling and triggers](../../user-guide/scheduling.md), [Queue and Messaging](../../user-guide/queue-messaging.md),
+and [Security Policy](../../../SECURITY.md) for the supported operational
+surfaces and security boundaries.

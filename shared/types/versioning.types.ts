@@ -41,7 +41,7 @@ export interface RevisionDiff {
  */
 export interface TimelineEntry {
     revision: {
-        id: number;
+        id: string | number;
         createdAt: Date;
         version: number;
         type: 'DRAFT' | 'PUBLISHED';
@@ -63,7 +63,7 @@ export interface TimelineEntry {
  * Options for saving a draft revision
  */
 export interface SaveDraftOptions {
-    pipelineId: number;
+    pipelineId: string | number;
     definition: PipelineDefinition;
     authorUserId?: string;
     authorName?: string;
@@ -73,8 +73,8 @@ export interface SaveDraftOptions {
  * Options for publishing a new version
  */
 export interface PublishVersionOptions {
-    pipelineId: number;
-    commitMessage: string;
+    pipelineId: string | number;
+    commitMessage?: string;
     definition?: PipelineDefinition;
     authorUserId?: string;
     authorName?: string;
@@ -84,7 +84,7 @@ export interface PublishVersionOptions {
  * Options for reverting to a previous revision
  */
 export interface RevertOptions {
-    revisionId: number;
+    revisionId: string | number;
     commitMessage?: string;
     authorUserId?: string;
     authorName?: string;
@@ -96,8 +96,6 @@ export interface RevertOptions {
 export interface AutoSaveConfig {
     /** Whether auto-save is enabled */
     enabled: boolean;
-    /** Minimum time between saves in ms */
-    throttleMs: number;
     /** Maximum number of drafts to keep per pipeline */
     maxDraftsToKeep: number;
     /** Whether to prune drafts when publishing */
@@ -111,7 +109,6 @@ export interface AutoSaveConfig {
  */
 export const DEFAULT_AUTO_SAVE_CONFIG: AutoSaveConfig = {
     enabled: true,
-    throttleMs: 30000,
     maxDraftsToKeep: 10,
     pruneOnPublish: true,
     maxDraftAgeDays: 7,

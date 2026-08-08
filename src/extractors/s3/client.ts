@@ -15,6 +15,8 @@ import {
 import { ExtractorContext } from '../../types/index';
 import { getErrorMessage } from '../../utils/error.utils';
 import { validateUrlSafetySync } from '../../utils/url-security.utils';
+import { createPinnedAwsRequestHandler } from '../../utils/aws-request-handler.utils';
+import { assertRemoteFileSize, collectRemoteFileBody } from '../shared/remote-file-content';
 import { S3ExtractorConfig, S3ObjectInfo, S3_DEFAULTS } from './types';
 
 /**
@@ -72,17 +74,24 @@ export async function buildS3ClientConfig(
         forcePathStyle: config.forcePathStyle ?? S3_DEFAULTS.forcePathStyle,
     };
 
-    // Resolve credentials if provided
-    if (config.accessKeyIdSecretCode && config.secretAccessKeySecretCode) {
-        const accessKeyId = await context.secrets.get(config.accessKeyIdSecretCode);
-        const secretAccessKey = await context.secrets.get(config.secretAccessKeySecretCode);
-
-        if (accessKeyId && secretAccessKey) {
-            clientConfig.credentials = {
-                accessKeyId,
-                secretAccessKey,
-            };
+    const hasConfiguredCredentials = Boolean(
+        config.accessKeyIdSecretCode || config.secretAccessKeySecretCode,
+    );
+    if (hasConfiguredCredentials) {
+        if (!config.accessKeyIdSecretCode || !config.secretAccessKeySecretCode) {
+            throw new Error('S3 static credentials require both Access Key ID and Secret Access Key Secret Codes');
         }
+
+        const accessKeyId = (await context.secrets.get(config.accessKeyIdSecretCode))?.trim();
+        const secretAccessKey = (await context.secrets.get(config.secretAccessKeySecretCode))?.trim();
+        if (!accessKeyId || !secretAccessKey) {
+            throw new Error('Configured S3 credential Secret Codes are empty or unavailable');
+        }
+
+        clientConfig.credentials = {
+            accessKeyId,
+            secretAccessKey,
+        };
     }
 
     return clientConfig;
@@ -96,12 +105,14 @@ export async function createS3Client(
     config: S3ExtractorConfig,
 ): Promise<S3Client> {
     const clientConfig = await buildS3ClientConfig(context, config);
+    const requestHandler = await createPinnedAwsRequestHandler(clientConfig.endpoint);
 
     const s3 = new AwsS3Client({
         region: clientConfig.region,
         endpoint: clientConfig.endpoint,
         forcePathStyle: clientConfig.forcePathStyle,
         credentials: clientConfig.credentials,
+        requestHandler,
     });
 
     const bucket = config.bucket;
@@ -140,21 +151,11 @@ export async function createS3Client(
 
             const response = await s3.send(command);
 
-            if (response.Body) {
-                // AWS SDK v3 uses web streams
-                const body = response.Body as { transformToByteArray?: () => Promise<Uint8Array> };
-                if (typeof body.transformToByteArray === 'function') {
-                    return Buffer.from(await body.transformToByteArray());
-                }
-                // Fallback for readable streams
-                const chunks: Buffer[] = [];
-                for await (const chunk of response.Body as AsyncIterable<Uint8Array>) {
-                    chunks.push(Buffer.from(chunk));
-                }
-                return Buffer.concat(chunks);
-            }
-
-            throw new Error(`Unable to read S3 object: ${key}`);
+            assertRemoteFileSize(response.ContentLength, buildS3SourceId(bucket, key));
+            return collectRemoteFileBody(
+                response.Body,
+                buildS3SourceId(bucket, key),
+            );
         },
 
         async deleteObject(key: string): Promise<void> {
@@ -212,7 +213,13 @@ export async function testS3Connection(
             error: getErrorMessage(error),
         };
     } finally {
-        try { await client?.close(); } catch { /* already closed or failed */ }
+        try {
+            await client?.close();
+        } catch (error) {
+            context.logger.warn('Failed to close S3 connection test client', {
+                error: getErrorMessage(error),
+            });
+        }
     }
 }
 

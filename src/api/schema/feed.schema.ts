@@ -10,24 +10,25 @@ export const feedSchema = `
         name: String!
         format: DataHubFeedFormat!
         channelToken: String
+        customGeneratorCode: String
         filters: JSON
         fieldMappings: JSON
         options: JSON
         schedule: DataHubFeedSchedule
+        lastGeneratedAt: DateTime
+        lastItemCount: Int
+        downloadUrl: String
     }
 
     type DataHubFeedSchedule {
         enabled: Boolean!
         cron: String!
+        timezone: String
     }
 
     enum DataHubFeedFormat {
         GOOGLE_SHOPPING
         META_CATALOG
-        AMAZON
-        PINTEREST
-        TIKTOK
-        BING_SHOPPING
         CSV
         JSON
         XML
@@ -60,6 +61,7 @@ export const feedSchema = `
         name: String!
         format: DataHubFeedFormat!
         channelToken: String
+        customGeneratorCode: String
         filters: JSON
         fieldMappings: JSON
         options: JSON
@@ -69,12 +71,14 @@ export const feedSchema = `
     input DataHubFeedScheduleInput {
         enabled: Boolean!
         cron: String!
+        timezone: String
     }
 `;
 
 export const feedQueries = `
     extend type Query {
         dataHubFeeds: [DataHubFeed!]!
+        dataHubFeed(id: ID!): DataHubFeed
         dataHubFeedFormats: [DataHubFeedFormatInfo!]!
     }
 `;
@@ -82,7 +86,10 @@ export const feedQueries = `
 export const feedMutations = `
     extend type Mutation {
         createDataHubFeed(input: DataHubFeedInput!): DataHubFeed!
+        updateDataHubFeed(id: ID!, input: DataHubFeedInput!): DataHubFeed!
+        deleteDataHubFeed(id: ID!): DeletionResponse!
         generateDataHubFeed(feedCode: String!): DataHubFeedGenerationResult!
+        """Generate a complete, valid preview for 1 to 1000 items (default: 10), up to 1 MiB."""
         previewDataHubFeed(feedCode: String!, limit: Int): DataHubFeedPreview!
     }
 `;

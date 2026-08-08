@@ -13,12 +13,14 @@ function SelectableCardComponent({
     onClick,
     disabled = false,
     className = '',
+    'data-testid': testId,
 }: SelectableCardProps) {
     return (
         <button
             type="button"
             disabled={disabled}
             aria-pressed={selected}
+            data-testid={testId}
             className={`p-4 border rounded-lg text-left transition-all ${
                 selected
                     ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
@@ -52,9 +54,9 @@ export function SelectableCardGrid({
     className = '',
 }: SelectableCardGridProps) {
     const gridCols = {
-        2: 'grid-cols-2',
-        3: 'grid-cols-3',
-        4: 'grid-cols-2 md:grid-cols-4',
+        2: 'grid-cols-1 sm:grid-cols-2',
+        3: 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3',
+        4: 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4',
     }[columns];
 
     return (

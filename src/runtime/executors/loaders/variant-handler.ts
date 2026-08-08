@@ -1,118 +1,82 @@
-/**
- * Variant upsert loader handler
- */
 import { Injectable } from '@nestjs/common';
 import {
-    RequestContext,
-    ProductService,
-    ProductVariantService,
+    AssetService,
+    ChannelService,
+    ConfigService,
+    ID,
     ProductOptionGroupService,
     ProductOptionService,
+    ProductService,
+    type ProductVariant,
+    ProductVariantService,
+    RequestContext,
     RequestContextService,
-    TaxCategoryService,
-    ChannelService,
-    ProductVariant,
     StockLocationService,
-    ApiType,
-    Channel,
-    ID,
+    TaxCategoryService,
 } from '@vendure/core';
-import { Type } from '@vendure/common/lib/shared-types';
-import {
-    CreateProductVariantInput,
-    CurrencyCode,
-    LanguageCode,
-    StockLevelInput,
-    UpdateProductVariantInput,
-    UpdateProductVariantPriceInput,
-} from '@vendure/common/lib/generated-types';
-import { PipelineStepDefinition } from '../../../types/index';
-import { TRANSFORM_LIMITS } from '../../../constants/index';
+import { PipelineStepDefinition } from '../../../types';
 import { LoadStrategy } from '../../../constants/enums';
-import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
-import { LoaderHandler } from './types';
 import {
-    findVariantBySku,
-    resolveTaxCategoryId,
-    resolveStockLevels,
-    resolveOptionGroups,
-    resolveOptionCodes,
-    resolveChannelIds,
-    parseTranslationsInput,
-    OptionGroupCache,
+    LoaderExecutionResult,
+    OnRecordErrorCallback,
+    RecordObject,
+} from '../../executor-types';
+import {
+    LoaderHandler,
+    LoaderSimulationResult,
+} from './types';
+import { assertCreateDuplicateCanBeSkipped } from './duplicate-handling';
+import {
     createOptionGroupCache,
+    OptionGroupCache,
+    resolveStockLevels,
 } from './shared-lookups';
 import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
-import { getStringValue, getNumberValue, getObjectValue } from '../../../loaders/shared-helpers';
-import { LOGGER_CONTEXTS } from '../../../constants/index';
-import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
+import { getObjectValue, getStringValue } from '../../../loaders/shared-helpers';
+import { LOGGER_CONTEXTS } from '../../../constants/core';
+import { applyEntityAssetInput } from './entity-asset-input';
+import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger/datahub-logger';
+import {
+    assertDefaultCurrencyPrices,
+    buildVariantTranslations,
+    extractVariantPrices,
+    filterVariantPricesForContext,
+    getVariantName,
+    parseVariantEnabled,
+    parseVariantStockByLocation,
+    parseVariantStockOnHand,
+    resolveVariantHandlerSettings,
+    VariantHandlerSettings,
+} from './variant-handler-input';
+import {
+    findSourceVariantBySku,
+    resolveAllVariantOptionIds,
+    resolveVariantChannelPlan,
+    resolveVariantProductId,
+    resolveVariantTaxCategoryId,
+    VariantChannelPlan,
+} from './variant-handler-resolution';
+import {
+    assignVariantToChannel,
+    createVariant,
+    persistVariantContextPrice,
+    updateVariant,
+    VariantWriteValues,
+} from './variant-handler-persistence';
+import { simulateVariantRecords } from './variant-handler-simulation';
 
-/**
- * Configuration for VariantHandler step
- */
-interface VariantHandlerConfig {
-    skuField?: string;
-    nameField?: string;
-    priceField?: string;
-    priceByCurrencyField?: string;
-    taxCategoryName?: string;
-    stockField?: string;
-    stockByLocationField?: string;
-    customFieldsField?: string;
-    /** Field containing option group→value pairs (object, e.g. { size: 'S', color: 'Blue' }). Auto-creates groups and options. */
-    optionGroupsField?: string;
-    /** Field containing pre-existing Vendure option IDs (array, e.g. [1, 2, 3]). Passed directly. */
-    optionIdsField?: string;
-    /** Field containing option codes (array, e.g. ['size-s', 'color-blue']). Resolved to IDs by code lookup. */
-    optionCodesField?: string;
-    /** Field name for variant enabled/published flag (defaults to "enabled") */
-    enabledField?: string;
-    /** Record field containing channel codes (array or comma-separated string) for dynamic per-record channel assignment */
-    channelsField?: string;
-    /** Record field containing a translations array or object map for multi-language support */
-    translationsField?: string;
-    channel?: string;
-    /** Load strategy: UPSERT (default), CREATE, or UPDATE */
-    strategy?: LoadStrategy;
+type RecordOutcome = 'ok' | 'fail' | 'skipped';
+
+interface ExecutionCaches {
+    optionGroups: OptionGroupCache;
 }
 
-/**
- * Type guard to get config as VariantHandlerConfig
- */
-function getStepConfig(step: PipelineStepDefinition): VariantHandlerConfig {
-    return step.config as unknown as VariantHandlerConfig;
+interface VariantIdentity {
+    sku: string;
+    name: string;
 }
 
-/**
- * Check if a variant has channels property loaded (it may not be loaded from the query)
- */
-function variantHasChannelsLoaded(variant: ProductVariant): variant is ProductVariant & { channels: Channel[] } {
-    return 'channels' in variant && Array.isArray(variant.channels);
-}
-
-/**
- * Build variant translations - multi-language from record field or single-language fallback.
- */
-function buildVariantTranslations(
-    opCtx: RequestContext,
-    rec: RecordObject,
-    config: VariantHandlerConfig,
-    name: string,
-): Array<{ languageCode: LanguageCode; name: string }> {
-    if (config.translationsField) {
-        const raw = rec[config.translationsField];
-        if (raw) {
-            const parsed = parseTranslationsInput(raw);
-            if (parsed.length > 0) {
-                return parsed.map(t => ({
-                    languageCode: String(t.languageCode) as LanguageCode,
-                    name: String(t.name ?? name),
-                }));
-            }
-        }
-    }
-    return [{ languageCode: opCtx.languageCode as LanguageCode, name }];
-}
+type VariantRecordValues = Omit<VariantWriteValues, 'translations'>;
 
 @Injectable()
 export class VariantHandler implements LoaderHandler {
@@ -127,6 +91,8 @@ export class VariantHandler implements LoaderHandler {
         private taxCategoryService: TaxCategoryService,
         private channelService: ChannelService,
         private stockLocationService: StockLocationService,
+        private configService: ConfigService,
+        private assetService: AssetService,
         loggerFactory: DataHubLoggerFactory,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.PRODUCT_VARIANT_LOADER);
@@ -138,413 +104,315 @@ export class VariantHandler implements LoaderHandler {
         input: RecordObject[],
         onRecordError?: OnRecordErrorCallback,
         _errorHandling?: unknown,
-    ): Promise<ExecutionResult> {
-        let ok = 0, fail = 0;
-        const optionCache = createOptionGroupCache();
-        const channelCache = new Map<string, ID>();
+    ): Promise<LoaderExecutionResult> {
+        const result = { ok: 0, fail: 0, skipped: 0 };
+        const settings = resolveVariantHandlerSettings(step, this.configService);
+        const caches: ExecutionCaches = {
+            optionGroups: createOptionGroupCache(),
+        };
 
-        const config = getStepConfig(step);
-        const skuKey = config.skuField ?? 'sku';
-        const nameKey = config.nameField ?? 'name';
-        const priceKey = config.priceField ?? 'price';
-        const priceMapKey = config.priceByCurrencyField;
-        const taxCategoryName = config.taxCategoryName;
-        const stockKey = config.stockField ?? 'stockOnHand';
-        const stockLocKey = config.stockByLocationField;
-        const customFieldsKey = config.customFieldsField ?? 'customFields';
-        const optionGroupsKey = config.optionGroupsField;
-        const optionIdsKey = config.optionIdsField;
-        const optionCodesKey = config.optionCodesField;
-        const enabledKey = config.enabledField ?? 'enabled';
-        const strategy = config.strategy ?? LoadStrategy.UPSERT;
-
-        for (const rec of input) {
+        for (const record of input) {
             try {
-                const sku = getStringValue(rec, skuKey);
-                let name = getStringValue(rec, nameKey);
-
-                // When translationsField is set and name is missing, extract from first translation
-                if (!name && config.translationsField) {
-                    const raw = rec[config.translationsField];
-                    if (raw) {
-                        const parsed = parseTranslationsInput(raw);
-                        if (parsed.length > 0 && parsed[0].name) name = String(parsed[0].name);
-                    }
-                }
-
-                if (!sku || !name) {
-                    if (onRecordError) {
-                        const missing = !sku ? 'sku' : 'name';
-                        await onRecordError(step.key, `Missing required field "${missing}" for variantUpsert`, rec);
-                    }
-                    fail++;
-                    continue;
-                }
-
-                let opCtx = ctx;
-                const channelCode = config.channel;
-                if (channelCode) {
-                    const apiType: ApiType = ctx.apiType;
-                    const req = await this.requestContextService.create({
-                        apiType,
-                        channelOrToken: channelCode
-                    });
-                    if (req) opCtx = req;
-                }
-
-                const existingVariant = await findVariantBySku(this.productVariantService, opCtx, sku);
-                const taxCategoryId = await resolveTaxCategoryId(this.taxCategoryService, opCtx, taxCategoryName);
-
-                const stockByLocation = stockLocKey ? getObjectValue(rec, stockLocKey) : undefined;
-                const stockLevels = await resolveStockLevels(
-                    this.stockLocationService,
-                    opCtx,
-                    stockByLocation as Record<string, number> | undefined
+                const outcome = await this.executeRecord(
+                    ctx,
+                    step,
+                    record,
+                    settings,
+                    caches,
+                    onRecordError,
                 );
-
-                let priceMinor: number | undefined;
-                let prices: UpdateProductVariantPriceInput[] | undefined;
-
-                const priceMap = priceMapKey ? getObjectValue(rec, priceMapKey) : undefined;
-                const priceRaw = rec[priceKey];
-
-                if (priceMap && typeof priceMap === 'object') {
-                    // Validate currency codes against the channel's available currencies.
-                    // Skip unavailable currencies with a WARN rather than failing the record.
-                    const availableCurrencies: CurrencyCode[] = opCtx.channel?.availableCurrencyCodes ?? [];
-                    const allPriceEntries = Object.entries(priceMap);
-                    const validPrices: UpdateProductVariantPriceInput[] = [];
-
-                    for (const [cc, v] of allPriceEntries) {
-                        if (availableCurrencies.length > 0 && !availableCurrencies.includes(cc as CurrencyCode)) {
-                            this.logger.warn(
-                                `Currency "${cc}" is not available in channel "${opCtx.channel?.code ?? 'default'}" - skipping price for variant "${sku}". Available currencies: ${availableCurrencies.join(', ')}`,
-                            );
-                            continue;
-                        }
-                        validPrices.push({
-                            currencyCode: cc as CurrencyCode,
-                            price: Math.round(Number(v) * TRANSFORM_LIMITS.CURRENCY_MINOR_UNITS_MULTIPLIER),
-                        });
-                    }
-                    if (validPrices.length > 0) {
-                        prices = validPrices;
-                    }
-                }
-                if (priceRaw != null) {
-                    const priceValue = typeof priceRaw === 'number' ? priceRaw : Number(priceRaw);
-                    if (!Number.isNaN(priceValue)) priceMinor = Math.round(priceValue * TRANSFORM_LIMITS.CURRENCY_MINOR_UNITS_MULTIPLIER);
-                }
-
-                const stockOnHand = getNumberValue(rec, stockKey);
-                const customFields = getObjectValue(rec, customFieldsKey);
-
-                const enabledRaw = rec[enabledKey];
-                const enabled = enabledRaw != null
-                    ? (typeof enabledRaw === 'boolean' ? enabledRaw : String(enabledRaw).toLowerCase() === 'true')
-                    : undefined;
-
-                let variantId: ID | undefined;
-
-                if (existingVariant) {
-                    // Skip update if strategy is CREATE-only
-                    if (strategy === LoadStrategy.CREATE) {
-                        ok++;
-                        continue;
-                    }
-
-                    const translations = buildVariantTranslations(opCtx, rec, config, name);
-                    await this.updateVariant(opCtx, existingVariant, translations, prices, priceMinor, stockOnHand, stockLevels, taxCategoryId, customFields, channelCode, enabled);
-                    variantId = existingVariant.id;
-                } else {
-                    // Skip creation if strategy is UPDATE-only
-                    if (strategy === LoadStrategy.UPDATE) {
-                        if (onRecordError) {
-                            await onRecordError(step.key, `Variant not found for update: ${sku}`, rec);
-                        }
-                        fail++;
-                        continue;
-                    }
-
-                    // Resolve parent product from record fields: productSlug, productId, productName
-                    const productId = await this.resolveProductId(opCtx, rec);
-                    if (!productId) {
-                        this.logger.warn(`Cannot create variant "${sku}" - no parent product found. Record should contain productSlug, productId, or productName`);
-                        fail++;
-                        continue;
-                    }
-
-                    const optionIds = await this.resolveAllOptionIds(
-                        opCtx, rec, productId,
-                        optionGroupsKey, optionIdsKey, optionCodesKey, optionCache,
-                    );
-
-                    const translations = buildVariantTranslations(opCtx, rec, config, name);
-                    variantId = await this.createVariant(opCtx, productId, sku, translations, prices, priceMinor, stockOnHand, stockLevels, taxCategoryId, customFields, channelCode, optionIds, enabled);
-                }
-
-                // Dynamic per-record channel assignment
-                if (config.channelsField && variantId) {
-                    const rawChannels = rec[config.channelsField];
-                    if (rawChannels != null) {
-                        const channelIds = await resolveChannelIds(this.channelService, opCtx, rawChannels, channelCache, this.logger);
-                        if (channelIds.length > 0) {
-                            try {
-                                await this.channelService.assignToChannels<ProductVariant>(
-                                    opCtx,
-                                    ProductVariant as Type<ProductVariant>,
-                                    variantId,
-                                    channelIds,
-                                );
-                            } catch (error) {
-                                this.logger.warn(`Failed to assign variant ${variantId} to record channels: ${getErrorMessage(error)}`);
-                            }
-                        }
-                    }
-                }
-
-                ok++;
-            } catch (e: unknown) {
-                if (onRecordError) {
-                    await onRecordError(step.key, getErrorMessage(e) || 'variantUpsert failed', rec, getErrorStack(e));
-                }
-                fail++;
+                result[outcome]++;
+            } catch (error) {
+                await this.reportRecordError(step, record, error, onRecordError);
+                result.fail++;
             }
         }
-        return { ok, fail };
+        return result;
     }
 
-    /**
-     * Resolve the parent product ID from record fields.
-     * Checks: productSlug → productId → productName (in priority order).
-     */
-    private async resolveProductId(ctx: RequestContext, rec: RecordObject): Promise<ID | undefined> {
-        // 1. By slug
-        const slug = getStringValue(rec, 'productSlug');
-        if (slug) {
-            const product = await this.productService.findOneBySlug(ctx, slug);
-            if (product) return product.id;
-        }
+    private async executeRecord(
+        ctx: RequestContext,
+        step: PipelineStepDefinition,
+        record: RecordObject,
+        settings: VariantHandlerSettings,
+        caches: ExecutionCaches,
+        onRecordError?: OnRecordErrorCallback,
+    ): Promise<RecordOutcome> {
+        const identity = await this.resolveIdentity(step, record, settings, onRecordError);
+        if (!identity) return 'fail';
 
-        // 2. By direct ID
-        const directId = rec['productId'];
-        if (directId != null) {
-            const product = await this.productService.findOne(ctx, directId as ID);
-            if (product) return product.id;
+        const { config } = settings;
+        const channelPlan = await resolveVariantChannelPlan(
+            this.requestContextService,
+            this.channelService,
+            ctx,
+            config,
+            record,
+        );
+        const lookup = await findSourceVariantBySku(
+            this.productVariantService,
+            channelPlan,
+            identity.sku,
+        );
+        const existing = lookup.variant;
+        const recordValues = await this.resolveRecordValues(channelPlan, record, settings);
+        if (existing && settings.strategy === LoadStrategy.CREATE) {
+            assertCreateDuplicateCanBeSkipped(config, 'variant', identity.sku);
+            return 'skipped';
         }
-
-        // 3. By name
-        const productName = getStringValue(rec, 'productName');
-        if (productName) {
-            const result = await this.productService.findAll(ctx, {
-                filter: { name: { eq: productName } },
-                take: 1,
-            });
-            if (result.totalItems > 0) return result.items[0].id;
+        if (!existing && settings.strategy === LoadStrategy.UPDATE) {
+            await onRecordError?.(
+                step.key,
+                `Variant not found for update: ${identity.sku}`,
+                record,
+            );
+            return 'fail';
         }
+        assertDefaultCurrencyPrices(
+            recordValues.prices,
+            existing ? channelPlan.targets : [channelPlan.source, ...channelPlan.targets],
+        );
 
+        const sourceValues = this.withTranslations(
+            channelPlan.source,
+            record,
+            settings,
+            identity.name,
+            this.valuesForContext(recordValues, channelPlan.source),
+        );
+        const variantId = existing
+            ? await this.updateExistingVariant(
+                channelPlan.source,
+                existing,
+                record,
+                sourceValues,
+                settings,
+                caches.optionGroups,
+            )
+            : await this.createNewVariant(
+                channelPlan.source,
+                record,
+                identity,
+                sourceValues,
+                settings,
+                caches.optionGroups,
+            );
+        await applyEntityAssetInput({
+            ctx: channelPlan.source,
+            record,
+            config,
+            entityId: variantId,
+            assetService: this.assetService,
+            entityService: this.productVariantService,
+            logger: this.logger,
+        });
+        await this.syncTargetChannels(
+            channelPlan,
+            lookup.assignedTargetChannelIds,
+            recordValues,
+            variantId,
+        );
+        return 'ok';
+    }
+
+    private async resolveIdentity(
+        step: PipelineStepDefinition,
+        record: RecordObject,
+        settings: VariantHandlerSettings,
+        onRecordError?: OnRecordErrorCallback,
+    ): Promise<VariantIdentity | undefined> {
+        const sku = getStringValue(record, settings.skuKey);
+        const name = getVariantName(record, settings.config, settings.nameKey);
+        if (sku && name) return { sku, name };
+        const missing = !sku ? 'sku' : 'name';
+        await onRecordError?.(
+            step.key,
+            `Missing required field "${missing}" for variantUpsert`,
+            record,
+        );
         return undefined;
     }
 
-    /**
-     * Resolve option IDs from all three input modes, merged into one array.
-     * Priority: optionGroupsField (auto-create) + optionCodesField (lookup) + optionIdsField (passthrough).
-     */
-    private async resolveAllOptionIds(
+    private async resolveRecordValues(
+        channelPlan: VariantChannelPlan,
+        record: RecordObject,
+        settings: VariantHandlerSettings,
+    ): Promise<VariantRecordValues> {
+        const { config } = settings;
+        const taxCategoryId = await resolveVariantTaxCategoryId(
+            this.taxCategoryService,
+            channelPlan.source,
+            config.taxCategoryName,
+        );
+        const stockByLocation = parseVariantStockByLocation(
+            record,
+            config.stockByLocationField,
+        );
+        const stockLevels = await resolveStockLevels(
+            this.stockLocationService,
+            channelPlan.source,
+            stockByLocation,
+        );
+        return {
+            ...extractVariantPrices(
+                record,
+                settings.priceKey,
+                config.priceByCurrencyField,
+                settings.moneyPrecision,
+                [channelPlan.source, ...channelPlan.targets],
+            ),
+            stockOnHand: parseVariantStockOnHand(record, settings.stockKey),
+            stockLevels,
+            taxCategoryId,
+            customFields: getObjectValue(record, settings.customFieldsKey),
+            enabled: parseVariantEnabled(record[settings.enabledKey]),
+        };
+    }
+
+    private valuesForContext(
+        values: VariantRecordValues,
         ctx: RequestContext,
-        rec: RecordObject,
-        productId: ID,
-        optionGroupsKey: string | undefined,
-        optionIdsKey: string | undefined,
-        optionCodesKey: string | undefined,
+    ): VariantRecordValues {
+        return {
+            ...values,
+            prices: filterVariantPricesForContext(values.prices, ctx),
+        };
+    }
+
+    private withTranslations(
+        ctx: RequestContext,
+        record: RecordObject,
+        settings: VariantHandlerSettings,
+        name: string,
+        values: VariantRecordValues,
+    ): VariantWriteValues {
+        return {
+            translations: buildVariantTranslations(ctx, record, settings.config, name),
+            ...values,
+        };
+    }
+
+    private async updateExistingVariant(
+        ctx: RequestContext,
+        existing: ProductVariant,
+        record: RecordObject,
+        values: VariantWriteValues,
+        settings: VariantHandlerSettings,
         optionCache: OptionGroupCache,
-    ): Promise<ID[] | undefined> {
-        const collected: ID[] = [];
-
-        // 1. Auto-create from key-value map: { size: 'S', color: 'Blue' }
-        if (optionGroupsKey) {
-            const optionsMap = getObjectValue(rec, optionGroupsKey) as Record<string, string> | undefined;
-            if (optionsMap && typeof optionsMap === 'object' && Object.keys(optionsMap).length > 0) {
-                const ids = await resolveOptionGroups(
-                    this.productOptionGroupService, this.productOptionService,
-                    this.productService, ctx, productId, optionsMap, optionCache, this.logger,
-                );
-                collected.push(...ids);
-            }
-        }
-
-        // 2. Resolve by option codes: ['size-s', 'color-blue']
-        if (optionCodesKey) {
-            const codes = rec[optionCodesKey];
-            if (Array.isArray(codes) && codes.length > 0) {
-                const ids = await resolveOptionCodes(
-                    this.productOptionService, ctx,
-                    codes.map(String), optionCache, this.logger,
-                );
-                collected.push(...ids);
-            }
-        }
-
-        // 3. Direct passthrough of existing IDs: [1, 2, 3]
-        if (optionIdsKey) {
-            const directIds = rec[optionIdsKey];
-            if (Array.isArray(directIds) && directIds.length > 0) {
-                collected.push(...directIds.map(id => id as ID));
-            }
-        }
-
-        return collected.length > 0 ? collected : undefined;
-    }
-
-    /**
-     * Update an existing variant
-     */
-    private async updateVariant(
-        opCtx: RequestContext,
-        existingVariant: ProductVariant,
-        translations: Array<{ languageCode: LanguageCode; name: string }>,
-        prices: UpdateProductVariantPriceInput[] | undefined,
-        priceMinor: number | undefined,
-        stockOnHand: number | undefined,
-        stockLevels: StockLevelInput[] | undefined,
-        taxCategoryId: ID | undefined,
-        customFields: Record<string, unknown> | undefined,
-        channelCode: string | undefined,
-        enabled?: boolean,
-    ): Promise<void> {
-        const update: UpdateProductVariantInput = {
-            id: existingVariant.id,
-            sku: existingVariant.sku,
-            translations,
-            ...(typeof enabled === 'boolean' ? { enabled } : {}),
-        };
-
-        if (prices && prices.length > 0) {
-            update.prices = prices;
-        }
-        if (typeof priceMinor === 'number') {
-            update.price = priceMinor;
-        }
-        // When multi-currency prices array is set, remove the scalar price to avoid ambiguity
-        if (update.prices && update.prices.length > 0) {
-            delete (update as any).price;
-        }
-        if (typeof stockOnHand === 'number') {
-            update.stockOnHand = Math.max(0, Math.floor(stockOnHand));
-        }
-        if (stockLevels && stockLevels.length > 0) {
-            update.stockLevels = stockLevels;
-        }
-        if (taxCategoryId) {
-            update.taxCategoryId = taxCategoryId;
-        }
-        if (customFields) {
-            update.customFields = customFields;
-        }
-
-        const [updated] = await this.productVariantService.update(opCtx, [update]);
-
-        if (channelCode) {
-            try {
-                const alreadyIn = variantHasChannelsLoaded(existingVariant) &&
-                    existingVariant.channels.some(c => c.id === opCtx.channelId);
-                if (!alreadyIn) {
-                    await this.channelService.assignToChannels<ProductVariant>(
-                        opCtx,
-                        ProductVariant as Type<ProductVariant>,
-                        updated.id,
-                        [opCtx.channelId]
-                    );
-                }
-            } catch (error) {
-                this.logger.warn(`Failed to assign variant ${updated.id} to channel: ${getErrorMessage(error)}`);
-            }
-        }
-    }
-
-    /**
-     * Create a new variant under the given product
-     */
-    private async createVariant(
-        opCtx: RequestContext,
-        productId: ID,
-        sku: string,
-        translations: Array<{ languageCode: LanguageCode; name: string }>,
-        prices: UpdateProductVariantPriceInput[] | undefined,
-        priceMinor: number | undefined,
-        stockOnHand: number | undefined,
-        stockLevels: StockLevelInput[] | undefined,
-        taxCategoryId: ID | undefined,
-        customFields: Record<string, unknown> | undefined,
-        channelCode: string | undefined,
-        optionIds?: ID[],
-        enabled?: boolean,
     ): Promise<ID> {
-        const createInput: CreateProductVariantInput = {
+        const optionIds = await resolveAllVariantOptionIds(
+            this.optionServices,
+            ctx,
+            record,
+            existing.productId,
+            settings.config,
+            optionCache,
+        );
+        await updateVariant(this.persistenceServices, ctx, existing, values, optionIds);
+        return existing.id;
+    }
+
+    private async createNewVariant(
+        ctx: RequestContext,
+        record: RecordObject,
+        identity: VariantIdentity,
+        values: VariantWriteValues,
+        settings: VariantHandlerSettings,
+        optionCache: OptionGroupCache,
+    ): Promise<ID> {
+        const productId = await resolveVariantProductId(this.productService, ctx, record);
+        if (!productId) {
+            throw new Error(
+                `Cannot create variant "${identity.sku}" without a parent product`,
+            );
+        }
+        const optionIds = await resolveAllVariantOptionIds(
+            this.optionServices,
+            ctx,
+            record,
             productId,
-            sku,
-            translations,
-            ...(typeof enabled === 'boolean' ? { enabled } : {}),
-        };
+            settings.config,
+            optionCache,
+        );
+        return createVariant(
+            this.persistenceServices,
+            ctx,
+            productId,
+            identity.sku,
+            values,
+            optionIds,
+        );
+    }
 
-        if (prices && prices.length > 0) {
-            createInput.prices = prices;
-        }
-        if (typeof priceMinor === 'number') {
-            createInput.price = priceMinor;
-        }
-        // When multi-currency prices array is set, remove the scalar price to avoid ambiguity
-        if (createInput.prices && createInput.prices.length > 0) {
-            delete (createInput as any).price;
-        }
-        if (typeof stockOnHand === 'number') {
-            createInput.stockOnHand = Math.max(0, Math.floor(stockOnHand));
-        }
-        if (stockLevels && stockLevels.length > 0) {
-            createInput.stockLevels = stockLevels;
-        }
-        if (taxCategoryId) {
-            createInput.taxCategoryId = taxCategoryId;
-        }
-        if (customFields) {
-            createInput.customFields = customFields;
-        }
-        if (optionIds && optionIds.length > 0) {
-            createInput.optionIds = optionIds;
-        }
-
-        const [created] = await this.productVariantService.create(opCtx, [createInput]);
-
-        if (channelCode) {
-            try {
-                await this.channelService.assignToChannels<ProductVariant>(
-                    opCtx,
-                    ProductVariant as Type<ProductVariant>,
-                    created.id,
-                    [opCtx.channelId]
+    private async syncTargetChannels(
+        plan: VariantChannelPlan,
+        assignedTargetChannelIds: ReadonlySet<string>,
+        values: VariantRecordValues,
+        variantId: ID,
+    ): Promise<void> {
+        for (const target of plan.targets) {
+            if (!assignedTargetChannelIds.has(String(target.channelId))) {
+                await assignVariantToChannel(
+                    this.persistenceServices,
+                    plan.source,
+                    variantId,
+                    target.channelId,
                 );
-            } catch (error) {
-                this.logger.warn(`Failed to assign created variant ${created.id} to channel: ${getErrorMessage(error)}`);
             }
+            await persistVariantContextPrice(
+                this.productVariantService,
+                target,
+                variantId,
+                this.valuesForContext(values, target),
+            );
         }
+    }
 
-        return created.id;
+    private async reportRecordError(
+        step: PipelineStepDefinition,
+        record: RecordObject,
+        error: unknown,
+        onRecordError?: OnRecordErrorCallback,
+    ): Promise<void> {
+        await onRecordError?.(
+            step.key,
+            getErrorMessage(error) || 'variantUpsert failed',
+            record,
+            getErrorStack(error),
+        );
     }
 
     async simulate(
         ctx: RequestContext,
         step: PipelineStepDefinition,
         input: RecordObject[],
-    ): Promise<Record<string, number>> {
-        let exists = 0, missing = 0;
-        const config = getStepConfig(step);
-        const skuKey = config.skuField ?? 'sku';
-        for (const rec of input) {
-            const sku = getStringValue(rec, skuKey);
-            if (!sku) continue;
-            const variant = await findVariantBySku(this.productVariantService, ctx, sku);
-            if (variant) exists++; else missing++;
-        }
-        return { exists, missing };
+    ): Promise<LoaderSimulationResult> {
+        const settings = resolveVariantHandlerSettings(step, this.configService);
+        return simulateVariantRecords(this.simulationServices, ctx, input, settings);
+    }
+
+    private get persistenceServices() {
+        return {
+            productVariantService: this.productVariantService,
+            logger: this.logger,
+        };
+    }
+
+    private get optionServices() {
+        return {
+            productOptionGroupService: this.productOptionGroupService,
+            productOptionService: this.productOptionService,
+            productService: this.productService,
+        };
+    }
+
+    private get simulationServices() {
+        return {
+            productService: this.productService,
+            productVariantService: this.productVariantService,
+            requestContextService: this.requestContextService,
+            channelService: this.channelService,
+            taxCategoryService: this.taxCategoryService,
+        };
     }
 }

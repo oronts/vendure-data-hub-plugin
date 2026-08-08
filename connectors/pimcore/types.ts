@@ -1,66 +1,70 @@
 import {
     BaseConnectorConfig,
-    ConnectorConnectionConfig,
-    ConnectorSyncConfig,
-    ConnectorMappingConfig,
     ConnectorPipelineConfig,
 } from '../types';
 
 /**
- * Pimcore DataHub connection configuration
- */
-export interface PimcoreConnectionConfig extends ConnectorConnectionConfig {
-    /** Pimcore DataHub GraphQL endpoint */
-    endpoint: string;
-    /** API key for authentication */
-    apiKey?: string;
-    /** Secret code for API key (reference to DataHub secret) */
-    apiKeySecretCode?: string;
-    /** Workspace/configuration name in Pimcore DataHub */
-    workspace?: string;
-}
-
-/**
  * Pimcore-specific sync configuration
  */
-export interface PimcoreSyncConfig extends ConnectorSyncConfig {
-    /** Pimcore class names to sync (e.g., ['Product', 'Category']) */
-    classNames?: string[];
+export interface PimcoreSyncConfig {
+    /** Enable delta filtering of unchanged records */
+    deltaSync?: boolean;
+    /** Records requested per page */
+    batchSize?: number;
+    /** Maximum pages fetched per pipeline run */
+    maxPages?: number;
     /** Include unpublished objects */
     includeUnpublished?: boolean;
     /** Include variants */
     includeVariants?: boolean;
     /** Object path filter (e.g., '/Products/B2C/') */
     pathFilter?: string;
-    /** Modified since timestamp for delta sync */
-    modifiedSince?: string;
 }
 
 /**
  * Pimcore to Vendure field mapping configuration
  */
-export interface PimcoreMappingConfig extends ConnectorMappingConfig {
+export interface PimcoreProductMappingConfig {
+    /** SKU field in Pimcore (default: 'sku' or 'itemNumber') */
+    skuField?: string;
+    /** Name field in Pimcore (default: 'name') */
+    nameField?: string;
+    /** Slug field in Pimcore (default: 'slug' or 'urlKey') */
+    slugField?: string;
+    /** Description field in Pimcore (default: 'description') */
+    descriptionField?: string;
+    /** Variants relation field (default: 'variants') */
+    variantsField?: string;
+    /** Variant/default-product price field (default: 'price') */
+    priceField?: string;
+    /** Variant stock quantity field (default: 'stockQuantity') */
+    stockQuantityField?: string;
+    /** Published/enabled field (default: 'published') */
+    enabledField?: string;
+}
+
+export interface PimcoreProductTransformMappingConfig extends PimcoreProductMappingConfig {
+    /** Assets relation field used by transformProduct */
+    assetsField?: string;
+    /** Vendure custom field to Pimcore source path mappings used by transformProduct */
+    customFields?: Record<string, string>;
+}
+
+export interface PimcoreAssetMappingConfig {
+    /** Asset URL field (default: 'fullpath') */
+    urlField?: string;
+    /** Filename field (default: 'filename') */
+    filenameField?: string;
+}
+
+export interface PimcoreAssetTransformMappingConfig extends PimcoreAssetMappingConfig {
+    /** Alt text field used by transformAsset */
+    altField?: string;
+}
+
+export interface PimcoreMappingConfig {
     /** Product field mappings */
-    product?: {
-        /** SKU field in Pimcore (default: 'sku' or 'itemNumber') */
-        skuField?: string;
-        /** Name field in Pimcore (default: 'name') */
-        nameField?: string;
-        /** Slug field in Pimcore (default: 'slug' or 'urlKey') */
-        slugField?: string;
-        /** Description field in Pimcore (default: 'description') */
-        descriptionField?: string;
-        /** Assets relation field (default: 'images' or 'assets') */
-        assetsField?: string;
-        /** Categories relation field (default: 'categories') */
-        categoriesField?: string;
-        /** Variants relation field (default: 'variants') */
-        variantsField?: string;
-        /** Published/enabled field (default: 'published') */
-        enabledField?: string;
-        /** Custom field mappings */
-        customFields?: Record<string, string>;
-    };
+    product?: PimcoreProductMappingConfig;
     /** Category field mappings */
     category?: {
         /** Name field (default: 'name') */
@@ -75,49 +79,55 @@ export interface PimcoreMappingConfig extends ConnectorMappingConfig {
         positionField?: string;
     };
     /** Asset field mappings */
-    asset?: {
-        /** Asset URL field (default: 'fullPath' or 'url') */
-        urlField?: string;
-        /** Alt text field (default: 'alt' or 'title') */
-        altField?: string;
-        /** Filename field (default: 'filename') */
-        filenameField?: string;
-    };
+    asset?: PimcoreAssetMappingConfig;
 }
+
+export interface PimcoreObjectQueryConfig {
+    /** Complete query override. It must return the configured responseField. */
+    query?: string;
+    /** Pimcore class name used to derive default listing and fragment names. */
+    className?: string;
+    /** GraphQL listing field exposed by the Data Hub schema. */
+    listingField?: string;
+    /** Response key read by the extractor. Generated queries alias listingField when needed. */
+    responseField?: string;
+    /** GraphQL object type used by generated inline fragments. */
+    fragmentType?: string;
+}
+
+export type PimcoreAssetQueryConfig = Pick<
+    PimcoreObjectQueryConfig,
+    'query' | 'listingField' | 'responseField'
+>;
+
+export interface PimcoreQueryConfig {
+    product?: PimcoreObjectQueryConfig;
+    category?: PimcoreObjectQueryConfig;
+    asset?: PimcoreAssetQueryConfig;
+}
+
+type PimcorePipelineConfig = Pick<ConnectorPipelineConfig, 'enabled' | 'name' | 'schedule'>;
 
 /**
  * Pipeline-specific configurations
  */
 export interface PimcorePipelineConfigs {
     /** Product sync pipeline config */
-    productSync?: ConnectorPipelineConfig & {
-        /** Include product assets */
-        syncAssets?: boolean;
-        /** Include product categories */
-        syncCategories?: boolean;
+    productSync?: PimcorePipelineConfig & {
         /** Include variants */
         syncVariants?: boolean;
-        /** Delete products not in Pimcore */
-        deleteOrphans?: boolean;
     };
     /** Category sync pipeline config */
-    categorySync?: ConnectorPipelineConfig & {
-        /** Max depth of category tree */
-        maxDepth?: number;
+    categorySync?: PimcorePipelineConfig & {
         /** Root category path in Pimcore */
         rootPath?: string;
     };
     /** Asset sync pipeline config */
-    assetSync?: ConnectorPipelineConfig & {
+    assetSync?: PimcorePipelineConfig & {
         /** Asset folder path in Pimcore */
         folderPath?: string;
         /** Supported mime types */
         mimeTypes?: string[];
-    };
-    /** Facet sync pipeline config */
-    facetSync?: ConnectorPipelineConfig & {
-        /** Attribute groups to sync as facets */
-        attributeGroups?: string[];
     };
 }
 
@@ -125,20 +135,28 @@ export interface PimcorePipelineConfigs {
  * Complete Pimcore connector configuration
  */
 export interface PimcoreConnectorConfig extends BaseConnectorConfig {
-    /** Connection settings */
-    connection: PimcoreConnectionConfig;
+    /** Connector instances are identified by their registered connector code. */
+    instanceId?: never;
+    /** Enable or disable individual generated pipelines through pipelines.*.enabled. */
+    enabled?: never;
+    /** Connector-level tags are not applied to generated pipelines. */
+    tags?: never;
+    /** Saved HTTP, REST, or GraphQL connection containing the endpoint and authentication. */
+    connectionCode: string;
+    /** Request timeout in milliseconds. */
+    timeoutMs?: number;
     /** Sync settings */
     sync?: PimcoreSyncConfig;
     /** Field mapping settings */
     mapping?: PimcoreMappingConfig;
+    /** Data Hub schema/query overrides for generated pipelines. */
+    queries?: PimcoreQueryConfig;
     /** Pipeline-specific settings */
     pipelines?: PimcorePipelineConfigs;
     /** Vendure channel to sync to (default: '__default_channel__') */
     vendureChannel?: string;
     /** Default language code (default: 'en') */
     defaultLanguage?: string;
-    /** Supported languages for translations */
-    languages?: string[];
 }
 
 /**
@@ -148,14 +166,7 @@ export interface PimcoreObjectListing<T = PimcoreObject> {
     totalCount: number;
     edges: Array<{
         node: T;
-        cursor?: string;
     }>;
-    pageInfo?: {
-        hasNextPage: boolean;
-        hasPreviousPage: boolean;
-        startCursor?: string;
-        endCursor?: string;
-    };
 }
 
 /**
@@ -164,12 +175,12 @@ export interface PimcoreObjectListing<T = PimcoreObject> {
 export interface PimcoreObject {
     id: string | number;
     key: string;
-    path: string;
-    fullPath: string;
+    path?: string;
+    fullpath: string;
     classname?: string;
     published?: boolean;
-    creationDate?: number;
-    modificationDate?: number;
+    creationDate?: string;
+    modificationDate?: string;
     index?: number;
 }
 
@@ -228,8 +239,8 @@ export interface PimcoreCategory extends PimcoreObject {
 export interface PimcoreAsset {
     id: string | number;
     filename: string;
-    fullPath: string;
-    path: string;
+    fullpath: string;
+    path?: string;
     mimetype?: string;
     filesize?: number;
     width?: number;
@@ -262,7 +273,7 @@ export interface PimcoreObjectRelation {
     id: string | number;
     key?: string;
     path?: string;
-    fullPath?: string;
+    fullpath?: string;
     classname?: string;
     [key: string]: unknown;
 }
@@ -273,7 +284,7 @@ export interface PimcoreObjectRelation {
 export interface PimcoreAssetRelation {
     id: string | number;
     filename?: string;
-    fullPath?: string;
+    fullpath?: string;
     url?: string;
     mimetype?: string;
     metadata?: PimcoreAssetMetadata[];

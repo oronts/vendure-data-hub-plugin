@@ -16,202 +16,40 @@ import {
     QueueMessage,
     PublishResult,
     ConsumeResult,
+    QueueConsumeOptions,
 } from './queue-adapter.interface';
 import { JsonObject } from '../../../types/index';
-import { AckMode, INTERNAL_TIMINGS, LOGGER_CONTEXTS, CONTENT_TYPES } from '../../../constants';
-import { DataHubLoggerFactory } from '../../../services/logger';
-import { isBlockedHostname } from '../../../utils/url-security.utils';
+import { AckMode } from '../../../constants/enums';
+import { INTERNAL_TIMINGS } from '../../../constants/defaults/core-defaults';
+import { QUEUE } from '../../../constants/defaults/runtime-defaults';
+import { LOGGER_CONTEXTS } from '../../../constants/core';
+import { CONTENT_TYPES } from '../../../constants/services';
+import { DataHubLoggerFactory } from '../../../services/logger/datahub-logger';
 import { getErrorMessage } from '../../../utils/error.utils';
+import { requirePositiveInteger } from './queue-message.utils';
+import {
+    closeAmqpResources,
+    closeRabbitMqConnection,
+    getRabbitMqConnection,
+    getRabbitMqConnectionKey,
+} from './rabbitmq-amqp.connection';
+import { RabbitMqAdapterState } from './rabbitmq-amqp.state';
+import {
+    closeRabbitMqSubscription,
+    closeRabbitMqSubscriptions,
+    closeRabbitMqSubscriptionsForConnection,
+    ensureRabbitMqSubscription,
+} from './rabbitmq-amqp.consumer';
 
 const logger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.RABBITMQ_ADAPTER);
-
-// Types for amqplib - using any for flexibility since types may vary by version
-type AmqpConnection = {
-    createConfirmChannel(): Promise<AmqpChannel>;
-    close(): Promise<void>;
-    on(event: string, listener: (...args: unknown[]) => void): void;
-};
-
-type AmqpChannel = {
-    assertQueue(queue: string, options?: Record<string, unknown>): Promise<unknown>;
-    publish(exchange: string, routingKey: string, content: Buffer, options?: Record<string, unknown>, callback?: (err: Error | null) => void): boolean;
-    get(queue: string, options?: { noAck?: boolean }): Promise<AmqpMessage | false>;
-    ack(message: { fields: { deliveryTag: number } }): void;
-    nack(message: { fields: { deliveryTag: number } }, allUpTo?: boolean, requeue?: boolean): void;
-    prefetch(count: number): Promise<void>;
-    close(): Promise<void>;
-    on(event: string, listener: (...args: unknown[]) => void): void;
-};
-
-type AmqpMessage = {
-    content: Buffer;
-    fields: {
-        deliveryTag: number;
-        redelivered: boolean;
-    };
-    properties: {
-        messageId?: string;
-        headers?: Record<string, unknown>;
-    };
-};
-
-/**
- * Connection pool entry
- */
-interface ConnectionEntry {
-    connection: AmqpConnection;
-    channel: AmqpChannel;
-    lastUsed: number;
-}
-
-/**
- * Connection pool for RabbitMQ connections
- */
-const MAX_CONNECTIONS = 100;
-const connectionPool = new Map<string, ConnectionEntry>();
-const connectingPromises = new Map<string, Promise<{ connection: AmqpConnection; channel: AmqpChannel }>>();
-
-/**
- * Generate a unique key for a connection configuration
- */
-function getConnectionKey(config: QueueConnectionConfig): string {
-    return `${config.host}:${config.port}:${config.username ?? 'guest'}:${config.vhost ?? '/'}`;
-}
-
-/**
- * Build AMQP URL from configuration
- */
-function buildAmqpUrl(config: QueueConnectionConfig): string {
-    const protocol = config.useTls ? 'amqps' : 'amqp';
-    const username = encodeURIComponent(config.username ?? 'guest');
-    const password = encodeURIComponent(config.password ?? 'guest');
-    const host = config.host ?? 'localhost';
-    if (isBlockedHostname(host)) {
-        throw new Error(`SSRF protection: hostname '${host}' is blocked for security reasons`);
-    }
-    const port = config.port ?? 5672;
-    const vhost = encodeURIComponent(config.vhost ?? '/');
-
-    return `${protocol}://${username}:${password}@${host}:${port}/${vhost}`;
-}
-
-/**
- * Get or create a connection from the pool
- */
-async function getConnection(config: QueueConnectionConfig): Promise<{
-    connection: AmqpConnection;
-    channel: AmqpChannel;
-}> {
-    const key = getConnectionKey(config);
-    const existing = connectionPool.get(key);
-
-    // Return existing valid connection
-    if (existing) {
-        existing.lastUsed = Date.now();
-        return { connection: existing.connection, channel: existing.channel };
-    }
-
-    // If another caller is already connecting, await the same promise
-    const pending = connectingPromises.get(key);
-    if (pending) {
-        return pending;
-    }
-
-    // Create connection promise that concurrent callers can share
-    const connectPromise = (async () => {
-        try {
-            const amqplib = await import('amqplib');
-            const url = buildAmqpUrl(config);
-            const connection = await amqplib.connect(url) as unknown as AmqpConnection;
-
-            connection.on('error', () => {
-                connectionPool.delete(key);
-            });
-
-            connection.on('close', () => {
-                connectionPool.delete(key);
-            });
-
-            const channel = await connection.createConfirmChannel();
-            await channel.prefetch(10);
-
-            channel.on('error', () => {
-                connectionPool.delete(key);
-            });
-
-            const entry: ConnectionEntry = {
-                connection,
-                channel,
-                lastUsed: Date.now(),
-            };
-
-            // Evict oldest connection if pool is at capacity
-            if (connectionPool.size >= MAX_CONNECTIONS) {
-                let oldestKey: string | null = null;
-                let oldestTime = Infinity;
-                for (const [k, e] of connectionPool.entries()) {
-                    if (e.lastUsed < oldestTime) {
-                        oldestTime = e.lastUsed;
-                        oldestKey = k;
-                    }
-                }
-                if (oldestKey) {
-                    const stale = connectionPool.get(oldestKey);
-                    if (stale) {
-                        stale.channel.close().catch(() => { /* ignore */ });
-                        stale.connection.close().catch(() => { /* ignore */ });
-                    }
-                    connectionPool.delete(oldestKey);
-                }
-            }
-
-            connectionPool.set(key, entry);
-            return { connection, channel };
-        } finally {
-            connectingPromises.delete(key);
-        }
-    })();
-
-    connectingPromises.set(key, connectPromise);
-    return connectPromise;
-}
-
-/**
- * Close a connection and remove from pool
- */
-async function closeConnection(config: QueueConnectionConfig): Promise<void> {
-    const key = getConnectionKey(config);
-    const entry = connectionPool.get(key);
-
-    if (entry) {
-        try {
-            await entry.channel.close();
-            await entry.connection.close();
-        } catch {
-            // Ignore close errors
-        }
-        connectionPool.delete(key);
-    }
-}
-
-/**
- * Pending acks/nacks storage (for manual acknowledgment)
- * Includes timestamp for cleanup of stale entries
- */
-interface PendingMessage {
-    channel: AmqpChannel;
-    deliveryTag: number;
-    createdAt: number;
-}
-const pendingMessages = new Map<string, PendingMessage>();
 
 export class RabbitMQAmqpAdapter implements QueueAdapter {
     readonly code = 'rabbitmq-amqp';
     readonly name = 'RabbitMQ (AMQP)';
     readonly description = 'RabbitMQ message broker using native AMQP 0-9-1 protocol';
 
+    private readonly state = new RabbitMqAdapterState();
     private connectionCleanupHandle?: ReturnType<typeof setInterval>;
-    private pendingMessagesCleanupHandle?: ReturnType<typeof setInterval>;
 
     /**
      * Start the periodic cleanup intervals for idle connections and stale pending messages.
@@ -221,42 +59,38 @@ export class RabbitMQAmqpAdapter implements QueueAdapter {
         if (!this.connectionCleanupHandle) {
             this.connectionCleanupHandle = setInterval(() => {
                 const now = Date.now();
-                for (const [key, entry] of connectionPool.entries()) {
-                    if (now - entry.lastUsed > INTERNAL_TIMINGS.CONNECTION_MAX_IDLE_MS) {
-                        entry.channel.close().catch((err) => {
-                            logger.warn('RabbitMQ: Failed to close channel during cleanup', { error: err?.message ?? err });
+                for (const pending of this.state.takeExpiredPendingMessages(
+                    now,
+                    INTERNAL_TIMINGS.PENDING_MESSAGES_MAX_AGE_MS,
+                )) {
+                    try {
+                        pending.channel.nack(
+                            { fields: { deliveryTag: pending.deliveryTag } },
+                            false,
+                            true,
+                        );
+                    } catch (error) {
+                        logger.warn('RabbitMQ: Failed to requeue stale delivery', {
+                            error: getErrorMessage(error),
                         });
-                        entry.connection.close().catch((err) => {
-                            logger.warn('RabbitMQ: Failed to close connection during cleanup', { error: err?.message ?? err });
-                        });
-                        connectionPool.delete(key);
                     }
                 }
-            }, 60_000);
+                for (const [key, entry] of this.state.connectionPool.entries()) {
+                    if (
+                        !this.state.hasPendingMessages(key) &&
+                        !this.state.hasActiveSubscriptions(key) &&
+                        now - entry.lastUsed > INTERNAL_TIMINGS.CONNECTION_MAX_IDLE_MS
+                    ) {
+                        this.state.connectionPool.delete(key);
+                        this.state.trackCleanup(
+                            closeAmqpResources(entry, 'idle cleanup'),
+                        );
+                    }
+                }
+            }, INTERNAL_TIMINGS.CLEANUP_INTERVAL_MS);
 
             if (typeof this.connectionCleanupHandle.unref === 'function') {
                 this.connectionCleanupHandle.unref();
-            }
-        }
-
-        if (!this.pendingMessagesCleanupHandle) {
-            const maxAgeMs = INTERNAL_TIMINGS.PENDING_MESSAGES_MAX_AGE_MS;
-            this.pendingMessagesCleanupHandle = setInterval(() => {
-                const now = Date.now();
-                let cleanedCount = 0;
-                for (const [key, entry] of pendingMessages.entries()) {
-                    if (now - entry.createdAt > maxAgeMs) {
-                        pendingMessages.delete(key);
-                        cleanedCount++;
-                    }
-                }
-                if (cleanedCount > 0) {
-                    logger.debug('RabbitMQ: Cleaned up stale pending messages', { cleanedCount });
-                }
-            }, INTERNAL_TIMINGS.PENDING_MESSAGES_CLEANUP_INTERVAL_MS ?? 60_000);
-
-            if (typeof this.pendingMessagesCleanupHandle.unref === 'function') {
-                this.pendingMessagesCleanupHandle.unref();
             }
         }
     }
@@ -270,21 +104,18 @@ export class RabbitMQAmqpAdapter implements QueueAdapter {
             clearInterval(this.connectionCleanupHandle);
             this.connectionCleanupHandle = undefined;
         }
-        if (this.pendingMessagesCleanupHandle) {
-            clearInterval(this.pendingMessagesCleanupHandle);
-            this.pendingMessagesCleanupHandle = undefined;
-        }
-
-        for (const [key, entry] of connectionPool.entries()) {
-            try {
-                await entry.channel.close();
-                await entry.connection.close();
-            } catch {
-                // Ignore close errors during shutdown
-            }
-            connectionPool.delete(key);
-        }
-        pendingMessages.clear();
+        await Promise.allSettled(this.state.connectingPromises.values());
+        await closeRabbitMqSubscriptions(this.state);
+        const pooledConnections = [...this.state.connectionPool.values()];
+        this.state.connectionPool.clear();
+        await Promise.all([
+            ...this.state.cleanupOperations,
+            ...pooledConnections.map(entry =>
+                closeAmqpResources(entry, 'adapter shutdown'),
+            ),
+        ]);
+        this.state.pendingMessages.clear();
+        this.state.subscriptionCapacityReservations.clear();
     }
 
     async publish(
@@ -293,14 +124,14 @@ export class RabbitMQAmqpAdapter implements QueueAdapter {
         messages: QueueMessage[],
     ): Promise<PublishResult[]> {
         this.startCleanup();
-        const { channel } = await getConnection(connectionConfig);
+        const { channel } = await getRabbitMqConnection(
+            this.state,
+            connectionConfig,
+        );
         const results: PublishResult[] = [];
 
         await channel.assertQueue(queueName, {
             durable: true,
-            arguments: {
-                'x-queue-type': 'classic',
-            },
         });
 
         for (const msg of messages) {
@@ -352,109 +183,95 @@ export class RabbitMQAmqpAdapter implements QueueAdapter {
     async consume(
         connectionConfig: QueueConnectionConfig,
         queueName: string,
-        options: {
-            count: number;
-            ackMode: AckMode;
-            prefetch?: number;
-        },
+        options: QueueConsumeOptions,
     ): Promise<ConsumeResult[]> {
         this.startCleanup();
-        const { channel } = await getConnection(connectionConfig);
+        const requestedCount = requirePositiveInteger(
+            options.count,
+            'RabbitMQ consume count',
+            QUEUE.MAX_MESSAGE_BATCH_SIZE,
+        );
+        const prefetch = requirePositiveInteger(
+            options.prefetch ?? QUEUE.DEFAULT_MESSAGE_BATCH_SIZE,
+            'RabbitMQ prefetch',
+            QUEUE.MAX_MESSAGE_PREFETCH,
+        );
+        const connectionIdentity = getRabbitMqConnectionKey(connectionConfig);
+        const consumerId = this.resolveConsumerId(
+            options.consumerId,
+            connectionIdentity,
+            queueName,
+        );
+        const { connection } = await getRabbitMqConnection(
+            this.state,
+            connectionConfig,
+        );
+        const subscription = await ensureRabbitMqSubscription(
+            this.state,
+            connection,
+            {
+                consumerId,
+                connectionIdentity,
+                queueName,
+                prefetch,
+                ackMode: options.ackMode,
+            },
+        );
+        const messages = subscription.deliveries.splice(0, requestedCount);
         const results: ConsumeResult[] = [];
 
-        // Set prefetch if specified
-        if (options.prefetch) {
-            await channel.prefetch(options.prefetch);
-        }
-
-        await channel.assertQueue(queueName, { durable: true });
-
-        // Get messages one by one up to count
-        for (let i = 0; i < options.count; i++) {
-            const msg = await channel.get(queueName, {
-                noAck: options.ackMode === AckMode.AUTO,
-            });
-
-            if (!msg) {
-                break; // No more messages
-            }
-
+        for (const message of messages) {
             let payload: JsonObject;
             try {
-                payload = JSON.parse(msg.content.toString('utf-8'));
+                payload = JSON.parse(message.content.toString('utf-8'));
             } catch {
-                // JSON parse failed - wrap raw payload
-                payload = { rawPayload: msg.content.toString('utf-8') };
+                payload = { rawPayload: message.content.toString('utf-8') };
             }
 
-            const messageId = msg.properties.messageId || crypto.randomUUID();
-            const deliveryTag = `${getConnectionKey(connectionConfig)}:${msg.fields.deliveryTag}`;
-
-            // Store for manual ack/nack with timestamp for cleanup
+            const messageId = message.properties.messageId || crypto.randomUUID();
+            let deliveryTag: string | undefined;
             if (options.ackMode === AckMode.MANUAL) {
-                const maxPending = INTERNAL_TIMINGS.MAX_PENDING_MESSAGES ?? 10_000;
-                if (pendingMessages.size >= maxPending) {
-                    // Evict oldest pending message by createdAt and auto-nack it
-                    let oldestKey: string | null = null;
-                    let oldestTime = Infinity;
-                    for (const [key, entry] of pendingMessages.entries()) {
-                        if (entry.createdAt < oldestTime) {
-                            oldestTime = entry.createdAt;
-                            oldestKey = key;
-                        }
-                    }
-                    if (oldestKey) {
-                        const stale = pendingMessages.get(oldestKey);
-                        if (stale) {
-                            try {
-                                stale.channel.nack(
-                                    { fields: { deliveryTag: stale.deliveryTag } },
-                                    false,
-                                    true, // requeue
-                                );
-                            } catch {
-                                // Channel may be closed; ignore nack error
-                            }
-                            pendingMessages.delete(oldestKey);
-                        }
-                        logger.warn('Pending messages map at capacity; evicted oldest entry', {
-                            evictedKey: oldestKey,
-                            maxPending,
-                            currentSize: pendingMessages.size,
-                        });
-                    }
-                }
-
-                pendingMessages.set(deliveryTag, {
-                    channel,
-                    deliveryTag: msg.fields.deliveryTag,
+                deliveryTag = crypto.randomUUID();
+                this.state.pendingMessages.set(deliveryTag, {
+                    channel: subscription.channel,
+                    deliveryTag: message.fields.deliveryTag,
+                    connectionIdentity,
                     createdAt: Date.now(),
                 });
+            } else {
+                subscription.channel.ack(message);
             }
 
             results.push({
                 messageId,
                 payload,
-                headers: msg.properties.headers as Record<string, string> | undefined,
+                headers: message.properties.headers as Record<string, string> | undefined,
                 deliveryTag,
-                redelivered: msg.fields.redelivered,
+                redelivered: message.fields.redelivered,
             });
         }
 
         return results;
     }
 
+    async stopConsumer(consumerId: string): Promise<void> {
+        await closeRabbitMqSubscription(this.state, consumerId);
+    }
+
     async ack(
         connectionConfig: QueueConnectionConfig,
         deliveryTag: string,
     ): Promise<void> {
-        const pending = pendingMessages.get(deliveryTag);
+        const pending = this.state.pendingMessages.get(deliveryTag);
         if (!pending) {
             throw new Error(`No pending message found for delivery tag: ${deliveryTag}`);
         }
+        if (pending.connectionIdentity !== getRabbitMqConnectionKey(connectionConfig)) {
+            throw new Error('RabbitMQ delivery tag belongs to a different connection');
+        }
 
         pending.channel.ack({ fields: { deliveryTag: pending.deliveryTag } });
-        pendingMessages.delete(deliveryTag);
+        this.state.pendingMessages.delete(deliveryTag);
     }
 
     async nack(
@@ -462,9 +279,12 @@ export class RabbitMQAmqpAdapter implements QueueAdapter {
         deliveryTag: string,
         requeue: boolean,
     ): Promise<void> {
-        const pending = pendingMessages.get(deliveryTag);
+        const pending = this.state.pendingMessages.get(deliveryTag);
         if (!pending) {
             throw new Error(`No pending message found for delivery tag: ${deliveryTag}`);
+        }
+        if (pending.connectionIdentity !== getRabbitMqConnectionKey(connectionConfig)) {
+            throw new Error('RabbitMQ delivery tag belongs to a different connection');
         }
 
         pending.channel.nack(
@@ -472,13 +292,16 @@ export class RabbitMQAmqpAdapter implements QueueAdapter {
             false, // Don't affect other messages
             requeue,
         );
-        pendingMessages.delete(deliveryTag);
+        this.state.pendingMessages.delete(deliveryTag);
     }
 
     async testConnection(connectionConfig: QueueConnectionConfig): Promise<boolean> {
         this.startCleanup();
         try {
-            const { connection } = await getConnection(connectionConfig);
+            const { connection } = await getRabbitMqConnection(
+                this.state,
+                connectionConfig,
+            );
             return connection !== null;
         } catch {
             // Connection test failed - return false
@@ -490,7 +313,27 @@ export class RabbitMQAmqpAdapter implements QueueAdapter {
      * Close connection (useful for cleanup)
      */
     async close(connectionConfig: QueueConnectionConfig): Promise<void> {
-        await closeConnection(connectionConfig);
+        await closeRabbitMqSubscriptionsForConnection(
+            this.state,
+            getRabbitMqConnectionKey(connectionConfig),
+        );
+        await closeRabbitMqConnection(this.state, connectionConfig);
+    }
+
+    private resolveConsumerId(
+        consumerId: string | undefined,
+        connectionIdentity: string,
+        queueName: string,
+    ): string {
+        if (consumerId === undefined) {
+            return `direct:${connectionIdentity}:${queueName}`;
+        }
+        if (!consumerId || consumerId.trim() !== consumerId) {
+            throw new Error(
+                'RabbitMQ consumerId must be a non-empty string without surrounding whitespace',
+            );
+        }
+        return consumerId;
     }
 }
 

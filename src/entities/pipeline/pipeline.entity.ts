@@ -1,13 +1,12 @@
-import { Column, Entity, Index } from 'typeorm';
-import { DeepPartial, VendureEntity } from '@vendure/core';
+import { Column, Entity, Index, JoinTable, ManyToMany, VersionColumn } from 'typeorm';
+import { Channel, ChannelAware, DeepPartial, EntityId, ID, VendureEntity } from '@vendure/core';
 import { PipelineDefinition } from '../../types/index';
-import { PipelineStatus } from '../../constants/enums';
+import { ConfigurationSource, PipelineStatus } from '../../constants/enums';
 import { TABLE_NAMES } from '../../constants/table-names';
 
 @Entity(TABLE_NAMES.PIPELINE)
-@Index(['code'])
 @Index(['status', 'enabled'])
-export class Pipeline extends VendureEntity {
+export class Pipeline extends VendureEntity implements ChannelAware {
     constructor(input?: DeepPartial<Pipeline>) {
         super(input);
     }
@@ -21,6 +20,17 @@ export class Pipeline extends VendureEntity {
     @Column({ type: 'boolean', default: true })
     enabled!: boolean;
 
+    @Column({
+        type: 'varchar',
+        length: 20,
+        default: ConfigurationSource.DATABASE,
+    })
+    configurationSource!: ConfigurationSource;
+
+    @ManyToMany(() => Channel)
+    @JoinTable()
+    channels!: Channel[];
+
     @Column({ type: 'int', default: 1 })
     version!: number;
 
@@ -30,7 +40,7 @@ export class Pipeline extends VendureEntity {
     @Column({ type: 'varchar', length: 20, default: PipelineStatus.DRAFT })
     status!: PipelineStatus;
 
-    @Column({ type: 'datetime', nullable: true })
+    @Column({ type: Date, nullable: true })
     publishedAt!: Date | null;
 
     @Column({ type: 'varchar', length: 255, nullable: true })
@@ -41,17 +51,20 @@ export class Pipeline extends VendureEntity {
      * Indexed for efficient lookups when loading the active revision.
      */
     @Index()
-    @Column({ type: 'int', nullable: true })
-    currentRevisionId!: number | null;
+    @EntityId({ nullable: true })
+    currentRevisionId!: ID | null;
 
     /**
      * Reference to the current draft revision (no ManyToOne to avoid circular dependency).
      * Indexed for efficient lookups when loading the draft revision.
      */
     @Index()
-    @Column({ type: 'int', nullable: true })
-    draftRevisionId!: number | null;
+    @EntityId({ nullable: true })
+    draftRevisionId!: ID | null;
 
     @Column({ type: 'int', default: 0 })
     publishedVersionCount!: number;
+
+    @VersionColumn({ default: 1 })
+    rowVersion!: number;
 }

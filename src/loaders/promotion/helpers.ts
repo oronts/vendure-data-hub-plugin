@@ -2,7 +2,7 @@ import { ID, RequestContext, PromotionService } from '@vendure/core';
 import { ConfigurableOperationInput } from '@vendure/common/lib/generated-types';
 import { PromotionConditionInput, PromotionActionInput } from './types';
 import { ConditionsMode, ActionsMode } from '../../../shared/types';
-import { DataHubLogger } from '../../services/logger';
+import { DataHubLogger } from '../../services/logger/datahub-logger';
 
 export {
     isRecoverableError,

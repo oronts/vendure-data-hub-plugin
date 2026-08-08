@@ -1,9 +1,14 @@
 import { Injectable, OnModuleDestroy, Optional } from '@nestjs/common';
-import { EventBus } from '@vendure/core';
-import { Subject, Observable } from 'rxjs';
-import { share } from 'rxjs/operators';
-import { DOMAIN_EVENTS } from '../../constants/index';
-import { generateTimestampedId } from '../../utils/id-generation.utils';
+import { EventBus, RequestContext } from '@vendure/core';
+import { Subject, Observable, Subscription } from 'rxjs';
+import { filter, share } from 'rxjs/operators';
+import { DOMAIN_EVENTS, LOGGER_CONTEXTS } from '../../constants/index';
+import { ActiveTaskSet } from '../../utils/async-operation-tracker';
+import { toErrorOrUndefined } from '../../utils/error.utils';
+import {
+    DataHubLoggerFactory,
+} from '../logger';
+import type { DataHubLogger } from '../logger';
 
 export type DomainEventPayload = Record<string, unknown>;
 
@@ -12,6 +17,8 @@ export class DataHubDomainEvent<T = DomainEventPayload> {
     constructor(
         public readonly name: string,
         public readonly payload?: T,
+        public ctx?: RequestContext,
+        public readonly deferLocalDelivery = false,
     ) {}
 }
 
@@ -32,34 +39,100 @@ export class DomainEventsService implements OnModuleDestroy {
     private buffer: BufferedEvent[] = [];
     private readonly max = DOMAIN_EVENTS.MAX_EVENTS;
     private eventSubject = new Subject<DataHubEvent>();
+    private readonly publications = new ActiveTaskSet();
+    private readonly logger: DataHubLogger;
+    private deferredSubscription?: Subscription;
+    private destroying = false;
     readonly events$: Observable<DataHubEvent> = this.eventSubject.asObservable().pipe(share());
 
-    constructor(@Optional() private eventBus?: EventBus) {}
+    constructor(
+        @Optional() private eventBus?: EventBus,
+        @Optional() loggerFactory?: DataHubLoggerFactory,
+    ) {
+        this.logger = loggerFactory
+            ? loggerFactory.createLogger(LOGGER_CONTEXTS.DOMAIN_EVENTS_SERVICE)
+            : DataHubLoggerFactory.create(LOGGER_CONTEXTS.DOMAIN_EVENTS_SERVICE);
+        if (this.eventBus && typeof this.eventBus.ofType === 'function') {
+            this.deferredSubscription = this.eventBus
+                .ofType<DataHubDomainEvent>(DataHubDomainEvent)
+                .pipe(filter(event => event.deferLocalDelivery))
+                .subscribe(event => {
+                    this.deliverLocal(event.name, event.payload, event.createdAt);
+                });
+        }
+    }
 
-    onModuleDestroy(): void {
+    async onModuleDestroy(): Promise<void> {
+        this.destroying = true;
+        await this.publications.settle();
+        this.deferredSubscription?.unsubscribe();
         this.eventSubject.complete();
     }
 
     publish<T extends DomainEventPayload = DomainEventPayload>(name: string, payload?: T): void {
+        if (this.destroying) return;
         try {
-            const createdAt = new Date();
+            const event = new DataHubDomainEvent<T>(name, payload);
 
             if (this.eventBus) {
-                this.eventBus.publish(new DataHubDomainEvent<T>(name, payload));
+                this.publishToVendure(event);
             }
-
-            const ev: BufferedEvent = { name, payload, createdAt };
-            this.buffer.push(ev);
-            if (this.buffer.length > this.max) this.buffer.splice(0, this.buffer.length - this.max);
-
-            this.eventSubject.next({
-                type: name,
-                payload: payload ?? {},
-                createdAt,
-            });
-        } catch {
-            // Domain event buffering is non-critical - silently ignore errors to avoid disrupting main flow
+            this.deliverLocal(name, payload, event.createdAt);
+        } catch (error) {
+            this.reportPublicationFailure(name, error);
         }
+    }
+
+    private publishAfterCommit<T extends DomainEventPayload>(
+        ctx: RequestContext,
+        name: string,
+        payload: T,
+    ): void {
+        if (this.destroying) return;
+        const event = new DataHubDomainEvent(name, payload, ctx, true);
+        if (this.eventBus && this.deferredSubscription) {
+            this.publishToVendure(event);
+            return;
+        }
+        this.deliverLocal(name, payload, event.createdAt);
+    }
+
+    private publishToVendure(event: DataHubDomainEvent): void {
+        const eventBus = this.eventBus;
+        if (!eventBus || this.destroying) return;
+        try {
+            const publication = this.publications.run(() => eventBus.publish(event));
+            void publication.catch(error => {
+                this.reportPublicationFailure(event.name, error);
+            });
+        } catch (error) {
+            this.reportPublicationFailure(event.name, error);
+        }
+    }
+
+    private reportPublicationFailure(eventName: string, error: unknown): void {
+        this.logger.error(
+            'Vendure event publication failed',
+            toErrorOrUndefined(error),
+            { eventName },
+        );
+    }
+
+    private deliverLocal<T extends DomainEventPayload>(
+        name: string,
+        payload: T | undefined,
+        createdAt: Date,
+    ): void {
+        const event: BufferedEvent = { name, payload, createdAt };
+        this.buffer.push(event);
+        if (this.buffer.length > this.max) {
+            this.buffer.splice(0, this.buffer.length - this.max);
+        }
+        this.eventSubject.next({
+            type: name,
+            payload: payload ?? {},
+            createdAt,
+        });
     }
 
     list(limit: number = DOMAIN_EVENTS.DEFAULT_LIMIT): BufferedEvent[] {
@@ -107,7 +180,7 @@ export class DomainEventsService implements OnModuleDestroy {
     publishRunCompleted(
         runId: string,
         pipelineCode: string,
-        metrics: { processed: number; succeeded: number; failed: number; durationMs: number },
+        metrics: { processed: number; succeeded: number; failed: number; skipped: number; durationMs: number },
     ): void {
         this.publish('PipelineRunCompleted', {
             runId,
@@ -144,20 +217,34 @@ export class DomainEventsService implements OnModuleDestroy {
         });
     }
 
-    publishPipelineDeleted(pipelineId: string, pipelineCode: string): void {
+    publishPipelineDeleted(
+        pipelineId: string,
+        pipelineCode: string,
+        channelId?: string,
+    ): void {
         this.publish('PipelineDeleted', {
             pipelineId,
             pipelineCode,
+            channelId,
             deletedAt: new Date(),
         });
     }
 
-    publishPipelinePublished(pipelineId: string, pipelineCode: string): void {
-        this.publish('PipelinePublished', {
+    publishPipelinePublished(
+        pipelineId: string,
+        pipelineCode: string,
+        ctx?: RequestContext,
+    ): void {
+        const payload = {
             pipelineId,
             pipelineCode,
             publishedAt: new Date(),
-        });
+        };
+        if (ctx) {
+            this.publishAfterCommit(ctx, 'PipelinePublished', payload);
+            return;
+        }
+        this.publish('PipelinePublished', payload);
     }
 
     publishPipelineArchived(pipelineId: string, pipelineCode: string): void {
@@ -168,22 +255,11 @@ export class DomainEventsService implements OnModuleDestroy {
         });
     }
 
-    publishLog(
-        level: 'DEBUG' | 'INFO' | 'WARN' | 'ERROR',
-        message: string,
-        options?: {
-            pipelineCode?: string;
-            runId?: string;
-            stepKey?: string;
-            metadata?: Record<string, unknown>;
-        },
-    ): void {
-        this.publish('LogAdded', {
-            id: generateTimestampedId('log', 6),
-            timestamp: new Date(),
-            level,
-            message,
-            ...options,
+    publishPipelineReactivated(pipelineId: string, pipelineCode: string): void {
+        this.publish('PipelineReactivated', {
+            pipelineId,
+            pipelineCode,
+            reactivatedAt: new Date(),
         });
     }
 

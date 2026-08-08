@@ -15,6 +15,12 @@ import {
 } from './helpers';
 import { DATE_UNIT_OPTIONS, DATE_DIFF_UNIT_OPTIONS } from '../constants';
 import { createRecordOperator } from '../operator-factory';
+import { TRANSFORM_LIMITS } from '../../constants/defaults/core-defaults';
+
+const DATE_FORMAT_VALIDATION = {
+    minLength: 1,
+    maxLength: TRANSFORM_LIMITS.MAX_DATE_FORMAT_LENGTH,
+} as const;
 
 export const DATE_FORMAT_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
@@ -24,14 +30,12 @@ export const DATE_FORMAT_OPERATOR_DEFINITION: AdapterDefinition = {
     categoryLabel: 'Date',
     categoryOrder: 5,
     pure: true,
-    fieldTransform: true,
     schema: {
         fields: [
             { key: 'source', label: 'Source field path', type: 'string', required: true },
             { key: 'target', label: 'Target field path', type: 'string', required: true },
-            { key: 'format', label: 'Output format', type: 'string', required: true, description: 'e.g. YYYY-MM-DD, DD/MM/YYYY HH:mm' },
-            { key: 'inputFormat', label: 'Input format', type: 'string', description: 'If source is string, specify its format' },
-            { key: 'timezone', label: 'Timezone', type: 'string', description: 'e.g. UTC, Europe/London' },
+            { key: 'format', label: 'Output format', type: 'string', required: true, description: 'e.g. YYYY-MM-DD, DD/MM/YYYY HH:mm', validation: DATE_FORMAT_VALIDATION },
+            { key: 'inputFormat', label: 'Input format', type: 'string', description: 'If source is string, specify its format', validation: DATE_FORMAT_VALIDATION },
         ],
     },
 };
@@ -48,8 +52,7 @@ export const DATE_PARSE_OPERATOR_DEFINITION: AdapterDefinition = {
         fields: [
             { key: 'source', label: 'Source field path', type: 'string', required: true },
             { key: 'target', label: 'Target field path', type: 'string', required: true },
-            { key: 'format', label: 'Input format', type: 'string', required: true, description: 'Format of the source string' },
-            { key: 'timezone', label: 'Timezone', type: 'string' },
+            { key: 'format', label: 'Input format', type: 'string', required: true, description: 'Format of the source string', validation: DATE_FORMAT_VALIDATION },
         ],
     },
 };
@@ -82,7 +85,7 @@ export function applyDateFormatOperator(record: JsonObject, config: DateFormatOp
     if (!config.source || !config.target || !config.format) {
         return record;
     }
-    return applyDateFormat(record, config.source, config.target, config.format, config.inputFormat, config.timezone);
+    return applyDateFormat(record, config.source, config.target, config.format, config.inputFormat);
 }
 
 export const dateFormatOperator = createRecordOperator(applyDateFormatOperator);
@@ -91,7 +94,7 @@ export function applyDateParseOperator(record: JsonObject, config: DateParseOper
     if (!config.source || !config.target || !config.format) {
         return record;
     }
-    return applyDateParse(record, config.source, config.target, config.format, config.timezone);
+    return applyDateParse(record, config.source, config.target, config.format);
 }
 
 export const dateParseOperator = createRecordOperator(applyDateParseOperator);
@@ -153,16 +156,11 @@ export const NOW_OPERATOR_DEFINITION: AdapterDefinition = {
             {
                 key: 'format',
                 label: 'Output format',
-                type: 'select',
-                options: [
-                    { value: 'ISO', label: 'ISO 8601 (2024-01-15T10:30:00.000Z)' },
-                    { value: 'timestamp', label: 'Unix timestamp (milliseconds)' },
-                    { value: 'date', label: 'Date only (YYYY-MM-DD)' },
-                    { value: 'datetime', label: 'Date and time (YYYY-MM-DD HH:mm:ss)' },
-                ],
-                description: 'Or use a custom format like YYYY/MM/DD',
+                type: 'string',
+                defaultValue: 'ISO',
+                description: 'ISO, timestamp, date, datetime, or a custom format such as YYYY/MM/DD',
+                validation: DATE_FORMAT_VALIDATION,
             },
-            { key: 'timezone', label: 'Timezone', type: 'string', description: 'e.g., UTC, Europe/London' },
         ],
     },
 };
@@ -171,7 +169,7 @@ export function applyNowOperator(record: JsonObject, config: NowOperatorConfig):
     if (!config.target) {
         return record;
     }
-    return applyNow(record, config.target, config.format, config.timezone);
+    return applyNow(record, config.target, config.format);
 }
 
 export const nowOperator = createRecordOperator(applyNowOperator);

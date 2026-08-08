@@ -39,6 +39,8 @@ export const PLACEHOLDERS = {
     // Headers
     HEADER_NAME: 'X-Custom-Header',
     HEADER_VALUE: 'header-value',
+    IDEMPOTENCY_KEY: '<unique-id>',
+    HMAC_SIGNATURE: '<hmac-of-body>',
 
     // Codes and identifiers
     PIPELINE_NAME: 'My Pipeline',
@@ -65,13 +67,3 @@ export const DEFAULT_SAMPLE_DATA = `[
   { "id": "1", "sku": "SKU-001", "name": "Product One", "price": 99.99 },
   { "id": "2", "sku": "SKU-002", "name": "Product Two", "price": 149.99 }
 ]`;
-
-/**
- * Step test descriptions
- */
-export const STEP_TEST_DESCRIPTIONS = {
-    EXTRACT: 'Extracts data using the configured adapter and returns sample records.',
-    TRANSFORM: 'Applies configured transformations to these records.',
-    VALIDATE: 'Runs validation rules on these records.',
-    LOAD: 'Loads records into the target system.',
-} as const;

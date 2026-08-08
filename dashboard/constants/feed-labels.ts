@@ -1,0 +1,17 @@
+export const FEED_TRANSLATION_IDS = {
+    VALIDATION_JSON_OBJECT: /* i18n */ 'feeds.validation.jsonObject',
+    VALIDATION_INVALID_JSON: /* i18n */ 'feeds.validation.invalidJson',
+    VALIDATION_MIN_PRICE: /* i18n */ 'feeds.validation.minPrice',
+    VALIDATION_MAX_PRICE: /* i18n */ 'feeds.validation.maxPrice',
+    VALIDATION_PRICE_RANGE: /* i18n */ 'feeds.validation.priceRange',
+    VALIDATION_BASE_URL: /* i18n */ 'feeds.validation.baseUrl',
+    VALIDATION_CODE_REQUIRED: /* i18n */ 'feeds.validation.codeRequired',
+    VALIDATION_CODE_PATTERN: /* i18n */ 'feeds.validation.codePattern',
+    VALIDATION_CODE_LENGTH: /* i18n */ 'feeds.validation.codeLength',
+    VALIDATION_NAME_REQUIRED: /* i18n */ 'feeds.validation.nameRequired',
+    VALIDATION_NAME_LENGTH: /* i18n */ 'feeds.validation.nameLength',
+    VALIDATION_FORMAT_REQUIRED: /* i18n */ 'feeds.validation.formatRequired',
+    VALIDATION_CUSTOM_GENERATOR: /* i18n */ 'feeds.validation.customGenerator',
+    VALIDATION_CRON: /* i18n */ 'feeds.validation.cron',
+    VALIDATION_TIMEZONE: /* i18n */ 'feeds.validation.timezone',
+} as const;

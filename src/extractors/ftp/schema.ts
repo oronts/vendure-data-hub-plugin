@@ -36,18 +36,16 @@ export const FTP_EXTRACTOR_SCHEMA: StepConfigSchema = {
         {
             key: 'protocol',
             label: 'Protocol',
+            description: 'Required only when no saved connection is selected',
             type: 'select',
-            required: true,
             options: FTP_PROTOCOL_OPTIONS,
-            defaultValue: SFTP,
             group: 'connection',
         },
         {
             key: 'host',
             label: 'Host',
-            description: 'FTP/SFTP server hostname or IP',
+            description: 'Required only when no saved connection is selected',
             type: 'string',
-            required: true,
             placeholder: 'ftp.example.com',
             group: 'connection',
         },
@@ -107,6 +105,14 @@ export const FTP_EXTRACTOR_SCHEMA: StepConfigSchema = {
             group: 'auth',
             dependsOn: { field: 'protocol', value: SFTP },
         },
+        {
+            key: 'hostKeyFingerprintSecretCode',
+            label: 'Host Key Fingerprint',
+            description: 'Secret code containing the trusted OpenSSH SHA256 host-key fingerprint',
+            type: 'secret',
+            group: 'auth',
+            dependsOn: { field: 'protocol', value: SFTP },
+        },
         // Source
         {
             key: 'remotePath',
@@ -136,7 +142,7 @@ export const FTP_EXTRACTOR_SCHEMA: StepConfigSchema = {
         {
             key: 'deleteAfterProcess',
             label: 'Delete After Processing',
-            description: 'Delete files from server after successful processing',
+            description: 'Delete files after the pipeline run completes successfully',
             type: 'boolean',
             defaultValue: false,
             group: 'postProcess',
@@ -144,7 +150,7 @@ export const FTP_EXTRACTOR_SCHEMA: StepConfigSchema = {
         {
             key: 'moveAfterProcess.enabled',
             label: 'Move After Processing',
-            description: 'Move files to another directory after processing',
+            description: 'Move files after the pipeline run completes successfully',
             type: 'boolean',
             defaultValue: false,
             group: 'postProcess',

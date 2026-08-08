@@ -18,7 +18,7 @@ export const FACET_LOADER_METADATA = {
     name: 'Facet Loader',
     description: 'Imports facets (attributes/properties) for product categorization',
     adapterCode: 'facetUpsert',
-    supportedOperations: ['CREATE', 'UPDATE', 'UPSERT', 'DELETE'] as TargetOperation[],
+    supportedOperations: ['CREATE', 'UPDATE', 'UPSERT'] as TargetOperation[],
     lookupFields: ['code', 'id', 'name'],
     requiredFields: ['name', 'code'],
 } as const;

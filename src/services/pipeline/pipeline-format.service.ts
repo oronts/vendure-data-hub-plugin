@@ -7,8 +7,18 @@
 
 import { Injectable } from '@nestjs/common';
 import { StepType } from '../../constants/index';
-import { PipelineDefinition, PipelineStepDefinition, PipelineEdge, PipelineCapabilities, PipelineContext } from '../../types/index';
+import type {
+    PipelineDefinition,
+    PipelineCapabilities,
+} from '../../types/index';
+import type { SchemaReference, StepContextOverride } from '../../../shared/types';
 import { getErrorMessage } from '../../utils/error.utils';
+import { valuesEqual } from '../../../shared/utils/lossless-conversion';
+import {
+    type BackendFormatMappings,
+    convertBackendToCanonical,
+    convertBackendToVisual,
+} from './pipeline-format-conversion';
 
 // VISUAL FORMAT TYPES
 
@@ -28,6 +38,8 @@ export interface VisualNodeData {
     type: VisualNodeCategory;
     adapterCode?: string;
     config: Record<string, unknown>;
+    context?: StepContextOverride;
+    schemaRef?: SchemaReference;
 }
 
 /**
@@ -49,6 +61,37 @@ export interface VisualEdge {
     target: string;
     sourceHandle?: string;
     targetHandle?: string;
+    label?: string;
+}
+
+export interface BackendVisualNodeBaseline {
+    sourceIndex: number;
+    id: string;
+    type: VisualNodeCategory;
+    label: string;
+    adapterCode?: string;
+    config: Record<string, unknown>;
+    context?: StepContextOverride;
+    schemaRef?: SchemaReference;
+}
+
+export interface BackendVisualEdgeBaseline {
+    sourceIndex?: number;
+    id: string;
+    source: string;
+    target: string;
+    sourceHandle?: string;
+    targetHandle?: string;
+    label?: string;
+    inferred: boolean;
+}
+
+export interface BackendVisualConversionMetadata {
+    source: Record<string, unknown>;
+    nodeIdentity: string;
+    edgeIdentity: string;
+    nodes: BackendVisualNodeBaseline[];
+    edges: BackendVisualEdgeBaseline[];
 }
 
 /**
@@ -65,10 +108,11 @@ export interface VisualPipelineDefinition {
     capabilities?: PipelineCapabilities;
     dependsOn?: string[];
     trigger?: unknown;
+    conversion?: BackendVisualConversionMetadata;
 }
 
 /** Visual node categories (mapped to ReactFlow node types) */
-export type VisualNodeCategory = 'trigger' | 'source' | 'transform' | 'validate' | 'condition' | 'load' | 'filter' | 'feed' | 'export' | 'sink' | 'enrich';
+export type VisualNodeCategory = 'trigger' | 'source' | 'transform' | 'validate' | 'condition' | 'load' | 'filter' | 'feed' | 'export' | 'sink' | 'enrich' | 'gate';
 
 // FORMAT SERVICE
 
@@ -98,6 +142,7 @@ export class PipelineFormatService {
         [StepType.EXPORT]: 'export',
         [StepType.FEED]: 'feed',
         [StepType.SINK]: 'sink',
+        [StepType.GATE]: 'gate',
     };
 
     /**
@@ -117,6 +162,7 @@ export class PipelineFormatService {
         feed: StepType.FEED,
         sink: StepType.SINK,
         filter: StepType.TRANSFORM,
+        gate: StepType.GATE,
     };
 
     /**
@@ -135,208 +181,58 @@ export class PipelineFormatService {
         feed: 'feed',
         sink: 'sink',
         filter: 'transform',
+        gate: 'gate',
     };
 
-    /**
-     * Convert canonical (step-based) definition to visual (nodes/edges) format
-     */
-    toVisual(definition: PipelineDefinition | null | undefined): VisualPipelineDefinition {
-        if (!definition) {
-            return {
-                nodes: [],
-                edges: [],
-                variables: {},
-                capabilities: undefined,
-                dependsOn: undefined,
-                trigger: undefined,
-            };
-        }
-
-        if (this.isVisualFormat(definition)) {
-            return definition as unknown as VisualPipelineDefinition;
-        }
-
-        const steps: PipelineStepDefinition[] = Array.isArray(definition.steps) ? definition.steps : [];
-        const nodes = this.stepsToNodes(steps);
-        const edges = this.convertEdges(definition.edges, nodes);
-
+    private getFormatMappings(): BackendFormatMappings {
         return {
-            nodes,
-            edges,
-            variables: (definition.context ?? {}) as Record<string, unknown>,
-            capabilities: definition.capabilities,
-            dependsOn: definition.dependsOn,
+            stepTypeToCategory: stepType => this.stepTypeToCategory(stepType),
+            categoryToStepType: category => this.categoryToStepType(category),
+            categoryToNodeType: category => this.categoryToNodeType(category),
+            nodePosition: index => ({
+                x: this.defaultStartX + index * this.defaultNodeSpacingX,
+                y: this.defaultStartY,
+            }),
         };
     }
 
-    /**
-     * Convert visual (nodes/edges) definition to canonical (step-based) format
-     */
-    toCanonical(definition: VisualPipelineDefinition | Record<string, unknown> | null | undefined): PipelineDefinition {
-        if (!definition) {
-            return { version: 1, steps: [] };
-        }
-
-        const def = definition as Record<string, unknown>;
-
-        if (this.hasNodesArray(def)) {
-            return this.visualToCanonical(definition as VisualPipelineDefinition);
-        }
-
-        if (Array.isArray(def.steps)) {
-            return {
-                ...(def as unknown as PipelineDefinition),
-                version: typeof def.version === 'number' && def.version > 0 ? def.version : 1,
-            };
-        }
-
-        return { version: 1, steps: [], ...def } as unknown as PipelineDefinition;
+    toVisual(definition: PipelineDefinition | null | undefined): VisualPipelineDefinition {
+        return convertBackendToVisual(definition, this.getFormatMappings());
     }
 
-    /**
-     * Check if a definition is in visual format
-     */
+    toCanonical(
+        definition: VisualPipelineDefinition | Record<string, unknown> | null | undefined,
+    ): PipelineDefinition {
+        return convertBackendToCanonical(definition, this.getFormatMappings());
+    }
+
     isVisualFormat(definition: unknown): boolean {
         if (!definition || typeof definition !== 'object') return false;
-        const def = definition as Record<string, unknown>;
-        return Array.isArray(def.nodes) && def.nodes.length > 0;
+        return Array.isArray((definition as Record<string, unknown>).nodes);
     }
-
-    /**
-     * Check if a definition has a nodes array (even empty)
-     */
-    private hasNodesArray(definition: Record<string, unknown>): boolean {
-        return Array.isArray(definition.nodes) && definition.nodes.length > 0;
-    }
-
-    /**
-     * Convert steps array to visual nodes
-     */
-    private stepsToNodes(steps: PipelineStepDefinition[]): VisualNode[] {
-        return steps.map((step, index) => {
-            const id = String(step.key ?? `step-${index}`);
-            const category = this.stepTypeToCategory(step.type);
-            const nodeType = this.categoryToNodeType(category);
-
-            const adapterCode = (step.config as Record<string, unknown>)?.adapterCode as string | undefined;
-            const label = step.name || step.key || `Step ${index + 1}`;
-
-            return {
-                id,
-                type: nodeType,
-                position: {
-                    x: this.defaultStartX + index * this.defaultNodeSpacingX,
-                    y: this.defaultStartY,
-                },
-                data: {
-                    label,
-                    type: category,
-                    adapterCode,
-                    config: (step.config ?? {}) as Record<string, unknown>,
-                },
-            };
-        });
-    }
-
-    /**
-     * Convert canonical edges to visual edges, or generate sequential edges if none provided
-     */
-    private convertEdges(edges: PipelineEdge[] | undefined, nodes: VisualNode[]): VisualEdge[] {
-        if (Array.isArray(edges) && edges.length > 0) {
-            return edges.map((e, idx) => ({
-                id: String(e.id ?? `edge-${idx}`),
-                source: String(e.from),
-                target: String(e.to),
-                sourceHandle: e.branch,
-            }));
-        }
-
-        return nodes.slice(1).map((node, index) => ({
-            id: `edge-${index}`,
-            source: nodes[index].id,
-            target: node.id,
-        }));
-    }
-
-    /**
-     * Convert visual definition to canonical format
-     */
-    private visualToCanonical(visual: VisualPipelineDefinition): PipelineDefinition {
-        const nodes = visual.nodes ?? [];
-        const steps = nodes.map((node, idx) => this.nodeToStep(node, idx));
-
-        const edges: PipelineEdge[] = (visual.edges ?? []).map((e, i) => ({
-            id: e.id ?? `edge-${i}`,
-            from: e.source,
-            to: e.target,
-            branch: e.sourceHandle,
-        }));
-
-        const result: PipelineDefinition = {
-            version: 1,
-            steps,
-            edges,
-            context: (visual.variables ?? {}) as PipelineContext,
-        };
-
-        if (visual.capabilities) {
-            result.capabilities = visual.capabilities;
-        }
-        if (visual.dependsOn) {
-            result.dependsOn = visual.dependsOn;
-        }
-
-        return result;
-    }
-
-    /**
-     * Convert a visual node to a pipeline step
-     */
-    private nodeToStep(node: VisualNode, index: number): PipelineStepDefinition {
-        const data = node.data ?? {};
-        const stepType = this.categoryToStepType(data.type);
-
-        const adapterCode = data.adapterCode || (data.config?.adapterCode as string) || '';
-        const existingConfig = (data.config ?? {}) as Record<string, unknown>;
-        const restConfig = Object.fromEntries(
-            Object.entries(existingConfig).filter(([key]) => key !== 'adapterCode')
-        );
-
-        return {
-            key: node.id ?? `step-${index}`,
-            type: stepType,
-            name: data.label,
-            config: {
-                ...restConfig,
-                adapterCode,
-            },
-        };
-    }
-
-    /**
-     * Map StepType enum to visual node category using lookup map
-     * Falls back to 'transform' for unknown types to ensure forward compatibility
-     */
     private stepTypeToCategory(stepType: StepType | string): VisualNodeCategory {
-        // StepType enum values are already uppercase strings
         const type = String(stepType).toUpperCase();
-        return PipelineFormatService.STEP_TYPE_TO_CATEGORY[type] ?? 'transform';
+        const category = PipelineFormatService.STEP_TYPE_TO_CATEGORY[type];
+        if (!category) {
+            throw new Error(`Unsupported pipeline step type "${stepType}"`);
+        }
+        return category;
     }
 
-    /**
-     * Map visual node category to StepType enum using lookup map
-     * Falls back to TRANSFORM for unknown categories to ensure forward compatibility
-     */
     private categoryToStepType(category: VisualNodeCategory | string): StepType {
-        return PipelineFormatService.CATEGORY_TO_STEP_TYPE[category] ?? StepType.TRANSFORM;
+        const stepType = PipelineFormatService.CATEGORY_TO_STEP_TYPE[category];
+        if (!stepType) {
+            throw new Error(`Unsupported visual node category "${category}"`);
+        }
+        return stepType;
     }
 
-    /**
-     * Map category to ReactFlow node type string using lookup map
-     * Falls back to 'transform' for unknown categories
-     */
     private categoryToNodeType(category: VisualNodeCategory): string {
-        return PipelineFormatService.CATEGORY_TO_NODE_TYPE[category] ?? 'transform';
+        const nodeType = PipelineFormatService.CATEGORY_TO_NODE_TYPE[category];
+        if (!nodeType) {
+            throw new Error(`Unsupported visual node category "${category}"`);
+        }
+        return nodeType;
     }
 
     /**
@@ -344,52 +240,20 @@ export class PipelineFormatService {
      * Useful for testing round-trip conversion
      */
     validateRoundTrip(definition: PipelineDefinition): { isValid: boolean; issues: string[] } {
-        const issues: string[] = [];
-
         try {
-            // Convert to visual and back
-            const visual = this.toVisual(definition);
-            const canonical = this.toCanonical(visual);
-
-            // Check step count
-            if (definition.steps.length !== canonical.steps.length) {
-                issues.push(`Step count mismatch: ${definition.steps.length} vs ${canonical.steps.length}`);
+            const canonical = this.toCanonical(this.toVisual(definition));
+            if (!valuesEqual(definition, canonical)) {
+                return {
+                    isValid: false,
+                    issues: ['Round-trip conversion changed the canonical definition'],
+                };
             }
-
-            // Check each step
-            for (let i = 0; i < definition.steps.length; i++) {
-                const original = definition.steps[i];
-                const converted = canonical.steps[i];
-
-                if (original.key !== converted.key) {
-                    issues.push(`Step ${i}: key mismatch - "${original.key}" vs "${converted.key}"`);
-                }
-
-                if (original.type !== converted.type) {
-                    issues.push(`Step ${i}: type mismatch - "${original.type}" vs "${converted.type}"`);
-                }
-
-                const origConfig = original.config as Record<string, unknown>;
-                const convConfig = converted.config as Record<string, unknown>;
-
-                if (origConfig.adapterCode !== convConfig.adapterCode) {
-                    issues.push(`Step ${i}: adapterCode mismatch - "${origConfig.adapterCode}" vs "${convConfig.adapterCode}"`);
-                }
-            }
-
-            // Check edges
-            const origEdges = definition.edges ?? [];
-            const convEdges = canonical.edges ?? [];
-            if (origEdges.length !== convEdges.length) {
-                issues.push(`Edge count mismatch: ${origEdges.length} vs ${convEdges.length}`);
-            }
-        } catch (e) {
-            issues.push(`Round-trip conversion failed: ${getErrorMessage(e)}`);
+            return { isValid: true, issues: [] };
+        } catch (error) {
+            return {
+                isValid: false,
+                issues: [`Round-trip conversion failed: ${getErrorMessage(error)}`],
+            };
         }
-
-        return {
-            isValid: issues.length === 0,
-            issues,
-        };
     }
 }

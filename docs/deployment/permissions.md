@@ -1,185 +1,234 @@
 # Permissions
 
-The Data Hub plugin defines custom permissions for fine-grained access control.
+The plugin registers 31 Vendure custom permissions: three four-operation CRUD
+groups and 19 task-specific permissions. Assign permissions through Vendure
+roles and use the smallest set required for each operator.
 
-## Permission Definitions
+## Registered Permissions
 
-### Pipeline Permissions
+### Pipeline CRUD
 
-| Permission | Description |
-|------------|-------------|
-| `CreateDataHubPipeline` | Create new pipelines |
-| `ReadDataHubPipeline` | View pipelines and definitions |
-| `UpdateDataHubPipeline` | Modify existing pipelines |
+`DataHubPipelinePermission` registers:
+
+| Permission | Purpose |
+| ---------- | ------- |
+| `CreateDataHubPipeline` | Create pipeline records |
+| `ReadDataHubPipeline` | Read pipeline metadata and definitions |
+| `UpdateDataHubPipeline` | Edit pipeline records and definitions |
 | `DeleteDataHubPipeline` | Delete pipelines |
-| `RunDataHubPipeline` | Execute pipelines |
-| `PublishDataHubPipeline` | Publish pipeline versions |
-| `ReviewDataHubPipeline` | Review and approve pipelines |
 
-### Secret Permissions
+### Secret CRUD
 
-| Permission | Description |
-|------------|-------------|
-| `CreateDataHubSecret` | Create new secrets |
-| `ReadDataHubSecret` | View secret metadata (not values) |
-| `UpdateDataHubSecret` | Modify secrets |
-| `DeleteDataHubSecret` | Delete secrets |
+`DataHubSecretPermission` registers:
 
-### Operational Permissions
+| Permission | Purpose |
+| ---------- | ------- |
+| `CreateDataHubSecret` | Create a write-only secret value |
+| `ReadDataHubSecret` | Read secret metadata and value status, never the value |
+| `UpdateDataHubSecret` | Replace, retain, clear, or change a secret |
+| `DeleteDataHubSecret` | Delete a database-backed secret |
 
-| Permission | Description |
-|------------|-------------|
-| `ViewDataHubRuns` | View execution history |
-| `RetryDataHubRecord` | Retry failed records |
-| `ManageDataHubConnections` | Manage external connections |
-| `ManageDataHubAdapters` | Configure adapters |
-| `UpdateDataHubSettings` | Modify plugin settings |
+### Schema CRUD
 
-### Quarantine Permissions
+`DataHubSchemaPermission` registers:
 
-| Permission | Description |
-|------------|-------------|
-| `ViewQuarantine` | View quarantined records |
-| `EditQuarantine` | Modify quarantined records |
-| `ReplayRecord` | Replay processed records |
+| Permission | Purpose |
+| ---------- | ------- |
+| `CreateDataHubSchema` | Create registry schemas |
+| `ReadDataHubSchema` | Read registry schema metadata and definitions |
+| `UpdateDataHubSchema` | Edit registry schemas |
+| `DeleteDataHubSchema` | Delete registry schemas |
 
-## Assigning Permissions
+### Operations and Administration
 
-### Via Admin UI
+| Permission | Purpose |
+| ---------- | ------- |
+| `RunDataHubPipeline` | Start, cancel, preview, sandbox, and otherwise control pipeline runs; effective pipeline capabilities are also enforced |
+| `ViewDataHubRuns` | Read run history and run details |
+| `ManageDataHubAdapters` | Open the adapter catalog and read adapter capability metadata used by pipeline editors |
+| `ManageDataHubConnections` | Create, read, update, and delete connections |
+| `UseDataHubConnection` | Use a referenced connection during an authorized pipeline execution, preview, or sandbox |
+| `UseDataHubSecret` | Resolve a referenced secret during an authorized pipeline execution, preview, or sandbox |
+| `ViewDataHubQuarantine` | Read quarantined or failed records |
+| `EditDataHubQuarantine` | Modify quarantined records, including retry payload patches |
+| `ReplayDataHubRecord` | Retry a record unchanged from its recorded failure point |
+| `PublishDataHubPipeline` | Publish an executable pipeline revision |
+| `ReviewDataHubPipeline` | Review and approve pipeline changes |
+| `UpdateDataHubSettings` | Change Data Hub settings |
+| `ViewDataHubAnalytics` | Read analytics |
+| `ManageDataHubWebhooks` | Manage webhook operations |
+| `ManageDataHubDestinations` | Manage export destinations |
+| `ManageDataHubFeeds` | Manage feed resources |
+| `ViewDataHubEntitySchemas` | Read entity-schema metadata |
+| `ManageDataHubFiles` | Upload, register, and delete Data Hub files |
+| `ReadDataHubFiles` | Read or download Data Hub files |
 
-1. Go to **Administrator > Roles**
-2. Create or edit a role
-3. In the permissions list, find "Data Hub" section
-4. Enable required permissions
-5. Save the role
-6. Assign role to administrators
 
-### Via Code
+## Assigning Roles
 
-```typescript
-import { bootstrap } from '@vendure/core';
+Use **Settings → Roles** in the Vendure Dashboard:
 
-const config: VendureConfig = {
-    // ...
-};
+1. create or edit a role;
+2. assign the role to the intended channel or channels;
+3. select the required Data Hub permissions;
+4. save the role; and
+5. assign the role to the appropriate administrator.
 
-bootstrap(config).then(async app => {
-    const roleService = app.get(RoleService);
+The superadmin role has every registered permission.
 
-    await roleService.create({
-        code: 'data-hub-operator',
-        description: 'Can run and monitor pipelines',
-        permissions: [
-            'ReadDataHubPipeline',
-            'RunDataHubPipeline',
-            'ViewDataHubRuns',
-            'ViewQuarantine',
-        ],
-    });
-});
+### Example Role Sets
+
+A monitoring role commonly needs:
+
+```text
+ReadDataHubPipeline
+ViewDataHubRuns
+ViewDataHubQuarantine
+ViewDataHubAnalytics
 ```
 
-## Role Examples
+A pipeline operator commonly adds:
 
-### Read-Only Access
-
-View pipelines and runs without making changes:
-
-```
-Permissions:
-- ReadDataHubPipeline
-- ViewDataHubRuns
-- ViewQuarantine
+```text
+RunDataHubPipeline
+ReplayDataHubRecord
+ReadDataHubFiles
 ```
 
-### Pipeline Operator
+Publishing, reverting, interactive execution, extract preview, hook testing,
+impact analysis, and sandbox operations enforce the effective pipeline
+capabilities in addition to their operation permission. Adapter-declared
+permissions are combined with resource references. A definition that references
+a connection requires `UseDataHubConnection` and `UseDataHubSecret`, because the
+saved connection can contain indirect Secret Codes. A direct Secret Code
+reference requires `UseDataHubSecret`. These use permissions do not grant
+connection management or secret-metadata access. Superadmins satisfy the derived
+checks.
 
-Run pipelines and handle errors:
+Manual runs persist their initiating administrator. Scheduled, event,
+file-watch, message, and authenticated incoming-webhook runs persist the
+publisher of the immutable revision. The worker reloads that user and their
+current roles before execution, so deleted users or revoked permissions fail
+closed. Only an actorless code-first revision can use the configured Vendure
+superadmin as a fallback; a database-managed run without a persisted execution
+identity is rejected.
 
-```
-Permissions:
-- ReadDataHubPipeline
-- RunDataHubPipeline
-- ViewDataHubRuns
-- ViewQuarantine
-- RetryDataHubRecord
-```
+HTTP and GraphQL authentication must be attached to a saved connection with an
+HTTP(S) `baseUrl`. A connection-backed request can use relative paths or an
+absolute URL on that same origin. Cross-origin absolute URLs and redirects are
+rejected before credentials are sent.
 
-### Pipeline Developer
+A pipeline author commonly adds:
 
-Create and modify pipelines:
-
-```
-Permissions:
-- CreateDataHubPipeline
-- ReadDataHubPipeline
-- UpdateDataHubPipeline
-- DeleteDataHubPipeline
-- RunDataHubPipeline
-- ViewDataHubRuns
-- ViewQuarantine
-- RetryDataHubRecord
-```
-
-### Data Hub Administrator
-
-Full access to all features:
-
-```
-Permissions:
-- CreateDataHubPipeline
-- ReadDataHubPipeline
-- UpdateDataHubPipeline
-- DeleteDataHubPipeline
-- RunDataHubPipeline
-- PublishDataHubPipeline
-- ReviewDataHubPipeline
-- CreateDataHubSecret
-- ReadDataHubSecret
-- UpdateDataHubSecret
-- DeleteDataHubSecret
-- ViewDataHubRuns
-- RetryDataHubRecord
-- ManageDataHubConnections
-- ManageDataHubAdapters
-- UpdateDataHubSettings
-- ViewQuarantine
-- EditQuarantine
-- ReplayRecord
+```text
+CreateDataHubPipeline
+UpdateDataHubPipeline
+DeleteDataHubPipeline
+ViewDataHubEntitySchemas
+ManageDataHubAdapters
 ```
 
-## Permission Checks
+Authors who manage registry schemas also need the four `DataHubSchema` CRUD
+permissions. `ViewDataHubEntitySchemas` is separate: it grants read access to
+Vendure entity metadata used by the pipeline editor, not to registry schemas.
 
-### In GraphQL Resolvers
+Keep review and publish permissions in a separate role when change approval must
+be independent from authoring. Secret, connection, webhook, destination, feed,
+settings, and file-management permissions should be added only for operators who
+own those resources.
 
-The plugin uses Vendure's `@Allow` decorator:
+## Backend Checks
 
-```typescript
-@Allow(Permission.ReadDataHubPipeline)
+Resolvers and controllers use Vendure's `@Allow()` decorator with the exported
+permission definitions:
+
+```ts
+import { Mutation, Query } from '@nestjs/graphql';
+import { Allow } from '@vendure/core';
+import {
+    RunDataHubPipelinePermission,
+    ViewDataHubRunsPermission,
+} from '@oronts/vendure-data-hub-plugin';
+
+@Allow(ViewDataHubRunsPermission.Permission)
 @Query()
-dataHubPipelines() { ... }
+dataHubPipelineRuns() {}
 
-@Allow(Permission.RunDataHubPipeline)
+@Allow(RunDataHubPipelinePermission.Permission)
 @Mutation()
-startDataHubPipelineRun() { ... }
+startDataHubPipelineRun() {}
 ```
 
-### Programmatic Checks
+For a programmatic check, `RequestContext.userHasPermissions()` takes an array
+and uses OR semantics:
 
-```typescript
-import { RequestContext, PermissionGuard } from '@vendure/core';
+```ts
+import type { RequestContext } from '@vendure/core';
+import { RunDataHubPipelinePermission } from '@oronts/vendure-data-hub-plugin';
 
-async function checkCanRun(ctx: RequestContext): Promise<boolean> {
-    return ctx.userHasPermission('RunDataHubPipeline');
+export function canRunDataHubPipeline(ctx: RequestContext): boolean {
+    return ctx.userHasPermissions([RunDataHubPipelinePermission.Permission]);
 }
 ```
 
-## Super Admin
+The installed Vendure 3.5 API provides `userHasPermissions()`. The singular
+`userHasPermission()` method shown in older examples is not the current API.
 
-The Super Admin role automatically has all permissions, including Data Hub permissions.
+## Dashboard Checks
 
-## Channel Permissions
+Use the dashboard package's public guard for individual actions:
 
-Permissions are scoped to channels. An administrator with `ReadDataHubPipeline` in Channel A cannot view pipelines in Channel B.
+```tsx
+import { PermissionGuard } from '@vendure/dashboard';
 
-To allow cross-channel access, assign the permission in each required channel or use the global channel.
+<PermissionGuard requires={['RunDataHubPipeline']}>
+    <RunPipelineButton />
+</PermissionGuard>
+```
+
+Route and navigation permission requirements should also be declared so users do
+not see links to pages they cannot open. Backend `@Allow()` checks remain the
+security boundary; a hidden dashboard control is only a usability measure.
+
+## Channel Scope
+
+Pipelines, connections, database-backed secrets, and schemas are `ChannelAware`.
+Creation assigns them to Vendure's default channel and the active request channel.
+List, detail, validation, and runtime lookup paths require an assignment to
+`ctx.channelId`. The Admin API exposes explicit bounded assign/remove mutations;
+the caller needs the resource permission in the target channel, and resources must
+already be visible in the active source channel. Resources cannot be removed from
+the default channel.
+
+Deleting one of these resources from a non-default active channel removes that
+channel assignment rather than deleting the database row. Default-channel deletion
+is rejected while the resource is assigned to another channel. Global code
+uniqueness is retained, so rename and physical-delete guards inspect published
+definitions and nonterminal run snapshots across all channels. Channel fields show
+all assignments only in the default channel; other channels see only themselves.
+
+Code-first secrets are process configuration rather than database entities. They
+are visible in the default channel and only in additional channel codes explicitly
+declared with `channelCodes`. Runs, checkpoints, logs, settings, errors, export
+destinations, and feeds retain their documented channel/global contracts and are
+not made `ChannelAware` by this resource assignment model.
+
+Before user-initiated execution, dry-run, sandbox, step testing, publication, or
+revert, Data Hub resolves every statically configured target channel. This
+includes the pipeline channel token, effective `EXPLICIT` and `MULTI` channel
+IDs, step overrides, and a loader's static `channel` code. Pipeline context
+channels are resolved as Vendure tokens; loader channels are resolved as codes.
+Data Hub then uses
+Vendure's `RoleService.userHasAllPermissionsOnChannel()` to require the operation
+permission and all effective adapter/capability permissions on every target.
+Unknown targets fail before a run or revision is persisted.
+
+A loader `channelsField` selects channels from runtime records, so its complete
+target set cannot be authorized in advance. Pipelines using that option require
+`SuperAdmin` for user execution and publication. A queued worker reloads the
+current Vendure user and roles: it uses the run initiator when present, otherwise
+the user who published the immutable revision. Deleted users and revoked channel
+permissions therefore fail closed at execution time. Only a code-first pipeline
+with neither persisted identity uses Vendure's configured superadmin user; a
+database-managed run without an identity is rejected. These target checks
+complement, rather than replace, managed-resource channel assignment checks.

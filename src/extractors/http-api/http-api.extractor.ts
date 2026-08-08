@@ -1,7 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { PaginationType, TIME_UNITS, HTTP } from '../../constants/index';
+import { PaginationType, TIME_UNITS, HTTP, TRANSFORM_LIMITS } from '../../constants/index';
 import { getErrorMessage, toErrorOrUndefined } from '../../utils/error.utils';
 import { executeWithRetry, createRetryConfig, isRetryableError, sleep } from '../../utils/retry.utils';
+import { secureFetch } from '../../utils/secure-fetch.utils';
+import { createExtractorFetchPolicy } from '../shared';
 import {
     DataExtractor,
     ExtractorContext,
@@ -19,6 +21,7 @@ import {
     RETRYABLE_NETWORK_CODES,
     HTTP_DEFAULTS,
 } from './types';
+import { validateRemoteRequestConfig } from '../shared/request-config-validation';
 import {
     buildUrl,
     buildHeaders,
@@ -38,6 +41,8 @@ import {
     hasReachedMaxPages,
 } from './pagination';
 import { HTTP_API_EXTRACTOR_SCHEMA } from './schema';
+import { assertCanonicalExtractorConfig } from '../extractor-config.contract';
+import { resolveBoundedLimit } from '../shared/pagination.utils';
 
 @Injectable()
 export class HttpApiExtractor implements DataExtractor<HttpApiExtractorConfig> {
@@ -55,6 +60,7 @@ export class HttpApiExtractor implements DataExtractor<HttpApiExtractorConfig> {
         context: ExtractorContext,
         config: HttpApiExtractorConfig,
     ): AsyncGenerator<RecordEnvelope, void, undefined> {
+        assertCanonicalExtractorConfig('httpApi', config as unknown as Record<string, unknown>);
         const startTime = Date.now();
         let totalFetched = 0;
         let pageCount = 0;
@@ -127,6 +133,7 @@ export class HttpApiExtractor implements DataExtractor<HttpApiExtractorConfig> {
                     hasMore = updatedState.hasMore;
                     state = {
                         cursor: updatedState.cursor,
+                        nextUrl: updatedState.nextUrl,
                         offset: updatedState.offset,
                         page: updatedState.page,
                         recordCount: records.length,
@@ -165,6 +172,24 @@ export class HttpApiExtractor implements DataExtractor<HttpApiExtractorConfig> {
         const errors: Array<{ field: string; message: string; code?: string }> = [];
         const warnings: Array<{ field?: string; message: string }> = [];
 
+        try {
+            assertCanonicalExtractorConfig('httpApi', config as unknown as Record<string, unknown>);
+        } catch (error) {
+            errors.push({
+                field: 'config',
+                message: getErrorMessage(error),
+                code: 'invalid-extractor-config-contract',
+            });
+        }
+        errors.push(...validateRemoteRequestConfig(config));
+
+        if (config.rateLimit?.maxConcurrent !== undefined || config.rateLimit?.batchDelayMs !== undefined) {
+            errors.push({
+                field: 'rateLimit',
+                message: 'HTTP API extraction supports only rateLimit.requestsPerSecond',
+            });
+        }
+
         if (!config.url) {
             errors.push({ field: 'url', message: 'URL is required' });
         } else if (!isValidUrl(config.url, !!config.connectionCode)) {
@@ -175,13 +200,6 @@ export class HttpApiExtractor implements DataExtractor<HttpApiExtractorConfig> {
             warnings.push({
                 field: 'pagination.cursorPath',
                 message: 'Cursor path not specified for cursor pagination',
-            });
-        }
-
-        if (config.rateLimit?.requestsPerSecond && config.rateLimit.requestsPerSecond <= 0) {
-            errors.push({
-                field: 'rateLimit.requestsPerSecond',
-                message: 'Rate limit must be positive',
             });
         }
 
@@ -221,9 +239,14 @@ export class HttpApiExtractor implements DataExtractor<HttpApiExtractorConfig> {
         config: HttpApiExtractorConfig,
         limit: number = 10,
     ): Promise<ExtractorPreviewResult> {
+        const safeLimit = resolveBoundedLimit(
+            limit,
+            10,
+            TRANSFORM_LIMITS.MAX_PREVIEW_LIMIT,
+        );
         const response = await this.makeRequest(context, config);
         const records = extractRecords(response.data, config.dataPath);
-        const preview = records.slice(0, limit);
+        const preview = records.slice(0, safeLimit);
 
         return {
             records: preview.map((record, index) => ({
@@ -242,6 +265,7 @@ export class HttpApiExtractor implements DataExtractor<HttpApiExtractorConfig> {
         context: ExtractorContext,
         config: HttpApiExtractorConfig,
     ): Promise<HttpResponse> {
+        assertCanonicalExtractorConfig('httpApi', config as unknown as Record<string, unknown>);
         const retryConfig = createRetryConfig({
             maxAttempts: config.retry?.maxAttempts || HTTP.MAX_RETRIES,
             initialDelayMs: config.retry?.initialDelayMs,
@@ -262,14 +286,15 @@ export class HttpApiExtractor implements DataExtractor<HttpApiExtractorConfig> {
                     url,
                 });
 
-                const response = await fetch(url, {
+                const response = await secureFetch(url, {
                     method: getMethod(config),
                     headers,
                     body,
                     signal: AbortSignal.timeout(config.timeoutMs || HTTP.TIMEOUT_MS),
-                });
+                }, undefined, createExtractorFetchPolicy(url, config));
 
                 if (!response.ok) {
+                    await response.body?.cancel().catch(() => undefined);
                     const httpError = new Error(`HTTP ${response.status}: ${response.statusText}`);
                     (httpError as Error & { statusCode: number }).statusCode = response.status;
                     throw httpError;

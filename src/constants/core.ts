@@ -14,8 +14,12 @@ export const LOGGER_CTX = 'DataHubPlugin';
 export const QUEUE_NAMES = {
     /** Queue for pipeline run jobs */
     RUN: 'data-hub.run',
-    /** Queue for scheduled pipeline jobs */
-    SCHEDULE: 'data-hub.schedule',
+    /** Queue for durable Vendure event trigger delivery */
+    EVENT_TRIGGER_OUTBOX: 'data-hub.event-trigger-outbox',
+    /** Queue for durable outgoing webhook delivery */
+    WEBHOOK_RETRY: 'data-hub.webhook-retry',
+    /** Queue for durable remote source acknowledgement recovery */
+    REMOTE_SOURCE_ACKNOWLEDGEMENT: 'data-hub.remote-source-acknowledgement',
 } as const;
 
 export type QueueName = typeof QUEUE_NAMES[keyof typeof QUEUE_NAMES];
@@ -39,19 +43,22 @@ export const NAV = {
 export const LOGGER_CONTEXTS = {
     PIPELINE_SERVICE: 'PipelineService',
     PIPELINE_RUNNER: 'PipelineRunner',
+    REMOTE_SOURCE_ACKNOWLEDGEMENT: 'RemoteSourceAcknowledgement',
     CONNECTION_SERVICE: 'ConnectionService',
+    SCHEMA_REGISTRY_SERVICE: 'SchemaRegistryService',
     SECRET_SERVICE: 'SecretService',
     HOOK_SERVICE: 'HookService',
     ANALYTICS_SERVICE: 'AnalyticsService',
     WEBHOOK_RETRY: 'WebhookRetry',
     FEED_GENERATOR_SERVICE: 'FeedGeneratorService',
+    FEED_PERSISTENCE: 'FeedPersistenceService',
+    FEED_SCHEDULER: 'FeedScheduleService',
     EXECUTION_LOGGER: 'ExecutionLogger',
     RECORD_ERROR_SERVICE: 'RecordErrorService',
     DOMAIN_EVENTS_SERVICE: 'DomainEventsService',
     HTTP_API_EXTRACTOR: 'HttpApiExtractor',
-    WEBHOOK_EXTRACTOR: 'WebhookExtractor',
+    SECURE_FETCH: 'SecureFetch',
     VENDURE_QUERY_EXTRACTOR: 'VendureQueryExtractor',
-    FILE_EXTRACTOR: 'FileExtractor',
     FTP_EXTRACTOR: 'FtpExtractor',
     DATABASE_EXTRACTOR: 'DatabaseExtractor',
     S3_EXTRACTOR: 'S3Extractor',
@@ -89,6 +96,7 @@ export const LOGGER_CONTEXTS = {
     FILE_STORAGE_SERVICE: 'FileStorageService',
     DEFINITION_VALIDATOR: 'DefinitionValidator',
     EVENT_TRIGGER_SERVICE: 'EventTriggerService',
+    EVENT_TRIGGER_OUTBOX: 'EventTriggerOutbox',
     MESSAGE_CONSUMER: 'MessageConsumerService',
     FILE_WATCH: 'FileWatchService',
     RATE_LIMIT: 'RateLimitService',
@@ -101,6 +109,8 @@ export const LOGGER_CONTEXTS = {
     FTP_HANDLER: 'FtpHandler',
     EMAIL_HANDLER: 'EmailHandler',
     RABBITMQ_ADAPTER: 'RabbitMQAdapter',
+    REDIS_STREAMS_ADAPTER: 'RedisStreamsAdapter',
+    SQS_ADAPTER: 'SqsAdapter',
     ERROR_RESOLVER: 'ErrorResolver',
     QUEUE_RESOLVER: 'QueueResolver',
     FEED_RESOLVER: 'FeedResolver',
@@ -118,4 +128,5 @@ export const LOGGER_CONTEXTS = {
     ADAPTER_REGISTRY: 'DataHub:AdapterRegistry',
     SECRET_RESOLVER: 'SecretResolver',
     CONNECTION_RESOLVER: 'ConnectionResolver',
+    SCHEMA_RESOLVER: 'SchemaResolver',
 } as const;

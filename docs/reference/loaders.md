@@ -8,8 +8,8 @@ Complete reference for all 24 built-in loaders: 16 entity loaders, 4 order opera
 
 ### [Common Configuration](#common-configuration)
 - [Loader Adapter Codes](#loader-adapter-codes) - Complete list of all 24 loaders
-- [Load Strategies](#load-strategies) - CREATE, UPDATE, UPSERT, MERGE, SOFT_DELETE, HARD_DELETE
-- [Conflict Strategies](#conflict-strategies) - SOURCE_WINS, VENDURE_WINS, MERGE, MANUAL_QUEUE
+- [Load Strategies](#load-strategies) - CREATE, UPDATE, UPSERT
+- [Conflict Strategies](#conflict-strategies) - SOURCE_WINS, VENDURE_WINS, MERGE
 
 ### Entity Loaders
 - [Product Loader](#product-loader) - Create/update products with facets and assets
@@ -24,7 +24,7 @@ Complete reference for all 24 built-in loaders: 16 entity loaders, 4 order opera
 - [GraphQL Mutation Loader](#graphql-mutation-loader) - Send records as GraphQL mutations to external APIs
 - [Using Sinks for External Systems](#using-sinks-for-external-systems) - Alternative for search engines and message queues
 
-### [Quick Reference](#quick-reference-1)
+### [Quick Reference](#quick-reference)
 - Summary table of all 24 loaders with descriptions
 - Required permissions for each loader
 
@@ -37,11 +37,20 @@ All loaders are configured using the `.load()` step in the pipeline DSL:
 ```typescript
 .load('step-name', {
     adapterCode: 'productUpsert',   // Loader adapter code (see list below)
-    strategy: 'UPSERT',             // CREATE, UPDATE, UPSERT, MERGE, SOFT_DELETE, HARD_DELETE
-    matchField: 'slug',             // Field to match existing records
+    strategy: 'UPSERT',             // CREATE, UPDATE, UPSERT
+    slugField: 'slug',              // Record field containing product identity
+    skuField: 'sku',                // Record field containing variant identity
     conflictStrategy: 'SOURCE_WINS', // Conflict resolution strategy (optional)
 })
 ```
+
+Boolean record fields accept JSON booleans and case-insensitive `"true"` or
+`"false"` strings from text formats such as CSV. Blank values are treated as
+omitted. Other values fail the record instead of using JavaScript truthiness.
+Numeric record fields accept only finite numbers or finite numeric strings;
+blank and non-finite values are treated as missing and fail required fields.
+String record fields accept nonblank strings and finite numeric identifiers;
+arrays and objects are not converted into placeholder strings.
 
 ### Loader Adapter Codes
 
@@ -79,9 +88,6 @@ All loaders are configured using the `.load()` step in the pipeline DSL:
 | `CREATE` | Create only (skip if exists) |
 | `UPDATE` | Update only (skip if not found) |
 | `UPSERT` | Create or Update (default) |
-| `MERGE` | Merge source with existing data |
-| `SOFT_DELETE` | Mark as deleted / logical delete |
-| `HARD_DELETE` | Permanently remove from database |
 
 ### Conflict Strategies
 
@@ -90,7 +96,6 @@ All loaders are configured using the `.load()` step in the pipeline DSL:
 | `SOURCE_WINS` | Source data overwrites Vendure data for conflicts |
 | `VENDURE_WINS` | Vendure data is preserved for conflicts |
 | `MERGE` | Deep merge source and Vendure data |
-| `MANUAL_QUEUE` | Queue conflicts for manual resolution |
 
 ---
 
@@ -127,10 +132,24 @@ Create or update products with slug-based lookup, facets, and assets.
 | `channelsField` | string | No | Record field containing channel codes (array or comma-separated) for dynamic per-record channel assignment |
 | `translationsField` | string | No | Record field containing multi-language translations. Overrides name/slug/description fields. Supports array format `[{ languageCode, name, slug?, description? }]` or object map `{ en: { name, slug?, description? } }` |
 | `skuField` | string | No | Record field for default variant SKU |
-| `priceField` | string | No | Record field for default variant price |
+| `priceField` | string | No | Record field for default variant price in major units (e.g. `19.99`) |
+| `priceByCurrencyField` | string | No | Record field for a major-unit currency map (e.g. `{ USD: 19.99, EUR: 17.50 }`); cannot be combined with scalar price data |
 | `customFieldsField` | string | No | Record field containing custom fields object (default: `"customFields"`) |
 | `createVariants` | boolean | No | Create/update a default variant alongside the product (default: `true`). Set to `false` when variants are handled by a separate `variantUpsert` step |
+| `facetValuesField` | string | No | Record field containing facet value codes or objects with a `code` property (default: `"facetValueCodes"`) |
 | `facetValuesMode` | string | No | How to handle facet value assignments: `REPLACE_ALL` (default - replace all facets), `MERGE` (add new, keep existing), `REMOVE` (remove specified facets), `SKIP` (don't touch facets) |
+
+Variant identity is owned by Vendure's default source channel. `channelsField`
+adds that one variant to target channels; it does not create channel-local
+variants. A matching SKU that exists only in a target channel, or resolves to
+different variant IDs across selected channels, is rejected to prevent duplicate
+identities.
+
+With `priceByCurrencyField`, the record must contain the default currency of the
+source channel when creating and the default currency of every selected target
+channel. Each channel receives only currencies it supports. `priceField` is a
+single major-unit amount applied without exchange-rate conversion, so use an
+explicit currency map when selected channels need different amounts.
 
 ### Nested Entity Modes
 
@@ -197,8 +216,8 @@ Update product variants by SKU with multi-currency prices and auto-create option
 |-------|------|----------|-------------|
 | `sku` | string | Yes | Product variant SKU |
 | `name` | string | No | Variant name |
-| `price` | number | No | Price in minor units (cents) |
-| `prices` | object | No | Multi-currency prices `{ USD: 1999, EUR: 1799 }` |
+| `price` | number | No | Price in major units, e.g. `19.99`; converted once using Vendure MoneyStrategy precision |
+| `prices` | object | No | Multi-currency prices in major units, e.g. `{ USD: 19.99, EUR: 17.99 }` |
 | `taxCategoryName` | string | No | Tax category to assign |
 | `stockOnHand` | number | No | Stock level |
 | `enabled` | boolean | No | Whether variant is enabled |
@@ -217,8 +236,8 @@ Update product variants by SKU with multi-currency prices and auto-create option
 | `translationsField` | string | No | Record field containing multi-language translations. Overrides name field. Supports array `[{ languageCode, name }]` or object map `{ en: { name }, de: { name } }` |
 | `customFieldsField` | string | No | Record field containing custom fields object |
 | `optionGroupsField` | string | No | Record field containing option group key-value pairs (auto-creates groups) |
-| `optionIdsField` | string | No | Record field containing pre-existing Vendure option IDs array |
-| `optionCodesField` | string | No | Record field containing option codes array for lookup |
+| `optionIdsField` | string | No | Record field containing pre-existing Vendure option IDs array; applied on create and update |
+| `optionCodesField` | string | No | Record field containing option codes resolved within the parent product; duplicate codes across its groups are rejected |
 | `taxCategoryName` | string | No | Tax category name to assign |
 | `stockField` | string | No | Record field for stock on hand |
 | `stockByLocationField` | string | No | Record field for stock by location map |
@@ -256,15 +275,14 @@ Variants can be assigned to option groups in three ways:
 ```typescript
 .load('import-variants', {
     adapterCode: 'variantUpsert',
-    matchField: 'sku',
     skuField: 'sku',
     optionGroupsField: 'options',  // record field: { size: 'S', color: 'Blue' }
 })
 ```
 
-**Direct ID passthrough** (`optionIdsField`): Pass an array of Vendure option IDs directly.
+**Direct ID passthrough** (`optionIdsField`): Pass an array of Vendure option IDs directly. Existing variants receive the new assignments through Vendure's validated update API.
 
-**Code lookup** (`optionCodesField`): Pass an array of option codes like `['size-s', 'color-blue']` to resolve by code.
+**Code lookup** (`optionCodesField`): Pass an array of option codes like `['size-s', 'color-blue']`. Codes are resolved only from the parent product; missing or ambiguous codes fail the record.
 
 ### Example
 
@@ -272,16 +290,15 @@ Variants can be assigned to option groups in three ways:
 .load('import-variants', {
     adapterCode: 'variantUpsert',
     strategy: 'UPSERT',
-    matchField: 'sku',
     skuField: 'sku',
     priceField: 'priceValue',
     optionGroupsField: 'options',
 })
 ```
 
-### Match Fields
+### Variant Identity
 
-Variants can be matched by: `sku`
+Variants are resolved by the record field configured in `skuField`.
 
 ---
 
@@ -300,17 +317,17 @@ Create or update customers with addresses and group memberships.
 | `lastName` | string | No | Last name |
 | `phoneNumber` | string | No | Phone number |
 | `addresses` | array | No | Array of address objects |
-| `groupCodes` | string[] | No | Array of customer group codes |
+| `groupNames` | string[] | No | Array of existing customer group names |
 
 ### Config Fields
 
 | Config Field | Type | Required | Description |
 |-------------|------|----------|-------------|
 | `strategy` | string | No | Load strategy: `UPSERT` (default), `CREATE`, or `UPDATE` |
-| `matchField` | string | No | Field to match existing customers (default: `emailAddress`) |
-| `addressesMode` | string | No | How to handle addresses: `UPSERT_BY_MATCH` (default), `REPLACE_ALL`, `APPEND_ONLY`, `UPDATE_BY_ID`, `SKIP` |
+| `emailField` | string | Yes | Record field containing the customer email identity |
+| `addressesMode` | string | No | How to handle addresses: `UPSERT_BY_MATCH` (default), `REPLACE_ALL`, `APPEND_ONLY`, `SKIP` |
 | `addressMatchFields` | string | No | Comma-separated fields for address matching (default: `streetLine1,city,countryCode`) |
-| `groupsMode` | string | No | How to handle customer groups: `REPLACE_ALL` (default), `MERGE`, `REMOVE`, `SKIP` |
+| `groupsMode` | string | No | How to handle customer groups: `ADD` (default) or `SET` |
 
 ### Nested Entity Modes
 
@@ -319,9 +336,8 @@ Create or update customers with addresses and group memberships.
 | Mode | Behavior | Use Case |
 |------|----------|----------|
 | `UPSERT_BY_MATCH` | Match by fields, update if exists, create if not (default, **recommended**) | **Prevents duplicate addresses** - most common use case |
-| `REPLACE_ALL` | Delete all existing addresses, create new from source | Source system is single source of truth for addresses |
+| `REPLACE_ALL` | Create the complete replacement set, then delete old addresses | Source system is the single source of truth for addresses |
 | `APPEND_ONLY` | Always create new addresses (allows duplicates) | Address history tracking (rare - usually want UPSERT) |
-| `UPDATE_BY_ID` | Update by Vendure address ID if provided, create if not | Source system tracks Vendure address IDs |
 | `SKIP` | Don't modify addresses at all | Partial updates - only updating customer name/email |
 
 **Address Matching** (`UPSERT_BY_MATCH` mode):
@@ -334,10 +350,8 @@ Create or update customers with addresses and group memberships.
 
 | Mode | Behavior |
 |------|----------|
-| `REPLACE_ALL` | Remove all groups, assign new list (default) |
-| `MERGE` | Add new groups, keep existing |
-| `REMOVE` | Remove specified groups |
-| `SKIP` | Don't modify groups |
+| `ADD` | Add named groups while preserving current assignments (default) |
+| `SET` | Replace current assignments with the named groups |
 
 ### Example - Prevent Duplicate Addresses
 
@@ -345,7 +359,7 @@ Create or update customers with addresses and group memberships.
 .load('import-customers', {
     adapterCode: 'customerUpsert',
     strategy: 'UPSERT',
-    matchField: 'emailAddress',
+    emailField: 'emailAddress',
     addressesMode: 'UPSERT_BY_MATCH',  // ← Prevents duplicates
     addressMatchFields: 'streetLine1,city,postalCode,countryCode'
 })
@@ -418,26 +432,39 @@ Create or update collections with parent relationships. Supports multi-language 
 
 Adapter Code: `stockAdjust`
 
-Update stock levels for product variants by SKU.
+Set or adjust stock levels for product variants using a map of exact
+stock-location names to quantities. Every name must resolve in the active
+Vendure channel before any stock movement is applied.
 
 ### Input Fields
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `sku` | string | Yes | Product variant SKU |
-| `stockOnHand` | number | Yes | Stock quantity |
-| `stockLocationName` | string | No | Stock location name |
-| `stockLocationId` | string | No | Stock location ID (alternative) |
-| `reason` | string | No | Reason for adjustment |
+| `skuField` | string | Yes | Record field containing the product variant SKU |
+| `stockByLocationField` | string | Yes | Record field containing an object that maps exact stock-location names to integer quantities |
+| `absolute` | boolean | No | Set non-negative absolute levels when true or omitted; apply signed quantity deltas when false |
 
 ### Example
 
 ```typescript
 .load('update-stock', {
     adapterCode: 'stockAdjust',
-    strategy: 'UPDATE',
-    matchField: 'sku',
+    skuField: 'sku',
+    stockByLocationField: 'stockByLocation',
+    absolute: true,
 })
+```
+
+Example record:
+
+```json
+{
+    "sku": "SKU-001",
+    "stockByLocation": {
+        "warehouse-east": 24,
+        "warehouse-west": 10
+    }
+}
 ```
 
 ---
@@ -455,7 +482,6 @@ Delete entities by slug, SKU, code, email, name, or ID. Supports 13 entity types
 | `entityType` | string | No | Entity type: `'product'`, `'variant'`, `'collection'`, `'promotion'`, `'shipping-method'`, `'customer'`, `'payment-method'`, `'facet'`, `'facet-value'`, `'customer-group'`, `'tax-rate'`, `'asset'`, or `'stock-location'` (default: `'product'`) |
 | `identifierField` | string | No | Record field containing the identifier (default depends on entity type) |
 | `matchBy` | string | No | How to find the entity: `'slug'`, `'sku'`, `'id'`, `'code'`, `'email'`, or `'name'` (default depends on entity type) |
-| `cascadeVariants` | boolean | No | Delete all variants before deleting a product (default: `true`) |
 | `channel` | string | No | Channel code for context |
 
 ### Default matchBy per Entity Type
@@ -483,7 +509,6 @@ Delete entities by slug, SKU, code, email, name, or ID. Supports 13 entity types
     adapterCode: 'entityDeletion',
     entityType: 'product',
     matchBy: 'slug',
-    cascadeVariants: true,
 })
 ```
 
@@ -529,8 +554,7 @@ Delete entities by slug, SKU, code, email, name, or ID. Supports 13 entity types
 
 ### Behavior
 
-- **Product deletion with cascade**: All variants are soft-deleted first, then the product
-- **Product deletion without cascade**: Only the product is soft-deleted (variants remain)
+- **Product deletion**: Uses Vendure's `ProductService.softDelete()`, which soft-deletes the product and all its variants transactionally
 - **Collection deletion**: Deletes the collection found by slug or ID
 - **Promotion deletion**: Soft-deletes the promotion found by coupon code or ID
 - **Shipping method deletion**: Soft-deletes the shipping method found by code or ID
@@ -542,7 +566,8 @@ Delete entities by slug, SKU, code, email, name, or ID. Supports 13 entity types
 - **Tax rate deletion**: Deletes the tax rate found by name or ID
 - **Asset deletion**: Deletes the asset found by name or ID
 - **Stock location deletion**: Deletes the stock location found by name or ID
-- **Not found**: Logs a warning and skips (does not fail the record)
+- **Not found**: Logs a warning and increments the skipped count
+- **Rejected deletions**: Vendure `NOT_DELETED` responses fail the record with Vendure's reason
 - **Errors**: Reported via `onRecordError` callback per standard loader error handling
 
 ---
@@ -642,7 +667,7 @@ Create/update facet values within facets. Supports `translationsField` for multi
 Create/update assets and attach to entities.
 
 ### Promotion Loader (`PROMOTION`)
-Create/update promotions with conditions and actions. Supports `translationsField` for multi-language name/description, `channelsField` for per-record channel assignment, `descriptionField` for single-language description, and `perCustomerUsageLimitField` for per-customer usage limits. When the `enabled` field is not provided in the record, promotions default to `enabled: true`.
+Create/update promotions with conditions and actions. `actionsField` is required and creation rejects records without at least one valid action; the loader never creates a no-effect placeholder discount. Omitting the configured field on update preserves existing actions. Supports `conditionsMode` and `actionsMode`, `translationsField` for multi-language name/description, `channelsField` for per-record channel assignment, `descriptionField` for single-language description, and `perCustomerUsageLimitField` for per-customer usage limits. When the `enabled` field is not provided in the record, promotions default to `enabled: true`.
 
 ### Shipping Method Loader (`SHIPPING_METHOD`)
 Create/update shipping methods with calculators and fulfillment handlers. Supports `translationsField` for multi-language name/description, `channelsField` for per-record channel assignment, and `customFieldsField` for custom field values.
@@ -658,6 +683,38 @@ Create/update payment methods with handlers. Supports `translationsField` for mu
 
 ### Channel Loader (`CHANNEL`)
 Create/update channels with currencies and languages. Supports `customFieldsField` for custom field values.
+
+---
+
+## REST POST Loader
+
+Adapter Code: `restPost`
+
+Send individual records or JSON arrays to an external REST endpoint. The loader
+supports Bearer, Basic, and HMAC authentication through Secret Codes, bounded
+timeouts and retries, exponential backoff, and a per-origin circuit breaker.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `endpoint` | string | Yes | Destination URL |
+| `method` | select | Yes | `POST` or `PUT` |
+| `headers` | json | No | Non-sensitive static headers |
+| `auth` | select | No | `NONE`, `BEARER`, `BASIC`, or `HMAC` |
+| `bearerTokenSecretCode` | secret | No | Bearer token Secret Code |
+| `basicSecretCode` | secret | No | Basic credentials Secret Code |
+| `hmacSecretCode` | secret | No | HMAC signing Secret Code |
+| `hmacHeader` | string | No | Header that receives the HMAC signature |
+| `hmacPayloadTemplate` | string | No | Signature template using `${method}`, `${path}`, `${timestamp}`, and `${body}` |
+| `batchMode` | select | No | `single` or `array` |
+| `maxBatchSize` | number | No | Integer from 0 to 10000; 0 sends all records together (default: 0) |
+| `retries` | number | No | Retries after the first attempt; integer from 0 to 10 (default: 0) |
+| `retryDelayMs` | number | No | Initial retry delay; integer from 0 to 300000 ms (default: 0) |
+| `maxRetryDelayMs` | number | No | Maximum retry delay; integer from 0 to 300000 ms (default: 30000) |
+| `backoffMultiplier` | number | No | Number from 1 to 10 (default: 2) |
+| `timeoutMs` | number | No | Integer from 1 to 300000 ms (default: 30000) |
+
+`maxRetryDelayMs` cannot be lower than `retryDelayMs`. Invalid delivery values
+fail before authentication or the first target request.
 
 ---
 
@@ -679,12 +736,12 @@ Send records as GraphQL mutations to external APIs. Supports variable mapping, a
 | `bearerTokenSecretCode` | string | No | Secret code for Bearer token (when auth is `BEARER`) |
 | `basicSecretCode` | string | No | Secret code for Basic auth credentials (when auth is `BASIC`) |
 | `batchMode` | string | No | `single` or `batch`. If `batch`, send multiple records in a single mutation (default: `single`) |
-| `maxBatchSize` | number | No | Maximum records per batch when batchMode is `batch` |
-| `retries` | number | No | Maximum retry attempts on failure (default: 0) |
-| `retryDelayMs` | number | No | Initial retry delay in milliseconds |
-| `maxRetryDelayMs` | number | No | Maximum retry delay in milliseconds (caps exponential backoff) |
-| `backoffMultiplier` | number | No | Multiplier for exponential backoff between retries |
-| `timeoutMs` | number | No | Request timeout in milliseconds |
+| `maxBatchSize` | number | No | Integer from 0 to 10000; 0 sends all records together (default: 0) |
+| `retries` | number | No | Retries after the first attempt; integer from 0 to 10 (default: 0) |
+| `retryDelayMs` | number | No | Initial retry delay; integer from 0 to 300000 ms (default: 0) |
+| `maxRetryDelayMs` | number | No | Maximum retry delay; integer from 0 to 300000 ms (default: 30000) |
+| `backoffMultiplier` | number | No | Number from 1 to 10 (default: 2) |
+| `timeoutMs` | number | No | Integer from 1 to 300000 ms (default: 30000) |
 
 ### Example - Single Record Mutation
 
@@ -765,6 +822,7 @@ For sending data to external systems (REST APIs, search engines, message queues)
 | `assetAttach` | Asset | Attach existing assets to entities |
 | `promotionUpsert` | Promotion | Create/update promotions with conditions and actions |
 | `stockAdjust` | Inventory | Adjust inventory levels by SKU and stock location |
+| `orderUpsert` | Order | Create/update orders with lines and addresses for migrations |
 | `orderNote` | Order | Add notes to orders |
 | `orderTransition` | Order | Transition order states |
 | `applyCoupon` | Order | Apply coupon codes to orders |
@@ -787,7 +845,7 @@ Each loader requires specific Vendure permissions:
 |--------------|---------------------|
 | `productUpsert`, `variantUpsert`, `collectionUpsert`, `facetUpsert`, `facetValueUpsert`, `assetImport`, `assetAttach`, `stockAdjust`, `entityDeletion` | `UpdateCatalog` |
 | `customerUpsert` | `UpdateCustomer` |
-| `orderNote`, `orderTransition`, `applyCoupon` | `UpdateOrder` |
+| `orderUpsert`, `orderNote`, `orderTransition`, `applyCoupon` | `UpdateOrder` |
 | `promotionUpsert` | `UpdatePromotion` |
 | `shippingMethodUpsert` | `UpdateShippingMethod` |
 | `customerGroupUpsert` | `UpdateCustomer` |

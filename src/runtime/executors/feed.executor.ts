@@ -1,5 +1,5 @@
 import { Injectable, Optional } from '@nestjs/common';
-import { RequestContext } from '@vendure/core';
+import { ConfigService, RequestContext } from '@vendure/core';
 import { JsonObject, PipelineStepDefinition, PipelineContext } from '../../types/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { RecordObject, OnRecordErrorCallback, FeedExecutionResult } from '../executor-types';
@@ -15,6 +15,7 @@ import { FEED_HANDLER_REGISTRY } from './feeds/feed-handler-registry';
 import { FeedFieldMappings } from './feeds/feed-handler.types';
 import { applyLocalization } from '../executor-helpers';
 import { getAdapterCode } from '../../types/step-configs';
+import { resolveMoneyPrecision } from '../../utils/money.utils';
 
 @Injectable()
 export class FeedExecutor {
@@ -23,6 +24,7 @@ export class FeedExecutor {
     constructor(
         private secretService: SecretService,
         private connectionService: ConnectionService,
+        private configService: ConfigService,
         loggerFactory: DataHubLoggerFactory,
         @Optional() private registry?: DataHubRegistryService,
     ) {
@@ -60,6 +62,8 @@ export class FeedExecutor {
             gtinField: cfg.gtinField ?? 'gtin',
             availabilityField: cfg.availabilityField ?? 'availability',
             currency: cfg.currency ?? SERVICE_DEFAULTS.DEFAULT_CURRENCY,
+            priceUnit: cfg.priceUnit ?? 'MINOR',
+            pricePrecision: resolveMoneyPrecision(this.configService),
         };
 
         // Apply localization (translation flattening + channel filtering)

@@ -4,9 +4,8 @@
  * Shared utility functions for feed generators
  */
 
-import { Collection, Product, RequestContext } from '@vendure/core';
-import { TransactionalConnection } from '@vendure/core';
-import { VariantWithCustomFields } from './feed-types';
+import { Product } from '@vendure/core';
+import type { FeedConfig, VariantWithCustomFields } from './feed-types';
 import {
     GOOGLE_AVAILABILITY,
     FACEBOOK_AVAILABILITY,
@@ -17,43 +16,43 @@ import {
     FacebookAvailabilityStatus,
     GenericAvailabilityStatus,
 } from './feed-constants';
-import { TRANSFORM_LIMITS } from '../../constants';
+import { minorToMajorUnits } from '../../utils/money.utils';
 
-/**
- * Extended variant type for Vendure versions where stockOnHand is a direct property
- */
-interface VariantWithDirectStock extends VariantWithCustomFields {
-    stockOnHand?: number;
-}
-
-/**
- * Get stock on hand from variant or stock levels
- */
-export function getStockOnHand(variant: VariantWithCustomFields): number {
-    // Try to get from stockLevels if available
-    if (variant.stockLevels && variant.stockLevels.length > 0) {
-        return variant.stockLevels.reduce((sum, sl) => sum + sl.stockOnHand, 0);
+export function getFeedBaseUrl(config: FeedConfig): string {
+    const baseUrl = config.options?.baseUrl?.trim();
+    if (!baseUrl) {
+        throw new Error('baseUrl is required for built-in feed formats');
     }
-    // Fallback to stockOnHand direct property (Vendure <2.1 compatibility)
-    return (variant as VariantWithDirectStock).stockOnHand ?? 0;
+    return baseUrl.replace(/\/$/, '');
 }
 
-/**
- * Format price with currency.
- * Returns null if priceInCents is NaN/undefined/null or currency is empty/undefined.
- */
-export function formatPrice(priceInCents: number, currency: string): string | null {
-    if (!currency || typeof priceInCents !== 'number' || isNaN(priceInCents)) {
+export function getSaleableStockLevel(variant: VariantWithCustomFields): number {
+    return Math.max(0, variant.saleableStockLevel ?? 0);
+}
+
+export function getFeedStockQuantity(variant: VariantWithCustomFields): number | null {
+    const stockLevel = getSaleableStockLevel(variant);
+    return stockLevel === Number.MAX_SAFE_INTEGER ? null : stockLevel;
+}
+
+/** Format a validated Vendure minor-unit price with its currency. */
+export function formatPrice(minorUnits: number, currency: string, precision: number): string | null {
+    const normalizedCurrency = currency.trim().toUpperCase();
+    if (!/^[A-Z]{3}$/.test(normalizedCurrency)) {
         return null;
     }
-    return `${(priceInCents / TRANSFORM_LIMITS.CURRENCY_MINOR_UNITS_MULTIPLIER).toFixed(TRANSFORM_LIMITS.CURRENCY_DECIMAL_PLACES)} ${currency}`;
+    try {
+        return `${minorToMajorUnits(minorUnits, precision).toFixed(precision)} ${normalizedCurrency}`;
+    } catch {
+        return null;
+    }
 }
 
 /**
  * Get Google Shopping availability status
  */
 export function getGoogleAvailability(variant: VariantWithCustomFields): GoogleAvailabilityStatus {
-    const stockOnHand = getStockOnHand(variant);
+    const stockOnHand = getSaleableStockLevel(variant);
     if (stockOnHand > 0) return GOOGLE_AVAILABILITY.IN_STOCK;
     return GOOGLE_AVAILABILITY.OUT_OF_STOCK;
 }
@@ -76,7 +75,7 @@ export function getFacebookAvailability(variant: VariantWithCustomFields): Faceb
         }
     }
     // Default: derive from stock
-    const stockOnHand = getStockOnHand(variant);
+    const stockOnHand = getSaleableStockLevel(variant);
     if (stockOnHand > 0) return FACEBOOK_AVAILABILITY.IN_STOCK;
     return FACEBOOK_AVAILABILITY.OUT_OF_STOCK;
 }
@@ -90,19 +89,22 @@ export function buildProductUrl(
     utmParams?: Record<string, string>,
 ): string {
     const product = variant.product;
-    const slug = product?.slug || variant.id.toString();
-    let url = `${baseUrl}/product/${slug}`;
+    const slug = encodeURIComponent(product?.slug || variant.id.toString());
+    const url = `${baseUrl}/product/${slug}`;
+    const params = new URLSearchParams();
 
     if (variant.sku) {
-        url += `?variant=${variant.sku}`;
+        params.set('variant', variant.sku);
     }
 
     if (utmParams) {
-        const params = new URLSearchParams(utmParams);
-        url += (url.includes('?') ? '&' : '?') + params.toString();
+        for (const [key, value] of Object.entries(utmParams)) {
+            params.set(key, value);
+        }
     }
 
-    return url;
+    const query = params.toString();
+    return query ? `${url}?${query}` : url;
 }
 
 /**
@@ -112,14 +114,15 @@ export function getImageUrl(
     variant: VariantWithCustomFields,
     product: Product | undefined,
     baseUrl: string,
+    imageSize: 'preview' | 'original' = 'preview',
 ): string {
     const asset = variant.featuredAsset || product?.featuredAsset;
     if (asset) {
-        // If asset source starts with http, use as-is
-        if (asset.source.startsWith('http')) {
-            return asset.source;
+        const assetPath = imageSize === 'original' ? asset.source : asset.preview;
+        if (assetPath.startsWith('http')) {
+            return assetPath;
         }
-        return `${baseUrl}/assets/${asset.source}`;
+        return `${baseUrl}/assets/${assetPath}`;
     }
     return `${baseUrl}${FEED_DEFAULTS.PLACEHOLDER_IMAGE_PATH}`;
 }
@@ -128,7 +131,7 @@ export function getImageUrl(
  * Get generic availability status for JSON/XML feeds
  */
 export function getGenericAvailability(variant: VariantWithCustomFields): GenericAvailabilityStatus {
-    const stockOnHand = getStockOnHand(variant);
+    const stockOnHand = getSaleableStockLevel(variant);
     if (stockOnHand > 0) return GENERIC_AVAILABILITY.IN_STOCK;
     return GENERIC_AVAILABILITY.OUT_OF_STOCK;
 }
@@ -140,15 +143,19 @@ export function getAdditionalImages(
     _variant: VariantWithCustomFields,
     product: Product | undefined,
     baseUrl: string,
+    imageSize: 'preview' | 'original' = 'preview',
 ): string[] {
     const images: string[] = [];
     const assets = product?.assets || [];
 
     for (const productAsset of assets) {
-        if (productAsset.asset && productAsset.asset.source) {
-            const url = productAsset.asset.source.startsWith('http')
+        if (productAsset.asset) {
+            const assetPath = imageSize === 'original'
                 ? productAsset.asset.source
-                : `${baseUrl}/assets/${productAsset.asset.source}`;
+                : productAsset.asset.preview;
+            const url = assetPath.startsWith('http')
+                ? assetPath
+                : `${baseUrl}/assets/${assetPath}`;
             images.push(url);
         }
     }
@@ -173,43 +180,13 @@ export function extractFacetValue(
 /**
  * Get product type from collections
  */
-export async function getProductType(
-    ctx: RequestContext,
-    product: Product | undefined,
-    connection: TransactionalConnection,
-): Promise<string | undefined> {
-    if (!product) return undefined;
-
-    // Get product type from collections using channel-scoped repository.
-    // 'collection_product_variants_product_variant' is the TypeORM-generated join table
-    // for the Collection.productVariants ManyToMany relation. If Vendure changes its entity
-    // relationships or table naming strategy, this join table name may need updating.
-    try {
-        const collections = await connection.getRepository(ctx, Collection)
-            .createQueryBuilder('c')
-            .innerJoin(
-                'collection_product_variants_product_variant',
-                'cpv',
-                'cpv.collectionId = c.id',
-            )
-            .innerJoin(
-                'product_variant',
-                'pv',
-                'pv.id = cpv.productVariantId AND pv.productId = :productId',
-                { productId: product.id },
-            )
-            .select('c.name', 'name')
-            .getRawMany();
-
-        if (collections.length > 0) {
-            return collections.map(c => c.name).join(' > ');
-        }
-    } catch {
-        // Collection lookup is optional - return undefined on failure
-        // This is expected when product-collection relationships are not loaded
-    }
-
-    return undefined;
+export function getProductType(product: Product | undefined): string | undefined {
+    const collections = (product as Product & {
+        feedCollections?: Array<{ name: string }>;
+    } | undefined)?.feedCollections;
+    return collections && collections.length > 0
+        ? collections.map(collection => collection.name).join(' > ')
+        : undefined;
 }
 
 /**
@@ -242,8 +219,13 @@ export function stripHtml(html: string): string {
 /**
  * Escape value for CSV
  */
-export function csvEscape(value: string): string {
-    if (value.includes('"') || value.includes(',') || value.includes('\n')) {
+export function csvEscape(value: string, delimiter = ','): string {
+    if (
+        value.includes('"')
+        || value.includes(delimiter)
+        || value.includes('\n')
+        || value.includes('\r')
+    ) {
         return `"${value.replace(/"/g, '""')}"`;
     }
     return value;

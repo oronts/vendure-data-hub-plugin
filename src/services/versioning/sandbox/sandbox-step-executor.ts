@@ -3,6 +3,7 @@ import { StepType, PipelineStepDefinition } from '../../../types/index';
 import { AdapterRuntimeService } from '../../../runtime/adapter-runtime.service';
 import { getErrorMessage } from '../../../utils/error.utils';
 import {
+    LineageOutcome,
     SandboxStepStatus,
     RecordOutcome,
     FieldDiffChangeType,
@@ -128,12 +129,14 @@ export class SandboxStepExecutor {
         execution: StepExecutionResult,
         lineageTracker: DataLineageTracker,
     ): Promise<Record<string, unknown>[]> {
-        const dryRunResult = await this.adapterRuntime.executeDryRun(ctx, { version: 1, steps: [step] });
+        const dryRunResult = await this.adapterRuntime.executeDryRun(
+            ctx,
+            { version: 1, steps: [step] },
+            opts.maxRecords,
+        );
+        this.assertDryRunSucceeded(dryRunResult.errors);
 
-        const outputRecords = dryRunResult.sampleRecords
-            .filter(s => s.step === stepKey)
-            .map(s => s.after)
-            .slice(0, opts.maxRecords);
+        const outputRecords = dryRunResult.outputRecords.slice(0, opts.maxRecords);
 
         lineageTracker.initialize(outputRecords);
         this.trackExtractedRecords(outputRecords, stepKey, stepType, lineageTracker);
@@ -188,15 +191,25 @@ export class SandboxStepExecutor {
         execution: StepExecutionResult,
         lineageTracker: DataLineageTracker,
     ): Promise<Record<string, unknown>[]> {
-        inputRecords.forEach((rec, idx) => lineageTracker.trackState(stepKey, stepType, idx, RecordProcessingState.ENTERING, rec));
-
-        const dryRunResult = await this.adapterRuntime.executeDryRun(ctx, {
-            version: 1,
-            steps: [{ key: 'seed', type: StepType.EXTRACT, config: { adapterCode: 'seed' } }, step],
+        inputRecords.forEach((rec, idx) => {
+            const recordIndex = lineageTracker.resolveRecordIndex(rec, idx);
+            lineageTracker.trackState(
+                stepKey,
+                stepType,
+                recordIndex,
+                RecordProcessingState.ENTERING,
+                rec,
+            );
         });
 
-        let outputRecords = dryRunResult.sampleRecords.filter(s => s.step === stepKey).map(s => s.after as Record<string, unknown>);
-        if (outputRecords.length === 0) outputRecords = [...inputRecords];
+        const dryRunResult = await this.adapterRuntime.executeDryRun(
+            ctx,
+            { version: 1, steps: [step] },
+            opts.maxRecords,
+            inputRecords,
+        );
+        this.assertDryRunSucceeded(dryRunResult.errors);
+        const outputRecords = dryRunResult.outputRecords;
 
         const samples = this.createTransformSamples(inputRecords, outputRecords, stepKey, stepType, opts, lineageTracker);
 
@@ -224,27 +237,78 @@ export class SandboxStepExecutor {
         lineageTracker: DataLineageTracker,
     ): RecordSample[] {
         const samples: RecordSample[] = [];
-        for (let i = 0; i < Math.min(beforeRecords.length, opts.maxSamplesPerStep); i++) {
-            const before = beforeRecords[i];
-            const after = afterRecords[i] || before;
+        const pairs = this.pairTransformRecords(
+            beforeRecords,
+            afterRecords,
+            lineageTracker,
+        );
+        for (const pair of pairs) {
+            const { before, recordIndex } = pair;
+            const after = pair.after ?? {};
             const fieldDiffs = this.fieldDiffCalculator.computeFieldDiffs(before, after);
-            const outcome = this.fieldDiffCalculator.determineOutcome(before, after, fieldDiffs);
+            const outcome = pair.after
+                ? this.fieldDiffCalculator.determineOutcome(before, after, fieldDiffs)
+                : RecordOutcome.FILTERED;
 
-            samples.push({
-                recordIndex: i,
-                recordId: lineageTracker.extractRecordId(after) || lineageTracker.extractRecordId(before),
-                before, after, outcome, fieldDiffs,
-            });
+            if (samples.length < opts.maxSamplesPerStep) {
+                samples.push({
+                    recordIndex,
+                    recordId: lineageTracker.extractRecordId(after)
+                        || lineageTracker.extractRecordId(before),
+                    before,
+                    after,
+                    outcome,
+                    fieldDiffs,
+                });
+            }
 
             lineageTracker.trackState(
                 stepKey,
                 stepType,
-                i,
+                recordIndex,
                 outcome === RecordOutcome.FILTERED ? RecordProcessingState.FILTERED : RecordProcessingState.TRANSFORMED,
-                after,
+                pair.after ?? before,
             );
         }
         return samples;
+    }
+
+    private pairTransformRecords(
+        beforeRecords: Record<string, unknown>[],
+        afterRecords: Record<string, unknown>[],
+        lineageTracker: DataLineageTracker,
+    ): Array<{
+        before: Record<string, unknown>;
+        after?: Record<string, unknown>;
+        recordIndex: number;
+    }> {
+        if (beforeRecords.length === afterRecords.length) {
+            return beforeRecords.map((before, index) => ({
+                before,
+                after: afterRecords[index],
+                recordIndex: lineageTracker.resolveRecordIndex(before, index),
+            }));
+        }
+
+        const unmatched = new Set(afterRecords.map((_, index) => index));
+        return beforeRecords.map((before, index) => {
+            const beforeId = lineageTracker.extractRecordId(before);
+            let afterIndex: number | undefined;
+            if (beforeId !== null) {
+                afterIndex = [...unmatched].find(candidate => (
+                    lineageTracker.extractRecordId(afterRecords[candidate]) === beforeId
+                ));
+            } else if (unmatched.has(index)) {
+                afterIndex = index;
+            }
+            if (afterIndex !== undefined) unmatched.delete(afterIndex);
+
+            return {
+                before,
+                ...(afterIndex === undefined ? {} : { after: afterRecords[afterIndex] }),
+                recordIndex: lineageTracker.resolveRecordIndex(before, index),
+            };
+        });
     }
 
     /**
@@ -284,14 +348,19 @@ export class SandboxStepExecutor {
         lineageTracker: DataLineageTracker,
     ): void {
         inputRecords.forEach((rec, idx) => {
-            lineageTracker.trackState(stepKey, stepType, idx, RecordProcessingState.ENTERING, rec);
+            const recordIndex = lineageTracker.resolveRecordIndex(rec, idx);
+            lineageTracker.trackState(stepKey, stepType, recordIndex, RecordProcessingState.ENTERING, rec);
             const isError = loadPreview.operations.error.some(o => o.recordIndex === idx);
             const isSkip = loadPreview.operations.skip.some(o => o.recordIndex === idx);
             const isCreate = loadPreview.operations.create.some(o => o.recordIndex === idx);
 
-            if (isError) lineageTracker.trackState(stepKey, stepType, idx, RecordProcessingState.ERROR, rec, 'Load error');
-            else if (isSkip) lineageTracker.trackState(stepKey, stepType, idx, RecordProcessingState.FILTERED, rec, 'Skipped by loader');
-            else lineageTracker.trackState(stepKey, stepType, idx, RecordProcessingState.TRANSFORMED, rec, isCreate ? 'Will create' : 'Will update');
+            if (isError) lineageTracker.trackState(stepKey, stepType, recordIndex, RecordProcessingState.ERROR, rec, 'Load error');
+            else if (isSkip) lineageTracker.trackState(stepKey, stepType, recordIndex, RecordProcessingState.FILTERED, rec, 'Skipped by loader');
+            else lineageTracker.trackState(stepKey, stepType, recordIndex, RecordProcessingState.TRANSFORMED, rec, isCreate ? 'Will create' : 'Will update');
+
+            if (isError) lineageTracker.setFinalOutcome(recordIndex, LineageOutcome.ERROR, rec);
+            else if (isSkip) lineageTracker.setFinalOutcome(recordIndex, LineageOutcome.SKIPPED, rec);
+            else lineageTracker.setFinalOutcome(recordIndex, LineageOutcome.LOADED, rec);
         });
     }
 
@@ -336,6 +405,15 @@ export class SandboxStepExecutor {
                 severity: ValidationIssueSeverity.ERROR,
                 value: sample.before,
             }));
+    }
+
+    private assertDryRunSucceeded(
+        errors: ReadonlyArray<{ stepKey: string; message: string }> | undefined,
+    ): void {
+        if (!errors?.length) return;
+        throw new Error(errors
+            .map(error => `[${error.stepKey}] ${error.message}`)
+            .join('; '));
     }
 
     /**

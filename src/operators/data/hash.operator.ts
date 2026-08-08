@@ -10,7 +10,7 @@ import { HASH_ALGORITHM_OPTIONS, HASH_ENCODING_OPTIONS } from '../../constants/a
 export const HASH_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'hash',
-    description: 'Generate a cryptographic hash (MD5, SHA1, SHA256, SHA512) of field value(s).',
+    description: 'Generate a SHA-256 or SHA-512 hash of field value(s).',
     category: 'DATA',
     categoryLabel: 'Data',
     categoryOrder: 0,

@@ -1,0 +1,45 @@
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+        tls:
+          cert_file: /etc/otel/tls/server.crt
+          key_file: /etc/otel/tls/server.key
+
+processors:
+  batch:
+    timeout: 100ms
+
+exporters:
+  file/metrics:
+    path: /var/lib/otel/metrics.json
+    append: true
+    flush_interval: 100ms
+  file/traces:
+    path: /var/lib/otel/traces.json
+    append: true
+    flush_interval: 100ms
+
+service:
+  extensions:
+    - health_check
+  pipelines:
+    metrics:
+      receivers:
+        - otlp
+      processors:
+        - batch
+      exporters:
+        - file/metrics
+    traces:
+      receivers:
+        - otlp
+      processors:
+        - batch
+      exporters:
+        - file/traces

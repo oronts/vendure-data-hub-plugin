@@ -1,11 +1,19 @@
 import { Mutation, Query, Resolver, Args } from '@nestjs/graphql';
 import { Inject } from '@nestjs/common';
-import { DATAHUB_PLUGIN_OPTIONS, LogPersistenceLevel, RESOLVER_ERROR_MESSAGES, RETENTION } from '../../constants/index';
+import { DATAHUB_PLUGIN_OPTIONS, LogPersistenceLevel, RESOLVER_ERROR_MESSAGES } from '../../constants/index';
 import { DataHubPluginOptions } from '../../types/index';
-import { Allow, ID, Transaction } from '@vendure/core';
+import {
+    Allow,
+    Ctx,
+    ID,
+    RequestContext,
+    TransactionalConnection,
+} from '@vendure/core';
 import { DataHubPipelinePermission, UpdateDataHubSettingsPermission } from '../../permissions';
 import { DataHubSettingsService, DataHubSettingsInput } from '../../services';
 import { AutoMapperConfigInput } from '../../mappers';
+import { Pipeline } from '../../entities';
+import { normalizeRetentionDays } from '../../services/storage/retention-policy';
 
 interface AutoMapperConfigGraphQLInput {
     confidenceThreshold?: number;
@@ -29,19 +37,22 @@ interface SettingsGraphQLInput {
     logPersistenceLevel?: string;
 }
 
-const MAX_RETENTION_DAYS = RETENTION.MAX_DAYS;
+function isLogPersistenceLevel(value: string): value is LogPersistenceLevel {
+    return Object.values(LogPersistenceLevel).some(level => level === value);
+}
 
 @Resolver()
 export class DataHubSettingsAdminResolver {
     constructor(
         @Inject(DATAHUB_PLUGIN_OPTIONS) private opts: DataHubPluginOptions,
         private settings: DataHubSettingsService,
+        private connection: TransactionalConnection,
     ) {}
 
     @Query()
     @Allow(DataHubPipelinePermission.Read)
-    async dataHubSettings() {
-        const fromDb = await this.settings.get();
+    async dataHubSettings(@Ctx() ctx: RequestContext) {
+        const fromDb = await this.settings.get(ctx);
         return {
             retentionDaysRuns: fromDb.retentionDaysRuns ?? this.opts.retentionDaysRuns ?? null,
             retentionDaysErrors: fromDb.retentionDaysErrors ?? this.opts.retentionDaysErrors ?? null,
@@ -51,38 +62,51 @@ export class DataHubSettingsAdminResolver {
     }
 
     @Mutation()
-    @Transaction()
     @Allow(UpdateDataHubSettingsPermission.Permission)
-    async updateDataHubSettings(@Args('input') input: SettingsGraphQLInput) {
+    async updateDataHubSettings(
+        @Ctx() ctx: RequestContext,
+        @Args('input') input: SettingsGraphQLInput,
+    ) {
         const normalized: DataHubSettingsInput = {};
         if (input.retentionDaysRuns !== undefined) {
-            normalized.retentionDaysRuns = input.retentionDaysRuns == null
-                ? null
-                : Math.min(MAX_RETENTION_DAYS, Math.max(0, Number(input.retentionDaysRuns)));
+            normalized.retentionDaysRuns = normalizeRetentionDays(
+                'retentionDaysRuns',
+                input.retentionDaysRuns,
+            );
         }
         if (input.retentionDaysErrors !== undefined) {
-            normalized.retentionDaysErrors = input.retentionDaysErrors == null
-                ? null
-                : Math.min(MAX_RETENTION_DAYS, Math.max(0, Number(input.retentionDaysErrors)));
+            normalized.retentionDaysErrors = normalizeRetentionDays(
+                'retentionDaysErrors',
+                input.retentionDaysErrors,
+            );
         }
         if (input.retentionDaysLogs !== undefined) {
-            normalized.retentionDaysLogs = input.retentionDaysLogs == null
-                ? null
-                : Math.min(MAX_RETENTION_DAYS, Math.max(0, Number(input.retentionDaysLogs)));
+            normalized.retentionDaysLogs = normalizeRetentionDays(
+                'retentionDaysLogs',
+                input.retentionDaysLogs,
+            );
         }
         if (input.logPersistenceLevel !== undefined) {
-            const level = input.logPersistenceLevel as LogPersistenceLevel;
-            if (Object.values(LogPersistenceLevel).includes(level)) {
-                normalized.logPersistenceLevel = level;
+            if (!isLogPersistenceLevel(input.logPersistenceLevel)) {
+                throw new Error(
+                    RESOLVER_ERROR_MESSAGES.INVALID_LOG_PERSISTENCE_LEVEL(
+                        input.logPersistenceLevel,
+                    ),
+                );
             }
+            normalized.logPersistenceLevel = input.logPersistenceLevel;
         }
-        return this.settings.set(normalized);
+        return this.settings.set(normalized, ctx);
     }
 
     @Query()
     @Allow(DataHubPipelinePermission.Read)
-    async dataHubAutoMapperConfig(@Args('pipelineId') pipelineId?: ID) {
-        return this.settings.getAutoMapperConfig(pipelineId);
+    async dataHubAutoMapperConfig(
+        @Ctx() ctx: RequestContext,
+        @Args('pipelineId') pipelineId?: ID,
+    ) {
+        await this.assertPipelineVisible(ctx, pipelineId);
+        return this.settings.getAutoMapperConfig(pipelineId, ctx);
     }
 
     @Query()
@@ -92,9 +116,12 @@ export class DataHubSettingsAdminResolver {
     }
 
     @Mutation()
-    @Transaction()
     @Allow(UpdateDataHubSettingsPermission.Permission)
-    async updateDataHubAutoMapperConfig(@Args('input') input: AutoMapperConfigGraphQLInput) {
+    async updateDataHubAutoMapperConfig(
+        @Ctx() ctx: RequestContext,
+        @Args('input') input: AutoMapperConfigGraphQLInput,
+    ) {
+        await this.assertPipelineVisible(ctx, input.pipelineId);
         const validation = this.settings.validateAutoMapperConfig(this.graphqlInputToConfigInput(input));
         if (!validation.valid) {
             throw new Error(RESOLVER_ERROR_MESSAGES.INVALID_AUTOMAPPER_CONFIG(validation.errors));
@@ -105,14 +132,17 @@ export class DataHubSettingsAdminResolver {
             pipelineId: input.pipelineId,
         };
 
-        return this.settings.updateAutoMapperConfig(configInput);
+        return this.settings.updateAutoMapperConfig(configInput, ctx);
     }
 
     @Mutation()
-    @Transaction()
     @Allow(UpdateDataHubSettingsPermission.Permission)
-    async resetDataHubAutoMapperConfig(@Args('pipelineId') pipelineId?: ID) {
-        return this.settings.resetAutoMapperConfig(pipelineId);
+    async resetDataHubAutoMapperConfig(
+        @Ctx() ctx: RequestContext,
+        @Args('pipelineId') pipelineId?: ID,
+    ) {
+        await this.assertPipelineVisible(ctx, pipelineId);
+        return this.settings.resetAutoMapperConfig(pipelineId, ctx);
     }
 
     @Query()
@@ -133,5 +163,18 @@ export class DataHubSettingsAdminResolver {
             weightTypeCompatibility: input.weights?.typeCompatibility,
             weightDescriptionMatch: input.weights?.descriptionMatch,
         };
+    }
+
+    private async assertPipelineVisible(
+        ctx: RequestContext,
+        pipelineId?: ID,
+    ): Promise<void> {
+        if (pipelineId === undefined || pipelineId === null) {
+            return;
+        }
+
+        await this.connection.getEntityOrThrow(ctx, Pipeline, pipelineId, {
+            channelId: ctx.channelId,
+        });
     }
 }

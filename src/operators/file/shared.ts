@@ -6,7 +6,9 @@
  * so the import quirk is handled in exactly one place.
  */
 
-import { JsonObject } from '../../types';
+import { JsonObject, OperatorResult } from '../types';
+import { deepClone, getNestedValue, setNestedValue } from '../helpers';
+import { getErrorMessage } from '../../utils/error.utils';
 
 export type SharpFn = typeof import('sharp');
 
@@ -30,32 +32,43 @@ export async function processImageRecords<C extends { sourceField: string; targe
     records: readonly JsonObject[],
     config: C,
     processPipeline: (sharp: SharpFn, inputBuffer: Buffer, config: C) => Promise<Buffer>,
-): Promise<JsonObject[]> {
+): Promise<OperatorResult> {
     const sharp = await loadSharp();
     const output: JsonObject[] = [];
+    const errors: NonNullable<OperatorResult['errors']> = [];
 
-    for (const record of records) {
-        const sourceValue = record[config.sourceField];
-        if (!sourceValue || typeof sourceValue !== 'string') {
-            output.push({ ...record });
+    for (const [index, record] of records.entries()) {
+        const result = deepClone(record);
+        const sourceValue = getNestedValue(record, config.sourceField);
+        if (sourceValue === undefined || sourceValue === null || sourceValue === '') {
+            output.push(result);
             continue;
         }
 
         try {
+            if (typeof sourceValue !== 'string') {
+                throw new Error('Source field must contain a base64-encoded string');
+            }
             const inputBuffer = Buffer.from(sourceValue, 'base64');
             if (inputBuffer.length === 0) {
-                output.push({ ...record });
-                continue;
+                throw new Error('Source field contains empty base64 data');
             }
 
             const outputBuffer = await processPipeline(sharp, inputBuffer, config);
             const targetField = config.targetField ?? config.sourceField;
-            output.push({ ...record, [targetField]: outputBuffer.toString('base64') });
-        } catch {
-            // On processing error, keep original record unchanged
-            output.push({ ...record });
+            setNestedValue(result, targetField, outputBuffer.toString('base64'));
+        } catch (error) {
+            errors.push({
+                message: getErrorMessage(error),
+                field: config.sourceField,
+                index,
+            });
         }
+        output.push(result);
     }
 
-    return output;
+    return {
+        records: output,
+        ...(errors.length > 0 ? { errors } : {}),
+    };
 }

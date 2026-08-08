@@ -18,13 +18,13 @@ export interface TaxRateInput extends InputRecord {
     /** Whether this tax rate is enabled */
     enabled?: boolean;
 
-    /** Code of the tax category this rate belongs to */
+    /** Code stored in the tax category customFields.code field */
     taxCategoryCode?: string;
 
     /** ID of the tax category (alternative to taxCategoryCode) */
     taxCategoryId?: string | number;
 
-    /** Code of the zone where this tax rate applies */
+    /** Code stored in the zone customFields.code field */
     zoneCode?: string;
 
     /** ID of the zone (alternative to zoneCode) */
@@ -39,7 +39,7 @@ export const TAX_RATE_LOADER_METADATA = {
     name: 'Tax Rate Loader',
     description: 'Imports tax rates with tax category and zone resolution',
     adapterCode: 'taxRateUpsert',
-    supportedOperations: ['CREATE', 'UPDATE', 'UPSERT', 'DELETE'] as TargetOperation[],
+    supportedOperations: ['CREATE', 'UPDATE', 'UPSERT'] as TargetOperation[],
     lookupFields: ['name', 'id'],
-    requiredFields: ['name', 'value', 'taxCategoryCode', 'zoneCode'],
+    requiredFields: ['name', 'value'],
 } as const;

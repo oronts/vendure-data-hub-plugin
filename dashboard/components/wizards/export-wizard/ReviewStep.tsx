@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { Trans, useLingui } from '@lingui/react/macro';
 import {
     Badge,
     Accordion,
@@ -12,12 +13,12 @@ import {
     FileSpreadsheet,
     Send,
 } from 'lucide-react';
-import { VENDURE_ENTITY_LIST } from '../../../../shared';
+import { getNestedValue } from '../../../../shared';
+import { useExportEntitySchemas } from '../../../hooks/api/use-export-entity-schemas';
 import { useDestinationSchemas } from '../../../hooks/api/use-config-options';
 import { formatKey } from '../../../utils/formatters';
 import { WizardStepContainer } from '../shared';
 import { ConfigurationNameCard, SummaryCard, SummaryCardGrid, SummaryField } from '../../shared/wizard';
-import { STEP_CONTENT, EXPORT_PLACEHOLDERS } from './constants';
 import type { ExportConfiguration } from './types';
 import type { QueryConfig, DestinationConfig } from '../../../types/wizard';
 
@@ -28,22 +29,23 @@ interface ReviewStepProps {
 }
 
 export function ReviewStep({ config, updateConfig, errors = {} }: ReviewStepProps) {
+    const { t } = useLingui();
     const selectedFieldsCount = config.fields?.filter(f => f.include).length ?? 0;
 
     return (
         <WizardStepContainer
-            title={STEP_CONTENT.review.title}
-            description={STEP_CONTENT.review.description}
+            title={t`Review & Create`}
+            description={t`Review your export configuration before creating`}
         >
             <ConfigurationNameCard
-                title={STEP_CONTENT.review.cardTitle}
+                title={t`Export Configuration`}
                 name={config.name ?? ''}
                 description={config.description ?? ''}
                 onNameChange={name => updateConfig({ name })}
                 onDescriptionChange={description => updateConfig({ description })}
-                namePlaceholder={EXPORT_PLACEHOLDERS.configName}
+                namePlaceholder={t`My Product Export`}
                 nameError={errors.name}
-                nameHelperText="A descriptive name to identify this export configuration"
+                nameHelperText={t`A descriptive name to identify this export configuration`}
             />
             <SummaryCards config={config} selectedFieldsCount={selectedFieldsCount} />
             <DetailedConfigAccordion config={config} selectedFieldsCount={selectedFieldsCount} />
@@ -57,26 +59,28 @@ interface SummaryCardsProps {
 }
 
 function SummaryCards({ config, selectedFieldsCount }: SummaryCardsProps) {
+    const { t } = useLingui();
+    const { getEntityName } = useExportEntitySchemas();
     return (
         <SummaryCardGrid columns={4}>
             <SummaryCard
                 icon={Database}
-                label="Source"
-                value={VENDURE_ENTITY_LIST.find(e => e.code === config.sourceEntity)?.name}
+                label={t`Source`}
+                value={config.sourceEntity ? getEntityName(config.sourceEntity) : undefined}
             />
             <SummaryCard
                 icon={Columns}
-                label="Fields"
-                value={`${selectedFieldsCount} selected`}
+                label={t`Fields`}
+                value={t`${selectedFieldsCount} selected`}
             />
             <SummaryCard
                 icon={FileSpreadsheet}
-                label="Format"
+                label={t`Format`}
                 value={<span className="uppercase">{config.format?.type}</span>}
             />
             <SummaryCard
                 icon={Send}
-                label="Destination"
+                label={t`Destination`}
                 value={<span className="capitalize">{config.destination?.type}</span>}
             />
         </SummaryCardGrid>
@@ -89,17 +93,22 @@ interface DetailedConfigAccordionProps {
 }
 
 function DetailedConfigAccordion({ config, selectedFieldsCount }: DetailedConfigAccordionProps) {
+    const { t } = useLingui();
     return (
         <Accordion type="multiple" defaultValue={['source', 'fields']}>
             <AccordionItem value="source">
-                <AccordionTrigger>Source Configuration</AccordionTrigger>
+                <AccordionTrigger>
+                    <Trans>Source Configuration</Trans>
+                </AccordionTrigger>
                 <AccordionContent>
                     <SourceQuerySummary sourceQuery={config.sourceQuery} />
                 </AccordionContent>
             </AccordionItem>
 
             <AccordionItem value="fields">
-                <AccordionTrigger>Selected Fields ({selectedFieldsCount})</AccordionTrigger>
+                <AccordionTrigger>
+                    {t`Selected Fields (${selectedFieldsCount})`}
+                </AccordionTrigger>
                 <AccordionContent>
                     <div className="flex flex-wrap gap-2">
                         {config.fields?.filter(f => f.include).map(f => (
@@ -113,7 +122,9 @@ function DetailedConfigAccordion({ config, selectedFieldsCount }: DetailedConfig
             </AccordionItem>
 
             <AccordionItem value="destination">
-                <AccordionTrigger>Destination</AccordionTrigger>
+                <AccordionTrigger>
+                    <Trans>Destination</Trans>
+                </AccordionTrigger>
                 <AccordionContent>
                     <DestinationSummary destination={config.destination} />
                 </AccordionContent>
@@ -123,43 +134,59 @@ function DetailedConfigAccordion({ config, selectedFieldsCount }: DetailedConfig
 }
 
 function SourceQuerySummary({ sourceQuery }: { sourceQuery?: QueryConfig }) {
-    if (!sourceQuery) return <p className="text-sm text-muted-foreground">All records (default)</p>;
+    const { t } = useLingui();
+    if (!sourceQuery) {
+        return (
+            <p className="text-sm text-muted-foreground">
+                <Trans>All records (default)</Trans>
+            </p>
+        );
+    }
 
     return (
         <div className="grid grid-cols-2 gap-4 text-sm">
-            <SummaryField label="Query type" className="capitalize">{sourceQuery.type}</SummaryField>
-            {sourceQuery.limit != null && (
-                <SummaryField label="Limit">{sourceQuery.limit.toLocaleString()}</SummaryField>
-            )}
+            <SummaryField
+                label={t`Query type`}
+                className="capitalize"
+            >
+                {sourceQuery.type}
+            </SummaryField>
             {sourceQuery.orderBy && (
-                <SummaryField label="Order by">{sourceQuery.orderBy} {sourceQuery.orderDirection ?? 'ASC'}</SummaryField>
-            )}
-            {sourceQuery.type === 'graphql' && sourceQuery.customQuery && (
-                <div className="col-span-2">
-                    <span className="text-muted-foreground">Custom query:</span>
-                    <pre className="mt-1 p-2 bg-muted rounded text-xs overflow-auto">{sourceQuery.customQuery}</pre>
-                </div>
+                <SummaryField label={t`Order by`}>
+                    {sourceQuery.orderBy} {sourceQuery.orderDirection ?? 'ASC'}
+                </SummaryField>
             )}
         </div>
     );
 }
 
-/**
- * Formats a field value for display in the summary, based on its schema field type.
- * Returns null to skip rendering the field.
- */
-function formatFieldValue(value: unknown, fieldType: string): React.ReactNode | null {
+interface FieldValueMessages {
+    yes: string;
+    no: string;
+    configured: string;
+    customCount: (count: number) => string;
+}
+
+function formatFieldValue(
+    value: unknown,
+    fieldType: string,
+    messages: FieldValueMessages,
+): React.ReactNode | null {
     if (value == null || value === '') return null;
 
     switch (fieldType) {
         case 'boolean':
-            return value ? 'Yes' : 'No';
+            return value ? messages.yes : messages.no;
         case 'secret':
-            return typeof value === 'string' && value.length > 0 ? 'Configured' : null;
+            return typeof value === 'string' && value.length > 0
+                ? messages.configured
+                : null;
         case 'headers':
             if (value && typeof value === 'object') {
                 const count = Object.keys(value).length;
-                return count > 0 ? `${count} custom` : null;
+                return count > 0
+                    ? messages.customCount(count)
+                    : null;
             }
             return null;
         default:
@@ -168,9 +195,16 @@ function formatFieldValue(value: unknown, fieldType: string): React.ReactNode | 
 }
 
 function DestinationSummary({ destination }: { destination?: DestinationConfig }) {
+    const { t } = useLingui();
     const { schemas } = useDestinationSchemas();
 
-    if (!destination) return <p className="text-sm text-muted-foreground">No destination configured</p>;
+    if (!destination) {
+        return (
+            <p className="text-sm text-muted-foreground">
+                <Trans>No destination configured</Trans>
+            </p>
+        );
+    }
 
     const schema = schemas.find(s => s.type === destination.type);
 
@@ -178,7 +212,9 @@ function DestinationSummary({ destination }: { destination?: DestinationConfig }
     if (schema?.message) {
         return (
             <div className="grid grid-cols-2 gap-4 text-sm">
-                <SummaryField label="Type">{destination.type}</SummaryField>
+                <SummaryField label={t`Type`}>
+                    {destination.type}
+                </SummaryField>
                 <div className="col-span-2">
                     <span className="text-muted-foreground">{schema.message}</span>
                 </div>
@@ -187,17 +223,29 @@ function DestinationSummary({ destination }: { destination?: DestinationConfig }
     }
 
     // Schema-driven summary: read config sub-object and display schema fields
+    const destinationRecord: Record<string, unknown> = { ...destination };
     const configObj = schema?.configKey
-        ? (destination as Record<string, unknown>)[schema.configKey] as Record<string, unknown> | undefined
+        ? destinationRecord[schema.configKey] as Record<string, unknown> | undefined
         : undefined;
 
     return (
         <div className="grid grid-cols-2 gap-4 text-sm">
-            <SummaryField label="Type">{destination.type}</SummaryField>
+            <SummaryField label={t`Type`}>
+                {destination.type}
+            </SummaryField>
 
             {schema && configObj ? (
                 schema.fields.map(field => {
-                    const displayValue = formatFieldValue(configObj[field.key], field.type);
+                    const displayValue = formatFieldValue(
+                        getNestedValue(configObj, field.key),
+                        field.type,
+                        {
+                            yes: t`Yes`,
+                            no: t`No`,
+                            configured: t`Configured`,
+                            customCount: count => t`${count} custom`,
+                        },
+                    );
                     if (displayValue == null) return null;
                     return (
                         <SummaryField key={field.key} label={field.label}>
@@ -218,7 +266,8 @@ function DestinationSummary({ destination }: { destination?: DestinationConfig }
  */
 function renderGenericConfigFields(destination: DestinationConfig): React.ReactNode {
     const configKey = `${destination.type.toLowerCase()}Config`;
-    const config = (destination as Record<string, unknown>)[configKey] as Record<string, unknown> | undefined;
+    const destinationRecord: Record<string, unknown> = { ...destination };
+    const config = destinationRecord[configKey] as Record<string, unknown> | undefined;
     if (!config) return null;
 
     return Object.entries(config)

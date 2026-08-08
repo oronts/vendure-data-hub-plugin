@@ -14,19 +14,26 @@ import {
     ID,
 } from '@vendure/core';
 import { PipelineStepDefinition, ErrorHandlingConfig, JsonObject } from '../../../types/index';
-import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
+import { RecordObject, OnRecordErrorCallback, LoaderExecutionResult } from '../../executor-types';
 import { LoaderHandler } from './types';
+import { assertCreateDuplicateCanBeSkipped, CreateDuplicateHandlingConfig } from './duplicate-handling';
 import { LoadStrategy } from '../../../constants/enums';
 import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
-import { getStringValue, getArrayValue, getObjectValue } from '../../../loaders/shared-helpers';
+import {
+    assertVendureMutationSucceeded,
+    getArrayValue,
+    getBooleanValue,
+    getObjectValue,
+    getStringValue,
+} from '../../../loaders/shared-helpers';
 import { generateChannelToken, parseCurrencyCode, parseLanguageCode } from '../../../loaders/channel/helpers';
-import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
-import { LOGGER_CONTEXTS } from '../../../constants/index';
+import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger/datahub-logger';
+import { LOGGER_CONTEXTS } from '../../../constants/core';
 
 /**
  * Configuration for the channel handler step (mirrors loader-handler-registry.ts schema)
  */
-interface ChannelHandlerConfig {
+interface ChannelHandlerConfig extends CreateDuplicateHandlingConfig {
     codeField?: string;
     tokenField?: string;
     defaultLanguageCodeField?: string;
@@ -51,7 +58,6 @@ function getConfig(config: JsonObject): ChannelHandlerConfig {
 @Injectable()
 export class ChannelHandler implements LoaderHandler {
     private readonly logger: DataHubLogger;
-    private zoneCache = new Map<string, ID>();
 
     constructor(
         private channelService: ChannelService,
@@ -67,11 +73,12 @@ export class ChannelHandler implements LoaderHandler {
         input: RecordObject[],
         onRecordError?: OnRecordErrorCallback,
         _errorHandling?: ErrorHandlingConfig,
-    ): Promise<ExecutionResult> {
+    ): Promise<LoaderExecutionResult> {
         let ok = 0;
         let fail = 0;
+        let skipped = 0;
         const cfg = getConfig(step.config);
-        this.zoneCache = new Map<string, ID>();
+        const zoneCache = new Map<string, ID>();
 
         // Pre-fetch all channels and zones to avoid N+1 queries
         const allChannelsResult = await this.channelService.findAll(ctx);
@@ -80,7 +87,7 @@ export class ChannelHandler implements LoaderHandler {
 
         const allZones = await this.zoneService.findAll(ctx);
         for (const z of allZones.items) {
-            this.zoneCache.set(z.name.toLowerCase(), z.id);
+            zoneCache.set(z.name.toLowerCase(), z.id);
         }
 
         for (const rec of input) {
@@ -160,8 +167,7 @@ export class ChannelHandler implements LoaderHandler {
                     availableCurrencyCodes.unshift(defaultCurrencyCode);
                 }
 
-                const pricesIncludeTaxRaw = rec[pricesIncludeTaxField];
-                const pricesIncludeTax = pricesIncludeTaxRaw === undefined ? false : Boolean(pricesIncludeTaxRaw);
+                const pricesIncludeTax = getBooleanValue(rec, pricesIncludeTaxField) ?? false;
 
                 // Resolve zone IDs
                 const taxZoneCode = getStringValue(rec, defaultTaxZoneCodeField);
@@ -170,15 +176,20 @@ export class ChannelHandler implements LoaderHandler {
                 const customFieldsKey = cfg.customFieldsField ?? 'customFields';
                 const customFields = getObjectValue(rec, customFieldsKey);
 
-                const defaultTaxZoneId = taxZoneCode ? this.resolveZoneId(taxZoneCode) : undefined;
-                const defaultShippingZoneId = shippingZoneCode ? this.resolveZoneId(shippingZoneCode) : undefined;
+                const defaultTaxZoneId = taxZoneCode
+                    ? this.resolveZoneId(taxZoneCode, zoneCache)
+                    : undefined;
+                const defaultShippingZoneId = shippingZoneCode
+                    ? this.resolveZoneId(shippingZoneCode, zoneCache)
+                    : undefined;
 
                 const existing = this.findExistingByCode(ctx, code, channelByCode);
                 const strategy = cfg.strategy ?? LoadStrategy.UPSERT;
 
                 if (existing) {
                     if (strategy === LoadStrategy.CREATE) {
-                        ok++;
+                        assertCreateDuplicateCanBeSkipped(cfg, 'channel', code);
+                        skipped++;
                         continue;
                     }
                     const updateInput: Record<string, unknown> = {
@@ -194,10 +205,11 @@ export class ChannelHandler implements LoaderHandler {
                     if (defaultShippingZoneId) updateInput.defaultShippingZoneId = defaultShippingZoneId;
                     if (customFields) updateInput.customFields = customFields;
 
-                    await this.channelService.update(
+                    const result = await this.channelService.update(
                         ctx,
                         updateInput as Parameters<typeof this.channelService.update>[1],
                     );
+                    assertVendureMutationSucceeded('update channel', result);
                 } else {
                     if (strategy === LoadStrategy.UPDATE) {
                         fail++;
@@ -224,10 +236,7 @@ export class ChannelHandler implements LoaderHandler {
                         ctx,
                         createInput as Parameters<typeof this.channelService.create>[1],
                     );
-                    // Handle ErrorResultUnion
-                    if ('errorCode' in result) {
-                        throw new Error(`Failed to create channel: ${'message' in result ? String(result.message) : 'Unknown error'}`);
-                    }
+                    assertVendureMutationSucceeded('create channel', result);
                 }
                 ok++;
             } catch (e: unknown) {
@@ -237,7 +246,7 @@ export class ChannelHandler implements LoaderHandler {
                 fail++;
             }
         }
-        return { ok, fail };
+        return { ok, fail, skipped };
     }
 
     private findExistingByCode(_ctx: RequestContext, code: string, channelByCode: Map<string, { id: ID; code: string }>): { id: ID } | null {
@@ -245,7 +254,7 @@ export class ChannelHandler implements LoaderHandler {
         return match ? { id: match.id } : null;
     }
 
-    private resolveZoneId(code: string): ID | undefined {
-        return this.zoneCache.get(code.toLowerCase());
+    private resolveZoneId(code: string, zoneCache: ReadonlyMap<string, ID>): ID | undefined {
+        return zoneCache.get(code.toLowerCase());
     }
 }

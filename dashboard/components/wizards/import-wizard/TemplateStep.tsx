@@ -8,11 +8,13 @@
 
 import * as React from 'react';
 import { memo } from 'react';
+import { Trans, useLingui } from '@lingui/react/macro';
 import { FileCode, Sparkles } from 'lucide-react';
 import { Button } from '@vendure/dashboard';
+import { getErrorMessage } from '../../../../shared';
+import { ErrorState, LoadingState } from '../../shared';
 import { TemplateGallery } from '../../templates';
 import { TemplatePreview } from '../../templates';
-import { STEP_CONTENT } from './constants';
 import type { ImportTemplate } from '../../../hooks/use-import-templates';
 import type { TemplateCategory } from '../../../types';
 
@@ -27,6 +29,10 @@ interface CategoryInfo {
 export interface TemplateStepProps {
     templates: ImportTemplate[];
     categories: CategoryInfo[];
+    isLoading: boolean;
+    isError: boolean;
+    error: unknown;
+    onRetry: () => void;
     selectedTemplate: ImportTemplate | null;
     onSelectTemplate: (template: ImportTemplate | null) => void;
     onUseTemplate: (template: ImportTemplate) => void;
@@ -36,79 +42,95 @@ export interface TemplateStepProps {
 function TemplateStepComponent({
     templates,
     categories,
+    isLoading,
+    isError,
+    error,
+    onRetry,
     selectedTemplate,
     onSelectTemplate,
     onUseTemplate,
     onStartFromScratch,
 }: TemplateStepProps) {
+    const { t } = useLingui();
     return (
         <div className="space-y-6">
-            {/* Header */}
             <div>
-                <h2 className="text-lg font-semibold">{STEP_CONTENT.template?.title ?? 'Choose a Template'}</h2>
+                <h2 className="text-lg font-semibold"><Trans>Choose a template</Trans></h2>
                 <p className="text-sm text-muted-foreground mt-1">
-                    {STEP_CONTENT.template?.description ?? 'Start with a pre-built template or create from scratch'}
+                    <Trans>Start with a pre-built template or create a custom import.</Trans>
                 </p>
             </div>
 
-            {/* Start from scratch option */}
-            <div className="flex items-center gap-4 p-4 border rounded-lg bg-muted/30">
-                <div className="p-3 bg-background rounded-lg border">
+            <div className="flex flex-col gap-4 p-4 border rounded-lg bg-muted/30 sm:flex-row sm:items-center">
+                <div className="self-start p-3 bg-background rounded-lg border sm:self-center">
                     <FileCode className="h-6 w-6 text-muted-foreground" />
                 </div>
-                <div className="flex-1">
-                    <h3 className="font-medium">Start from Scratch</h3>
+                <div className="min-w-0 flex-1">
+                    <h3 className="font-medium"><Trans>Start from scratch</Trans></h3>
                     <p className="text-sm text-muted-foreground">
-                        Build your import configuration step by step with full customization
+                        <Trans>Build a custom import configuration step by step.</Trans>
                     </p>
                 </div>
-                <Button variant="outline" onClick={onStartFromScratch}>
-                    Create Custom Import
+                <Button
+                    className="w-full sm:w-auto sm:shrink-0"
+                    variant="outline"
+                    onClick={onStartFromScratch}
+                >
+                    <Trans>Create custom import</Trans>
                 </Button>
             </div>
 
-            {/* Divider */}
             <div className="relative">
                 <div className="absolute inset-0 flex items-center">
                     <span className="w-full border-t" />
                 </div>
                 <div className="relative flex justify-center text-xs uppercase">
                     <span className="bg-background px-2 text-muted-foreground">
-                        Or choose a template
+                        <Trans>Or choose a template</Trans>
                     </span>
                 </div>
             </div>
 
-            {/* Main content area */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Template Gallery */}
-                <div className="lg:col-span-2">
-                    <TemplateGallery
-                        templates={templates}
-                        categories={categories}
-                        selectedTemplate={selectedTemplate}
-                        onSelectTemplate={onSelectTemplate}
-                    />
-                </div>
-
-                {/* Template Preview / Placeholder */}
-                <div className="lg:col-span-1">
-                    {selectedTemplate ? (
-                        <TemplatePreview
-                            template={selectedTemplate}
-                            onUseTemplate={() => onUseTemplate(selectedTemplate)}
+            {isLoading ? (
+                <LoadingState
+                    message={t`Loading import configuration...`}
+                />
+            ) : isError ? (
+                <ErrorState
+                    title={t`Import configuration unavailable`}
+                    message={t`Choose a template: ${getErrorMessage(error)}`}
+                    error={error instanceof Error ? error : undefined}
+                    onRetry={onRetry}
+                />
+            ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div className="lg:col-span-2">
+                        <TemplateGallery
+                            templates={templates}
+                            categories={categories}
+                            selectedTemplate={selectedTemplate}
+                            onSelectTemplate={onSelectTemplate}
                         />
-                    ) : (
-                        <div className="border rounded-lg p-6 text-center bg-muted/20 h-full flex flex-col items-center justify-center">
-                            <Sparkles className="h-12 w-12 text-muted-foreground/50 mb-4" />
-                            <h3 className="font-medium">Select a Template</h3>
-                            <p className="text-sm text-muted-foreground mt-1">
-                                Click on a template to see its details and sample data
-                            </p>
-                        </div>
-                    )}
+                    </div>
+
+                    <div className="lg:col-span-1">
+                        {selectedTemplate ? (
+                            <TemplatePreview
+                                template={selectedTemplate}
+                                onUseTemplate={() => onUseTemplate(selectedTemplate)}
+                            />
+                        ) : (
+                            <div className="border rounded-lg p-6 text-center bg-muted/20 h-full flex flex-col items-center justify-center">
+                                <Sparkles className="h-12 w-12 text-muted-foreground/50 mb-4" />
+                                <h3 className="font-medium"><Trans>Select a template</Trans></h3>
+                                <p className="text-sm text-muted-foreground mt-1">
+                                    <Trans>Choose a template to preview its configuration.</Trans>
+                                </p>
+                            </div>
+                        )}
+                    </div>
                 </div>
-            </div>
+            )}
         </div>
     );
 }

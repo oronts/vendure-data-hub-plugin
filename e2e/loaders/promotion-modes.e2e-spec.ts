@@ -14,9 +14,6 @@ import { PromotionHandler } from '../../src/runtime/executors/loaders/promotion-
 import { getSuperadminContext, makeStep, createErrorCollector, LOADER_TEST_INITIAL_DATA } from './loader-test-helpers';
 import {
     testIdempotency,
-    testReplaceAllMode,
-    testMergeMode,
-    testSkipMode,
 } from './mode-test-helpers';
 
 describe('Promotion Modes', () => {
@@ -202,10 +199,8 @@ describe('Promotion Modes', () => {
                 }]);
                 expect(result.ok).toBe(1);
 
-                // The promotion handler always replaces conditions (conditionsMode is not supported
-                // at the handler level), so only the new condition from the last execute call remains
                 const promos = await promotionService.findAll(ctx, { filter: { couponCode: { eq: 'PROMO-COND-PRESERVE' } } } as never);
-                expect((promos.items[0].conditions?.length ?? 0)).toBe(1);
+                expect((promos.items[0].conditions?.length ?? 0)).toBe(2);
             });
         });
 
@@ -244,10 +239,8 @@ describe('Promotion Modes', () => {
                     actions: [{ code: 'order_percentage_discount', arguments: [{ name: 'discount', value: '10' }] }],
                 }]);
 
-                // The promotion handler always replaces conditions (conditionsMode is not supported
-                // at the handler level), so the 2 new conditions from the skip step are applied
                 const promos = await promotionService.findAll(ctx, { filter: { couponCode: { eq: 'PROMO-COND-SKIP' } } } as never);
-                expect(promos.items[0].conditions?.length ?? 0).toBe(2);
+                expect(promos.items[0].conditions?.length ?? 0).toBe(1);
             });
         });
     });
@@ -297,7 +290,7 @@ describe('Promotion Modes', () => {
                 expect(result.ok).toBe(1);
             });
 
-            it('should handle empty actions array (remove all)', async () => {
+            it('rejects removing every promotion action', async () => {
                 const step = makeStep('promo-act-empty', {
                     strategy: 'UPSERT',
                     codeField: 'code',
@@ -310,15 +303,16 @@ describe('Promotion Modes', () => {
                     name: 'Promo Act Empty',
                     actions: [{ code: 'order_percentage_discount', arguments: [{ name: 'discount', value: '10' }] }],
                 }]);
-                // Empty actions - may cause error since promotions typically require at least one action
                 const collector = createErrorCollector();
                 const result = await handler.execute(ctx, step, [{
                     code: 'PROMO-ACT-EMPTY',
                     name: 'Promo Act Empty',
                     actions: [],
                 }], collector.callback);
-                // Either succeeds (removes all actions) or fails (actions required)
-                expect(result.ok + result.fail).toBeGreaterThanOrEqual(1);
+                expect(result).toMatchObject({ ok: 0, fail: 1 });
+                expect(collector.errors[0]?.message).toContain(
+                    'Promotion requires at least one action',
+                );
             });
         });
 
@@ -342,6 +336,8 @@ describe('Promotion Modes', () => {
                     actions: [{ code: 'order_fixed_discount', arguments: [{ name: 'discount', value: '500' }] }],
                 }]);
                 expect(result.ok).toBe(1);
+                const promos = await promotionService.findAll(ctx, { filter: { couponCode: { eq: 'PROMO-ACT-MERGE' } } } as never);
+                expect(promos.items[0].actions?.length ?? 0).toBe(2);
             });
 
             it('should prevent duplicate actions on re-run', async () => {
@@ -398,10 +394,8 @@ describe('Promotion Modes', () => {
                     ],
                 }]);
 
-                // The promotion handler always replaces actions (actionsMode is not supported
-                // at the handler level), so the 2 new actions from the skip step are applied
                 const promos = await promotionService.findAll(ctx, { filter: { couponCode: { eq: 'PROMO-ACT-SKIP' } } } as never);
-                expect(promos.items[0].actions?.length ?? 0).toBe(2);
+                expect(promos.items[0].actions?.length ?? 0).toBe(1);
             });
         });
     });
@@ -489,7 +483,7 @@ describe('Promotion Modes', () => {
             expect(result.ok).toBe(1);
         });
 
-        it('should handle missing actionsField', async () => {
+        it('rejects creation without actions', async () => {
             const step = makeStep('promo-no-act', {
                 strategy: 'UPSERT',
                 codeField: 'code',
@@ -503,11 +497,13 @@ describe('Promotion Modes', () => {
                 name: 'Promo No Act',
                 // No actions field
             }], collector.callback);
-            // Promotions may require actions; this could succeed or fail depending on Vendure validation
-            expect(result.ok + result.fail).toBeGreaterThanOrEqual(1);
+            expect(result).toMatchObject({ ok: 0, fail: 1 });
+            expect(collector.errors[0]?.message).toContain(
+                'Promotion requires at least one action',
+            );
         });
 
-        it('should handle invalid condition configurations', async () => {
+        it('rejects unknown condition handlers', async () => {
             const step = makeStep('promo-bad-cond', {
                 strategy: 'UPSERT',
                 codeField: 'code',
@@ -523,11 +519,11 @@ describe('Promotion Modes', () => {
                 conditions: [{ code: 'nonexistent_condition_handler', arguments: [] }],
                 actions: [{ code: 'order_percentage_discount', arguments: [{ name: 'discount', value: '10' }] }],
             }], collector.callback);
-            // Invalid condition may cause error
-            expect(result.ok + result.fail).toBeGreaterThanOrEqual(1);
+            expect(result).toMatchObject({ ok: 0, fail: 1 });
+            expect(collector.errors).toHaveLength(1);
         });
 
-        it('should handle invalid action configurations', async () => {
+        it('rejects unknown action handlers', async () => {
             const step = makeStep('promo-bad-act', {
                 strategy: 'UPSERT',
                 codeField: 'code',
@@ -541,8 +537,8 @@ describe('Promotion Modes', () => {
                 name: 'Promo Bad Act',
                 actions: [{ code: 'nonexistent_action_handler', arguments: [] }],
             }], collector.callback);
-            // Invalid action may cause error
-            expect(result.ok + result.fail).toBeGreaterThanOrEqual(1);
+            expect(result).toMatchObject({ ok: 0, fail: 1 });
+            expect(collector.errors).toHaveLength(1);
         });
     });
 

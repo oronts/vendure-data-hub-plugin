@@ -13,6 +13,7 @@
  */
 
 import { createPipeline } from '../../../src';
+import { getMockEndpoint, MOCK_ROUTES } from '../../ports';
 
 // =============================================================================
 // P4: CSV CUSTOMER IMPORT - Validation, routing, address building, group assignment
@@ -34,13 +35,24 @@ import { createPipeline } from '../../../src';
 export const csvCustomerImport = createPipeline()
     .name('CSV Customer Import')
     .description('Import customers from CSV with validation, error routing, address building, and group assignment')
-    .capabilities({ requires: ['UpdateCustomer'] })
+    .capabilities({ requires: ['UpdateCustomer'], writes: ['CUSTOMERS'] })
 
     .trigger('manual', { type: 'MANUAL' })
 
     .extract('read-csv', {
         adapterCode: 'csv',
-        csvPath: './dev-server/examples/data/customers.csv',
+        rows: [{
+            email: 'hans.mueller@example.de',
+            first_name: 'Hans',
+            last_name: 'Mueller',
+            phone: '+49-30-1234567',
+            group: 'VIP',
+            street: 'Friedrichstrasse 43',
+            city: 'Berlin',
+            postal_code: '10117',
+            country_code: 'DE',
+            province: 'Berlin',
+        }],
         delimiter: ',',
         hasHeader: true,
     })
@@ -161,7 +173,7 @@ export const productFeedGenerator = createPipeline()
     .extract('query-products', {
         adapterCode: 'vendureQuery',
         entity: 'PRODUCT_VARIANT',
-        relations: 'translations,product,product.translations,featuredAsset,stockLevels,facetValues,productVariantPrices',
+        relations: ['translations', 'product', 'product.translations', 'featuredAsset', 'stockLevels', 'facetValues', 'productVariantPrices'],
         batchSize: 100,
     })
 
@@ -177,42 +189,30 @@ export const productFeedGenerator = createPipeline()
     .transform('map-feed-fields', {
         operators: [
             { op: 'when', args: { conditions: [{ field: 'enabled', cmp: 'eq', value: true }], action: 'keep' } },
-            { op: 'copy', args: { source: 'sku', target: 'g:id' } },
-            { op: 'copy', args: { source: 'product.name', target: 'g:title' } },
-            { op: 'copy', args: { source: 'product.description', target: 'g:description' } },
-            { op: 'copy', args: { source: 'featuredAsset.preview', target: 'g:image_link' } },
-            { op: 'copy', args: { source: 'priceWithTax', target: '_rawPrice' } },
+            { op: 'copy', args: { source: 'sku', target: 'id' } },
+            { op: 'copy', args: { source: 'product.name', target: 'title' } },
+            { op: 'copy', args: { source: 'product.description', target: 'description' } },
+            { op: 'copy', args: { source: 'featuredAsset.preview', target: 'image' } },
+            { op: 'copy', args: { source: 'priceWithTax', target: 'price' } },
             {
                 op: 'script',
                 args: {
                     code: `
                         const stockLevel = (record.stockLevels || []).reduce((sum, sl) => sum + (sl.stockOnHand || 0), 0);
-                        record['g:availability'] = stockLevel > 0 ? 'in_stock' : 'out_of_stock';
+                        record.availability = stockLevel > 0 ? 'in_stock' : 'out_of_stock';
+                        record.link = 'https://shop.example.com/products/' + record.id;
+                        record.brand = 'DataHub Store';
                         return record;
                     `,
                 },
             },
-            { op: 'pick', args: { fields: ['g:id', 'g:title', 'g:description', 'g:image_link', '_rawPrice', 'g:availability'] } },
+            { op: 'pick', args: { fields: ['id', 'title', 'description', 'image', 'price', 'availability', 'link', 'brand'] } },
         ],
     })
 
     .transform('format-output', {
         operators: [
-            { op: 'stripHtml', args: { source: 'g:description', target: 'g:description' } },
-            {
-                op: 'script',
-                args: {
-                    code: `
-                        const price = record['_rawPrice'];
-                        record['g:price'] = (price / 100).toFixed(2) + ' EUR';
-                        record['g:link'] = 'https://shop.example.com/products/' + record['g:id'];
-                        record['g:condition'] = 'new';
-                        record['g:brand'] = 'DataHub Store';
-                        delete record['_rawPrice'];
-                        return record;
-                    `,
-                },
-            },
+            { op: 'stripHtml', args: { source: 'description', target: 'description' } },
         ],
     })
 
@@ -267,18 +267,23 @@ export const productFeedGenerator = createPipeline()
 export const webhookOrderImport = createPipeline()
     .name('Webhook Order Import')
     .description('Import orders from external OMS via webhook with HMAC authentication and enrichment')
-    .capabilities({ requires: ['UpdateOrder', 'UpdateCustomer'] })
+    .capabilities({
+        requires: ['UpdateOrder', 'UpdateCustomer', 'UpdateDataHubSettings'],
+        writes: ['ORDERS', 'CUSTOM'],
+    })
 
     .trigger('webhook', {
         type: 'WEBHOOK',
-        signature: 'hmac-sha256',
-        hmacSecretCode: 'webhook-hmac-secret',
-        idempotencyKey: 'X-Idempotency-Key',
+        authentication: 'HMAC',
+        secretCode: 'webhook-hmac-secret',
+        hmacAlgorithm: 'SHA256',
+        requireIdempotencyKey: true,
+        idempotencyKeyHeader: 'X-Idempotency-Key',
     })
 
     .extract('parse-payload', {
         adapterCode: 'inMemory',
-        itemsField: 'orders',
+        dataPath: 'orders',
     })
 
     .validate('check-orders', {
@@ -344,7 +349,7 @@ export const webhookOrderImport = createPipeline()
 
     .load('notify-callback', {
         adapterCode: 'restPost',
-        endpoint: 'http://localhost:4100/api/webhook',
+        endpoint: getMockEndpoint('EDGE_CASE', MOCK_ROUTES.EDGE_WEBHOOK),
         method: 'POST',
         batchMode: 'single',
     })
@@ -383,7 +388,7 @@ export const webhookBasicAuthImport = createPipeline()
     .trigger('webhook-basic', {
         type: 'WEBHOOK',
         authentication: 'BASIC',
-        basicSecretCode: 'webhook-api-key',
+        basicSecretCode: 'webhook-basic-creds',
     })
 
     .extract('receive-payload', {
@@ -464,14 +469,21 @@ export const fileWatchImport = createPipeline()
 
     .trigger('watch-csv', {
         type: 'FILE',
-        path: './dev-server/data/incoming/*.csv',
-        pollIntervalSeconds: 60,
-        minFileAgeSeconds: 30,
+        fileWatch: {
+            connectionCode: 'incoming-sftp',
+            path: '/incoming',
+            pattern: '*.csv',
+            minFileAge: 30,
+        },
     })
 
     .extract('read-file', {
-        adapterCode: 'csv',
-        delimiter: ',',
+        adapterCode: 'ftp',
+        connectionCode: 'incoming-sftp',
+        remotePath: '/incoming',
+        format: 'CSV',
+        csv: { delimiter: ',', header: true },
+        continueOnError: false,
     })
 
     .transform('map-fields', {
@@ -497,7 +509,7 @@ export const fileWatchImport = createPipeline()
  *
  * Features:
  * - MESSAGE trigger with internal queue type
- * - Configurable batch size and auto-acknowledge mode
+ * - Configurable batch size and terminal-run acknowledgment
  * - In-memory extraction with source tagging transform
  */
 export const messageQueueImport = createPipeline()
@@ -509,9 +521,8 @@ export const messageQueueImport = createPipeline()
         message: {
             queueType: 'INTERNAL',
             queueName: 'product-updates',
-            connectionCode: '',
             batchSize: 10,
-            ackMode: 'AUTO',
+            ackMode: 'MANUAL',
         },
     })
 

@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { memo } from 'react';
+import { Trans, useLingui } from '@lingui/react/macro';
 import {
     Badge,
     Tabs,
@@ -32,19 +33,19 @@ export const StatusBadge = memo(function StatusBadge({ status }: { status: TestR
         case TEST_STATUS.SUCCESS:
             return (
                 <Badge variant="default" className="gap-1">
-                    <CheckCircle2 className="h-3 w-3" /> Success
+                    <CheckCircle2 className="h-3 w-3" /> <Trans>Success</Trans>
                 </Badge>
             );
         case TEST_STATUS.ERROR:
             return (
                 <Badge variant="destructive" className="gap-1">
-                    <XCircle className="h-3 w-3" /> Error
+                    <XCircle className="h-3 w-3" /> <Trans>Error</Trans>
                 </Badge>
             );
         case TEST_STATUS.WARNING:
             return (
                 <Badge variant="secondary" className="gap-1">
-                    <AlertCircle className="h-3 w-3" /> Warning
+                    <AlertCircle className="h-3 w-3" /> <Trans>Warning</Trans>
                 </Badge>
             );
     }
@@ -54,8 +55,9 @@ export const StatusBadge = memo(function StatusBadge({ status }: { status: TestR
  * Table display for record arrays
  */
 export const RecordsTable = memo(function RecordsTable({ records }: { records: Array<Record<string, unknown>> }) {
+    const { t } = useLingui();
     if (!records.length) {
-        return <div className="text-muted-foreground text-sm">No records</div>;
+        return <div className="text-muted-foreground text-sm"><Trans>No records</Trans></div>;
     }
 
     const allKeys = Array.from(new Set(records.flatMap(r => Object.keys(r)))).slice(0, UI_LIMITS.TABLE_PREVIEW_COLUMNS);
@@ -87,7 +89,7 @@ export const RecordsTable = memo(function RecordsTable({ records }: { records: A
             </Table>
             {records.length > UI_LIMITS.TABLE_PREVIEW_ROWS && (
                 <div className="text-xs text-muted-foreground p-2 border-t">
-                    Showing {UI_LIMITS.TABLE_PREVIEW_ROWS} of {records.length} records
+                    {t`Showing ${UI_LIMITS.TABLE_PREVIEW_ROWS} of ${records.length} records`}
                 </div>
             )}
         </div>
@@ -108,10 +110,10 @@ export const ViewToggle = memo(function ViewToggle({
         <Tabs value={resultView} onValueChange={v => onViewChange(v as 'table' | 'json')}>
             <TabsList className="h-7">
                 <TabsTrigger value="table" className="text-xs h-6 px-2">
-                    Table
+                    <Trans>Table</Trans>
                 </TabsTrigger>
                 <TabsTrigger value="json" className="text-xs h-6 px-2">
-                    JSON
+                    <Trans>JSON</Trans>
                 </TabsTrigger>
             </TabsList>
         </Tabs>

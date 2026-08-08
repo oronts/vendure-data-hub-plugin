@@ -1,6 +1,7 @@
-import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
+import { Args, Mutation, Parent, Query, ResolveField, Resolver } from '@nestjs/graphql';
 import {
     Allow,
+    Channel,
     Ctx,
     ID,
     ListQueryOptions,
@@ -10,8 +11,14 @@ import {
 } from '@vendure/core';
 import { Pipeline, PipelineRun } from '../../entities/pipeline';
 import { PipelineService, CreatePipelineInput, UpdatePipelineInput, DefinitionValidationService, PipelineFormatService, VisualPipelineDefinition } from '../../services';
+import type { PipelineListOptions } from '../../services/pipeline/pipeline-management-types';
+import { getEffectivePipelineCapabilities } from '../../services/pipeline/pipeline-capabilities';
+import { DataHubRegistryService } from '../../sdk/registry.service';
 import { PipelineDefinition } from '../../types';
-import { PipelineDefinitionError } from '../../validation/pipeline-definition-error';
+import {
+    PipelineDefinitionError,
+    type PipelineDefinitionIssue,
+} from '../../validation/pipeline-definition-error';
 import { getErrorMessage } from '../../utils/error.utils';
 import {
     DataHubPipelinePermission,
@@ -22,28 +29,100 @@ import {
 } from '../../permissions';
 import { ValidationLevel } from '../../services/validation/definition-validation.service';
 import { PipelineDefinitionInput, ValidationInput } from '../types';
+import { ManagedResourceChannelService } from '../../services/config/managed-resource-channel.service';
 
-@Resolver()
+export function mapValidationIssueForApi(issue: PipelineDefinitionIssue) {
+    const { errorCode, ...fields } = issue;
+    return {
+        ...fields,
+        reason: errorCode,
+    };
+}
+
+@Resolver('DataHubPipeline')
 export class DataHubPipelineAdminResolver {
     constructor(
         private pipelineService: PipelineService,
         private definitionValidator: DefinitionValidationService,
         private formatService: PipelineFormatService,
+        private managedResourceChannels: ManagedResourceChannelService,
+        private registry: DataHubRegistryService,
     ) {}
 
     @Query()
     @Allow(DataHubPipelinePermission.Read)
     async dataHubPipelines(
         @Ctx() ctx: RequestContext,
-        @Args() args: { options?: ListQueryOptions<Pipeline> },
+        @Args() args: { options?: PipelineListOptions },
     ): Promise<PaginatedList<Pipeline>> {
         return this.pipelineService.findAll(ctx, args.options ?? undefined);
+    }
+
+    @ResolveField()
+    @Allow(DataHubPipelinePermission.Read)
+    requiredCapabilities(@Parent() pipeline: Pipeline): string[] {
+        return getEffectivePipelineCapabilities(
+            this.registry,
+            pipeline.definition,
+        ).requires;
+    }
+
+    @ResolveField()
+    @Allow(DataHubPipelinePermission.Read)
+    writeCapabilities(@Parent() pipeline: Pipeline): string[] {
+        return getEffectivePipelineCapabilities(
+            this.registry,
+            pipeline.definition,
+        ).writes;
     }
 
     @Query()
     @Allow(DataHubPipelinePermission.Read)
     dataHubPipeline(@Ctx() ctx: RequestContext, @Args() args: { id: ID }): Promise<Pipeline | null> {
         return this.pipelineService.findOne(ctx, args.id);
+    }
+
+    @ResolveField()
+    @Allow(DataHubPipelinePermission.Read)
+    channels(
+        @Ctx() ctx: RequestContext,
+        @Parent() pipeline: Pipeline,
+    ): Promise<Channel[]> {
+        return this.channelManager.getAssignedChannels(ctx, Pipeline, pipeline.id);
+    }
+
+    @Mutation()
+    @Transaction()
+    @Allow(DataHubPipelinePermission.Update)
+    assignDataHubPipelinesToChannel(
+        @Ctx() ctx: RequestContext,
+        @Args() args: { input: { pipelineIds: ID[]; channelId: ID } },
+    ): Promise<Pipeline[]> {
+        return this.channelManager.assignToChannel(
+            ctx,
+            Pipeline,
+            { ids: args.input.pipelineIds, channelId: args.input.channelId },
+            [DataHubPipelinePermission.Update],
+        );
+    }
+
+    @Mutation()
+    @Transaction()
+    @Allow(DataHubPipelinePermission.Update)
+    removeDataHubPipelinesFromChannel(
+        @Ctx() ctx: RequestContext,
+        @Args() args: { input: { pipelineIds: ID[]; channelId: ID } },
+    ): Promise<Pipeline[]> {
+        return this.channelManager.removeFromChannel(
+            ctx,
+            Pipeline,
+            { ids: args.input.pipelineIds, channelId: args.input.channelId },
+            [DataHubPipelinePermission.Update],
+        );
+    }
+
+    private get channelManager(): ManagedResourceChannelService {
+        return this.managedResourceChannels;
     }
 
     @Query()
@@ -173,7 +252,7 @@ export class DataHubPipelineAdminResolver {
     @Transaction()
     @Allow(ReviewDataHubPipelinePermission.Permission)
     approveDataHubPipeline(@Ctx() ctx: RequestContext, @Args() args: { id: ID }) {
-        return this.pipelineService.publish(ctx, args.id);
+        return this.pipelineService.approve(ctx, args.id);
     }
 
     @Mutation()
@@ -188,6 +267,13 @@ export class DataHubPipelineAdminResolver {
     @Allow(PublishDataHubPipelinePermission.Permission)
     archiveDataHubPipeline(@Ctx() ctx: RequestContext, @Args() args: { id: ID }) {
         return this.pipelineService.archive(ctx, args.id);
+    }
+
+    @Mutation()
+    @Transaction()
+    @Allow(PublishDataHubPipelinePermission.Permission)
+    reactivateDataHubPipeline(@Ctx() ctx: RequestContext, @Args() args: { id: ID }) {
+        return this.pipelineService.reactivate(ctx, args.id);
     }
 
     @Mutation()
@@ -212,15 +298,15 @@ export class DataHubPipelineAdminResolver {
             }, ctx);
             return {
                 isValid: result.isValid,
-                issues: result.issues,
-                warnings: result.warnings,
+                issues: result.issues.map(mapValidationIssueForApi),
+                warnings: result.warnings.map(mapValidationIssueForApi),
                 level: result.level,
             };
         } catch (e) {
             if (e instanceof PipelineDefinitionError) {
                 return {
                     isValid: false,
-                    issues: e.issues,
+                    issues: e.issues.map(mapValidationIssueForApi),
                     warnings: [],
                     level: ValidationLevel.FULL,
                 };
@@ -254,8 +340,13 @@ export class DataHubPipelineAdminResolver {
     @Mutation()
     @Transaction()
     @Allow(RunDataHubPipelinePermission.Permission)
-    startDataHubPipelineRun(@Ctx() ctx: RequestContext, @Args() args: { pipelineId: ID }) {
-        return this.pipelineService.startRun(ctx, args.pipelineId);
+    startDataHubPipelineRun(
+        @Ctx() ctx: RequestContext,
+        @Args() args: { pipelineId: ID; expectedRevisionId?: ID },
+    ) {
+        return this.pipelineService.startRun(ctx, args.pipelineId, {
+            expectedRevisionId: args.expectedRevisionId,
+        });
     }
 
     @Mutation()

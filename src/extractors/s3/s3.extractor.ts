@@ -8,9 +8,9 @@ import {
     RecordEnvelope,
     StepConfigSchema,
     ExtractorCategory,
+    JsonObject,
 } from '../../types/index';
 import { FileParserService } from '../../parsers/file-parser.service';
-import { FileFormat } from '../../constants/enums';
 import { TRANSFORM_LIMITS } from '../../constants/defaults/core-defaults';
 import { getErrorMessage } from '../../utils/error.utils';
 import {
@@ -33,6 +33,14 @@ import {
     isValidPrefix,
     parseModifiedAfterDate,
 } from './file-handlers';
+import { resolveConnectionBackedConfig } from '../shared/connection-backed-config';
+import { readRemoteFileSourceReferences } from '../shared/remote-file-source';
+import { assertRemoteFileSize } from '../shared/remote-file-content';
+import { resolveBoundedLimit } from '../shared/pagination.utils';
+import {
+    appendRemoteSourceAcknowledgement,
+    createRemoteSourceAcknowledgement,
+} from '../shared/remote-source-acknowledgement';
 
 const MAX_PREVIEW_FILES = TRANSFORM_LIMITS.MAX_PREVIEW_FILES;
 
@@ -54,39 +62,66 @@ export class S3Extractor implements DataExtractor<S3ExtractorConfig> {
         context: ExtractorContext,
         config: S3ExtractorConfig,
     ): AsyncGenerator<RecordEnvelope, void, undefined> {
+        config = await this.resolveConfig(context, config);
         context.logger.info('Starting S3 extraction', {
             bucket: config.bucket,
             prefix: config.prefix ?? null,
             region: config.region ?? null,
         });
 
+        const sourceReferences = readRemoteFileSourceReferences(
+            context.sourceRecords,
+            config.connectionCode,
+        );
+        if (sourceReferences !== undefined && sourceReferences.length === 0) {
+            throw new Error('No valid remote-file source reference was provided for this S3 extractor');
+        }
         const client = await createS3Client(context, config);
 
         try {
             let continuationToken: string | undefined;
             let objectsProcessed = 0;
+            let cancelled = false;
+            let checkpointChanged = false;
+            let nextCheckpoint = { ...context.checkpoint.data };
             const maxObjects = config.maxObjects || S3_DEFAULTS.maxObjects;
-            // Track processed keys via checkpoint for crash-safe resumability
             const processedKeys = new Set<string>(
                 (context.checkpoint?.data?.processedS3Keys as string[]) ?? [],
             );
 
             do {
-                if (await context.isCancelled()) break;
+                if (await context.isCancelled()) {
+                    cancelled = true;
+                    break;
+                }
 
-                const listResult = await client.listObjects(config.prefix, continuationToken);
+                const listResult = sourceReferences === undefined
+                    ? await client.listObjects(config.prefix, continuationToken)
+                    : {
+                        objects: sourceReferences.map(reference => ({
+                            key: reference.path,
+                            size: reference.size,
+                            lastModified: new Date(reference.modifiedAt),
+                        })),
+                        continuationToken: undefined,
+                        isTruncated: false,
+                    };
                 const filteredObjects = filterObjects(listResult.objects, config);
 
                 for (const obj of filteredObjects) {
-                    if (await context.isCancelled()) break;
+                    if (await context.isCancelled()) {
+                        cancelled = true;
+                        break;
+                    }
                     if (objectsProcessed >= maxObjects) break;
-                    if (processedKeys.has(obj.key)) {
+                    if (sourceReferences === undefined && processedKeys.has(obj.key)) {
                         context.logger.debug(`Skipping already-processed S3 object: ${obj.key}`);
                         objectsProcessed++;
                         continue;
                     }
 
                     try {
+                        assertRemoteFileSize(obj.size, buildS3SourceId(config.bucket, obj.key));
                         const content = await client.getObject(obj.key);
                         const records = await parseS3Content(content, obj.key, config, this.fileParser);
                         const metadata = buildObjectMetadata(config.bucket, obj);
@@ -106,27 +141,38 @@ export class S3Extractor implements DataExtractor<S3ExtractorConfig> {
                             };
                         }
 
-                        if (config.deleteAfterProcess) {
-                            await client.deleteObject(obj.key);
-                            context.logger.debug(`Deleted S3 object: ${obj.key}`);
-                        } else if (config.moveAfterProcess?.enabled && config.moveAfterProcess.destinationPrefix) {
-                            const destKey = calculateDestinationKey(
-                                obj.key,
-                                config.prefix,
-                                config.moveAfterProcess.destinationPrefix,
+                        const action = config.deleteAfterProcess
+                            ? { action: 'DELETE' as const }
+                            : config.moveAfterProcess?.enabled && config.moveAfterProcess.destinationPrefix
+                                ? {
+                                    action: 'MOVE' as const,
+                                    destinationPath: calculateDestinationKey(
+                                        obj.key,
+                                        config.prefix,
+                                        config.moveAfterProcess.destinationPrefix,
+                                    ),
+                                }
+                                : undefined;
+                        if (action) {
+                            nextCheckpoint = appendRemoteSourceAcknowledgement(
+                                nextCheckpoint,
+                                createRemoteSourceAcknowledgement({
+                                    runId: context.runId,
+                                    stepKey: context.stepKey,
+                                    adapterCode: 's3',
+                                    sourcePath: obj.key,
+                                    config: config as unknown as JsonObject,
+                                    ...action,
+                                }),
                             );
-                            await client.copyObject(obj.key, destKey);
-                            await client.deleteObject(obj.key);
-                            context.logger.debug(`Moved S3 object: ${obj.key} -> ${destKey}`);
+                            checkpointChanged = true;
                         }
 
                         processedKeys.add(obj.key);
-                        objectsProcessed++;
-
-                        // Checkpoint after each file so restarts skip completed files
-                        if (config.deleteAfterProcess || config.moveAfterProcess?.enabled) {
-                            context.setCheckpoint({ processedS3Keys: [...processedKeys] });
+                        if (sourceReferences === undefined) {
+                            checkpointChanged = true;
                         }
+                        objectsProcessed++;
                     } catch (error) {
                         if (!config.continueOnError) throw error;
                         context.logger.warn(`Failed to process S3 object ${obj.key}: ${error}`);
@@ -136,6 +182,11 @@ export class S3Extractor implements DataExtractor<S3ExtractorConfig> {
                 continuationToken = listResult.continuationToken;
             } while (continuationToken && objectsProcessed < maxObjects);
 
+            if (!cancelled && checkpointChanged) {
+                nextCheckpoint.processedS3Keys = [...processedKeys];
+                context.setCheckpoint(nextCheckpoint);
+            }
+
             context.logger.info(`S3 extraction completed`, { objectsProcessed });
         } finally {
             await client.close();
@@ -143,9 +194,10 @@ export class S3Extractor implements DataExtractor<S3ExtractorConfig> {
     }
 
     async validate(
-        _context: ExtractorContext,
+        context: ExtractorContext,
         config: S3ExtractorConfig,
     ): Promise<ExtractorValidationResult> {
+        config = await this.resolveConfig(context, config);
         const errors: Array<{ field: string; message: string; code?: string }> = [];
         const warnings: Array<{ field?: string; message: string }> = [];
 
@@ -194,19 +246,11 @@ export class S3Extractor implements DataExtractor<S3ExtractorConfig> {
             });
         }
 
-        if (config.s3Select?.enabled) {
-            if (!config.s3Select.expression) {
-                errors.push({
-                    field: 's3Select.expression',
-                    message: 'SQL expression is required when S3 Select is enabled',
-                });
-            }
-            if (config.format && ![FileFormat.CSV, FileFormat.JSON].includes(config.format as FileFormat)) {
-                errors.push({
-                    field: 's3Select.enabled',
-                    message: 'S3 Select only supports CSV and JSON formats',
-                });
-            }
+        if (config.s3Select !== undefined) {
+            errors.push({
+                field: 's3Select',
+                message: 'S3 Select is not supported by this extractor',
+            });
         }
 
         return { valid: errors.length === 0, errors, warnings };
@@ -216,6 +260,7 @@ export class S3Extractor implements DataExtractor<S3ExtractorConfig> {
         context: ExtractorContext,
         config: S3ExtractorConfig,
     ): Promise<ConnectionTestResult> {
+        config = await this.resolveConfig(context, config);
         const result = await testS3Connection(context, config);
 
         if (result.success) {
@@ -248,6 +293,12 @@ export class S3Extractor implements DataExtractor<S3ExtractorConfig> {
         limit: number = 10,
     ): Promise<ExtractorPreviewResult> {
         try {
+            config = await this.resolveConfig(context, config);
+            const safeLimit = resolveBoundedLimit(
+                limit,
+                10,
+                TRANSFORM_LIMITS.MAX_PREVIEW_LIMIT,
+            );
             const client = await createS3Client(context, config);
             const records: RecordEnvelope[] = [];
 
@@ -256,12 +307,13 @@ export class S3Extractor implements DataExtractor<S3ExtractorConfig> {
                 const filteredObjects = filterObjects(listResult.objects, config).slice(0, MAX_PREVIEW_FILES);
 
                 for (const obj of filteredObjects) {
-                    if (records.length >= limit) break;
+                    if (records.length >= safeLimit) break;
 
                     try {
+                        assertRemoteFileSize(obj.size, buildS3SourceId(config.bucket, obj.key));
                         const content = await client.getObject(obj.key);
                         const parsed = await parseS3Content(content, obj.key, config, this.fileParser);
-                        for (const data of parsed.slice(0, limit - records.length)) {
+                        for (const data of parsed.slice(0, safeLimit - records.length)) {
                             records.push({
                                 data,
                                 meta: {
@@ -270,8 +322,8 @@ export class S3Extractor implements DataExtractor<S3ExtractorConfig> {
                                 },
                             });
                         }
-                    } catch {
-                        // Skip objects that fail to parse during preview
+                    } catch (error) {
+                        throw new Error(`Unable to preview S3 object ${obj.key}: ${getErrorMessage(error)}`);
                     }
                 }
 
@@ -298,5 +350,16 @@ export class S3Extractor implements DataExtractor<S3ExtractorConfig> {
                 },
             };
         }
+    }
+    private async resolveConfig(
+        context: ExtractorContext,
+        config: S3ExtractorConfig,
+    ): Promise<S3ExtractorConfig> {
+        const resolved = await resolveConnectionBackedConfig(
+            context,
+            config as unknown as JsonObject,
+            ['S3'],
+        );
+        return resolved.config as unknown as S3ExtractorConfig;
     }
 }

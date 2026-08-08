@@ -24,16 +24,18 @@
  */
 import express from 'express';
 import crypto from 'crypto';
-import { MOCK_PORTS } from '../ports';
+import { MOCK_PORTS, MOCK_ROUTES } from '../ports';
+import { DEFAULT_DEV_SHOPIFY_ACCESS_TOKEN } from '../dev-credentials';
+import { SHOPIFY_ADMIN_API_VERSION } from '../shopify-api';
 
-const app = express();
+export const app = express();
 app.use(express.json());
 
 // ── Configuration ────────────────────────────────────────────────────────────
 const PORT = MOCK_PORTS.SHOPIFY;
-const API_VERSION = '2024-01';
+const API_VERSION = SHOPIFY_ADMIN_API_VERSION;
 const BASE_PATH = `/admin/api/${API_VERSION}`;
-const ACCESS_TOKEN = 'shpat_test_mock_access_token_123456';
+const ACCESS_TOKEN = DEFAULT_DEV_SHOPIFY_ACCESS_TOKEN;
 const RATE_LIMIT_PER_SECOND = 2;
 const PAGE_SIZE = 50;
 
@@ -202,7 +204,7 @@ interface ShopifyCustomer {
     default: boolean;
   }>;
   admin_graphql_api_id: string;
-  default_address?: any;
+  default_address?: ShopifyCustomer['addresses'][number];
 }
 
 interface ShopifyOrder {
@@ -257,7 +259,7 @@ interface ShopifyOrder {
     taxable: boolean;
     gift_card: boolean;
     name: string;
-    properties: any[];
+    properties: Array<{ name: string; value: string }>;
     product_exists: boolean;
     fulfillable_quantity: number;
     grams: number;
@@ -461,7 +463,7 @@ for (let i = 1; i <= 200; i++) {
   const customer = customers[i % customers.length];
   const createdAt = new Date(Date.now() - Math.random() * 180 * 24 * 60 * 60 * 1000).toISOString();
   const lineItemCount = 1 + Math.floor(Math.random() * 4);
-  const lineItems: any[] = [];
+  const lineItems: ShopifyOrder['line_items'] = [];
   let totalPrice = 0;
 
   for (let l = 0; l < lineItemCount; l++) {
@@ -546,13 +548,16 @@ for (let i = 1; i <= 200; i++) {
 }
 
 // ── Pagination Helpers ───────────────────────────────────────────────────────
-function encodeCursor(value: any): string {
+function encodeCursor(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString('base64');
 }
 
-function decodeCursor(cursor: string): any {
+function decodeCursor(cursor: string): { id?: number } | null {
   try {
-    return JSON.parse(Buffer.from(cursor, 'base64').toString());
+    const value: unknown = JSON.parse(Buffer.from(cursor, 'base64').toString());
+    if (!value || typeof value !== 'object') return null;
+    const id = Reflect.get(value, 'id');
+    return typeof id === 'number' ? { id } : null;
   } catch {
     return null;
   }
@@ -652,12 +657,12 @@ app.get(`${BASE_PATH}/products.json`, (req, res) => {
   const cursor = req.query.page_info as string;
   const includeMetafields = req.query.fields?.toString().includes('metafields');
 
-  const { data, hasNext, nextCursor } = paginateArray(products, limit, sinceId, cursor);
+  const { data, nextCursor } = paginateArray(products, limit, sinceId, cursor);
 
   const productsData = includeMetafields
     ? data
     : data.map(p => {
-        const { metafields, ...rest } = p;
+        const { metafields: _metafields, ...rest } = p;
         return rest;
       });
 
@@ -703,7 +708,7 @@ app.get(`${BASE_PATH}/collections.json`, (req, res) => {
   const sinceId = parseInt(req.query.since_id as string) || undefined;
   const cursor = req.query.page_info as string;
 
-  const { data, hasNext, nextCursor } = paginateArray(collections, limit, sinceId, cursor);
+  const { data, nextCursor } = paginateArray(collections, limit, sinceId, cursor);
 
   const linkHeader = buildLinkHeader(req, nextCursor);
   if (linkHeader) {
@@ -719,7 +724,7 @@ app.get(`${BASE_PATH}/customers.json`, (req, res) => {
   const sinceId = parseInt(req.query.since_id as string) || undefined;
   const cursor = req.query.page_info as string;
 
-  const { data, hasNext, nextCursor } = paginateArray(customers, limit, sinceId, cursor);
+  const { data, nextCursor } = paginateArray(customers, limit, sinceId, cursor);
 
   const linkHeader = buildLinkHeader(req, nextCursor);
   if (linkHeader) {
@@ -743,7 +748,7 @@ app.get(`${BASE_PATH}/orders.json`, (req, res) => {
     filteredOrders = orders.filter(o => o.closed_at);
   }
 
-  const { data, hasNext, nextCursor } = paginateArray(filteredOrders, limit, sinceId, cursor);
+  const { data, nextCursor } = paginateArray(filteredOrders, limit, sinceId, cursor);
 
   const linkHeader = buildLinkHeader(req, nextCursor);
   if (linkHeader) {
@@ -755,7 +760,12 @@ app.get(`${BASE_PATH}/orders.json`, (req, res) => {
 
 // Inventory levels
 app.get(`${BASE_PATH}/inventory_levels.json`, (req, res) => {
-  const inventoryLevels: any[] = [];
+  const inventoryLevels: Array<{
+    inventory_item_id: number;
+    location_id: number;
+    available: number;
+    updated_at: string;
+  }> = [];
 
   for (const product of products.slice(0, 100)) {
     for (const variant of product.variants) {
@@ -772,7 +782,19 @@ app.get(`${BASE_PATH}/inventory_levels.json`, (req, res) => {
 });
 
 // Webhooks registration (mock)
-const registeredWebhooks: any[] = [];
+interface RegisteredWebhook {
+  id: number;
+  address: string;
+  topic: string;
+  created_at: string;
+  updated_at: string;
+  format: string;
+  fields: string[];
+  metafield_namespaces: string[];
+  api_version: string;
+}
+
+const registeredWebhooks: RegisteredWebhook[] = [];
 
 app.post(`${BASE_PATH}/webhooks.json`, (req, res) => {
   const { webhook } = req.body;
@@ -813,7 +835,23 @@ app.post('/webhooks/:topic', (req, res) => {
   res.status(200).json({ received: true });
 });
 
+app.get(MOCK_ROUTES.HEALTH, (_req, res) => {
+  res.json({
+    status: 'ok',
+    service: 'shopify',
+    apiVersion: API_VERSION,
+    counts: {
+      products: products.length,
+      collections: collections.length,
+      customers: customers.length,
+      orders: orders.length,
+      webhooks: registeredWebhooks.length,
+    },
+  });
+});
+
 // ── Server Start ─────────────────────────────────────────────────────────────
+if (require.main === module) {
 app.listen(PORT, () => {
   console.log(`\n✓ Mock Shopify API listening on http://localhost:${PORT}`);
   console.log(`  API Base:     ${BASE_PATH}`);
@@ -827,3 +865,6 @@ app.listen(PORT, () => {
   console.log(`  curl -H "X-Shopify-Access-Token: ${ACCESS_TOKEN}" http://localhost:${PORT}${BASE_PATH}/products.json?limit=10`);
   console.log(`  curl -H "X-Shopify-Access-Token: ${ACCESS_TOKEN}" http://localhost:${PORT}${BASE_PATH}/shop.json\n`);
 });
+}
+
+export default app;

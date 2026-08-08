@@ -39,7 +39,7 @@ export const CUSTOMER_LOADER_METADATA = {
     name: 'Customer Loader',
     description: 'Imports customers with email-based lookup, addresses, and group assignment',
     adapterCode: 'customerUpsert',
-    supportedOperations: ['CREATE', 'UPDATE', 'UPSERT', 'DELETE'] as TargetOperation[],
+    supportedOperations: ['CREATE', 'UPDATE', 'UPSERT'] as TargetOperation[],
     lookupFields: ['emailAddress', 'id', 'customFields.externalId'],
     requiredFields: ['emailAddress', 'firstName', 'lastName'],
 } as const;

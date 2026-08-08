@@ -1,33 +1,61 @@
-import { RequestContextService } from '@vendure/core';
-import { PipelineService } from '../pipeline/pipeline.service';
-import { ConnectionService } from '../config/connection.service';
-import { SecretService } from '../config/secret.service';
-import { AckMode } from '../../constants/index';
-import { DataHubLogger } from '../logger';
-import { getErrorMessage, toErrorOrUndefined } from '../../utils/error.utils';
-import { queueAdapterRegistry, QueueConnectionConfig, QueueAdapter } from '../../sdk/adapters/queue';
-import { ActiveConsumer } from './consumer-lifecycle';
-import { DomainEventsService } from './domain-events.service';
+import { RequestContextService, type RequestContext } from '@vendure/core';
+import type { PipelineService } from '../pipeline/pipeline.service';
+import type { ConnectionService } from '../config/connection.service';
+import type { SecretService } from '../config/secret.service';
+import { QUEUE } from '../../constants';
+import type { DataHubLogger } from '../logger';
+import { toErrorOrUndefined } from '../../utils/error.utils';
+import {
+    queueAdapterRegistry,
+    type QueueAdapter,
+    type QueueConnectionConfig,
+} from '../../sdk/adapters/queue';
+import type { ActiveConsumer } from './consumer-lifecycle';
+import type { DomainEventsService } from './domain-events.service';
+import { MessageDeliveryHandler } from './message-delivery-handler';
+import { MessageRunCoordinator } from './message-run-coordinator';
+import {
+    type ConsumedMessage,
+    type QueueRunWaiter,
+} from './message-processing.types';
+import { waitForSuccessfulQueueRun } from './message-run-waiter';
+import { getConsumerKey } from './consumer-discovery';
+
+export { ConsumerLeaseLostError } from './message-processing.types';
+
+const QUEUE_SECRET_FIELDS = [
+    ['passwordSecretCode', 'password'],
+    ['accessKeyIdSecretCode', 'accessKeyId'],
+    ['secretAccessKeySecretCode', 'secretAccessKey'],
+    ['privateKeySecretCode', 'privateKey'],
+    ['apiKeySecretCode', 'apiKey'],
+] as const;
 
 /**
- * Message Processing Module
- *
- * Handles polling messages from queues and processing them through pipelines,
- * including acknowledgment, retry logic, and dead-letter queue routing.
+ * Polls queue adapters and delegates each delivery to the run and outcome handlers.
  */
 export class MessageProcessing {
-    constructor(
-        private requestContextService: RequestContextService,
-        private pipelineService: PipelineService,
-        private connectionService: ConnectionService,
-        private secretService: SecretService,
-        private logger: DataHubLogger,
-        private domainEvents: DomainEventsService,
-    ) {}
+    private readonly deliveryHandler: MessageDeliveryHandler;
 
-    /**
-     * Start polling for messages
-     */
+    constructor(
+        private readonly requestContextService: RequestContextService,
+        pipelineService: PipelineService,
+        private readonly connectionService: ConnectionService,
+        private readonly secretService: SecretService,
+        private readonly logger: DataHubLogger,
+        domainEvents: DomainEventsService,
+        queueRunWaiter: QueueRunWaiter = waitForSuccessfulQueueRun,
+    ) {
+        const runCoordinator = new MessageRunCoordinator(
+            requestContextService,
+            pipelineService,
+            logger,
+            domainEvents,
+            queueRunWaiter,
+        );
+        this.deliveryHandler = new MessageDeliveryHandler(runCoordinator, logger);
+    }
+
     startPolling(
         key: string,
         consumer: ActiveConsumer,
@@ -37,36 +65,41 @@ export class MessageProcessing {
         const poll = async () => {
             if (!consumer.running || isDestroying() || polling) return;
             polling = true;
+            consumer.activePollCount = (consumer.activePollCount ?? 0) + 1;
 
             try {
                 await this.pollMessages(consumer);
             } catch (error) {
-                this.logger.error(`Poll error for ${key}`,
-                    toErrorOrUndefined(error), { pipelineCode: key });
+                this.logger.error(
+                    `Poll error for ${key}`,
+                    toErrorOrUndefined(error),
+                    { pipelineCode: key },
+                );
             } finally {
+                consumer.activePollCount = Math.max(
+                    0,
+                    (consumer.activePollCount ?? 1) - 1,
+                );
                 polling = false;
             }
         };
 
-        // Initial poll
-        poll();
-
-        consumer.pollTimer = setInterval(poll, consumer.config.pollIntervalMs);
-
-        // Allow process to exit
+        void poll();
+        consumer.pollTimer = setInterval(() => {
+            void poll();
+        }, consumer.config.pollIntervalMs);
         if (typeof consumer.pollTimer.unref === 'function') {
             consumer.pollTimer.unref();
         }
     }
 
-    /**
-     * Poll for messages from the queue using the registered adapter
-     */
     private async pollMessages(consumer: ActiveConsumer): Promise<void> {
         const { config } = consumer;
-
-        // Respect concurrency limit - skip if already at max
-        const availableSlots = config.concurrency - consumer.inFlightCount;
+        const concurrency = Math.min(
+            QUEUE.MAX_MESSAGE_CONCURRENCY,
+            Math.max(QUEUE.MIN_MESSAGE_CONCURRENCY, config.concurrency),
+        );
+        const availableSlots = concurrency - consumer.inFlightCount;
         if (availableSlots <= 0) {
             this.logger.debug(`Skipping poll - at max concurrency (${config.concurrency})`, {
                 pipelineCode: config.pipelineCode,
@@ -84,34 +117,41 @@ export class MessageProcessing {
         }
 
         const ctx = await this.requestContextService.create({ apiType: 'admin' });
+        const connectionConfig = await this.getConnectionConfig(consumer, ctx);
+        if (!connectionConfig) return;
 
-        // Internal queue adapter uses in-process buffer, no external connection needed
-        const isInternal = config.queueType.toLowerCase() === 'internal';
-        let connectionConfig: QueueConnectionConfig = {} as QueueConnectionConfig;
-
-        if (!isInternal) {
-            const conn = await this.connectionService.getByCode(ctx, config.connectionCode);
-            if (!conn) {
-                this.logger.warn(`Connection not found for consumer`, {
-                    connectionCode: config.connectionCode,
-                    pipelineCode: config.pipelineCode,
-                });
-                return;
-            }
-            const rawConfig = conn.config as Record<string, unknown>;
-            connectionConfig = await this.resolveConnectionSecrets(ctx, rawConfig) as QueueConnectionConfig;
-        }
-
-        const fetchCount = Math.min(config.batchSize, availableSlots);
+        const batchSize = Math.min(
+            QUEUE.MAX_MESSAGE_BATCH_SIZE,
+            Math.max(QUEUE.MIN_MESSAGE_BATCH_SIZE, config.batchSize),
+        );
+        const fetchCount = Math.min(batchSize, availableSlots);
+        const prefetch = config.prefetch === undefined
+            ? undefined
+            : Math.min(
+                QUEUE.MAX_MESSAGE_PREFETCH,
+                Math.max(QUEUE.MIN_MESSAGE_PREFETCH, config.prefetch),
+            );
 
         try {
             const messages = await adapter.consume(connectionConfig, config.queueName, {
                 count: fetchCount,
                 ackMode: config.ackMode,
-                prefetch: config.prefetch,
+                prefetch,
+                consumerId: getConsumerKey(
+                    config.pipelineCode,
+                    config.triggerKey,
+                ),
             });
 
-            if (messages.length === 0) {
+            if (messages.length === 0) return;
+            if (!consumer.running) {
+                await Promise.all(messages.map(message => this.deliveryHandler.releaseAfterLeaseLoss(
+                    consumer,
+                    adapter,
+                    connectionConfig,
+                    message,
+                    'Consumer lease was lost while polling',
+                )));
                 return;
             }
 
@@ -121,159 +161,105 @@ export class MessageProcessing {
                 queueType: config.queueType,
             });
 
-            const processingPromises = messages.map(async (msg) => {
+            await Promise.all(messages.map(async message => {
                 consumer.inFlightCount++;
-
                 try {
-                    await this.processConsumedMessage(consumer, msg);
-                    consumer.messagesProcessed++;
-                    consumer.lastMessageAt = new Date();
-
-                    // Acknowledge if manual mode
-                    if (config.ackMode === AckMode.MANUAL && msg.deliveryTag) {
-                        await adapter.ack(connectionConfig, msg.deliveryTag);
-                    }
-                } catch (error) {
-                    consumer.messagesFailed++;
-                    this.logger.error(`Failed to process message`,
-                        toErrorOrUndefined(error), {
-                        pipelineCode: config.pipelineCode,
-                        messageId: msg.messageId,
-                    });
-
-                    let dlqSuccess = false;
-                    if (config.deadLetterQueue && msg.deliveryTag) {
-                        try {
-                            await this.routeMessageToDLQ(consumer, adapter, connectionConfig, msg, error);
-                            dlqSuccess = true;
-                        } catch {
-                            dlqSuccess = false;
-                        }
-                    }
-
-                    if (config.ackMode === AckMode.MANUAL && msg.deliveryTag) {
-                        const noDlq = !config.deadLetterQueue;
-                        const requeue = (noDlq || !dlqSuccess) && !(msg.redelivered ?? false);
-                        await adapter.nack(connectionConfig, msg.deliveryTag, requeue).catch(() => {});
-                    }
+                    await this.processDelivery(
+                        consumer,
+                        adapter,
+                        connectionConfig,
+                        message,
+                    );
                 } finally {
                     consumer.inFlightCount--;
                 }
-            });
-
-            await Promise.all(processingPromises);
-
+            }));
         } catch (error) {
-            this.logger.error(`Failed to poll queue`,
-                toErrorOrUndefined(error), {
-                pipelineCode: config.pipelineCode,
-                queueName: config.queueName,
-            });
+            this.logger.error(
+                'Failed to poll queue',
+                toErrorOrUndefined(error),
+                {
+                    pipelineCode: config.pipelineCode,
+                    queueName: config.queueName,
+                },
+            );
         }
     }
 
-    /**
-     * Process a consumed message by triggering the pipeline
-     */
-    private async processConsumedMessage(
-        consumer: ActiveConsumer,
-        message: { messageId: string; payload: Record<string, unknown>; headers?: Record<string, string> },
-    ): Promise<void> {
-        const { config } = consumer;
-        const ctx = await this.requestContextService.create({ apiType: 'admin' });
-
-        const seedRecord = {
-            ...message.payload,
-            _messageId: message.messageId,
-            _queue: config.queueName,
-            _receivedAt: new Date().toISOString(),
-            _headers: message.headers ?? {},
-        };
-
-        this.logger.info(`Processing message from queue`, {
-            pipelineCode: config.pipelineCode,
-            messageId: message.messageId,
-        });
-
-        const run = await this.pipelineService.startRunByCode(ctx, config.pipelineCode, {
-            seedRecords: [seedRecord],
-            skipPermissionCheck: true,
-            triggeredBy: `message:${config.triggerKey}`,
-        });
-
-        if (run) {
-            const pipelineId = run.pipeline?.id?.toString() ?? run.pipelineId?.toString();
-            this.domainEvents.publishTriggerFired(pipelineId, 'MESSAGE_QUEUE', {
-                pipelineCode: config.pipelineCode,
-                triggerKey: config.triggerKey,
-                queueName: config.queueName,
-                messageId: message.messageId,
-            });
-        }
-    }
-
-    /**
-     * Route a failed message to the dead letter queue
-     */
-    private async routeMessageToDLQ(
+    private async processDelivery(
         consumer: ActiveConsumer,
         adapter: QueueAdapter,
         connectionConfig: QueueConnectionConfig,
-        message: { messageId: string; payload: Record<string, unknown>; headers?: Record<string, string> },
-        error: unknown,
+        message: ConsumedMessage,
     ): Promise<void> {
+        await this.deliveryHandler.process(
+            consumer,
+            adapter,
+            connectionConfig,
+            message,
+        );
+    }
+
+    private async getConnectionConfig(
+        consumer: ActiveConsumer,
+        ctx: RequestContext,
+    ): Promise<QueueConnectionConfig | null> {
         const { config } = consumer;
-        if (!config.deadLetterQueue) return;
-
-        try {
-            await adapter.publish(connectionConfig, config.deadLetterQueue, [{
-                id: message.messageId,
-                payload: {
-                    ...message.payload,
-                    _originalQueue: config.queueName,
-                    _error: getErrorMessage(error),
-                    _failedAt: new Date().toISOString(),
-                },
-                headers: {
-                    ...message.headers,
-                    'x-original-queue': config.queueName,
-                    'x-error': getErrorMessage(error),
-                },
-            }]);
-
-            this.logger.info(`Routed message to DLQ`, {
-                pipelineCode: config.pipelineCode,
-                dlq: config.deadLetterQueue,
-                messageId: message.messageId,
-            });
-        } catch (dlqError) {
-            this.logger.error(`Failed to route message to DLQ`,
-                toErrorOrUndefined(dlqError), {
-                pipelineCode: config.pipelineCode,
-                dlq: config.deadLetterQueue,
-            });
-            throw dlqError;
+        if (config.queueType.toLowerCase() === 'internal') {
+            return {} as QueueConnectionConfig;
         }
+
+        const connection = await this.connectionService.getRuntimeByCode(
+            ctx,
+            config.connectionCode,
+        );
+        if (!connection) {
+            this.logger.warn('Connection not found for consumer', {
+                connectionCode: config.connectionCode,
+                pipelineCode: config.pipelineCode,
+            });
+            return null;
+        }
+
+        const resolvedConfig = await this.resolveConnectionSecrets(
+            ctx,
+            connection.config as Record<string, unknown>,
+        );
+        return {
+            ...resolvedConfig,
+            ...(config.consumerGroup ? { consumerGroup: config.consumerGroup } : {}),
+        } as QueueConnectionConfig;
     }
 
     private async resolveConnectionSecrets(
-        ctx: import('@vendure/core').RequestContext,
+        ctx: RequestContext,
         raw: Record<string, unknown>,
     ): Promise<Record<string, unknown>> {
         const resolved = { ...raw };
-        const secretFields = [
-            ['passwordSecretCode', 'password'],
-            ['accessKeyIdSecretCode', 'accessKeyId'],
-            ['secretAccessKeySecretCode', 'secretAccessKey'],
-            ['privateKeySecretCode', 'privateKey'],
-            ['apiKeySecretCode', 'apiKey'],
-        ];
-        for (const [secretField, targetField] of secretFields) {
+        for (const [secretField, targetField] of QUEUE_SECRET_FIELDS) {
+            if (!Object.prototype.hasOwnProperty.call(raw, secretField)) continue;
+            delete resolved[secretField];
             const code = raw[secretField];
-            if (typeof code === 'string' && code) {
-                const value = await this.secretService.resolve(ctx, code);
-                if (value) resolved[targetField] = value;
+            if (typeof code !== 'string' || code.trim() === '') {
+                throw new Error(
+                    `Queue connection field "${secretField}" must reference a non-empty Secret Code`,
+                );
             }
+            const normalizedCode = code.trim();
+            const value = await this.secretService.resolve(ctx, normalizedCode);
+            if (typeof value !== 'string' || value.trim() === '') {
+                throw new Error(
+                    `Queue connection Secret Code "${normalizedCode}" configured by "${secretField}" could not be resolved`,
+                );
+            }
+            resolved[targetField] = value;
+        }
+        const unsupportedSecretField = Object.keys(resolved)
+            .find(field => field.endsWith('SecretCode'));
+        if (unsupportedSecretField) {
+            throw new Error(
+                `Unsupported queue connection Secret Code field "${unsupportedSecretField}"`,
+            );
         }
         if (raw.ssl !== undefined && resolved.useTls === undefined) {
             resolved.useTls = !!raw.ssl;

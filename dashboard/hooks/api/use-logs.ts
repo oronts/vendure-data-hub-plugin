@@ -6,10 +6,11 @@ import { POLLING_INTERVALS } from '../../constants';
 import type { DataHubLogListOptions } from '../../types';
 
 const base = createQueryKeys('logs');
-const logKeys = {
+export const logKeys = {
     ...base,
     list: (options?: DataHubLogListOptions) => [...base.lists(), options] as const,
-    stats: (pipelineId?: string) => [...base.all, 'stats', pipelineId] as const,
+    stats: () => [...base.all, 'stats'] as const,
+    stat: (pipelineId?: string | number) => [...base.all, 'stats', pipelineId] as const,
     recent: (limit?: number) => [...base.all, 'recent', limit] as const,
 };
 
@@ -86,9 +87,9 @@ export function useLogs(options?: DataHubLogListOptions) {
     });
 }
 
-export function useLogStats(pipelineId?: string) {
+export function useLogStats(pipelineId?: string | number) {
     return useQuery({
-        queryKey: logKeys.stats(pipelineId),
+        queryKey: logKeys.stat(pipelineId),
         queryFn: () => api.query(logStatsDocument, { pipelineId }).then((res) => res.dataHubLogStats),
     });
 }

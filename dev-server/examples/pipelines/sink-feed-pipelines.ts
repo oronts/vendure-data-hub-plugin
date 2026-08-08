@@ -47,7 +47,7 @@ export const searchIndexSync = createPipeline()
     .extract('query-variants', {
         adapterCode: 'vendureQuery',
         entity: 'PRODUCT_VARIANT',
-        relations: 'translations,product,product.translations,product.facetValues,featuredAsset,stockLevels,facetValues,facetValues.facet,productVariantPrices',
+        relations: ['translations', 'product', 'product.translations', 'product.facetValues', 'featuredAsset', 'stockLevels', 'facetValues', 'facetValues.facet', 'productVariantPrices'],
         flattenTranslations: false,
         batchSize: 200,
     })
@@ -128,7 +128,7 @@ export const searchIndexSync = createPipeline()
         primaryKey: 'objectID',
         host: 'http://localhost:7700',
         apiKeySecretCode: 'meilisearch-api-key',
-        bulkSize: 100,
+        batchSize: 100,
         languageCode: 'en',
         channelCode: '__default_channel__',
         searchableFields: ['name', 'description', 'sku'],
@@ -143,7 +143,7 @@ export const searchIndexSync = createPipeline()
         primaryKey: 'objectID',
         host: 'http://localhost:7700',
         apiKeySecretCode: 'meilisearch-api-key',
-        bulkSize: 100,
+        batchSize: 100,
         languageCode: 'de',
         channelCode: '__default_channel__',
         searchableFields: ['name', 'description', 'sku'],
@@ -158,7 +158,7 @@ export const searchIndexSync = createPipeline()
         idField: 'objectID',
         node: 'http://localhost:9200',
         apiKeySecretCode: 'elasticsearch-api-key',
-        bulkSize: 200,
+        batchSize: 200,
         languageCode: 'en',
     })
 
@@ -168,8 +168,9 @@ export const searchIndexSync = createPipeline()
         indexName: 'products',
         idField: 'objectID',
         node: 'http://localhost:9201',
-        basicSecretCode: 'opensearch-basic-auth',
-        bulkSize: 200,
+        usernameSecretCode: 'opensearch-username',
+        passwordSecretCode: 'opensearch-password',
+        batchSize: 200,
         languageCode: 'en',
     })
 
@@ -180,7 +181,7 @@ export const searchIndexSync = createPipeline()
         idField: 'objectID',
         appId: 'demo-algolia-app-id',
         apiKeySecretCode: 'algolia-api-key',
-        bulkSize: 100,
+        batchSize: 100,
         languageCode: 'en',
         channelCode: '__default_channel__',
     })
@@ -194,7 +195,7 @@ export const searchIndexSync = createPipeline()
         host: 'http://localhost:8108',
         port: 8108,
         apiKeySecretCode: 'typesense-api-key',
-        bulkSize: 40,
+        batchSize: 40,
         languageCode: 'en',
     })
 
@@ -243,7 +244,7 @@ export const multiFeedExport = createPipeline()
     .extract('query-products', {
         adapterCode: 'vendureQuery',
         entity: 'PRODUCT_VARIANT',
-        relations: 'translations,product,product.translations,featuredAsset,stockLevels,facetValues,productVariantPrices',
+        relations: ['translations', 'product', 'product.translations', 'featuredAsset', 'stockLevels', 'facetValues', 'productVariantPrices'],
         batchSize: 100,
     })
 
@@ -321,6 +322,7 @@ export const multiFeedExport = createPipeline()
         targetCountry: 'DE',
         contentLanguage: 'de',
         currency: 'EUR',
+        priceUnit: 'MAJOR',
         includeOutOfStock: false,
         languageCode: 'de',
         titleField: 'title',
@@ -333,6 +335,7 @@ export const multiFeedExport = createPipeline()
         outputPath: './feeds/meta-catalog.csv',
         format: 'CSV',
         currency: 'EUR',
+        priceUnit: 'MAJOR',
         titleField: 'title',
         imageField: 'imageUrl',
         brandField: 'brand',
@@ -346,6 +349,7 @@ export const multiFeedExport = createPipeline()
         adapterCode: 'amazonFeed',
         outputPath: './feeds/amazon-inventory.xml',
         currency: 'EUR',
+        priceUnit: 'MAJOR',
         titleField: 'title',
         descriptionField: 'description',
         priceField: 'price',
@@ -360,7 +364,7 @@ export const multiFeedExport = createPipeline()
         adapterCode: 'customFeed',
         outputPath: './feeds/custom-marketplace.json',
         format: 'JSON',
-        customFields: {
+        fieldMapping: {
             'product_id': 'id',
             'product_title': 'title',
             'product_url': 'link',
@@ -406,12 +410,12 @@ export const searchIndexCrudSync = createPipeline()
     .description('Event-driven search sync with automatic delete support — handles create, update, and delete in one pipeline')
     .capabilities({ requires: ['ReadCatalog'] })
 
-    .trigger('on-product-change', { type: 'EVENT', event: 'product.*' })
+    .trigger('on-product-change', { type: 'EVENT', event: 'ProductEvent' })
 
     .extract('query-product', {
         adapterCode: 'vendureQuery',
         entity: 'PRODUCT',
-        relations: 'translations,featuredAsset',
+        relations: ['translations', 'featuredAsset'],
     })
 
     .transform('prepare-doc', {

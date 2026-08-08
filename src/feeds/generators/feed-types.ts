@@ -4,7 +4,7 @@
  * Shared type definitions for feed generators
  */
 
-import { StockLevel, ProductVariant, Product } from '@vendure/core';
+import { ID, StockLevel, ProductVariant, Product } from '@vendure/core';
 
 import { RequestContext, TransactionalConnection } from '@vendure/core';
 import {
@@ -41,6 +41,7 @@ export type CustomFieldsRecord = Record<string, CustomFieldValue>;
 export type VariantWithCustomFields = ProductVariant & {
     customFields?: Record<string, unknown>;
     stockLevels?: StockLevel[];
+    saleableStockLevel?: number;
 };
 
 /**
@@ -49,6 +50,7 @@ export type VariantWithCustomFields = ProductVariant & {
  */
 export type ProductWithCustomFields = Product & {
     customFields?: Record<string, unknown>;
+    feedCollections?: Array<{ name: string; slug: string }>;
 };
 
 /**
@@ -66,6 +68,7 @@ export interface FeedConfig {
     schedule?: {
         enabled: boolean;
         cron: string;
+        timezone?: string;
     };
 }
 
@@ -80,7 +83,6 @@ export interface FeedFilters {
     excludeCategories?: string[];
     minPrice?: number;
     maxPrice?: number;
-    customFilter?: string; // JavaScript expression
 }
 
 /**
@@ -88,7 +90,6 @@ export interface FeedFilters {
  */
 export interface FeedFieldMapping {
     source: string;
-    transform?: string;
     default?: CustomFieldValue;
 }
 
@@ -97,7 +98,7 @@ export interface FeedFieldMapping {
  */
 export interface FeedOptions {
     includeVariants?: boolean;
-    imageSize?: 'thumbnail' | 'preview' | 'detail' | 'original';
+    imageSize?: 'preview' | 'original';
     currency?: string;
     language?: string;
     baseUrl?: string;
@@ -115,6 +116,25 @@ export interface GeneratedFeed {
     generatedAt: Date;
     errors: string[];
     warnings: string[];
+}
+
+export interface FeedGenerationDiagnostics {
+    itemCount: number;
+    warnings: string[];
+}
+
+export interface RegisteredFeedConfig extends FeedConfig {
+    id: ID;
+    createdAt: Date;
+    updatedAt: Date;
+    lastGeneratedAt?: Date;
+    lastItemCount?: number;
+    downloadUrl?: string;
+}
+
+export interface GeneratedFeedArtifact extends GeneratedFeed {
+    fileId: string;
+    downloadUrl: string;
 }
 
 /**
@@ -194,6 +214,7 @@ export interface FeedGeneratorContext {
     connection: TransactionalConnection;
     config: FeedConfig;
     products: VariantWithCustomFields[];
+    moneyPrecision: number;
 }
 
 /**
@@ -203,6 +224,9 @@ export interface CustomFeedResult {
     content: string;
     contentType: string;
     fileExtension: string;
+    itemCount?: number;
+    warnings?: string[];
+    errors?: string[];
 }
 
 /**

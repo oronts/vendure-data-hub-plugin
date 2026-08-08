@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { Trans, useLingui } from '@lingui/react/macro';
 import {
     ReactFlow,
     Background,
@@ -11,34 +12,60 @@ import {
     Connection,
     Edge,
     Node,
+    applyNodeChanges,
+    applyEdgeChanges,
+    NodeChange,
+    EdgeChange,
     Panel,
+    ReactFlowInstance,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import {
     Button,
-    Card,
-    CardContent,
-    CardHeader,
-    CardTitle,
     Badge,
-    ScrollArea,
+    Sheet,
+    SheetContent,
+    SheetHeader,
+    SheetTitle,
+    SheetTrigger,
 } from '@vendure/dashboard';
 import { NodePropertiesPanel } from './shared/NodePropertiesPanel';
+import { PipelineSettingsPanel } from './shared/PipelineSettingsPanel';
 import { pipelineNodeTypes } from './shared/PipelineNode';
-import { useAdapterCatalog, AdapterMetadata } from '../../hooks';
-import { ADAPTER_TYPES, ADAPTER_TYPE_TO_NODE_TYPE, PANEL_WIDTHS, SCROLL_HEIGHTS, EDGE_STYLE, CANVAS_BG_CLASS } from '../../constants';
-import type { PipelineNodeData, VisualPipelineDefinition, ValidationIssue } from '../../types';
+import { useAdapterCatalog } from '../../hooks';
+import {
+    EDGE_STYLE,
+    CANVAS_BG_CLASS,
+    DATAHUB_NAV_LABELS,
+} from '../../constants';
+import type {
+    PipelineContext,
+    PipelineNodeData,
+    VisualPipelineDefinition,
+    ValidationIssue,
+} from '../../types';
 import {
     Play,
     Save,
-    ChevronRight,
-    ChevronDown,
     Layers,
     LayoutGrid,
+    Settings2,
 } from 'lucide-react';
 import { layoutDagNodes } from '../../routes/pipelines/utils';
-import { VISUAL_NODE_CONFIGS } from './shared/visual-node-config';
-import type { VisualNodeCategory } from '../../types';
+import { parsePaletteDragData, resolveCanvasPosition } from './canvas-position';
+import { reconcileSelectedNode } from './node-selection';
+import { DynamicNodePalette } from './DynamicNodePalette';
+import {
+    collectNodeIssueCounts,
+    collectPipelineContextErrors,
+    createPipelineEdge,
+    createPipelineNode,
+    decorateNodesWithIssueCounts,
+    getVisualDefinitionKey,
+    preserveNodePositions,
+} from './pipeline-editor-graph';
+
+const NODE_POSITION_JITTER_PX = 20;
 
 export interface ReactFlowPipelineEditorProps {
     definition: VisualPipelineDefinition;
@@ -57,74 +84,88 @@ export function ReactFlowPipelineEditor({
     readOnly = false,
     issues = [],
 }: ReactFlowPipelineEditorProps) {
-    const [nodes, setNodes, onNodesChange] = useNodesState(definition.nodes);
-    const [edges, setEdges, onEdgesChange] = useEdgesState(definition.edges);
+    const { i18n, t } = useLingui();
+    const [nodes, setNodes] = useNodesState(definition.nodes);
+    const [edges, setEdges] = useEdgesState(definition.edges);
     const [selectedNode, setSelectedNode] = React.useState<Node<PipelineNodeData> | null>(null);
     const reactFlowRef = React.useRef<HTMLDivElement>(null);
+    const reactFlowInstanceRef = React.useRef<ReactFlowInstance<
+        Node<PipelineNodeData>,
+        Edge
+    > | null>(null);
 
     const isUpdatingRef = React.useRef(false);
     const nodesRef = React.useRef(nodes);
     nodesRef.current = nodes;
+    const edgesRef = React.useRef(edges);
+    edgesRef.current = edges;
+    const pipelineContextErrors = React.useMemo(
+        () => collectPipelineContextErrors(issues),
+        [issues],
+    );
 
-    const getDefinitionKey = React.useCallback((def: VisualPipelineDefinition | null) => {
-        if (!def) return '';
-        const nodesKey = (def.nodes || [])
-            .map(n => `${n.id}:${JSON.stringify(n.data)}`)
-            .sort()
-            .join('|');
-        const edgesKey = (def.edges || [])
-            .map(e => `${e.source}->${e.target}`)
-            .sort()
-            .join('|');
-        return `${nodesKey}::${edgesKey}`;
-    }, []);
-
-    const lastSyncedKeyRef = React.useRef(getDefinitionKey(definition));
+    const lastSyncedKeyRef = React.useRef(getVisualDefinitionKey(definition));
 
     React.useEffect(() => {
         if (isUpdatingRef.current) {
             return;
         }
 
-        const newKey = getDefinitionKey(definition);
+        const newKey = getVisualDefinitionKey(definition);
         const currentKey = lastSyncedKeyRef.current;
 
         if (newKey !== currentKey) {
             lastSyncedKeyRef.current = newKey;
 
-            const positionMap = new Map(nodesRef.current.map(n => [n.id, n.position]));
-
-            const updatedNodes = definition.nodes.map(n => ({
-                ...n,
-                position: positionMap.get(n.id) || n.position,
-            }));
+            const updatedNodes = preserveNodePositions(
+                definition.nodes,
+                nodesRef.current,
+            );
 
             setNodes(updatedNodes);
             setEdges(definition.edges);
+            setSelectedNode(current => reconcileSelectedNode(current, updatedNodes));
         }
-    }, [definition, getDefinitionKey]);
+    }, [definition, setEdges, setNodes]);
 
     const notifyChange = React.useCallback((newNodes: Node<PipelineNodeData>[], newEdges: Edge[]) => {
         isUpdatingRef.current = true;
 
         const newDef = { ...definition, nodes: newNodes, edges: newEdges };
-        lastSyncedKeyRef.current = getDefinitionKey(newDef);
+        lastSyncedKeyRef.current = getVisualDefinitionKey(newDef);
 
-        const { steps: _steps, ...visualDef } = definition;
-        onChange({ ...visualDef, nodes: newNodes, edges: newEdges });
+        onChange(newDef);
 
-        Promise.resolve().then(() => {
+        queueMicrotask(() => {
             isUpdatingRef.current = false;
         });
-    }, [definition, onChange, getDefinitionKey]);
+    }, [definition, onChange]);
+
+    const handleNodesChange = React.useCallback(
+        (changes: NodeChange<Node<PipelineNodeData>>[]) => {
+            const updatedNodes = applyNodeChanges(changes, nodesRef.current);
+            nodesRef.current = updatedNodes;
+            setNodes(updatedNodes);
+            notifyChange(updatedNodes, edgesRef.current);
+        },
+        [notifyChange, setNodes],
+    );
+
+    const handleEdgesChange = React.useCallback(
+        (changes: EdgeChange<Edge>[]) => {
+            const updatedEdges = applyEdgeChanges(changes, edgesRef.current);
+            edgesRef.current = updatedEdges;
+            setEdges(updatedEdges);
+            notifyChange(nodesRef.current, updatedEdges);
+        },
+        [notifyChange, setEdges],
+    );
 
     const onConnect = React.useCallback((connection: Connection) => {
-        const newEdge: Edge = {
-            ...connection,
-            id: `edge-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-            markerEnd: { type: MarkerType.ArrowClosed },
-            style: { strokeWidth: EDGE_STYLE.STROKE_WIDTH },
-        } as Edge;
+        const newEdge = createPipelineEdge(
+            connection,
+            `edge-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        );
         setEdges(eds => {
             const newEdges = addEdge(newEdge, eds);
             notifyChange(nodes, newEdges as Edge[]);
@@ -133,7 +174,8 @@ export function ReactFlowPipelineEditor({
     }, [setEdges, nodes, notifyChange]);
 
     const onNodeClick = React.useCallback((_event: React.MouseEvent, node: Node) => {
-        setSelectedNode(node as Node<PipelineNodeData>);
+        const sourceNode = nodesRef.current.find(candidate => candidate.id === node.id);
+        setSelectedNode(sourceNode ?? node as Node<PipelineNodeData>);
     }, []);
 
     const onDragStart = React.useCallback((event: React.DragEvent, nodeType: string, category: string, label: string) => {
@@ -145,22 +187,32 @@ export function ReactFlowPipelineEditor({
      *  where a real drag-drop gesture is not possible. */
     const addNodeToCanvas = React.useCallback((nodeType: string, category: string, label: string) => {
         const bounds = reactFlowRef.current?.getBoundingClientRect();
-        const position = {
-            x: (bounds ? bounds.width / 2 : 300) + Math.round(Math.random() * 40 - 20),
-            y: (bounds ? bounds.height / 2 : 200) + Math.round(Math.random() * 40 - 20),
+        const center = bounds
+            ? {
+                x: bounds.left + bounds.width / 2,
+                y: bounds.top + bounds.height / 2,
+            }
+            : { x: 300, y: 200 };
+        const clientPosition = {
+            x: center.x + Math.round(
+                Math.random() * NODE_POSITION_JITTER_PX * 2 - NODE_POSITION_JITTER_PX,
+            ),
+            y: center.y + Math.round(
+                Math.random() * NODE_POSITION_JITTER_PX * 2 - NODE_POSITION_JITTER_PX,
+            ),
         };
+        const position = resolveCanvasPosition(
+            bounds ? reactFlowInstanceRef.current : null,
+            clientPosition,
+        );
 
-        const newNode: Node<PipelineNodeData> = {
+        const newNode = createPipelineNode({
             id: `node-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-            type: category,
+            adapterCode: nodeType,
+            category,
+            label,
             position,
-            data: {
-                label,
-                type: category,
-                adapterCode: nodeType,
-                config: {},
-            },
-        };
+        });
 
         setNodes(nds => {
             const newNodes = [...nds, newNode];
@@ -181,24 +233,21 @@ export function ReactFlowPipelineEditor({
             const data = event.dataTransfer.getData('application/reactflow');
             if (!data) return;
 
-            const { nodeType, category, label } = JSON.parse(data);
-            const reactFlowBounds = reactFlowRef.current?.getBoundingClientRect();
-            const position = {
-                x: event.clientX - (reactFlowBounds?.left ?? 0),
-                y: event.clientY - (reactFlowBounds?.top ?? 0),
-            };
+            const dragData = parsePaletteDragData(data);
+            if (!dragData) return;
+            const { nodeType, category, label } = dragData;
+            const position = resolveCanvasPosition(
+                reactFlowInstanceRef.current,
+                { x: event.clientX, y: event.clientY },
+            );
 
-            const newNode: Node<PipelineNodeData> = {
+            const newNode = createPipelineNode({
                 id: `node-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-                type: category,
+                adapterCode: nodeType,
+                category,
+                label,
                 position,
-                data: {
-                    label,
-                    type: category,
-                    adapterCode: nodeType,
-                    config: {},
-                },
-            };
+            });
 
             setNodes(nds => {
                 const newNodes = [...nds, newNode];
@@ -210,16 +259,17 @@ export function ReactFlowPipelineEditor({
     );
 
     const updateNode = React.useCallback((updatedNode: Node<PipelineNodeData>) => {
+        if (readOnly) return;
         setNodes(nds => {
             const newNodes = nds.map(n => n.id === updatedNode.id ? updatedNode : n);
             notifyChange(newNodes as Node<PipelineNodeData>[], edges);
             return newNodes;
         });
         setSelectedNode(updatedNode);
-    }, [setNodes, edges, notifyChange]);
+    }, [setNodes, edges, notifyChange, readOnly]);
 
     const deleteSelectedNode = React.useCallback(() => {
-        if (!selectedNode) return;
+        if (!selectedNode || readOnly) return;
         setNodes(nds => {
             const newNodes = nds.filter(n => n.id !== selectedNode.id);
             setEdges(eds => {
@@ -230,7 +280,7 @@ export function ReactFlowPipelineEditor({
             return newNodes;
         });
         setSelectedNode(null);
-    }, [selectedNode, setNodes, setEdges, notifyChange]);
+    }, [selectedNode, setNodes, setEdges, notifyChange, readOnly]);
 
     const autoLayout = React.useCallback(() => {
         if (nodes.length === 0) {
@@ -245,72 +295,127 @@ export function ReactFlowPipelineEditor({
         notifyChange(repositionedNodes as Node<PipelineNodeData>[], edges);
     }, [nodes, edges, definition, setNodes, notifyChange]);
 
-    const { adapters, connectionCodes, secretOptions } = useAdapterCatalog();
+    const {
+        adapters,
+        isLoading: catalogLoading,
+        error: catalogError,
+    } = useAdapterCatalog();
 
     const handleClosePropertiesPanel = React.useCallback(() => {
         setSelectedNode(null);
     }, []);
 
-    const issueMap = React.useMemo(() => {
-        const issueCountMap = new Map<string, number>();
-        for (const issue of issues) {
-            if (!issue.stepKey) continue;
-            issueCountMap.set(issue.stepKey, (issueCountMap.get(issue.stepKey) || 0) + 1);
-        }
-        return issueCountMap;
-    }, [issues]);
+    const handlePipelineContextChange = React.useCallback((context: PipelineContext) => {
+        onChange({
+            ...definition,
+            nodes: nodesRef.current,
+            edges: edgesRef.current,
+            variables: context as unknown as VisualPipelineDefinition['variables'],
+        });
+    }, [definition, onChange]);
+
+    const issueMap = React.useMemo(() => collectNodeIssueCounts(issues), [issues]);
+
+    const displayedNodes = React.useMemo<Node<PipelineNodeData>[]>(
+        () => decorateNodesWithIssueCounts(nodes, issueMap),
+        [issueMap, nodes],
+    );
 
     const defaultEdgeOptions = React.useMemo(() => ({
         markerEnd: { type: MarkerType.ArrowClosed },
         style: { strokeWidth: EDGE_STYLE.STROKE_WIDTH },
     }), []);
 
+    const nodeCountLabel = nodes.length === 1
+        ? t`${nodes.length} node`
+        : t`${nodes.length} nodes`;
+    const connectionCountLabel = edges.length === 1
+        ? t`${edges.length} connection`
+        : t`${edges.length} connections`;
+
     return (
-        <div className="flex h-full gap-4">
+        <div className="flex h-full min-w-0 flex-col gap-4 lg:flex-row">
             {!readOnly && (
-                <NodePaletteDynamic adapters={adapters} onDragStart={onDragStart} onAddNode={addNodeToCanvas} />
+                <DynamicNodePalette
+                    adapters={adapters}
+                    onDragStart={onDragStart}
+                    onAddNode={addNodeToCanvas}
+                />
             )}
 
-            <div className="flex-1 flex flex-col">
-                <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                        <Badge variant="outline">{nodes.length} nodes</Badge>
-                        <Badge variant="outline">{edges.length} connections</Badge>
+            <div className="flex min-h-[32rem] min-w-0 flex-1 flex-col">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant="outline">{nodeCountLabel}</Badge>
+                        <Badge variant="outline">{connectionCountLabel}</Badge>
                         {!readOnly && (
-                            <Button variant="ghost" size="sm" onClick={autoLayout} className="gap-1 text-xs" data-testid="datahub-pipeline-editor-auto-layout-button" aria-label="Auto-layout pipeline nodes">
+                            <Button variant="ghost" size="sm" onClick={autoLayout} className="gap-1 text-xs" data-testid="datahub-pipeline-editor-auto-layout-button" aria-label={t`Auto-layout pipeline nodes`}>
                                 <LayoutGrid className="w-3 h-3" />
-                                Auto-layout
+                                <Trans>Auto-layout</Trans>
                             </Button>
                         )}
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                        {!readOnly && (
+                            <Sheet>
+                                <SheetTrigger asChild>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        className="gap-2"
+                                        data-testid="datahub-pipeline-editor-settings-button"
+                                    >
+                                        <Settings2 className="w-4 h-4" />
+                                        {i18n._(DATAHUB_NAV_LABELS.SETTINGS)}
+                                    </Button>
+                                </SheetTrigger>
+                                <SheetContent className="w-full p-0 sm:max-w-xl">
+                                    <SheetHeader className="sr-only">
+                                        <SheetTitle>
+                                            <Trans>Pipeline settings</Trans>
+                                        </SheetTitle>
+                                    </SheetHeader>
+                                    <PipelineSettingsPanel
+                                        context={(definition.variables ?? {}) as PipelineContext}
+                                        onChange={handlePipelineContextChange}
+                                        errors={pipelineContextErrors}
+                                    />
+                                </SheetContent>
+                            </Sheet>
+                        )}
                         {onRun && (
                             <Button onClick={onRun} className="gap-2" data-testid="datahub-pipeline-editor-run-button">
                                 <Play className="w-4 h-4" />
-                                Run Pipeline
+                                <Trans>Run Pipeline</Trans>
                             </Button>
                         )}
                         {onSave && (
                             <Button variant="outline" onClick={onSave} className="gap-2" data-testid="datahub-pipeline-editor-save-button">
                                 <Save className="w-4 h-4" />
-                                Save
+                                <Trans>Save</Trans>
                             </Button>
                         )}
                     </div>
                 </div>
 
-                <div className="flex-1 border rounded-lg overflow-hidden" ref={reactFlowRef} data-testid="datahub-pipeline-editor-canvas" aria-label="Pipeline editor canvas" role="application">
+                <div className="min-h-0 min-w-0 flex-1 overflow-hidden rounded-lg border" ref={reactFlowRef} data-testid="datahub-pipeline-editor-canvas" aria-label={t`Pipeline editor canvas`} role="application">
                     <ReactFlow
-                        nodes={nodes}
+                        nodes={displayedNodes}
                         edges={edges}
-                        onNodesChange={readOnly ? undefined : onNodesChange}
-                        onEdgesChange={readOnly ? undefined : onEdgesChange}
+                        onNodesChange={readOnly ? undefined : handleNodesChange}
+                        onEdgesChange={readOnly ? undefined : handleEdgesChange}
                         onConnect={readOnly ? undefined : onConnect}
                         onNodeClick={onNodeClick}
-                        onDragOver={onDragOver}
-                        onDrop={onDrop}
+                        onDragOver={readOnly ? undefined : onDragOver}
+                        onDrop={readOnly ? undefined : onDrop}
+                        nodesDraggable={!readOnly}
+                        nodesConnectable={!readOnly}
+                        edgesReconnectable={!readOnly}
                         nodeTypes={pipelineNodeTypes}
                         defaultEdgeOptions={defaultEdgeOptions}
+                        onInit={instance => {
+                            reactFlowInstanceRef.current = instance;
+                        }}
                         fitView
                         className={CANVAS_BG_CLASS}
                     >
@@ -325,24 +430,15 @@ export function ReactFlowPipelineEditor({
                             <Panel position="top-center" className="mt-20">
                                 <div className="text-center text-muted-foreground bg-background/80 p-6 rounded-lg">
                                     <Layers className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                                    <p className="text-lg font-medium">Start Building Your Pipeline</p>
+                                    <p className="text-lg font-medium">
+                                        <Trans>Start Building Your Pipeline</Trans>
+                                    </p>
                                     <p className="text-sm mt-1">
-                                        Drag nodes from the palette and connect them
+                                        <Trans>Drag nodes from the palette and connect them</Trans>
                                     </p>
                                 </div>
                             </Panel>
                         )}
-                        {nodes.map(n => {
-                            const count = issueMap.get(n.id) || 0;
-                            if (!count) return null;
-                            return (
-                                <Panel key={`iss-${n.id}`} position="top-left">
-                                    <div style={{ position: 'absolute', transform: `translate(${n.position.x + 8}px, ${n.position.y - 6}px)` }}>
-                                        <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300">{count}</span>
-                                    </div>
-                                </Panel>
-                            );
-                        })}
                     </ReactFlow>
                 </div>
             </div>
@@ -350,188 +446,14 @@ export function ReactFlowPipelineEditor({
             <NodePropertiesPanel
                 node={selectedNode}
                 catalog={adapters}
-                connectionCodes={connectionCodes}
-                secretOptions={secretOptions}
                 onUpdate={updateNode}
                 onDelete={deleteSelectedNode}
                 onClose={handleClosePropertiesPanel}
+                readOnly={readOnly}
+                issues={issues}
+                catalogLoading={catalogLoading}
+                catalogError={catalogError}
             />
         </div>
-    );
-}
-
-// Memoized adapter palette item to avoid inline onDragStart handlers
-interface PaletteAdapterItemProps {
-    readonly adapter: AdapterMetadata;
-    readonly category: string;
-    readonly onDragStart: (e: React.DragEvent, nodeType: string, category: string, label: string) => void;
-    readonly onAddNode: (nodeType: string, category: string, label: string) => void;
-}
-
-const PaletteAdapterItem = React.memo(function PaletteAdapterItem({
-    adapter,
-    category,
-    onDragStart,
-    onAddNode,
-}: PaletteAdapterItemProps) {
-    const Icon = adapter.icon;
-
-    const handleDragStart = React.useCallback((e: React.DragEvent) => {
-        onDragStart(e, adapter.code, category, adapter.name);
-    }, [onDragStart, adapter.code, category, adapter.name]);
-
-    const handleKeyDown = React.useCallback((e: React.KeyboardEvent) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            onAddNode(adapter.code, category, adapter.name);
-        }
-    }, [onAddNode, adapter.code, category, adapter.name]);
-
-    return (
-        <div
-            className="border rounded p-2 cursor-move hover:bg-muted active:cursor-grabbing focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
-            draggable
-            onDragStart={handleDragStart}
-            onKeyDown={handleKeyDown}
-            title={adapter.description || ''}
-            role="button"
-            tabIndex={0}
-            aria-label={`Add ${adapter.name} node to pipeline`}
-        >
-            <div className="flex items-center gap-2">
-                <div
-                    className="w-6 h-6 rounded flex items-center justify-center text-white"
-                    style={{ backgroundColor: adapter.color }}
-                >
-                    <Icon className="w-3 h-3" />
-                </div>
-                <div className="truncate text-xs flex-1 min-w-0">
-                    <div className="font-medium truncate">{adapter.name}</div>
-                    {adapter.description && (
-                        <div className="text-[10px] text-muted-foreground truncate">
-                            {adapter.description}
-                        </div>
-                    )}
-                </div>
-            </div>
-        </div>
-    );
-});
-
-// Memoized section header button to avoid inline onClick handlers
-interface PaletteSectionHeaderProps {
-    readonly sectionKey: string;
-    readonly label: string;
-    readonly Icon: React.ComponentType<{ className?: string }>;
-    readonly isExpanded: boolean;
-    readonly onToggle: (key: string) => void;
-}
-
-const PaletteSectionHeader = React.memo(function PaletteSectionHeader({
-    sectionKey,
-    label,
-    Icon,
-    isExpanded,
-    onToggle,
-}: PaletteSectionHeaderProps) {
-    const handleClick = React.useCallback(() => {
-        onToggle(sectionKey);
-    }, [onToggle, sectionKey]);
-
-    return (
-        <button
-            type="button"
-            className="w-full flex items-center justify-between px-2 py-1.5 text-sm font-medium hover:bg-muted rounded"
-            onClick={handleClick}
-            aria-expanded={isExpanded}
-        >
-            <span className="flex items-center gap-2">
-                <Icon className="w-4 h-4 text-muted-foreground" />
-                {label}
-            </span>
-            {isExpanded ? (
-                <ChevronDown className="w-4 h-4" />
-            ) : (
-                <ChevronRight className="w-4 h-4" />
-            )}
-        </button>
-    );
-});
-
-function NodePaletteDynamic({ adapters, onDragStart, onAddNode }: { adapters: AdapterMetadata[]; onDragStart: (e: React.DragEvent, nodeType: string, category: string, label: string) => void; onAddNode: (nodeType: string, category: string, label: string) => void }) {
-    const [expanded, setExpanded] = React.useState<Record<string, boolean>>({
-        sources: true,
-        transforms: true,
-        validation: false,
-        routing: true,
-        destinations: true,
-        feeds: false,
-        exports: false,
-        sinks: false,
-    });
-
-    const handleToggleSection = React.useCallback((sectionKey: string) => {
-        setExpanded(e => ({ ...e, [sectionKey]: !e[sectionKey] }));
-    }, []);
-
-    const sections = React.useMemo(() => {
-        const adapterTypeEntries = Object.values(ADAPTER_TYPES) as string[];
-        return adapterTypeEntries
-            .map(adapterType => {
-                const category = ADAPTER_TYPE_TO_NODE_TYPE[adapterType] as VisualNodeCategory | undefined;
-                if (!category) return null;
-                const config = VISUAL_NODE_CONFIGS[category];
-                if (!config) return null;
-                const items = adapters.filter(a => a.type === adapterType);
-                return {
-                    key: category,
-                    label: config.label === 'Source' ? 'Data Sources' : config.label === 'Enrich' ? 'Enrichment' : `${config.label}s`,
-                    items,
-                    category,
-                    icon: config.icon,
-                };
-            })
-            .filter((s): s is NonNullable<typeof s> => s !== null && s.items.length > 0);
-    }, [adapters]);
-
-    return (
-        <Card className={`${PANEL_WIDTHS.NODE_PALETTE} h-full overflow-hidden flex flex-col`}>
-            <CardHeader className="py-3">
-                <CardTitle className="text-sm flex items-center gap-2">
-                    <Layers className="w-4 h-4" />
-                    Node Palette
-                </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0 flex-1 overflow-hidden">
-                <ScrollArea className={SCROLL_HEIGHTS.NODE_PALETTE}>
-                    <div className="space-y-1 p-2">
-                        {sections.map(section => (
-                            <div key={section.key}>
-                                <PaletteSectionHeader
-                                    sectionKey={section.key}
-                                    label={section.label}
-                                    Icon={section.icon}
-                                    isExpanded={expanded[section.key]}
-                                    onToggle={handleToggleSection}
-                                />
-                                {expanded[section.key] && (
-                                    <div className="grid grid-cols-2 gap-2 px-2 py-2">
-                                        {section.items.map(adapter => (
-                                            <PaletteAdapterItem
-                                                key={adapter.code}
-                                                adapter={adapter}
-                                                category={section.category}
-                                                onDragStart={onDragStart}
-                                                onAddNode={onAddNode}
-                                            />
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        ))}
-                    </div>
-                </ScrollArea>
-            </CardContent>
-        </Card>
     );
 }

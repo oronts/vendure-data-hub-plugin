@@ -1,280 +1,118 @@
-/**
- * Redis Streams Queue Adapter
- *
- * Production-ready Redis Streams adapter for message queue operations.
- * Features:
- * - Consumer groups for distributed processing
- * - Message acknowledgment via XACK
- * - Pending entries list (PEL) management
- * - Automatic claiming of stale messages
- * - Stream trimming for memory management
- */
-
-import {
+import { AckMode } from '../../../constants/enums';
+import { INTERNAL_TIMINGS } from '../../../constants/defaults/core-defaults';
+import { QUEUE } from '../../../constants/defaults/runtime-defaults';
+import { getErrorMessage } from '../../../utils/error.utils';
+import type {
+    ConsumeResult,
+    PublishResult,
     QueueAdapter,
     QueueConnectionConfig,
+    QueueConsumeOptions,
     QueueMessage,
-    PublishResult,
-    ConsumeResult,
 } from './queue-adapter.interface';
-import { JsonObject } from '../../../types/index';
-import { AckMode, INTERNAL_TIMINGS } from '../../../constants';
-import { getErrorMessage } from '../../../utils/error.utils';
-import { isBlockedHostname } from '../../../utils/url-security.utils';
+import {
+    RedisClientPool,
+    type RedisConnectionConfig,
+    ensureRedisConsumerGroup,
+    loadRedisModule,
+    redisConnectionIdentity,
+} from './redis-streams.client';
+import {
+    parseJsonObject,
+    parseStringRecord,
+    requireNonNegativeInteger,
+    requirePositiveInteger,
+} from './queue-message.utils';
 
-/** Maximum delay between Redis connection retries */
-const REDIS_RETRY_MAX_DELAY_MS = 3000;
-
-/** Timeout for blocking read operations on Redis streams */
 const REDIS_BLOCK_TIMEOUT_MS = 5000;
+const DEFAULT_CONSUMER_GROUP = 'datahub-consumers';
 
-/**
- * Redis-specific connection configuration
- */
-interface RedisConnectionConfig extends QueueConnectionConfig {
-    /** Consumer group name */
-    consumerGroup?: string;
-    /** Consumer name within the group */
-    consumerName?: string;
-    /** Database index (0-15) */
-    db?: number;
-}
-
-/**
- * Redis client type (from ioredis)
- */
-type RedisClient = {
-    xadd(key: string, id: string, ...args: string[]): Promise<string>;
-    xreadgroup(
-        ...args: (string | number)[]
-    ): Promise<Array<[string, Array<[string, string[]]>]> | null>;
-    xack(key: string, group: string, ...ids: string[]): Promise<number>;
-    xgroup(
-        cmd: string,
-        key: string,
-        group: string,
-        id?: string,
-        mkstream?: string,
-    ): Promise<string>;
-    xclaim(
-        key: string,
-        group: string,
-        consumer: string,
-        minIdleTime: number,
-        ...ids: string[]
-    ): Promise<Array<[string, string[]]>>;
-    xpending(
-        key: string,
-        group: string,
-        start?: string,
-        end?: string,
-        count?: number,
-    ): Promise<Array<[string, string, number, number]> | [number, string, string, Array<[string, number]>]>;
-    xlen(key: string): Promise<number>;
-    xtrim(key: string, strategy: string, ...args: (string | number)[]): Promise<number>;
-    ping(): Promise<string>;
-    quit(): Promise<string>;
-    duplicate(): RedisClient;
-};
-
-/**
- * Cache for Redis clients
- */
-const MAX_CLIENTS = 100;
-const clientCache = new Map<string, { client: RedisClient; lastUsed: number }>();
-
-/**
- * Pending message entries for manual acknowledgment
- */
 interface PendingEntry {
     streamKey: string;
     consumerGroup: string;
+    consumerName: string;
     messageId: string;
+    connectionIdentity: string;
     createdAt: number;
 }
-const pendingEntries = new Map<string, PendingEntry>();
 
-/**
- * Generate cache key for connection config
- */
-function getCacheKey(config: RedisConnectionConfig): string {
-    return `${config.host ?? 'localhost'}:${config.port ?? 6379}:${config.db ?? 0}`;
-}
-
-/**
- * Dynamically loaded Redis module
- */
-let redisModule: {
-    default: new (options: Record<string, unknown>) => RedisClient;
-} | null = null;
-
-/**
- * Load ioredis module dynamically
- */
-async function loadRedisModule(): Promise<typeof redisModule> {
-    if (redisModule) return redisModule;
-
-    try {
-        // Dynamic import - ioredis is an optional dependency
-        const mod = await (Function('return import("ioredis")')() as Promise<typeof redisModule>);
-        redisModule = mod;
-        return mod;
-    } catch {
-        throw new Error(
-            'Redis Streams adapter requires ioredis package. ' +
-            'Install it with: npm install ioredis'
-        );
-    }
-}
-
-/**
- * Get or create Redis client
- */
-async function getClient(config: RedisConnectionConfig): Promise<RedisClient> {
-    const key = getCacheKey(config);
-    const cached = clientCache.get(key);
-
-    if (cached) {
-        cached.lastUsed = Date.now();
-        return cached.client;
-    }
-
-    const host = config.host ?? 'localhost';
-    if (isBlockedHostname(host)) {
-        throw new Error(`SSRF protection: hostname '${host}' is blocked for security reasons`);
-    }
-
-    const redis = await loadRedisModule();
-    if (!redis) throw new Error('Redis module not loaded');
-
-    const Redis = redis.default;
-    const client = new Redis({
-        host,
-        port: config.port ?? 6379,
-        password: config.password,
-        db: config.db ?? 0,
-        retryStrategy: (times: number) => {
-            if (times > 10) return null;
-            return Math.min(times * 100, REDIS_RETRY_MAX_DELAY_MS);
-        },
-        maxRetriesPerRequest: 3,
-    }) as unknown as RedisClient;
-
-    // Evict oldest client if cache is at capacity
-    if (clientCache.size >= MAX_CLIENTS) {
-        let oldestKey: string | null = null;
-        let oldestTime = Infinity;
-        for (const [k, entry] of clientCache.entries()) {
-            if (entry.lastUsed < oldestTime) {
-                oldestTime = entry.lastUsed;
-                oldestKey = k;
-            }
-        }
-        if (oldestKey) {
-            const stale = clientCache.get(oldestKey);
-            if (stale) {
-                stale.client.quit().catch(() => { /* ignore */ });
-            }
-            clientCache.delete(oldestKey);
-        }
-    }
-
-    clientCache.set(key, {
-        client,
-        lastUsed: Date.now(),
-    });
-
-    return client;
-}
-
-/**
- * Ensure consumer group exists for a stream
- */
-async function ensureConsumerGroup(
-    client: RedisClient,
-    streamKey: string,
-    groupName: string,
-): Promise<void> {
-    try {
-        await client.xgroup('CREATE', streamKey, groupName, '0', 'MKSTREAM');
-    } catch (error) {
-        // Group already exists - that's fine
-        if (!(error instanceof Error) || !error.message.includes('BUSYGROUP')) {
-            throw error;
-        }
-    }
-}
-
-/**
- * Parse Redis stream entry to fields object
- */
 function parseStreamEntry(fields: string[]): Record<string, string> {
     const result: Record<string, string> = {};
-    for (let i = 0; i < fields.length; i += 2) {
-        result[fields[i]] = fields[i + 1];
+    for (let index = 0; index + 1 < fields.length; index += 2) {
+        result[fields[index]] = fields[index + 1];
     }
     return result;
+}
+
+function createDeliveryTag(
+    connectionIdentity: string,
+    streamKey: string,
+    groupName: string,
+    streamId: string,
+): string {
+    return `redis:${connectionIdentity}:${streamKey}:${groupName}:${streamId}`;
+}
+
+function toConsumeResult(
+    connectionIdentity: string,
+    streamKey: string,
+    groupName: string,
+    streamId: string,
+    fields: string[],
+    redelivered: boolean,
+    manual: boolean,
+): ConsumeResult {
+    const parsed = parseStreamEntry(fields);
+    return {
+        messageId: parsed.messageId ?? streamId,
+        payload: parseJsonObject(parsed.payload),
+        headers: parseStringRecord(parsed.headers),
+        deliveryTag: manual
+            ? createDeliveryTag(connectionIdentity, streamKey, groupName, streamId)
+            : undefined,
+        redelivered,
+    };
 }
 
 export class RedisStreamsAdapter implements QueueAdapter {
     readonly code = 'redis-streams';
     readonly name = 'Redis Streams';
-    readonly description = 'Redis Streams for high-performance message queuing with consumer groups';
+    readonly description =
+        'Redis Streams for high-performance message queuing with consumer groups';
 
+    private readonly clientPool: RedisClientPool;
+    private readonly pendingEntries = new Map<string, PendingEntry>();
+    private readonly autoClaimCursors = new Map<string, string>();
+    private pendingEntryReservations = 0;
     private cleanupHandle?: ReturnType<typeof setInterval>;
 
-    /**
-     * Start the periodic cleanup interval for idle clients and stale pending entries.
-     * Called automatically on first use; safe to call multiple times.
-     */
+    constructor(moduleLoader: typeof loadRedisModule = loadRedisModule) {
+        this.clientPool = new RedisClientPool(moduleLoader);
+    }
+
     startCleanup(): void {
         if (this.cleanupHandle) return;
-        this.cleanupHandle = setInterval(async () => {
+        this.cleanupHandle = setInterval(() => {
             const now = Date.now();
-
-            for (const [key, entry] of clientCache.entries()) {
-                if (now - entry.lastUsed > INTERNAL_TIMINGS.CONNECTION_MAX_IDLE_MS) {
-                    try {
-                        await entry.client.quit();
-                    } catch {
-                        // Ignore quit errors
-                    }
-                    clientCache.delete(key);
-                }
-            }
-
-            // Cleanup stale pending entries
-            for (const [key, pending] of pendingEntries.entries()) {
+            void this.clientPool.cleanupIdle(now);
+            for (const [key, pending] of this.pendingEntries.entries()) {
                 if (now - pending.createdAt > INTERNAL_TIMINGS.PENDING_MESSAGES_MAX_AGE_MS) {
-                    pendingEntries.delete(key);
+                    this.pendingEntries.delete(key);
                 }
             }
         }, INTERNAL_TIMINGS.CLEANUP_INTERVAL_MS);
-
-        if (typeof this.cleanupHandle.unref === 'function') {
-            this.cleanupHandle.unref();
-        }
+        this.cleanupHandle.unref?.();
     }
 
-    /**
-     * Stop the periodic cleanup interval and close all cached clients.
-     * Call during graceful shutdown to prevent the interval from keeping the process alive.
-     */
     async destroy(): Promise<void> {
         if (this.cleanupHandle) {
             clearInterval(this.cleanupHandle);
             this.cleanupHandle = undefined;
         }
-
-        for (const [key, entry] of clientCache.entries()) {
-            try {
-                await entry.client.quit();
-            } catch {
-                // Ignore quit errors during shutdown
-            }
-            clientCache.delete(key);
-        }
-        pendingEntries.clear();
+        await this.clientPool.destroy();
+        this.pendingEntries.clear();
+        this.autoClaimCursors.clear();
+        this.pendingEntryReservations = 0;
     }
 
     async publish(
@@ -283,296 +121,299 @@ export class RedisStreamsAdapter implements QueueAdapter {
         messages: QueueMessage[],
     ): Promise<PublishResult[]> {
         this.startCleanup();
-        const config = connectionConfig as RedisConnectionConfig;
-        const client = await getClient(config);
+        const client = await this.clientPool.get(connectionConfig as RedisConnectionConfig);
         const streamKey = `stream:${queueName}`;
-
         const results: PublishResult[] = [];
 
-        for (const msg of messages) {
+        for (const message of messages) {
             try {
-                // Build field-value pairs
-                const fields: string[] = [
-                    'payload', JSON.stringify(msg.payload),
-                    'messageId', msg.id,
+                const fields = [
+                    'payload', JSON.stringify(message.payload),
+                    'messageId', message.id,
                 ];
-
-                if (msg.routingKey) {
-                    fields.push('routingKey', msg.routingKey);
-                }
-
-                if (msg.headers) {
-                    fields.push('headers', JSON.stringify(msg.headers));
-                }
-
-                if (msg.priority !== undefined) {
-                    fields.push('priority', String(msg.priority));
-                }
-
-                // XADD with auto-generated ID
+                if (message.routingKey) fields.push('routingKey', message.routingKey);
+                if (message.headers) fields.push('headers', JSON.stringify(message.headers));
+                if (message.priority !== undefined) fields.push('priority', String(message.priority));
                 await client.xadd(streamKey, '*', ...fields);
-
-                results.push({
-                    success: true,
-                    messageId: msg.id,
-                });
+                results.push({ success: true, messageId: message.id });
             } catch (error) {
                 results.push({
                     success: false,
-                    messageId: msg.id,
+                    messageId: message.id,
                     error: getErrorMessage(error),
                 });
             }
         }
-
         return results;
     }
 
     async consume(
         connectionConfig: QueueConnectionConfig,
         queueName: string,
-        options: {
-            count: number;
-            ackMode: AckMode;
-            prefetch?: number;
-        },
+        options: QueueConsumeOptions,
     ): Promise<ConsumeResult[]> {
         this.startCleanup();
-        const config = connectionConfig as RedisConnectionConfig;
-        const client = await getClient(config);
-        const streamKey = `stream:${queueName}`;
-        const groupName = config.consumerGroup ?? 'datahub-consumers';
-        const consumerName = config.consumerName ?? `consumer-${process.pid}`;
-
-        await ensureConsumerGroup(client, streamKey, groupName);
-
-        // Read new messages (>)
-        const response = await client.xreadgroup(
-            'GROUP', groupName, consumerName,
-            'COUNT', options.count,
-            'BLOCK', REDIS_BLOCK_TIMEOUT_MS,
-            'STREAMS', streamKey, '>',
+        const requestedCount = requirePositiveInteger(
+            options.count,
+            'Redis consume count',
+            QUEUE.MAX_MESSAGE_BATCH_SIZE,
         );
+        const config = connectionConfig as RedisConnectionConfig;
+        const client = await this.clientPool.get(config);
+        const connectionIdentity = redisConnectionIdentity(config);
+        const streamKey = `stream:${queueName}`;
+        const groupName = config.consumerGroup ?? DEFAULT_CONSUMER_GROUP;
+        const consumerName = config.consumerName ?? `consumer-${process.pid}`;
+        await ensureRedisConsumerGroup(client, streamKey, groupName);
 
-        const results: ConsumeResult[] = [];
+        const reservedCapacity = options.ackMode === AckMode.MANUAL
+            ? this.reservePendingCapacity(requestedCount)
+            : 0;
+        if (options.ackMode === AckMode.MANUAL && reservedCapacity === 0) return [];
+        const receiveCount = options.ackMode === AckMode.MANUAL
+            ? reservedCapacity
+            : requestedCount;
 
-        if (!response || response.length === 0) {
-            const claimed = await this.claimStaleMessages(connectionConfig, queueName, INTERNAL_TIMINGS.PENDING_MESSAGES_MAX_AGE_MS, options.count);
-            return claimed;
-        }
+        try {
+            const results = options.ackMode === AckMode.MANUAL
+                ? await this.claimStaleMessagesWithinCapacity(
+                    config,
+                    queueName,
+                    INTERNAL_TIMINGS.PENDING_MESSAGES_MAX_AGE_MS,
+                    receiveCount,
+                )
+                : [];
+            const remaining = receiveCount - results.length;
+            if (remaining === 0) return results;
 
-        // response format: [[streamKey, [[id, fields], ...]]]
-        const [, entries] = response[0];
+            const response = await client.xreadgroup(
+                'GROUP', groupName, consumerName,
+                'COUNT', remaining,
+                'BLOCK', REDIS_BLOCK_TIMEOUT_MS,
+                'STREAMS', streamKey, '>',
+            );
+            const entries = (response ?? [])
+                .flatMap(([, streamEntries]) => streamEntries)
+                .slice(0, remaining);
+            const autoAckIds: string[] = [];
 
-        for (const [streamId, fields] of entries) {
-            const parsed = parseStreamEntry(fields);
-
-            let payload: JsonObject;
-            try {
-                payload = JSON.parse(parsed.payload ?? '{}');
-            } catch {
-                payload = { rawPayload: parsed.payload };
-            }
-
-            const messageId = parsed.messageId ?? streamId;
-            const deliveryTag = `redis:${streamKey}:${groupName}:${streamId}`;
-
-            // Auto-ack: acknowledge immediately
-            if (options.ackMode === AckMode.AUTO) {
-                await client.xack(streamKey, groupName, streamId);
-            } else {
-                // Evict oldest pending entry if at capacity
-                const maxPending = INTERNAL_TIMINGS.MAX_PENDING_MESSAGES ?? 10_000;
-                if (pendingEntries.size >= maxPending) {
-                    let oldestKey: string | null = null;
-                    let oldestTime = Infinity;
-                    for (const [key, entry] of pendingEntries.entries()) {
-                        if (entry.createdAt < oldestTime) {
-                            oldestTime = entry.createdAt;
-                            oldestKey = key;
-                        }
-                    }
-                    if (oldestKey) {
-                        pendingEntries.delete(oldestKey);
-                    }
-                }
-
-                // Store for manual acknowledgment
-                pendingEntries.set(deliveryTag, {
+            for (const [streamId, fields] of entries) {
+                const result = toConsumeResult(
+                    connectionIdentity,
                     streamKey,
-                    consumerGroup: groupName,
-                    messageId: streamId,
-                    createdAt: Date.now(),
-                });
-            }
-
-            // Parse headers if present
-            let headers: Record<string, string> | undefined;
-            if (parsed.headers) {
-                try {
-                    headers = JSON.parse(parsed.headers);
-                } catch {
-                    // Ignore invalid headers
+                    groupName,
+                    streamId,
+                    fields,
+                    false,
+                    options.ackMode === AckMode.MANUAL,
+                );
+                if (options.ackMode === AckMode.AUTO) {
+                    autoAckIds.push(streamId);
+                } else if (result.deliveryTag) {
+                    this.pendingEntries.set(result.deliveryTag, {
+                        streamKey,
+                        consumerGroup: groupName,
+                        consumerName,
+                        messageId: streamId,
+                        connectionIdentity,
+                        createdAt: Date.now(),
+                    });
                 }
+                results.push(result);
             }
-
-            results.push({
-                messageId,
-                payload,
-                headers,
-                deliveryTag: options.ackMode === AckMode.MANUAL ? deliveryTag : undefined,
-                redelivered: false, // Redis streams don't track redelivery count in XREADGROUP
-            });
+            if (autoAckIds.length > 0) {
+                await client.xack(streamKey, groupName, ...autoAckIds);
+            }
+            return results;
+        } finally {
+            this.releasePendingCapacity(reservedCapacity);
         }
-
-        return results;
     }
 
-    async ack(
-        connectionConfig: QueueConnectionConfig,
-        deliveryTag: string,
-    ): Promise<void> {
-        const pending = pendingEntries.get(deliveryTag);
-        if (!pending) {
-            throw new Error(`No pending message found for delivery tag: ${deliveryTag}`);
-        }
-
-        const config = connectionConfig as RedisConnectionConfig;
-        const client = await getClient(config);
-
+    async ack(connectionConfig: QueueConnectionConfig, tag: string): Promise<void> {
+        const { pending, config } = this.requirePending(connectionConfig, tag);
+        const client = await this.clientPool.get(config);
         await client.xack(pending.streamKey, pending.consumerGroup, pending.messageId);
-        pendingEntries.delete(deliveryTag);
+        this.pendingEntries.delete(tag);
     }
 
     async nack(
         connectionConfig: QueueConnectionConfig,
-        deliveryTag: string,
+        tag: string,
         requeue: boolean,
     ): Promise<void> {
-        const pending = pendingEntries.get(deliveryTag);
-        if (!pending) {
-            throw new Error(`No pending message found for delivery tag: ${deliveryTag}`);
-        }
-
-        const config = connectionConfig as RedisConnectionConfig;
-        const client = await getClient(config);
-
+        const { pending, config } = this.requirePending(connectionConfig, tag);
+        const client = await this.clientPool.get(config);
         if (requeue) {
-            // In Redis Streams, not acknowledging leaves the message in PEL
-            // It can be claimed by another consumer or re-read
-            // We do nothing here - the message stays in pending
+            const claimed = await client.xclaim(
+                pending.streamKey,
+                pending.consumerGroup,
+                pending.consumerName,
+                0,
+                pending.messageId,
+                'IDLE',
+                INTERNAL_TIMINGS.PENDING_MESSAGES_MAX_AGE_MS + 1,
+            );
+            if (!claimed.some(([id]) => id === pending.messageId)) {
+                throw new Error(`Redis pending message ${pending.messageId} is no longer available`);
+            }
+            this.autoClaimCursors.delete(
+                `${pending.connectionIdentity}:${pending.streamKey}:${pending.consumerGroup}`,
+            );
         } else {
-            // Acknowledge to remove from PEL (message is lost)
             await client.xack(pending.streamKey, pending.consumerGroup, pending.messageId);
         }
+        this.pendingEntries.delete(tag);
+    }
 
-        pendingEntries.delete(deliveryTag);
+    async renewLease(
+        connectionConfig: QueueConnectionConfig,
+        tag: string,
+    ): Promise<void> {
+        const { pending, config } = this.requirePending(connectionConfig, tag);
+        const client = await this.clientPool.get(config);
+        const claimed = await client.xclaim(
+            pending.streamKey,
+            pending.consumerGroup,
+            pending.consumerName,
+            0,
+            pending.messageId,
+        );
+        if (!claimed.some(([id]) => id === pending.messageId)) {
+            throw new Error(`Redis pending message ${pending.messageId} is no longer available`);
+        }
+        pending.createdAt = Date.now();
     }
 
     async testConnection(connectionConfig: QueueConnectionConfig): Promise<boolean> {
         this.startCleanup();
         try {
-            const config = connectionConfig as RedisConnectionConfig;
-            const client = await getClient(config);
-            const result = await client.ping();
-            return result === 'PONG';
+            const client = await this.clientPool.get(
+                connectionConfig as RedisConnectionConfig,
+            );
+            return await client.ping() === 'PONG';
         } catch {
             return false;
         }
     }
 
-    /**
-     * Claim stale messages from other consumers
-     * Useful for recovering from consumer failures
-     */
     async claimStaleMessages(
         connectionConfig: QueueConnectionConfig,
         queueName: string,
         minIdleMs: number,
         count: number,
     ): Promise<ConsumeResult[]> {
-        const config = connectionConfig as RedisConnectionConfig;
-        const client = await getClient(config);
-        const streamKey = `stream:${queueName}`;
-        const groupName = config.consumerGroup ?? 'datahub-consumers';
-        const consumerName = config.consumerName ?? `consumer-${process.pid}`;
-
-        // Get pending messages
-        const pending = await client.xpending(
-            streamKey,
-            groupName,
-            '-', '+',
+        requireNonNegativeInteger(minIdleMs, 'Redis minimum idle time');
+        const requestedCount = requirePositiveInteger(
             count,
-        ) as Array<[string, string, number, number]>;
-
-        if (!pending || pending.length === 0) {
-            return [];
-        }
-
-        // Filter messages older than minIdleMs
-        const staleIds = pending
-            .filter(([, , idleTime]) => idleTime >= minIdleMs)
-            .map(([id]) => id);
-
-        if (staleIds.length === 0) {
-            return [];
-        }
-
-        // Claim the messages
-        const claimed = await client.xclaim(
-            streamKey,
-            groupName,
-            consumerName,
-            minIdleMs,
-            ...staleIds,
+            'Redis claim count',
+            QUEUE.MAX_MESSAGE_BATCH_SIZE,
         );
-
-        const results: ConsumeResult[] = [];
-
-        for (const [streamId, fields] of claimed) {
-            const parsed = parseStreamEntry(fields);
-
-            let payload: JsonObject;
-            try {
-                payload = JSON.parse(parsed.payload ?? '{}');
-            } catch {
-                payload = { rawPayload: parsed.payload };
-            }
-
-            const deliveryTag = `redis:${streamKey}:${groupName}:${streamId}`;
-
-            results.push({
-                messageId: parsed.messageId ?? streamId,
-                payload,
-                deliveryTag,
-                redelivered: true,
-            });
-
-            // Register in pendingEntries so ack/nack can find these claimed messages
-            pendingEntries.set(deliveryTag, {
-                streamKey,
-                consumerGroup: groupName,
-                messageId: streamId,
-                createdAt: Date.now(),
-            });
+        const reservedCapacity = this.reservePendingCapacity(requestedCount);
+        if (reservedCapacity === 0) return [];
+        try {
+            return await this.claimStaleMessagesWithinCapacity(
+                connectionConfig as RedisConnectionConfig,
+                queueName,
+                minIdleMs,
+                reservedCapacity,
+            );
+        } finally {
+            this.releasePendingCapacity(reservedCapacity);
         }
-
-        return results;
     }
 
-    /**
-     * Trim stream to manage memory
-     */
     async trimStream(
         connectionConfig: QueueConnectionConfig,
         queueName: string,
         maxLen: number,
     ): Promise<number> {
-        const config = connectionConfig as RedisConnectionConfig;
-        const client = await getClient(config);
-        const streamKey = `stream:${queueName}`;
+        requirePositiveInteger(maxLen, 'Redis stream maximum length');
+        const client = await this.clientPool.get(connectionConfig as RedisConnectionConfig);
+        return client.xtrim(`stream:${queueName}`, 'MAXLEN', '~', maxLen);
+    }
 
-        return client.xtrim(streamKey, 'MAXLEN', '~', maxLen);
+    private async claimStaleMessagesWithinCapacity(
+        config: RedisConnectionConfig,
+        queueName: string,
+        minIdleMs: number,
+        claimCount: number,
+    ): Promise<ConsumeResult[]> {
+        const client = await this.clientPool.get(config);
+        const connectionIdentity = redisConnectionIdentity(config);
+        const streamKey = `stream:${queueName}`;
+        const groupName = config.consumerGroup ?? DEFAULT_CONSUMER_GROUP;
+        const consumerName = config.consumerName ?? `consumer-${process.pid}`;
+        await ensureRedisConsumerGroup(client, streamKey, groupName);
+        const cursorKey = `${connectionIdentity}:${streamKey}:${groupName}`;
+        const startCursor = this.autoClaimCursors.get(cursorKey) ?? '0-0';
+        const [nextCursor, claimed] = await client.xautoclaim(
+            streamKey,
+            groupName,
+            consumerName,
+            minIdleMs,
+            startCursor,
+            'COUNT',
+            claimCount,
+        );
+        if (nextCursor === '0-0') this.autoClaimCursors.delete(cursorKey);
+        else this.autoClaimCursors.set(cursorKey, nextCursor);
+
+        return claimed.slice(0, claimCount).map(([streamId, fields]) => {
+            const result = toConsumeResult(
+                connectionIdentity,
+                streamKey,
+                groupName,
+                streamId,
+                fields,
+                true,
+                true,
+            );
+            if (!result.deliveryTag) throw new Error('Redis delivery tag was not created');
+            this.pendingEntries.set(result.deliveryTag, {
+                streamKey,
+                consumerGroup: groupName,
+                consumerName,
+                messageId: streamId,
+                connectionIdentity,
+                createdAt: Date.now(),
+            });
+            return result;
+        });
+    }
+
+    private reservePendingCapacity(requested: number): number {
+        const available = Math.max(
+            0,
+            QUEUE.MAX_PENDING_MESSAGES -
+            this.pendingEntries.size -
+            this.pendingEntryReservations,
+        );
+        const reserved = Math.min(requested, available);
+        this.pendingEntryReservations += reserved;
+        return reserved;
+    }
+
+    private releasePendingCapacity(reserved: number): void {
+        this.pendingEntryReservations = Math.max(
+            0,
+            this.pendingEntryReservations - reserved,
+        );
+    }
+
+    private requirePending(
+        connectionConfig: QueueConnectionConfig,
+        tag: string,
+    ): { pending: PendingEntry; config: RedisConnectionConfig } {
+        const pending = this.pendingEntries.get(tag);
+        if (!pending) {
+            throw new Error(`No pending message found for delivery tag: ${tag}`);
+        }
+        const config = connectionConfig as RedisConnectionConfig;
+        if (pending.connectionIdentity !== redisConnectionIdentity(config)) {
+            throw new Error('Redis delivery tag belongs to a different connection');
+        }
+        return { pending, config };
     }
 }
 

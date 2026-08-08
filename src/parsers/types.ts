@@ -53,6 +53,8 @@ export interface CsvParseOptions {
 export interface JsonParseOptions {
     /** JSONPath to data array (e.g., "data.items") */
     path?: string;
+    /** Maximum records retained while parsing a preview */
+    preview?: number;
 }
 
 /**
@@ -63,6 +65,8 @@ export interface XmlParseOptions {
     recordPath?: string;
     /** Prefix for attributes (e.g., "@" for "@id") */
     attributePrefix?: string;
+    /** Maximum records retained while parsing a preview */
+    preview?: number;
 }
 
 /**
@@ -75,6 +79,8 @@ export interface XlsxParseOptions {
     range?: string;
     /** Whether first row contains headers */
     header?: boolean;
+    /** Maximum data rows parsed for preview */
+    preview?: number;
 }
 
 /**

@@ -1,5 +1,5 @@
 import { Column, Entity, Index, ManyToOne } from 'typeorm';
-import { DeepPartial, VendureEntity } from '@vendure/core';
+import { DeepPartial, EntityId, ID, VendureEntity } from '@vendure/core';
 import type { JsonObject } from '../../types/index';
 import { DataHubRecordError } from './error-record.entity';
 import { TABLE_NAMES } from '../../constants/table-names';
@@ -17,8 +17,8 @@ export class DataHubRecordRetryAudit extends VendureEntity {
     error!: DataHubRecordError;
 
     @Index()
-    @Column({ type: 'int' })
-    errorId!: number;
+    @EntityId()
+    errorId!: ID;
 
     @Column({ type: 'varchar', length: 255, nullable: true })
     userId!: string | null;

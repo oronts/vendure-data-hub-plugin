@@ -36,6 +36,11 @@ interface LoadContext {
 }
 ```
 
+For `EXPLICIT` and `MULTI` execution, the runtime invokes the loader once per
+target channel. In each invocation, `context.ctx.channelId`, `context.channels`,
+and `context.pipelineContext.channelIds` identify that one target channel. The
+runtime aggregates the returned counts across all target channels.
+
 ## Basic Example
 
 ```typescript
@@ -103,7 +108,11 @@ export class CustomEntityLoader implements LoaderAdapter<CustomLoaderConfig> {
                     succeeded++;
                 } else {
                     if (config.strategy === 'UPDATE') {
-                        skipped++;
+                        failed++;
+                        errors.push({
+                            record,
+                            message: `Cannot update missing custom entity "${String(code)}"`,
+                        });
                         continue;
                     }
 
@@ -380,8 +389,11 @@ export class TagLoader implements LoaderAdapter {
                     succeeded++;
                 } else {
                     if (config.strategy === 'UPDATE') {
-                        skipped++;
-                        logger.debug(`Tag "${value}" not found, skipping`);
+                        failed++;
+                        errors.push({
+                            record,
+                            message: `Cannot update missing tag "${value}"`,
+                        });
                         continue;
                     }
 

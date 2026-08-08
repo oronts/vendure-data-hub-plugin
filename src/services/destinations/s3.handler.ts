@@ -1,129 +1,123 @@
 /**
  * S3 Destination Handler
  *
- * Delivery to S3 and S3-compatible storage (MinIO, etc.)
+ * Delivery to AWS S3 and S3-compatible storage through the official AWS SDK.
  */
 
-import * as crypto from 'crypto';
-import { S3DestinationConfig, DeliveryResult, DeliveryOptions, DESTINATION_TYPE } from './destination.types';
-import { assertUrlSafe } from '../../utils/url-security.utils';
+import {
+    HeadBucketCommand,
+    PutObjectCommand,
+    S3Client,
+} from '@aws-sdk/client-s3';
+import type { ConnectionTestResult } from '../../../shared/types';
+import { CONTENT_TYPES } from '../../constants/services';
 import { getErrorMessage } from '../../utils/error.utils';
-import { createSuccessResult, createFailureResult } from './delivery-utils';
-import { HTTP_HEADERS, CONTENT_TYPES } from '../../constants/services';
-import { HTTP } from '../../constants/defaults';
+import { createPinnedAwsRequestHandler } from '../../utils/aws-request-handler.utils';
+import { createFailureResult, createSuccessResult } from './delivery-utils';
+import {
+    DeliveryOptions,
+    DeliveryResult,
+    DESTINATION_TYPE,
+    ResolvedS3DestinationConfig,
+} from './destination.types';
 
-/**
- * Deliver content to S3 or S3-compatible storage
- */
+async function createS3Client(config: ResolvedS3DestinationConfig): Promise<S3Client> {
+    const requestHandler = await createPinnedAwsRequestHandler(config.endpoint);
+    return new S3Client({
+        region: config.region,
+        credentials: {
+            accessKeyId: config.accessKeyId,
+            secretAccessKey: config.secretAccessKey,
+        },
+        ...(config.endpoint
+            ? {
+                endpoint: config.endpoint,
+                forcePathStyle: true,
+            }
+            : {}),
+        requestHandler,
+    });
+}
+
+function getObjectLocation(
+    config: ResolvedS3DestinationConfig,
+    key: string,
+): string {
+    const encodedKey = key.split('/').map(encodeURIComponent).join('/');
+    if (!config.endpoint) {
+        return `https://${config.bucket}.s3.${config.region}.amazonaws.com/${encodedKey}`;
+    }
+    return `${config.endpoint.replace(/\/+$/, '')}/${encodeURIComponent(config.bucket)}/${encodedKey}`;
+}
+
 export async function deliverToS3(
-    config: S3DestinationConfig,
+    config: ResolvedS3DestinationConfig,
     content: Buffer,
     filename: string,
     options?: DeliveryOptions,
 ): Promise<DeliveryResult> {
-    // Build S3 key
-    const key = config.prefix ? `${config.prefix}/${filename}` : filename;
-    const encodedKey = key.split('/').map(s => encodeURIComponent(s)).join('/');
-
-    const timestamp = new Date().toISOString().replace(/[:-]|\.\d{3}/g, '');
-    const date = timestamp.slice(0, 8);
-    const contentHash = crypto.createHash('sha256').update(content).digest('hex');
-    const mimeType = options?.mimeType || CONTENT_TYPES.OCTET_STREAM;
-
-    const isCustomEndpoint = !!config.endpoint;
-    const host = isCustomEndpoint
-        ? new URL(config.endpoint!).host
-        : `${config.bucket}.s3.${config.region}.amazonaws.com`;
-    const canonicalUri = isCustomEndpoint ? `/${config.bucket}/${encodedKey}` : `/${encodedKey}`;
-
-    const canonicalHeaders = [
-        `content-type:${mimeType}`,
-        `host:${host}`,
-        `x-amz-content-sha256:${contentHash}`,
-        `x-amz-date:${timestamp}`,
-    ];
-    const signedHeaderNames = ['content-type', 'host', 'x-amz-content-sha256', 'x-amz-date'];
-    if (config.acl) {
-        canonicalHeaders.push(`x-amz-acl:${config.acl}`);
-        signedHeaderNames.push('x-amz-acl');
-    }
-    canonicalHeaders.sort();
-    signedHeaderNames.sort();
-
-    const canonicalRequest = [
-        'PUT',
-        canonicalUri,
-        '',
-        ...canonicalHeaders,
-        '',
-        signedHeaderNames.join(';'),
-        contentHash,
-    ].join('\n');
-
-    const credentialScope = `${date}/${config.region}/s3/aws4_request`;
-    const stringToSign = [
-        'AWS4-HMAC-SHA256',
-        timestamp,
-        credentialScope,
-        crypto.createHash('sha256').update(canonicalRequest).digest('hex'),
-    ].join('\n');
-
-    // Calculate signature
-    const kDate = crypto.createHmac('sha256', `AWS4${config.secretAccessKey}`).update(date).digest();
-    const kRegion = crypto.createHmac('sha256', kDate).update(config.region).digest();
-    const kService = crypto.createHmac('sha256', kRegion).update('s3').digest();
-    const kSigning = crypto.createHmac('sha256', kService).update('aws4_request').digest();
-    const signature = crypto.createHmac('sha256', kSigning).update(stringToSign).digest('hex');
-
-    const authorization = `AWS4-HMAC-SHA256 Credential=${config.accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaderNames.join(';')}, Signature=${signature}`;
-
-    const url = isCustomEndpoint
-        ? `${config.endpoint}/${config.bucket}/${encodedKey}`
-        : `https://${host}/${encodedKey}`;
+    const key = config.prefix ? `${config.prefix.replace(/\/+$/, '')}/${filename}` : filename;
+    const client = await createS3Client(config);
 
     try {
-        await assertUrlSafe(url);
-        const response = await fetch(url, {
-            method: 'PUT',
-            headers: {
-                [HTTP_HEADERS.CONTENT_TYPE]: mimeType,
-                'Host': host,
-                'x-amz-content-sha256': contentHash,
-                'x-amz-date': timestamp,
-                [HTTP_HEADERS.AUTHORIZATION]: authorization,
-                ...(config.acl ? { 'x-amz-acl': config.acl } : {}),
-            },
-            body: content,
-            signal: AbortSignal.timeout(HTTP.TIMEOUT_MS),
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text().catch(() => '');
-            return createFailureResult(
-                config.id,
-                DESTINATION_TYPE.S3,
-                filename,
-                content.length,
-                `S3 upload failed: ${response.status} ${errorText}`,
-            );
-        }
+        const response = await client.send(new PutObjectCommand({
+            Bucket: config.bucket,
+            Key: key,
+            Body: content,
+            ContentType: options?.mimeType ?? CONTENT_TYPES.OCTET_STREAM,
+            ACL: config.acl,
+            Metadata: options?.metadata
+                ? Object.fromEntries(
+                    Object.entries(options.metadata).map(([name, value]) => [name, String(value)]),
+                )
+                : undefined,
+        }));
 
         return createSuccessResult(
             config.id,
             DESTINATION_TYPE.S3,
             filename,
             content.length,
-            url,
-            { bucket: config.bucket, key },
+            getObjectLocation(config, key),
+            {
+                bucket: config.bucket,
+                key,
+                eTag: response.ETag,
+                versionId: response.VersionId,
+            },
         );
     } catch (error) {
-        const errorMessage = getErrorMessage(error);
         return createFailureResult(
             config.id,
             DESTINATION_TYPE.S3,
             filename,
             content.length,
-            errorMessage,
+            getErrorMessage(error),
         );
+    } finally {
+        client.destroy();
+    }
+}
+
+export async function testS3Destination(
+    config: ResolvedS3DestinationConfig,
+    start: number,
+): Promise<ConnectionTestResult> {
+    const client = await createS3Client(config);
+    try {
+        await client.send(new HeadBucketCommand({ Bucket: config.bucket }));
+        return {
+            success: true,
+            message: `S3 bucket "${config.bucket}" is reachable`,
+            latencyMs: Date.now() - start,
+        };
+    } catch (error) {
+        return {
+            success: false,
+            message: getErrorMessage(error),
+            latencyMs: Date.now() - start,
+        };
+    } finally {
+        client.destroy();
     }
 }

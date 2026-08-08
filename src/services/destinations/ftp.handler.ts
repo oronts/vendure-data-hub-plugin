@@ -1,67 +1,107 @@
-/**
- * FTP/SFTP Destination Handlers
- *
- * Delivery to FTP and SFTP servers.
- */
-
 import * as path from 'path';
 import { Readable } from 'stream';
 import { Client as FtpClient } from 'basic-ftp';
 import SftpClient from 'ssh2-sftp-client';
+import type { ConnectionTestResult } from '../../../shared/types';
 import { LOGGER_CONTEXTS, HTTP, PORTS } from '../../constants/index';
 import {
-    SFTPDestinationConfig,
-    FTPDestinationConfig,
+    connectPinnedRemoteSocket,
+    createSftpHostVerifier,
+    resolveSafeRemoteAddress,
+} from '../../utils/remote-host-security.utils';
+import { getErrorMessage } from '../../utils/error.utils';
+import { DataHubLoggerFactory } from '../logger';
+import {
+    ResolvedSFTPDestinationConfig,
+    ResolvedFTPDestinationConfig,
     DeliveryResult,
     DeliveryOptions,
     DESTINATION_TYPE,
 } from './destination.types';
-import { DataHubLoggerFactory } from '../logger';
-import { isBlockedHostname } from '../../utils/url-security.utils';
-import { getErrorMessage } from '../../utils/error.utils';
 import { normalizeRemotePath, createSuccessResult, createFailureResult } from './delivery-utils';
 
 const logger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.FTP_HANDLER);
 
-/**
- * Deliver content to SFTP server
- */
-export async function deliverToSFTP(
-    config: SFTPDestinationConfig,
-    content: Buffer,
-    filename: string,
-    _options?: DeliveryOptions,
-): Promise<DeliveryResult> {
-    const remotePath = normalizeRemotePath(config.remotePath, filename);
+async function connectSftpDestination(
+    config: ResolvedSFTPDestinationConfig,
+): Promise<SftpClient> {
     const port = config.port || PORTS.SFTP;
-    const sftp = new SftpClient();
+    const timeout = config.timeout || HTTP.TIMEOUT_MS;
+    const hostVerifier = createSftpHostVerifier(config.hostKeyFingerprint);
+    const { socket } = await connectPinnedRemoteSocket(config.host, port, timeout);
+    const client = new SftpClient();
 
     try {
-        if (isBlockedHostname(config.host)) {
-            throw new Error(`SSRF protection: hostname '${config.host}' is blocked`);
-        }
-
-        await sftp.connect({
+        await client.connect({
             host: config.host,
             port,
             username: config.username,
             password: config.password,
             privateKey: config.privateKey,
             passphrase: config.passphrase,
-            readyTimeout: config.timeout || HTTP.TIMEOUT_MS,
+            readyTimeout: timeout,
+            sock: socket,
+            hostVerifier,
+            retries: 0,
         });
+        return client;
+    } catch (error) {
+        socket.destroy();
+        await client.end().catch(closeError => {
+            logger.warn('SFTP: Failed to close rejected connection', {
+                error: getErrorMessage(closeError),
+            });
+        });
+        throw error;
+    }
+}
 
+async function connectFtpDestination(
+    config: ResolvedFTPDestinationConfig,
+): Promise<FtpClient> {
+    const remote = await resolveSafeRemoteAddress(config.host);
+    const client = new FtpClient(HTTP.TIMEOUT_MS);
+    client.ftp.verbose = false;
+
+    try {
+        await client.access({
+            host: remote.address,
+            port: config.port || PORTS.FTP,
+            user: config.username,
+            password: config.password,
+            secure: config.secure || false,
+            secureOptions: config.secure
+                ? { rejectUnauthorized: true, servername: remote.hostname }
+                : undefined,
+        });
+        return client;
+    } catch (error) {
+        client.close();
+        throw error;
+    }
+}
+
+export async function deliverToSFTP(
+    config: ResolvedSFTPDestinationConfig,
+    content: Buffer,
+    filename: string,
+    _options?: DeliveryOptions,
+): Promise<DeliveryResult> {
+    const remotePath = normalizeRemotePath(config.remotePath, filename);
+    const port = config.port || PORTS.SFTP;
+    let sftp: SftpClient | undefined;
+
+    try {
+        sftp = await connectSftpDestination(config);
         const remoteDir = path.dirname(remotePath);
-        await sftp.mkdir(remoteDir, true).catch((err) => {
-            logger.warn(`SFTP: Failed to create directory ${remoteDir}`, { error: getErrorMessage(err) });
+        await sftp.mkdir(remoteDir, true).catch(error => {
+            logger.warn(`SFTP: Failed to create directory ${remoteDir}`, {
+                error: getErrorMessage(error),
+            });
         });
-
-        // Upload file
-        const stream = Readable.from(content);
-        await sftp.put(stream, remotePath);
+        await sftp.put(Readable.from(content), remotePath);
 
         logger.info(`SFTP: Delivered ${filename}`, { host: config.host, remotePath });
-
         return createSuccessResult(
             config.id,
             DESTINATION_TYPE.SFTP,
@@ -72,7 +112,6 @@ export async function deliverToSFTP(
     } catch (error) {
         const errorMessage = getErrorMessage(error);
         logger.error(`SFTP: Failed to deliver ${filename}`, undefined, { error: errorMessage });
-
         return createFailureResult(
             config.id,
             DESTINATION_TYPE.SFTP,
@@ -81,51 +120,33 @@ export async function deliverToSFTP(
             errorMessage,
         );
     } finally {
-        await sftp.end().catch((err) => {
-            logger.warn('SFTP: Failed to close connection', { error: getErrorMessage(err) });
+        await sftp?.end().catch(error => {
+            logger.warn('SFTP: Failed to close connection', { error: getErrorMessage(error) });
         });
     }
 }
 
-/**
- * Deliver content to FTP server
- */
 export async function deliverToFTP(
-    config: FTPDestinationConfig,
+    config: ResolvedFTPDestinationConfig,
     content: Buffer,
     filename: string,
     _options?: DeliveryOptions,
 ): Promise<DeliveryResult> {
     const remotePath = normalizeRemotePath(config.remotePath, filename);
     const port = config.port || PORTS.FTP;
-    const client = new FtpClient();
-    client.ftp.verbose = false;
+    let client: FtpClient | undefined;
 
     try {
-        if (isBlockedHostname(config.host)) {
-            throw new Error(`SSRF protection: hostname '${config.host}' is blocked`);
-        }
-
-        await client.access({
-            host: config.host,
-            port,
-            user: config.username,
-            password: config.password,
-            secure: config.secure || false,
-            secureOptions: config.secure ? { rejectUnauthorized: true } : undefined,
-        });
-
+        client = await connectFtpDestination(config);
         const remoteDir = path.dirname(remotePath);
-        await client.ensureDir(remoteDir).catch((err) => {
-            logger.warn(`FTP: Failed to ensure directory ${remoteDir}`, { error: getErrorMessage(err) });
+        await client.ensureDir(remoteDir).catch(error => {
+            logger.warn(`FTP: Failed to ensure directory ${remoteDir}`, {
+                error: getErrorMessage(error),
+            });
         });
-
-        // Upload file
-        const stream = Readable.from(content);
-        await client.uploadFrom(stream, remotePath);
+        await client.uploadFrom(Readable.from(content), remotePath);
 
         logger.info(`FTP: Delivered ${filename}`, { host: config.host, remotePath });
-
         return createSuccessResult(
             config.id,
             DESTINATION_TYPE.FTP,
@@ -136,7 +157,6 @@ export async function deliverToFTP(
     } catch (error) {
         const errorMessage = getErrorMessage(error);
         logger.error(`FTP: Failed to deliver ${filename}`, undefined, { error: errorMessage });
-
         return createFailureResult(
             config.id,
             DESTINATION_TYPE.FTP,
@@ -145,7 +165,58 @@ export async function deliverToFTP(
             errorMessage,
         );
     } finally {
-        client.close();
+        client?.close();
     }
 }
 
+export async function testSftpDestination(
+    config: ResolvedSFTPDestinationConfig,
+    start: number,
+): Promise<ConnectionTestResult> {
+    let client: SftpClient | undefined;
+    try {
+        client = await connectSftpDestination(config);
+        await client.list(config.remotePath);
+        return {
+            success: true,
+            message: 'SFTP endpoint authenticated and remote path is accessible',
+            latencyMs: Date.now() - start,
+        };
+    } catch (error) {
+        return {
+            success: false,
+            message: getErrorMessage(error),
+            latencyMs: Date.now() - start,
+        };
+    } finally {
+        await client?.end().catch(error => {
+            logger.warn('SFTP: Failed to close connection test client', {
+                error: getErrorMessage(error),
+            });
+        });
+    }
+}
+
+export async function testFtpDestination(
+    config: ResolvedFTPDestinationConfig,
+    start: number,
+): Promise<ConnectionTestResult> {
+    let client: FtpClient | undefined;
+    try {
+        client = await connectFtpDestination(config);
+        await client.cd(config.remotePath);
+        return {
+            success: true,
+            message: 'FTP endpoint authenticated and remote path is accessible',
+            latencyMs: Date.now() - start,
+        };
+    } catch (error) {
+        return {
+            success: false,
+            message: getErrorMessage(error),
+            latencyMs: Date.now() - start,
+        };
+    } finally {
+        client?.close();
+    }
+}

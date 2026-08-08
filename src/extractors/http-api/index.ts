@@ -4,7 +4,6 @@ export {
     buildUrl,
     buildHeaders,
     buildPaginatedRequest,
-    buildGraphqlBody,
     isValidUrl,
     getMethod,
     prepareRequestBody,

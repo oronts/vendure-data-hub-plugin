@@ -23,18 +23,57 @@ const entityFieldSchemasDocument = graphql(`
                 required
                 readonly
                 lookupable
+                translatable
+                relatedEntity
+                description
+                example
+                validation {
+                    minLength
+                    maxLength
+                    min
+                    max
+                    pattern
+                    enum
+                }
+                children {
+                    key
+                    label
+                    type
+                    required
+                    readonly
+                    lookupable
+                    translatable
+                    relatedEntity
+                    description
+                    example
+                }
             }
         }
     }
 `);
 
-interface EntityFieldInfo {
+export interface EntityFieldValidationInfo {
+    minLength?: number | null;
+    maxLength?: number | null;
+    min?: number | null;
+    max?: number | null;
+    pattern?: string | null;
+    enum?: unknown[] | null;
+}
+
+export interface EntityFieldInfo {
     key: string;
     label: string;
     type: string;
     required: boolean;
     readonly: boolean;
     lookupable: boolean;
+    translatable: boolean;
+    relatedEntity?: string | null;
+    description?: string | null;
+    example?: unknown;
+    validation?: EntityFieldValidationInfo | null;
+    children: EntityFieldInfo[];
 }
 
 interface EntityFieldSchemaMap {
@@ -61,14 +100,21 @@ export function useEntityFieldSchemas() {
         const map: EntityFieldSchemaMap = {};
         for (const schema of data) {
             const code = screamingSnakeToKebab(schema.entityType);
-            map[code] = schema.fields.map(f => ({
+            const mapField = (f: typeof schema.fields[number]): EntityFieldInfo => ({
                 key: f.key,
                 label: f.label,
                 type: f.type,
                 required: f.required ?? false,
                 readonly: f.readonly ?? false,
                 lookupable: f.lookupable ?? false,
-            }));
+                translatable: f.translatable ?? false,
+                relatedEntity: f.relatedEntity,
+                description: f.description,
+                example: f.example,
+                validation: f.validation,
+                children: (f.children ?? []).map(mapField),
+            });
+            map[code] = schema.fields.map(mapField);
         }
         return map;
     }, [data]);

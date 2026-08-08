@@ -10,7 +10,6 @@ export {
 
 export {
     buildPaginatedQuery,
-    appendIncrementalFilter,
     formatSqlValue,
     validateQuery,
     hasLimitClause,

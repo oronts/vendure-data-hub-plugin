@@ -115,6 +115,11 @@ export function applyHash(
 ): JsonObject {
     const result = deepClone(record);
 
+    if (algorithm !== 'sha256' && algorithm !== 'sha512') {
+        setNestedValue(result, target, null);
+        return result;
+    }
+
     // Get values to hash
     const sources = Array.isArray(source) ? source : [source];
     const values: JsonValue[] = [];
@@ -161,22 +166,24 @@ const UUID_NAMESPACES: Record<string, string> = {
     x500: '6ba7b814-9dad-11d1-80b4-00c04fd430c8',
 };
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
  * Generate a v5 UUID from namespace and name using SHA-1.
  * This is a simplified implementation following RFC 4122.
  * Returns null on error instead of throwing.
  */
 function generateUuidV5(namespace: string, name: string): string | null {
-    // Resolve well-known namespace or use as-is
-    const namespaceUuid = UUID_NAMESPACES[namespace.toLowerCase()] || namespace;
+    const namespaceUuid = UUID_NAMESPACES[namespace.toLowerCase()] ?? namespace;
 
-    // Parse namespace UUID to bytes
-    const namespaceBytes = namespaceUuid.replace(/-/g, '');
-    if (namespaceBytes.length !== 32) {
-        return null; // Invalid namespace UUID
+    if (!UUID_PATTERN.test(namespaceUuid)) {
+        return null;
     }
 
-    const nsBuffer = Buffer.from(namespaceBytes, 'hex');
+    const nsBuffer = Buffer.from(namespaceUuid.replace(/-/g, ''), 'hex');
+    if (nsBuffer.length !== 16) {
+        return null;
+    }
     const nameBuffer = Buffer.from(name, 'utf8');
 
     // Concatenate namespace and name

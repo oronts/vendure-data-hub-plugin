@@ -1,9 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { ID, RequestContext, TransactionalConnection } from '@vendure/core';
 import { DataHubRecordRetryAudit, DataHubRecordError } from '../../entities/data';
+import { PAGINATION } from '../../constants';
 import { SortOrder } from '../../constants/enums';
 import type { JsonObject } from '../../types/index';
 import type { FindOptionsOrder, FindOptionsWhere } from 'typeorm';
+import { getActivePipelineRunChannelId } from '../pipeline/pipeline-run-channel';
 
 @Injectable()
 export class RecordRetryAuditService {
@@ -26,10 +28,28 @@ export class RecordRetryAuditService {
         return repo.save(audit);
     }
 
-    listByError(ctx: RequestContext, errorId: ID): Promise<DataHubRecordRetryAudit[]> {
+    listByError(
+        ctx: RequestContext,
+        errorId: ID,
+        limit: number = PAGINATION.LIST_PAGE_SIZE,
+    ): Promise<DataHubRecordRetryAudit[]> {
+        if (!Number.isInteger(limit) || limit <= 0 || limit > PAGINATION.MAX_QUERY_LIMIT) {
+            throw new Error(`limit must be between 1 and ${PAGINATION.MAX_QUERY_LIMIT}`);
+        }
         const repo = this.connection.getRepository(ctx, DataHubRecordRetryAudit);
-        const where: FindOptionsWhere<DataHubRecordRetryAudit> = { error: { id: errorId } };
-        const order: FindOptionsOrder<DataHubRecordRetryAudit> = { createdAt: SortOrder.ASC };
-        return repo.find({ where, order });
+        const channelId = getActivePipelineRunChannelId(ctx);
+        const where: FindOptionsWhere<DataHubRecordRetryAudit> = {
+            error: {
+                id: errorId,
+                run: { channelId },
+            },
+        };
+        const order: FindOptionsOrder<DataHubRecordRetryAudit> = { createdAt: SortOrder.DESC };
+        return repo.find({
+            where,
+            order,
+            relations: { error: { run: { pipeline: true } } },
+            take: limit,
+        });
     }
 }

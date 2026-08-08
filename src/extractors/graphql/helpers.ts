@@ -1,6 +1,6 @@
 import { JsonObject } from '../../types/index';
 import { ExtractorContext } from '../../types/index';
-import { GraphQLExtractorConfig, GraphQLPaginationConfig, GRAPHQL_DEFAULTS } from './types';
+import { GraphQLExtractorConfig, GraphQLPaginationConfig, GraphQLResponse, GRAPHQL_DEFAULTS } from './types';
 import { GraphQLPaginationType, HTTP_HEADERS, CONTENT_TYPES } from '../../constants/index';
 import { UrlSecurityConfig } from '../../utils/url-security.utils';
 import { isValidGraphQLUrl as isValidGraphQLUrlUtil } from '../../utils/url-helpers';
@@ -12,10 +12,30 @@ import {
     buildExtractorHeaders,
 } from '../shared';
 
+const GRAPHQL_ERROR_COUNT_LIMIT = 5;
+const GRAPHQL_ERROR_MESSAGE_LENGTH_LIMIT = 500;
+
+export function assertGraphqlResponseSucceeded(
+    response: GraphQLResponse,
+    operation: string = 'GraphQL request',
+): void {
+    if (!response.errors?.length) return;
+
+    const messages = response.errors
+        .slice(0, GRAPHQL_ERROR_COUNT_LIMIT)
+        .map(error => error.message.slice(0, GRAPHQL_ERROR_MESSAGE_LENGTH_LIMIT));
+    const omittedCount = response.errors.length - messages.length;
+    const omittedSuffix = omittedCount > 0
+        ? `; ${omittedCount} more error${omittedCount === 1 ? '' : 's'} omitted`
+        : '';
+
+    throw new Error(`${operation} failed: ${messages.join('; ')}${omittedSuffix}`);
+}
+
 /**
  * Build the full GraphQL endpoint URL.
  * Delegates to shared buildExtractorUrl.
- *
+
  * @param context - Extractor context
  * @param config - GraphQL extractor config
  * @param ssrfConfig - Optional SSRF security configuration
@@ -99,6 +119,16 @@ export function extractRecords(
     }
 
     return current ? [current as JsonObject] : [];
+}
+
+export function extractGraphqlResponseRecords(
+    response: GraphQLResponse | unknown,
+    dataPath?: string,
+): JsonObject[] {
+    const source = dataPath
+        ? response
+        : (response as GraphQLResponse | null | undefined)?.data;
+    return extractRecords(source, dataPath);
 }
 
 /**

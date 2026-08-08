@@ -11,6 +11,10 @@ import { getErrorMessage, toErrorOrUndefined } from '../utils/error.utils';
 import { DataHubLogger, DataHubLoggerFactory } from '../services/logger';
 import { LOGGER_CONTEXTS } from '../constants/index';
 import { EXTRACTOR_HANDLER_REGISTRY } from './extractor-handler-registry';
+import {
+    validateAdapterLifecycleMetadata,
+    validateBatchExtractorPreview,
+} from '../sdk/adapter-metadata';
 
 export type ExtractorRegistrationCallback = (registry: ExtractorRegistryService) => void | Promise<void>;
 
@@ -20,6 +24,8 @@ export interface ExtractorMetadata {
     description?: string;
     category: ExtractorCategory;
     version?: string;
+    deprecated?: boolean;
+    deprecatedMessage?: string;
     icon?: string;
     supportsPagination?: boolean;
     supportsIncremental?: boolean;
@@ -53,14 +59,7 @@ export class ExtractorRegistryService implements OnModuleInit {
             await this.registerBuiltInExtractors();
 
             for (const callback of this.customCallbacks) {
-                try {
-                    await callback(this);
-                } catch (error) {
-                    this.logger.error(
-                        'Extractor registration callback failed',
-                        toErrorOrUndefined(error),
-                    );
-                }
+                await callback(this);
             }
 
             this.logger.info(`Extractor registry initialized`, {
@@ -78,6 +77,7 @@ export class ExtractorRegistryService implements OnModuleInit {
                 'Failed to initialize extractor registry',
                 toErrorOrUndefined(error),
             );
+            throw error;
         }
     }
 
@@ -90,10 +90,9 @@ export class ExtractorRegistryService implements OnModuleInit {
                 this.register(extractor, 'built-in');
                 registered++;
             } catch (error) {
-                this.logger.warn(`Failed to register built-in extractor`, {
-                    adapterCode: code,
-                    error: getErrorMessage(error),
-                });
+                throw new Error(
+                    `Failed to register built-in extractor "${code}": ${getErrorMessage(error)}`,
+                );
             }
         }
 
@@ -110,6 +109,8 @@ export class ExtractorRegistryService implements OnModuleInit {
         extractor: DataExtractor | BatchDataExtractor,
         registeredBy?: string,
     ): void {
+        validateAdapterLifecycleMetadata(extractor);
+        validateBatchExtractorPreview(extractor);
         const code = extractor.code;
 
         if (this.extractors.has(code)) {
@@ -122,6 +123,8 @@ export class ExtractorRegistryService implements OnModuleInit {
             description: extractor.description,
             category: extractor.category,
             version: extractor.version,
+            deprecated: extractor.deprecated,
+            deprecatedMessage: extractor.deprecatedMessage,
             icon: extractor.icon,
             supportsPagination: extractor.supportsPagination,
             supportsIncremental: extractor.supportsIncremental,

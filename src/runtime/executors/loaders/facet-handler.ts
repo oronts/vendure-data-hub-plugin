@@ -11,18 +11,28 @@ import {
     TransactionalConnection,
     ID,
 } from '@vendure/core';
+import { createChannelCodeRequestContext } from '../../helpers/channel-request-context';
 import { FacetTranslationInput } from '@vendure/common/lib/generated-types';
 import { JsonObject, PipelineStepDefinition, ErrorHandlingConfig } from '../../../types/index';
-import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
+import { RecordObject, OnRecordErrorCallback, LoaderExecutionResult } from '../../executor-types';
 import { LoaderHandler } from './types';
 import { LoadStrategy } from '../../../constants/enums';
+import { assertCreateDuplicateCanBeSkipped, CreateDuplicateHandlingConfig } from './duplicate-handling';
 import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
-import { getObjectValue } from '../../../loaders/shared-helpers';
-import { parseTranslationsInput, resolveChannelIds } from './shared-lookups';
-import { LOGGER_CONTEXTS } from '../../../constants/index';
-import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
+import {
+    getBooleanValue,
+    getObjectValue,
+    getStringValue,
+} from '../../../loaders/shared-helpers';
+import {
+    getTranslationString,
+    parseTranslationsInput,
+    resolveChannelIds,
+} from './shared-lookups';
+import { LOGGER_CONTEXTS } from '../../../constants/core';
+import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger/datahub-logger';
 
-interface FacetUpsertConfig {
+interface FacetUpsertConfig extends CreateDuplicateHandlingConfig {
     channel?: string;
     codeField?: string;
     nameField?: string;
@@ -35,7 +45,7 @@ interface FacetUpsertConfig {
     channelsField?: string;
 }
 
-interface FacetValueUpsertConfig {
+interface FacetValueUpsertConfig extends CreateDuplicateHandlingConfig {
     channel?: string;
     facetCodeField?: string;
     codeField?: string;
@@ -46,10 +56,6 @@ interface FacetValueUpsertConfig {
     translationsField?: string;
     /** Record field containing channel codes for dynamic per-record channel assignment */
     channelsField?: string;
-}
-
-interface FacetRecord {
-    [key: string]: unknown;
 }
 
 @Injectable()
@@ -72,39 +78,51 @@ export class FacetHandler implements LoaderHandler {
         input: RecordObject[],
         onRecordError?: OnRecordErrorCallback,
         _errorHandling?: ErrorHandlingConfig,
-    ): Promise<ExecutionResult> {
-        let ok = 0, fail = 0;
+    ): Promise<LoaderExecutionResult> {
+        let ok = 0, fail = 0, skipped = 0;
         const cfg = (step.config ?? {}) as FacetUpsertConfig;
         const channelCache = new Map<string, ID>();
 
         for (const rec of input) {
             try {
-                const record = rec as FacetRecord;
                 const codeField = cfg.codeField ?? 'code';
                 const nameField = cfg.nameField ?? 'name';
-                const code = String(record[codeField] ?? '');
-                let name = String(record[nameField] ?? code);
+                const code = getStringValue(rec, codeField);
+                let name = getStringValue(rec, nameField) ?? code ?? '';
 
                 // Multi-language: extract name from first translation if missing
                 if ((!name || name === code) && cfg.translationsField) {
                     const raw = rec[cfg.translationsField];
                     if (raw) {
                         const parsed = parseTranslationsInput(raw);
-                        if (parsed.length > 0 && parsed[0].name) {
-                            name = String(parsed[0].name);
+                        if (parsed[0]) {
+                            name = getTranslationString(parsed[0], 'name') ?? name;
                         }
                     }
                 }
 
-                if (!code) { fail++; continue; }
+                if (!code) {
+                    if (onRecordError) {
+                        await onRecordError(step.key, 'Missing required field: code', rec);
+                    }
+                    fail++;
+                    continue;
+                }
 
                 const customFieldsKey = cfg.customFieldsField ?? 'customFields';
                 const customFields = getObjectValue(rec, customFieldsKey);
+                const isPrivate = cfg.privateField
+                    ? getBooleanValue(rec, cfg.privateField)
+                    : undefined;
 
                 let opCtx = ctx;
                 if (cfg.channel) {
-                    const req = await this.requestContextService.create({ apiType: ctx.apiType, channelOrToken: cfg.channel });
-                    if (req) opCtx = req;
+                    opCtx = await createChannelCodeRequestContext(
+                        this.requestContextService,
+                        this.channelService,
+                        ctx,
+                        cfg.channel,
+                    );
                 }
 
                 // Build translations
@@ -116,12 +134,13 @@ export class FacetHandler implements LoaderHandler {
 
                 if (existing) {
                     if (strategy === LoadStrategy.CREATE) {
-                        ok++;
+                        assertCreateDuplicateCanBeSkipped(cfg, 'facet', code);
+                        skipped++;
                         continue;
                     }
                     const updated = await this.facetService.update(opCtx, {
                         id: existing.id,
-                        isPrivate: cfg.privateField ? Boolean(record[cfg.privateField]) : existing.isPrivate,
+                        isPrivate: isPrivate ?? existing.isPrivate,
                         translations,
                         ...(customFields ? { customFields } : {}),
                     });
@@ -134,7 +153,7 @@ export class FacetHandler implements LoaderHandler {
                     }
                     const created = await this.facetService.create(opCtx, {
                         code,
-                        isPrivate: cfg.privateField ? Boolean(record[cfg.privateField]) : false,
+                        isPrivate: isPrivate ?? false,
                         translations,
                         ...(customFields ? { customFields } : {}),
                     });
@@ -149,7 +168,14 @@ export class FacetHandler implements LoaderHandler {
                         if (channelIds.length > 0) {
                             try {
                                 await this.channelService.assignToChannels(opCtx, Facet, facetId, channelIds);
-                            } catch { /* channel assignment is best-effort */ }
+                            } catch (error) {
+                                this.logger.warn('Failed to assign facet to record channels', {
+                                    facetId,
+                                    channelIds,
+                                    error: getErrorMessage(error),
+                                });
+                                throw error;
+                            }
                         }
                     }
                 }
@@ -160,7 +186,7 @@ export class FacetHandler implements LoaderHandler {
                 fail++;
             }
         }
-        return { ok, fail };
+        return { ok, fail, skipped };
     }
 
     /**
@@ -179,8 +205,8 @@ export class FacetHandler implements LoaderHandler {
                 const parsed = parseTranslationsInput(raw);
                 if (parsed.length > 0) {
                     return parsed.map(t => ({
-                        languageCode: String(t.languageCode) as LanguageCode,
-                        name: String(t.name ?? name),
+                        languageCode: t.languageCode as LanguageCode,
+                        name: getTranslationString(t, 'name', name),
                     }));
                 }
             }
@@ -212,41 +238,54 @@ export class FacetValueHandler implements LoaderHandler {
         input: RecordObject[],
         onRecordError?: OnRecordErrorCallback,
         _errorHandling?: ErrorHandlingConfig,
-    ): Promise<ExecutionResult> {
-        let ok = 0, fail = 0;
+    ): Promise<LoaderExecutionResult> {
+        let ok = 0, fail = 0, skipped = 0;
         const cfg = (step.config ?? {}) as FacetValueUpsertConfig;
         const channelCache = new Map<string, ID>();
 
         for (const rec of input) {
             try {
-                const record = rec as FacetRecord;
                 const facetCodeField = cfg.facetCodeField ?? 'facetCode';
                 const codeField = cfg.codeField ?? 'code';
                 const nameField = cfg.nameField ?? 'name';
-                const facetCode = String(record[facetCodeField] ?? '');
-                const code = String(record[codeField] ?? '');
-                let name = String(record[nameField] ?? code);
+                const facetCode = getStringValue(rec, facetCodeField);
+                const code = getStringValue(rec, codeField);
+                let name = getStringValue(rec, nameField) ?? code ?? '';
 
                 // Multi-language: extract name from first translation if missing
                 if ((!name || name === code) && cfg.translationsField) {
                     const raw = rec[cfg.translationsField];
                     if (raw) {
                         const parsed = parseTranslationsInput(raw);
-                        if (parsed.length > 0 && parsed[0].name) {
-                            name = String(parsed[0].name);
+                        if (parsed[0]) {
+                            name = getTranslationString(parsed[0], 'name') ?? name;
                         }
                     }
                 }
 
-                if (!facetCode || !code) { fail++; continue; }
+                if (!facetCode || !code) {
+                    if (onRecordError) {
+                        await onRecordError(
+                            step.key,
+                            'Missing required field: facetCode or code',
+                            rec,
+                        );
+                    }
+                    fail++;
+                    continue;
+                }
 
                 const customFieldsKey = cfg.customFieldsField ?? 'customFields';
                 const customFields = getObjectValue(rec, customFieldsKey);
 
                 let opCtx = ctx;
                 if (cfg.channel) {
-                    const req = await this.requestContextService.create({ apiType: ctx.apiType, channelOrToken: cfg.channel });
-                    if (req) opCtx = req;
+                    opCtx = await createChannelCodeRequestContext(
+                        this.requestContextService,
+                        this.channelService,
+                        ctx,
+                        cfg.channel,
+                    );
                 }
 
                 // Build translations
@@ -266,7 +305,8 @@ export class FacetValueHandler implements LoaderHandler {
 
                 if (existing) {
                     if (strategy === LoadStrategy.CREATE) {
-                        ok++;
+                        assertCreateDuplicateCanBeSkipped(cfg, 'facet value', `${facetCode}/${code}`);
+                        skipped++;
                         continue;
                     }
                     const updated = await this.facetValueService.update(opCtx, {
@@ -297,7 +337,14 @@ export class FacetValueHandler implements LoaderHandler {
                         if (channelIds.length > 0) {
                             try {
                                 await this.channelService.assignToChannels(opCtx, FacetValue, facetValueId, channelIds);
-                            } catch { /* channel assignment is best-effort */ }
+                            } catch (error) {
+                                this.logger.warn('Failed to assign facet value to record channels', {
+                                    facetValueId,
+                                    channelIds,
+                                    error: getErrorMessage(error),
+                                });
+                                throw error;
+                            }
                         }
                     }
                 }
@@ -308,7 +355,7 @@ export class FacetValueHandler implements LoaderHandler {
                 fail++;
             }
         }
-        return { ok, fail };
+        return { ok, fail, skipped };
     }
 
     /**
@@ -327,8 +374,8 @@ export class FacetValueHandler implements LoaderHandler {
                 const parsed = parseTranslationsInput(raw);
                 if (parsed.length > 0) {
                     return parsed.map(t => ({
-                        languageCode: String(t.languageCode) as LanguageCode,
-                        name: String(t.name ?? name),
+                        languageCode: t.languageCode as LanguageCode,
+                        name: getTranslationString(t, 'name', name),
                     }));
                 }
             }

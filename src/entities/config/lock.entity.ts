@@ -18,10 +18,10 @@ export class DataHubLock {
     @Column({ type: 'varchar', length: 255, name: 'owner' })
     owner!: string;
 
-    @Column({ type: 'datetime', name: 'acquired_at', default: () => 'CURRENT_TIMESTAMP' })
+    @Column({ type: Date, name: 'acquired_at', default: () => 'CURRENT_TIMESTAMP' })
     acquiredAt!: Date;
 
-    @Column({ type: 'datetime', name: 'expires_at' })
+    @Column({ type: Date, name: 'expires_at' })
     expiresAt!: Date;
 
     @Column({ type: 'simple-json', name: 'metadata', nullable: true })

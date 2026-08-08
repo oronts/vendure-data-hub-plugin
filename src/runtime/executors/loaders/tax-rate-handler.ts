@@ -10,20 +10,25 @@ import {
     TaxRateService,
     TaxCategoryService,
     ZoneService,
-    TaxCategory,
     ID,
 } from '@vendure/core';
 import { PipelineStepDefinition, ErrorHandlingConfig, JsonObject } from '../../../types/index';
-import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
+import { assertCreateDuplicateCanBeSkipped, CreateDuplicateHandlingConfig } from './duplicate-handling';
+import { RecordObject, OnRecordErrorCallback, LoaderExecutionResult } from '../../executor-types';
 import { LoaderHandler } from './types';
 import { LoadStrategy } from '../../../constants/enums';
 import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
-import { getStringValue, getNumberValue } from '../../../loaders/shared-helpers';
+import {
+    getBooleanValue,
+    getNumberValue,
+    getStringValue,
+} from '../../../loaders/shared-helpers';
+import { resolveEntityReferenceId } from '../../../loaders/entity-reference.helpers';
 
 /**
  * Configuration for the tax rate handler step (mirrors loader-handler-registry.ts schema)
  */
-interface TaxRateHandlerConfig {
+interface TaxRateHandlerConfig extends CreateDuplicateHandlingConfig {
     nameField?: string;
     valueField?: string;
     enabledField?: string;
@@ -43,10 +48,6 @@ function getConfig(config: JsonObject): TaxRateHandlerConfig {
 
 @Injectable()
 export class TaxRateHandler implements LoaderHandler {
-    /** Cache for resolved IDs to reduce repeated lookups within a single batch */
-    private taxCategoryCache = new Map<string, ID>();
-    private zoneCache = new Map<string, ID>();
-
     constructor(
         private taxRateService: TaxRateService,
         private taxCategoryService: TaxCategoryService,
@@ -59,9 +60,12 @@ export class TaxRateHandler implements LoaderHandler {
         input: RecordObject[],
         onRecordError?: OnRecordErrorCallback,
         _errorHandling?: ErrorHandlingConfig,
-    ): Promise<ExecutionResult> {
+    ): Promise<LoaderExecutionResult> {
+        const taxCategoryCache = new Map<string, ID>();
+        const zoneCache = new Map<string, ID>();
         let ok = 0;
         let fail = 0;
+        let skipped = 0;
         const cfg = getConfig(step.config);
 
         for (const rec of input) {
@@ -93,14 +97,14 @@ export class TaxRateHandler implements LoaderHandler {
                 }
 
                 // Resolve enabled flag
-                const enabledRaw = rec[enabledField];
-                const enabled = enabledRaw === undefined ? true : Boolean(enabledRaw);
+                const enabled = getBooleanValue(rec, enabledField) ?? true;
 
                 // Resolve tax category
                 const taxCategoryId = await this.resolveTaxCategoryId(
                     ctx,
+                    taxCategoryCache,
                     getStringValue(rec, taxCategoryCodeField),
-                    getStringValue(rec, taxCategoryIdField),
+                    getReferenceId(rec, taxCategoryIdField),
                 );
                 if (!taxCategoryId) {
                     fail++;
@@ -113,8 +117,9 @@ export class TaxRateHandler implements LoaderHandler {
                 // Resolve zone
                 const zoneId = await this.resolveZoneId(
                     ctx,
+                    zoneCache,
                     getStringValue(rec, zoneCodeField),
-                    getStringValue(rec, zoneIdField),
+                    getReferenceId(rec, zoneIdField),
                 );
                 if (!zoneId) {
                     fail++;
@@ -130,7 +135,8 @@ export class TaxRateHandler implements LoaderHandler {
 
                 if (existing) {
                     if (strategy === LoadStrategy.CREATE) {
-                        ok++;
+                        assertCreateDuplicateCanBeSkipped(cfg, 'tax rate', name);
+                        skipped++;
                         continue;
                     }
                     await this.taxRateService.update(ctx, {
@@ -165,7 +171,7 @@ export class TaxRateHandler implements LoaderHandler {
                 fail++;
             }
         }
-        return { ok, fail };
+        return { ok, fail, skipped };
     }
 
     private async findExistingByName(ctx: RequestContext, name: string): Promise<{ id: ID } | null> {
@@ -176,50 +182,54 @@ export class TaxRateHandler implements LoaderHandler {
 
     private async resolveTaxCategoryId(
         ctx: RequestContext,
+        cache: Map<string, ID>,
         code?: string,
-        idStr?: string,
+        id?: ID,
     ): Promise<ID | null> {
-        if (idStr) return idStr as ID;
-        if (!code) return null;
-
-        if (this.taxCategoryCache.has(code)) {
-            return this.taxCategoryCache.get(code) ?? null;
+        if (id !== undefined && code !== undefined) {
+            throw new Error('Provide either taxCategoryId or taxCategoryCode, not both');
         }
-
-        const categories = await this.taxCategoryService.findAll(ctx);
-        const list = Array.isArray(categories)
-            ? categories
-            : (categories as unknown as { items: TaxCategory[] }).items || [];
-        const match = list.find(
-            (tc: TaxCategory) => tc.name.toLowerCase() === code.toLowerCase(),
+        const cacheKey = id !== undefined ? `id:${String(id)}` : code ? `code:${code}` : undefined;
+        if (cacheKey && cache.has(cacheKey)) {
+            return cache.get(cacheKey) ?? null;
+        }
+        const resolved = await resolveEntityReferenceId(
+            ctx,
+            this.taxCategoryService,
+            'Tax category',
+            { id, code },
         );
-        if (match) {
-            this.taxCategoryCache.set(code, match.id);
-            return match.id;
-        }
-        return null;
+        if (cacheKey && resolved !== null) cache.set(cacheKey, resolved);
+        return resolved;
     }
 
     private async resolveZoneId(
         ctx: RequestContext,
+        cache: Map<string, ID>,
         code?: string,
-        idStr?: string,
+        id?: ID,
     ): Promise<ID | null> {
-        if (idStr) return idStr as ID;
-        if (!code) return null;
-
-        if (this.zoneCache.has(code)) {
-            return this.zoneCache.get(code) ?? null;
+        if (id !== undefined && code !== undefined) {
+            throw new Error('Provide either zoneId or zoneCode, not both');
         }
-
-        const zones = await this.zoneService.findAll(ctx);
-        const match = zones.items.find(
-            z => z.name.toLowerCase() === code.toLowerCase(),
+        const cacheKey = id !== undefined ? `id:${String(id)}` : code ? `code:${code}` : undefined;
+        if (cacheKey && cache.has(cacheKey)) {
+            return cache.get(cacheKey) ?? null;
+        }
+        const resolved = await resolveEntityReferenceId(
+            ctx,
+            this.zoneService,
+            'Zone',
+            { id, code },
         );
-        if (match) {
-            this.zoneCache.set(code, match.id);
-            return match.id;
-        }
-        return null;
+        if (cacheKey && resolved !== null) cache.set(cacheKey, resolved);
+        return resolved;
     }
+}
+
+function getReferenceId(record: RecordObject, field: string): ID | undefined {
+    const value = record[field];
+    return typeof value === 'string' || typeof value === 'number'
+        ? value
+        : undefined;
 }

@@ -54,10 +54,6 @@ export const BATCH_SIZES = {
 } as const;
 
 export const QUERY_LIMITS = {
-    /** Maximum items when fetching "all" records (safety limit to prevent memory issues) */
-    ALL_ITEMS: 999,
-    /** Maximum secrets to fetch in a single list query */
-    SECRETS_LIST: 200,
     /** Default limit for export queries */
     EXPORT_DEFAULT: 10000,
     /** Default page size for paginated lists */

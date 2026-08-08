@@ -4,7 +4,8 @@
  * Utilities for calculating analytics metrics.
  */
 
-import { TRUNCATION } from '../../constants/index';
+import { RunStatus, TRUNCATION } from '../../constants/index';
+import type { PipelineMetrics } from '../../types';
 
 /**
  * Calculate percentile from sorted values
@@ -43,29 +44,37 @@ export function calculateAverage(values: number[]): number {
     return Math.round(values.reduce((a, b) => a + b, 0) / values.length);
 }
 
-/**
- * Pipeline run metrics shape
- */
-interface RunMetrics {
-    recordsProcessed?: number;
-    recordsFailed?: number;
-    durationMs?: number;
-    [key: string]: unknown;
+function metricValue(value: number | undefined): number {
+    return typeof value === 'number' && Number.isFinite(value) && value >= 0
+        ? value
+        : 0;
 }
 
 /**
  * Extract metrics from a pipeline run
  */
-export function extractRunMetrics(metrics: RunMetrics | null | undefined): {
+export function extractRunMetrics(metrics: PipelineMetrics | null | undefined): {
     recordsProcessed: number;
     recordsFailed: number;
     durationMs: number;
 } {
     return {
-        recordsProcessed: metrics?.recordsProcessed ?? 0,
-        recordsFailed: metrics?.recordsFailed ?? 0,
-        durationMs: metrics?.durationMs ?? 0,
+        recordsProcessed: metricValue(metrics?.totalRecords ?? metrics?.processed),
+        recordsFailed: metricValue(metrics?.failed),
+        durationMs: metricValue(metrics?.durationMs),
     };
+}
+
+export function isSuccessfulRunStatus(status: RunStatus): boolean {
+    return status === RunStatus.COMPLETED;
+}
+
+export function isFailedRunStatus(status: RunStatus): boolean {
+    return status === RunStatus.FAILED || status === RunStatus.TIMEOUT;
+}
+
+export function isOutcomeRunStatus(status: RunStatus): boolean {
+    return isSuccessfulRunStatus(status) || isFailedRunStatus(status);
 }
 
 /**

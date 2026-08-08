@@ -13,13 +13,15 @@ import {
     EntityFieldSchema,
     TargetOperation,
 } from '../../types/index';
-import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
-import { LOGGER_CONTEXTS } from '../../constants/index';
+import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger/datahub-logger';
+import { LOGGER_CONTEXTS } from '../../constants/core';
 import { PAGINATION } from '../../constants/defaults';
 import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
 import {
     BaseEntityLoader,
     ExistingEntityLookupResult,
+    getLoaderExecutionCache,
+    LoaderExecutionState,
     LoaderMetadata,
     ValidationBuilder,
     EntityLookupHelper,
@@ -33,15 +35,15 @@ import {
     resolveZoneId,
     shouldUpdateField,
 } from './helpers';
+import { getErrorMessage } from '../../utils/error.utils';
+
+const REFERENCE_CACHE_NAMESPACE = 'tax-rate-loader:references';
 
 /** Loads TaxRate entities via TaxRateService. Supports CREATE, UPDATE, UPSERT. */
 @Injectable()
 export class TaxRateLoader extends BaseEntityLoader<TaxRateInput, TaxRate> {
     protected readonly logger: DataHubLogger;
     protected readonly metadata: LoaderMetadata = TAX_RATE_LOADER_METADATA;
-
-    // Cache for resolved IDs to avoid repeated lookups
-    private resolverCache = new Map<string, ID>();
 
     private readonly lookupHelper: EntityLookupHelper<TaxRateService, TaxRate, TaxRateInput>;
 
@@ -69,11 +71,6 @@ export class TaxRateLoader extends BaseEntityLoader<TaxRateInput, TaxRate> {
             .addIdStrategy((ctx, svc, id) => svc.findOne(ctx, id) as Promise<TaxRate | null>);
     }
 
-    protected preprocessRecords(records: TaxRateInput[]): TaxRateInput[] {
-        this.resolverCache.clear();
-        return records;
-    }
-
     protected getDuplicateErrorMessage(record: TaxRateInput): string {
         return `Tax rate "${record.name}" already exists`;
     }
@@ -90,7 +87,12 @@ export class TaxRateLoader extends BaseEntityLoader<TaxRateInput, TaxRate> {
         ctx: RequestContext,
         record: TaxRateInput,
         operation: TargetOperation,
+        executionState?: LoaderExecutionState,
     ): Promise<EntityValidationResult> {
+        const resolverCache = getLoaderExecutionCache(
+            executionState,
+            REFERENCE_CACHE_NAMESPACE,
+        );
         const builder = new ValidationBuilder()
             .requireStringForCreate('name', record.name, operation, 'Tax rate name is required');
 
@@ -106,39 +108,53 @@ export class TaxRateLoader extends BaseEntityLoader<TaxRateInput, TaxRate> {
                 );
             }
 
-            // Tax category validation
-            if (!record.taxCategoryCode && !record.taxCategoryId) {
+            if (record.taxCategoryCode !== undefined && record.taxCategoryId !== undefined) {
+                builder.addError(
+                    'taxCategoryId',
+                    'Provide either taxCategoryId or taxCategoryCode, not both',
+                    'INVALID_VALUE',
+                );
+            } else if (record.taxCategoryCode === undefined && record.taxCategoryId === undefined) {
                 builder.addError('taxCategoryCode', 'Tax category code or ID is required', 'REQUIRED');
             } else {
-                const taxCategoryId = await resolveTaxCategoryId(
-                    ctx,
-                    this.taxCategoryService,
-                    record,
-                    this.resolverCache,
-                );
-                if (!taxCategoryId) {
+                try {
+                    const taxCategoryId = await resolveTaxCategoryId(
+                        ctx,
+                        this.taxCategoryService,
+                        record,
+                        resolverCache,
+                    );
+                    if (!taxCategoryId) throw new Error('Tax category code was not found');
+                } catch (error) {
                     builder.addError(
-                        'taxCategoryCode',
-                        `Tax category "${record.taxCategoryCode}" not found`,
+                        record.taxCategoryId !== undefined ? 'taxCategoryId' : 'taxCategoryCode',
+                        getErrorMessage(error),
                         'TAX_CATEGORY_NOT_FOUND',
                     );
                 }
             }
 
-            // Zone validation
-            if (!record.zoneCode && !record.zoneId) {
+            if (record.zoneCode !== undefined && record.zoneId !== undefined) {
+                builder.addError(
+                    'zoneId',
+                    'Provide either zoneId or zoneCode, not both',
+                    'INVALID_VALUE',
+                );
+            } else if (record.zoneCode === undefined && record.zoneId === undefined) {
                 builder.addError('zoneCode', 'Zone code or ID is required', 'REQUIRED');
             } else {
-                const zoneId = await resolveZoneId(
-                    ctx,
-                    this.zoneService,
-                    record,
-                    this.resolverCache,
-                );
-                if (!zoneId) {
+                try {
+                    const zoneId = await resolveZoneId(
+                        ctx,
+                        this.zoneService,
+                        record,
+                        resolverCache,
+                    );
+                    if (!zoneId) throw new Error('Zone code was not found');
+                } catch (error) {
                     builder.addError(
-                        'zoneCode',
-                        `Zone "${record.zoneCode}" not found`,
+                        record.zoneId !== undefined ? 'zoneId' : 'zoneCode',
+                        getErrorMessage(error),
                         'ZONE_NOT_FOUND',
                     );
                 }
@@ -184,8 +200,7 @@ export class TaxRateLoader extends BaseEntityLoader<TaxRateInput, TaxRate> {
                     key: 'taxCategoryCode',
                     label: 'Tax Category Code',
                     type: 'string',
-                    required: true,
-                    description: 'Code/name of the tax category this rate belongs to',
+                    description: 'Code stored in the TaxCategory customFields.code field',
                     example: 'standard',
                 },
                 {
@@ -198,8 +213,7 @@ export class TaxRateLoader extends BaseEntityLoader<TaxRateInput, TaxRate> {
                     key: 'zoneCode',
                     label: 'Zone Code',
                     type: 'string',
-                    required: true,
-                    description: 'Code/name of the zone where this tax rate applies',
+                    description: 'Code stored in the Zone customFields.code field',
                     example: 'UK',
                 },
                 {
@@ -218,19 +232,26 @@ export class TaxRateLoader extends BaseEntityLoader<TaxRateInput, TaxRate> {
         };
     }
 
-    protected async createEntity(context: LoaderContext, record: TaxRateInput): Promise<ID | null> {
+    protected async createEntity(
+        context: LoaderContext,
+        record: TaxRateInput,
+        executionState?: LoaderExecutionState,
+    ): Promise<ID | null> {
         const { ctx } = context;
+        const resolverCache = getLoaderExecutionCache(
+            executionState,
+            REFERENCE_CACHE_NAMESPACE,
+        );
 
         // Resolve tax category ID
         const taxCategoryId = await resolveTaxCategoryId(
             ctx,
             this.taxCategoryService,
             record,
-            this.resolverCache,
+            resolverCache,
         );
         if (!taxCategoryId) {
-            this.logger.error(`Tax category "${record.taxCategoryCode}" not found during create`);
-            return null;
+            throw new Error('Tax category code was not found during create');
         }
 
         // Resolve zone ID
@@ -238,11 +259,10 @@ export class TaxRateLoader extends BaseEntityLoader<TaxRateInput, TaxRate> {
             ctx,
             this.zoneService,
             record,
-            this.resolverCache,
+            resolverCache,
         );
         if (!zoneId) {
-            this.logger.error(`Zone "${record.zoneCode}" not found during create`);
-            return null;
+            throw new Error('Zone code was not found during create');
         }
 
         const taxRate = await this.taxRateService.create(ctx, {
@@ -258,31 +278,56 @@ export class TaxRateLoader extends BaseEntityLoader<TaxRateInput, TaxRate> {
         return taxRate.id;
     }
 
-    protected async updateEntity(context: LoaderContext, taxRateId: ID, record: TaxRateInput): Promise<void> {
+    protected async updateEntity(
+        context: LoaderContext,
+        taxRateId: ID,
+        record: TaxRateInput,
+        executionState?: LoaderExecutionState,
+    ): Promise<void> {
         const { ctx, options } = context;
+        const resolverCache = getLoaderExecutionCache(
+            executionState,
+            REFERENCE_CACHE_NAMESPACE,
+        );
 
         // Resolve tax category ID if needed
         let taxCategoryId: ID | undefined;
-        if ((record.taxCategoryCode || record.taxCategoryId) && shouldUpdateField('taxCategoryId', options.updateOnlyFields)) {
+        const taxCategoryField = record.taxCategoryId !== undefined
+            ? 'taxCategoryId'
+            : 'taxCategoryCode';
+        if (
+            (record.taxCategoryCode !== undefined || record.taxCategoryId !== undefined)
+            && shouldUpdateField(taxCategoryField, options.updateOnlyFields)
+        ) {
             taxCategoryId = await resolveTaxCategoryId(
                 ctx,
                 this.taxCategoryService,
                 record,
-                this.resolverCache,
+                resolverCache,
             ) || undefined;
+            if (!taxCategoryId) {
+                throw new Error('Tax category code was not found during update');
+            }
         }
 
         // Resolve zone ID if needed
         let zoneId: ID | undefined;
-        if ((record.zoneCode || record.zoneId) && shouldUpdateField('zoneId', options.updateOnlyFields)) {
+        const zoneField = record.zoneId !== undefined ? 'zoneId' : 'zoneCode';
+        if (
+            (record.zoneCode !== undefined || record.zoneId !== undefined)
+            && shouldUpdateField(zoneField, options.updateOnlyFields)
+        ) {
             zoneId = await resolveZoneId(
                 ctx,
                 this.zoneService,
                 record,
-                this.resolverCache,
+                resolverCache,
             ) || undefined;
-        }
+            if (!zoneId) {
+                throw new Error('Zone code was not found during update');
+            }
 
+        }
         const updateInput: Record<string, unknown> = { id: taxRateId };
 
         if (record.name !== undefined && shouldUpdateField('name', options.updateOnlyFields)) {

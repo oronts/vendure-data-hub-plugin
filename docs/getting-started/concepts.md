@@ -110,17 +110,25 @@ Connections are referenced by code in extract and export steps:
 
 Secrets store sensitive values like API keys and passwords. They are:
 
-- Encrypted at rest
+- Database-backed inline values are AES-256-GCM encrypted with a required master key; environment-backed values are not stored
 - Never logged or exposed in API responses
 - Referenced by code in step configurations
 
 ```typescript
 .extract('api-call', {
     adapterCode: 'httpApi',
-    url: 'https://api.example.com/products',
-    bearerTokenSecretCode: 'api-key',  // References saved secret
+    connectionCode: 'catalog-api',
+    url: '/products',
+    auth: {
+        type: 'BEARER',
+        secretCode: 'api-key',  // References saved secret
+    },
 })
 ```
+
+Secret-backed HTTP authentication must reference a saved connection with a
+base URL. Relative paths resolve against that URL; absolute URLs and redirects
+must keep the connection's exact origin.
 
 ## Pipeline Runs
 
@@ -130,16 +138,17 @@ A run is a single execution of a pipeline. Each run tracks:
 - **Timing** - Start time, end time, duration
 - **Metrics** - Records processed, records failed
 - **Logs** - Execution logs for debugging
-- **Checkpoints** - Progress markers for resumption
+- **Checkpoints** - Adapter-specific offsets, cursors, or approval state
 
 ## Checkpoints
 
-Checkpoints allow a failed pipeline to resume from the last successful record instead of starting over. The plugin automatically saves checkpoint data when:
-
-- A batch of records is successfully processed
-- A step completes
-
-If a run fails, rerunning the pipeline will skip already-processed records.
+Checkpoints are pipeline-scoped, adapter-managed state. Extractors and other
+components read and update only the offsets or cursors they implement. During a
+normal execution, `setCheckpoint()` updates in-memory state and dirty state is
+persisted when execution finalizes; a terminal failure does not automatically
+save the last successful record. Later runs load the existing checkpoint unless
+an adapter-specific reset option, such as a file extractor's
+`resetCheckpoint`, is used.
 
 ## Templates
 
@@ -165,11 +174,13 @@ Custom templates can be registered via plugin options or the `TemplateRegistrySe
 
 ## Scripts & Hooks
 
-Scripts are named functions that can modify records at any stage of pipeline execution. Register scripts via plugin options and reference them in pipeline hook definitions:
+Scripts are named functions that can modify records at the 18 data-processing
+stages. Register scripts via plugin options and reference them in pipeline hook
+definitions. Lifecycle and error stages are observation-only:
 
 | Hook Type | Purpose | Can Modify Records |
 |-----------|---------|-------------------|
-| `INTERCEPTOR` | Inline JavaScript code (sandboxed) | Yes |
+| `INTERCEPTOR` | Inline JavaScript for trusted administrators, with restricted globals and a timeout | Yes |
 | `SCRIPT` | Pre-registered TypeScript functions | Yes |
 | `WEBHOOK` | HTTP notifications | No |
 | `EMIT` | Vendure domain events | No |
@@ -185,12 +196,17 @@ Control how records flow through steps:
     throughput: {
         batchSize: 100,         // Process 100 records at a time
         concurrency: 4,         // Process 4 batches in parallel
-        rateLimitRps: 10,       // Max 10 requests per second
-        pauseOnErrorRate: { threshold: 0.5, intervalSec: 60 },  // Pause if error rate exceeds 50%
+        rateLimitRps: 10,       // Max 10 aggregate load-batch starts per second
+        pauseOnErrorRate: { threshold: 0.5, intervalSec: 60 },  // React at 50% failures in the rolling 60-second window
         drainStrategy: 'BACKOFF', // 'BACKOFF' | 'SHED' | 'QUEUE'
     }
 }
 ```
+
+Batch size is `1-10,000`, concurrency is `1-16`, and the rate limit is
+`0-1,000` batch starts per second (`0` disables pacing). The error threshold is
+greater than `0` and at most `1`. Its optional interval is `0.1-3,600` seconds;
+BACKOFF defaults to 1 second and QUEUE defaults to 5 seconds.
 
 ## Load Strategies
 

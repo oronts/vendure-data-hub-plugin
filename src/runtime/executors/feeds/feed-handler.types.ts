@@ -8,6 +8,9 @@ import { DataHubLogger } from '../../../services/logger';
 import { OnRecordErrorCallback, RecordObject } from '../../executor-types';
 import { BaseFeedConfig } from '../../config-types';
 import { getPath } from '../../utils';
+import { majorToMinorUnits, minorToMajorUnits } from '../../../utils/money.utils';
+import { FILE_STORAGE, getOutputPath } from '../../../constants';
+import { resolveSafeOutputPath, writeFileSafely } from '../../../utils/safe-output-path.utils';
 
 /**
  * Common field mappings resolved from feed configuration
@@ -22,6 +25,8 @@ export interface FeedFieldMappings {
     gtinField: string;
     availabilityField: string;
     currency: string;
+    priceUnit: 'MINOR' | 'MAJOR';
+    pricePrecision: number;
 }
 
 /**
@@ -50,6 +55,18 @@ export interface FeedHandlerResult {
  */
 export type FeedHandlerFn = (params: FeedHandlerParams) => Promise<FeedHandlerResult>;
 
+export async function writeFeedFile(
+    config: BaseFeedConfig,
+    pipelineCode: string,
+    extension: string,
+    content: string,
+): Promise<string> {
+    const relativeOutputPath = config.outputPath ?? getOutputPath(pipelineCode, extension);
+    const outputPath = await resolveSafeOutputPath(FILE_STORAGE.EXPORT_ROOT, '.', relativeOutputPath);
+    await writeFileSafely(outputPath, content);
+    return outputPath;
+}
+
 /**
  * Extract a string ID from a record, falling back to 'sku' then empty string
  */
@@ -58,6 +75,17 @@ export function getRecordId(rec: RecordObject): string {
     return String(id);
 }
 
+
+export function formatFeedAmount(value: unknown, fields: FeedFieldMappings): string {
+    const majorUnits = fields.priceUnit === 'MINOR'
+        ? minorToMajorUnits(value, fields.pricePrecision)
+        : minorToMajorUnits(majorToMinorUnits(value, fields.pricePrecision), fields.pricePrecision);
+    return majorUnits.toFixed(fields.pricePrecision);
+}
+
+export function formatFeedPrice(value: unknown, fields: FeedFieldMappings): string {
+    return `${formatFeedAmount(value, fields)} ${fields.currency}`;
+}
 /**
  * Map a record to a standard feed item using the configured field mappings
  */
@@ -68,7 +96,7 @@ export function mapToFeedItem(rec: RecordObject, fields: FeedFieldMappings): Rec
         description: String(getPath(rec, fields.descriptionField) ?? ''),
         link: String(getPath(rec, fields.linkField) ?? ''),
         image_link: String(getPath(rec, fields.imageField) ?? ''),
-        price: `${getPath(rec, fields.priceField) ?? 0} ${fields.currency}`,
+        price: formatFeedPrice(getPath(rec, fields.priceField), fields),
         brand: String(getPath(rec, fields.brandField) ?? ''),
         gtin: String(getPath(rec, fields.gtinField) ?? ''),
         availability: String(getPath(rec, fields.availabilityField) ?? 'in stock'),

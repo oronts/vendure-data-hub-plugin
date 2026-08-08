@@ -1,108 +1,117 @@
 import * as React from 'react';
-import { STEP_TYPE, DATAHUB_API_WEBHOOK } from '../../../constants';
-import type { PipelineDefinition, PipelineStep } from '../../../types';
+import { Trans, useLingui } from '@lingui/react/macro';
+import { WEBHOOK_AUTH_HEADERS } from '../../../../shared/constants';
+import {
+    DATAHUB_API_WEBHOOK,
+    PLACEHOLDERS,
+    STEP_TYPE,
+} from '../../../constants';
+import type { PipelineDefinition } from '../../../types';
+import { buildDataHubApiUrl } from '../../../utils/api-url';
+import {
+    buildWebhookExampleCurl,
+    type WebhookTriggerDetails,
+} from './pipeline-webhook-example';
 
 export interface PipelineWebhookInfoProps {
-    /** Function that returns the current pipeline definition */
-    definition: () => PipelineDefinition | undefined;
+    definition: PipelineDefinition | undefined;
+    pipelineCode: string | undefined;
 }
 
-interface WebhookTriggerInfo {
-    key: string;
-    requiresIdk: boolean;
-    sig: boolean;
-    headerName: string;
-    authType: string;
-}
-
-/**
- * Displays webhook trigger information including URL and example cURL command.
- * Shows info for ALL webhook triggers configured on the pipeline.
- */
 export function PipelineWebhookInfo({
     definition,
+    pipelineCode,
 }: Readonly<PipelineWebhookInfoProps>) {
-    const def = definition() ?? {};
-    const steps = def.steps ?? [];
+    const { t } = useLingui();
+    const steps = definition?.steps ?? [];
 
-    // Find ALL webhook triggers
-    const webhookTriggers: WebhookTriggerInfo[] = steps
-        .filter((step): step is PipelineStep =>
-            step.type === STEP_TYPE.TRIGGER &&
-            (step.config as Record<string, unknown>)?.type === 'WEBHOOK'
-        )
-        .map(trigger => {
-            const cfg = trigger.config as Record<string, unknown> ?? {};
-            return {
-                key: trigger.key,
-                requiresIdk: Boolean(cfg.requireIdempotencyKey),
-                sig: cfg.signature === 'hmac-sha256' || cfg.authentication === 'hmac',
-                headerName: String(cfg.hmacHeaderName ?? cfg.headerName ?? 'x-datahub-signature'),
-                authType: String(cfg.authentication ?? 'NONE'),
-            };
-        });
+    const webhookTriggers: WebhookTriggerDetails[] = steps.flatMap(step => {
+        const config = step.config;
+        if (step.type !== STEP_TYPE.TRIGGER || config.type !== 'WEBHOOK') {
+            return [];
+        }
+        return [{
+            key: step.key,
+            requiresIdempotencyKey: Boolean(config.requireIdempotencyKey),
+            hmacHeaderName: typeof config.hmacHeaderName === 'string'
+                ? config.hmacHeaderName
+                : WEBHOOK_AUTH_HEADERS.HMAC_SIGNATURE,
+            idempotencyHeader: typeof config.idempotencyKeyHeader === 'string'
+                ? config.idempotencyKeyHeader
+                : WEBHOOK_AUTH_HEADERS.IDEMPOTENCY_KEY,
+            authType: typeof config.authentication === 'string'
+                ? config.authentication
+                : 'NONE',
+            apiKeyHeaderName: typeof config.apiKeyHeaderName === 'string'
+                ? config.apiKeyHeaderName
+                : WEBHOOK_AUTH_HEADERS.API_KEY,
+            apiKeyPrefix: typeof config.apiKeyPrefix === 'string'
+                ? config.apiKeyPrefix
+                : '',
+            jwtHeaderName: typeof config.jwtHeaderName === 'string'
+                ? config.jwtHeaderName
+                : WEBHOOK_AUTH_HEADERS.JWT,
+        }];
+    });
 
     if (webhookTriggers.length === 0) {
         return null;
     }
 
-    const pipelineCode = def.code ?? 'PIPELINE_CODE';
-    const origin = typeof window !== 'undefined' ? window.location.origin : '';
-    const url = `${origin}${DATAHUB_API_WEBHOOK(pipelineCode)}`;
+    const resolvedPipelineCode = pipelineCode?.trim() || PLACEHOLDERS.PIPELINE_CODE;
+    const url = buildDataHubApiUrl(
+        DATAHUB_API_WEBHOOK(resolvedPipelineCode),
+    );
 
-    // Generate cURL for first webhook (as example)
     const firstWebhook = webhookTriggers[0];
-    const curlParts = [
-        `curl -X POST '${url}'`,
-        `  -H 'Content-Type: application/json'`,
-    ];
-
-    if (firstWebhook.requiresIdk) {
-        curlParts.push(`  -H 'X-Idempotency-Key: <unique-id>'`);
-    }
-
-    if (firstWebhook.sig) {
-        curlParts.push(`  -H '${firstWebhook.headerName}: <hmac-of-body>'`);
-    }
-
-    curlParts.push(`  -d '{"records":[{"id":"123","name":"Example"}]}'`);
-
-    const curl = curlParts.join(' \\\n');
+    const curl = buildWebhookExampleCurl(url, firstWebhook);
+    const triggerCountLabel = webhookTriggers.length === 1
+        ? t`${webhookTriggers.length} webhook trigger`
+        : t`${webhookTriggers.length} webhook triggers`;
 
     return (
         <div className="border rounded-md p-3 space-y-2">
             <div className="text-sm font-medium">
-                Webhook Trigger{webhookTriggers.length > 1 ? 's' : ''} ({webhookTriggers.length})
+                {triggerCountLabel}
             </div>
             <div className="text-sm">
                 POST{' '}
                 <code className="font-mono">
-                    {DATAHUB_API_WEBHOOK(pipelineCode)}
+                    {DATAHUB_API_WEBHOOK(resolvedPipelineCode)}
                 </code>
             </div>
 
             {webhookTriggers.length > 1 && (
                 <div className="text-xs text-muted-foreground">
-                    Multiple webhook triggers configured - request will authenticate against any matching trigger
+                    <Trans>Multiple webhook triggers are configured. The request authenticates against any matching trigger.</Trans>
                 </div>
             )}
 
             {webhookTriggers.map((webhook, index) => (
                 <div key={webhook.key} className="text-sm border-l-2 border-muted pl-2 py-1">
                     <div className="font-medium text-xs text-muted-foreground">
-                        {webhookTriggers.length > 1 ? `Webhook ${index + 1}: ` : ''}
+                        {webhookTriggers.length > 1
+                            ? `${t`Webhook ${index + 1}:`} `
+                            : ''}
                         {webhook.key}
                     </div>
                     <div className="text-xs">
-                        Auth: <code className="font-mono">{webhook.authType}</code>
-                        {webhook.requiresIdk && ' • Requires Idempotency Key'}
-                        {webhook.sig && ` • HMAC header: ${webhook.headerName}`}
+                        <Trans>Authentication:</Trans>{' '}
+                        <code className="font-mono">{webhook.authType}</code>
+                        {webhook.requiresIdempotencyKey && (
+                            <> • <Trans>Requires idempotency key</Trans></>
+                        )}
+                        {webhook.authType === 'HMAC' && (
+                            <> • <Trans>HMAC header: {webhook.hmacHeaderName}</Trans></>
+                        )}
                     </div>
                 </div>
             ))}
 
             <div>
-                <div className="text-sm font-medium mb-1">Example cURL</div>
+                <div className="text-sm font-medium mb-1">
+                    <Trans>Example cURL</Trans>
+                </div>
                 <pre className="bg-muted p-2 rounded text-xs overflow-auto">
                     {curl}
                 </pre>

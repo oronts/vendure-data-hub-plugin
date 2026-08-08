@@ -1,0 +1,95 @@
+services:
+  redis-primary:
+    image: redis:7.2-alpine@sha256:dfa18828cbc07b3ae6a95ec7343f6c214fdee2d836197b4be8e9904420762cd8
+    command:
+      - redis-server
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      timeout: 2s
+      retries: 20
+    tmpfs:
+      - /data
+
+  redis-replica-1: &redis-replica
+    image: redis:7.2-alpine@sha256:dfa18828cbc07b3ae6a95ec7343f6c214fdee2d836197b4be8e9904420762cd8
+    command:
+      - /bin/sh
+      - -ec
+      - primary_ip=$$(getent hosts redis-primary | awk 'NR == 1 { print $$1 }'); test -n "$$primary_ip"; exec redis-server --save "" --appendonly no --replicaof "$$primary_ip" 6379
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      timeout: 2s
+      retries: 20
+    depends_on:
+      redis-primary:
+        condition: service_healthy
+    tmpfs:
+      - /data
+
+  redis-replica-2:
+    <<: *redis-replica
+
+  sentinel-1: &sentinel
+    image: redis:7.2-alpine@sha256:dfa18828cbc07b3ae6a95ec7343f6c214fdee2d836197b4be8e9904420762cd8
+    command:
+      - /bin/sh
+      - -ec
+      - primary_ip=$$(getent hosts redis-primary | awk 'NR == 1 { print $$1 }'); test -n "$$primary_ip"; sed "s/redis-primary/$$primary_ip/" /etc/redis/sentinel.conf > /tmp/sentinel.conf; exec redis-sentinel /tmp/sentinel.conf
+    volumes:
+      - ./redis-sentinel.conf:/etc/redis/sentinel.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -p 26379 sentinel ckquorum datahub-primary | grep -q '^OK' && test \"$$(redis-cli -p 26379 --raw sentinel replicas datahub-primary | grep -c '^runid$$')\" -eq 2"]
+      interval: 1s
+      timeout: 2s
+      retries: 20
+    depends_on:
+      redis-primary:
+        condition: service_healthy
+      redis-replica-1:
+        condition: service_healthy
+      redis-replica-2:
+        condition: service_healthy
+    tmpfs:
+      - /tmp
+
+  sentinel-2:
+    <<: *sentinel
+
+  sentinel-3:
+    <<: *sentinel
+
+  sentinel-integration:
+    image: node:22.22.0-bookworm-slim@sha256:dd9d21971ec4395903fa6143c2b9267d048ae01ca6d3ea96f16cb30df6187d94
+    working_dir: /workspace
+    user: "${REDIS_SENTINEL_TEST_UID:-1000}:${REDIS_SENTINEL_TEST_GID:-1000}"
+    environment:
+      DATAHUB_REDIS_SENTINELS: sentinel-1:26379,sentinel-2:26379,sentinel-3:26379
+      DATAHUB_REDIS_SENTINEL_NAME: datahub-primary
+      DATAHUB_REDIS_SENTINEL_TEST_PRIMARY_HOST: redis-primary
+      DATAHUB_REDIS_SENTINEL_TEST_REPLICA_HOSTS: redis-replica-1,redis-replica-2
+    volumes:
+      - ../..:/workspace:ro
+    tmpfs:
+      - /tmp
+    depends_on:
+      sentinel-1:
+        condition: service_healthy
+      sentinel-2:
+        condition: service_healthy
+      sentinel-3:
+        condition: service_healthy
+    command:
+      - ./node_modules/.bin/vitest
+      - run
+      - src/services/runtime/redis-sentinel.integration.spec.ts
+      - --reporter=verbose
+
+networks:
+  default:
+    internal: true

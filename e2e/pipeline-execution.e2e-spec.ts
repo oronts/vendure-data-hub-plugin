@@ -1,10 +1,13 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createDataHubTestEnvironment } from './test-config';
+import { publishPipeline } from './pipeline-lifecycle';
 import gql from 'graphql-tag';
 import { StepType } from '../src/constants/enums';
 
 describe('DataHub Pipeline Execution', () => {
     const { server, adminClient } = createDataHubTestEnvironment();
+    let defaultChannelToken: string;
+    let isolationChannelToken: string;
 
     beforeAll(async () => {
         await server.init({
@@ -15,6 +18,52 @@ describe('DataHub Pipeline Execution', () => {
             productsCsvPath: undefined,
         });
         await adminClient.asSuperAdmin();
+        const { activeChannel, zones } = await adminClient.query(gql`
+            query ActiveChannelForRunIsolation {
+                activeChannel {
+                    token
+                    defaultLanguageCode
+                    defaultCurrencyCode
+                    defaultTaxZone { id }
+                    defaultShippingZone { id }
+                }
+                zones(options: { take: 1 }) { items { id } }
+            }
+        `);
+        defaultChannelToken = activeChannel.token;
+        let zoneId = activeChannel.defaultTaxZone?.id
+            ?? activeChannel.defaultShippingZone?.id
+            ?? zones.items[0]?.id;
+        if (!zoneId) {
+            const { createZone } = await adminClient.query(gql`
+                mutation CreateRunIsolationZone {
+                    createZone(input: { name: "Run isolation" }) { id }
+                }
+            `);
+            zoneId = createZone.id;
+        }
+        const { createChannel } = await adminClient.query(gql`
+            mutation CreateRunIsolationChannel($input: CreateChannelInput!) {
+                createChannel(input: $input) {
+                    ... on Channel { token }
+                    ... on ErrorResult { errorCode message }
+                }
+            }
+        `, {
+            input: {
+                code: 'run-isolation',
+                token: 'run-isolation',
+                defaultLanguageCode: activeChannel.defaultLanguageCode,
+                defaultCurrencyCode: activeChannel.defaultCurrencyCode,
+                defaultTaxZoneId: zoneId,
+                defaultShippingZoneId: zoneId,
+                pricesIncludeTax: false,
+            },
+        });
+        if (!createChannel.token) {
+            throw new Error(`Failed to create run isolation channel: ${createChannel.message}`);
+        }
+        isolationChannelToken = createChannel.token;
     });
 
     afterAll(async () => {
@@ -52,6 +101,7 @@ describe('DataHub Pipeline Execution', () => {
                 },
             });
             pipelineId = createDataHubPipeline.id;
+            await publishPipeline(adminClient, pipelineId);
         });
 
         afterAll(async () => {
@@ -115,6 +165,39 @@ describe('DataHub Pipeline Execution', () => {
             expect(dataHubPipelineRun.id).toBe(runId);
             expect(dataHubPipelineRun.status).toBeDefined();
         });
+
+        it('does not expose or mutate a run from another active channel', async () => {
+            adminClient.setChannelToken(isolationChannelToken);
+            try {
+                const { dataHubPipelineRuns, dataHubPipelineRun } = await adminClient.query(gql`
+                    query CrossChannelRunAccess($pipelineId: ID!, $runId: ID!) {
+                        dataHubPipelineRuns(pipelineId: $pipelineId) {
+                            items { id }
+                            totalItems
+                        }
+                        dataHubPipelineRun(id: $runId) { id }
+                    }
+                `, { pipelineId, runId });
+
+                expect(dataHubPipelineRuns.items).toEqual([]);
+                expect(dataHubPipelineRuns.totalItems).toBe(0);
+                expect(dataHubPipelineRun).toBeNull();
+                await expect(adminClient.query(gql`
+                    mutation CrossChannelRunCancel($runId: ID!) {
+                        cancelDataHubPipelineRun(id: $runId) { id status }
+                    }
+                `, { runId })).rejects.toThrow();
+            } finally {
+                adminClient.setChannelToken(defaultChannelToken);
+            }
+
+            const { dataHubPipelineRun } = await adminClient.query(gql`
+                query OriginalRunAfterDeniedAccess($runId: ID!) {
+                    dataHubPipelineRun(id: $runId) { id }
+                }
+            `, { runId });
+            expect(dataHubPipelineRun.id).toBe(runId);
+        });
     });
 
     describe('Dry Run Mode', () => {
@@ -144,6 +227,7 @@ describe('DataHub Pipeline Execution', () => {
                 },
             });
             pipelineId = createDataHubPipeline.id;
+            await publishPipeline(adminClient, pipelineId);
         });
 
         afterAll(async () => {
@@ -161,14 +245,14 @@ describe('DataHub Pipeline Execution', () => {
                 mutation RunDryPipeline($id: ID!) {
                     startDataHubPipelineDryRun(pipelineId: $id) {
                         metrics
-                        notes
+                        messages { level code detail stepKey values }
                     }
                 }
             `, { id: pipelineId });
 
             expect(startDataHubPipelineDryRun).toMatchObject({
                 metrics: expect.any(Object),
-                notes: expect.any(Array),
+                messages: expect.any(Array),
             });
         });
     });
@@ -213,6 +297,7 @@ describe('DataHub Pipeline Execution', () => {
                 },
             });
             pipelineId = createDataHubPipeline.id;
+            await publishPipeline(adminClient, pipelineId);
         });
 
         afterAll(async () => {
@@ -265,10 +350,20 @@ describe('DataHub Pipeline Execution', () => {
                 input: {
                     code: 'disabled-pipeline',
                     name: 'Disabled Pipeline',
-                    definition: { version: 1, steps: [], edges: [] },
+                    definition: {
+                        version: 1,
+                        steps: [{
+                            key: 'extract',
+                            type: StepType.EXTRACT,
+                            config: { adapterCode: 'vendureQuery', entity: 'Product' },
+                        }],
+                        edges: [],
+                    },
                     enabled: false,
                 },
             });
+
+            await publishPipeline(adminClient, createDataHubPipeline.id);
 
             // Running a disabled pipeline should throw an error
             let error: Error | undefined;
@@ -324,6 +419,7 @@ describe('DataHub Pipeline Execution', () => {
                 },
             });
             pipelineId = createDataHubPipeline.id;
+            await publishPipeline(adminClient, pipelineId);
         });
 
         afterAll(async () => {
@@ -380,6 +476,7 @@ describe('DataHub Pipeline Execution', () => {
                 },
             });
             pipelineId = createDataHubPipeline.id;
+            await publishPipeline(adminClient, pipelineId);
         });
 
         afterAll(async () => {
@@ -424,13 +521,14 @@ describe('DataHub Pipeline Execution', () => {
                 query {
                     dataHubAnalyticsOverview {
                         totalPipelines
-                        activePipelines
+                        enabledPipelines
                         runsToday
                     }
                 }
             `);
 
             expect(dataHubAnalyticsOverview.totalPipelines).toBeGreaterThanOrEqual(0);
+            expect(dataHubAnalyticsOverview.enabledPipelines).toBeGreaterThanOrEqual(0);
         });
 
         it('queries real-time stats', async () => {
@@ -477,6 +575,7 @@ describe('DataHub Pipeline Execution', () => {
                 },
             });
             errorTestPipelineId = createDataHubPipeline.id;
+            await publishPipeline(adminClient, errorTestPipelineId);
 
             const { startDataHubPipelineRun } = await adminClient.query(gql`
                 mutation RunPipeline($id: ID!) {
@@ -502,15 +601,23 @@ describe('DataHub Pipeline Execution', () => {
             const { dataHubRunErrors } = await adminClient.query(gql`
                 query RunErrors($runId: ID!) {
                     dataHubRunErrors(runId: $runId) {
-                        id
-                        message
-                        stepKey
+                        items {
+                            id
+                            message
+                            stepKey
+                        }
+                        totalItems
+                        hasNextPage
+                        endCursor
                     }
                 }
             `, { runId: errorTestRunId });
 
             expect(dataHubRunErrors).toBeDefined();
-            expect(Array.isArray(dataHubRunErrors)).toBe(true);
+            expect(Array.isArray(dataHubRunErrors.items)).toBe(true);
+            expect(dataHubRunErrors.totalItems).toBeGreaterThanOrEqual(
+                dataHubRunErrors.items.length,
+            );
         });
 
         it('queries error analytics', async () => {

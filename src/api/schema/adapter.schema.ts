@@ -13,6 +13,7 @@ export const adapterSchema = `
         icon: String
         color: String
         version: String
+        apiVersion: Int
         deprecated: Boolean
         deprecatedMessage: String
         entityType: String
@@ -85,6 +86,8 @@ export const adapterSchema = `
         description: String
         category: DataHubExtractorCategory!
         version: String
+        deprecated: Boolean!
+        deprecatedMessage: String
         icon: String
         supportsPagination: Boolean!
         supportsIncremental: Boolean!

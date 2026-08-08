@@ -16,10 +16,6 @@ export {
     SecretResolver,
     ConnectionResolver,
     AdapterLogger,
-    MessengerType,
-    EnqueueOptions,
-    QueueStats,
-    MessengerAdapter,
 } from './connection-types';
 
 export {
@@ -57,9 +53,6 @@ export {
     SinkContext,
     SinkAdapter,
     TriggerType,
-    TriggerContext,
-    TriggerPayload,
-    TriggerAdapter,
     DataHubAdapter,
     AdapterRegistration,
 } from './adapter-types';

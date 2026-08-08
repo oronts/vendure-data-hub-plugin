@@ -21,6 +21,7 @@ import {
 } from '../../permissions';
 import { ImpactAnalysisOptions, TimelineEntry, RevisionDiff, PipelineDefinition } from '../../types';
 import { PipelineDefinitionInput } from '../types';
+import { PAGINATION } from '../../constants';
 
 interface SaveDraftInput {
     pipelineId: ID;
@@ -37,8 +38,6 @@ interface RevertInput {
     revisionId: ID;
     commitMessage?: string;
 }
-
-const DEFAULT_TIMELINE_LIMIT = 50;
 
 @Resolver()
 export class DataHubVersioningResolver {
@@ -71,7 +70,11 @@ export class DataHubVersioningResolver {
         @Ctx() ctx: RequestContext,
         @Args() args: { pipelineId: ID; limit?: number },
     ): Promise<TimelineEntry[]> {
-        return this.revisionService.getTimeline(ctx, args.pipelineId, args.limit || DEFAULT_TIMELINE_LIMIT);
+        return this.revisionService.getTimeline(
+            ctx,
+            args.pipelineId,
+            args.limit ?? PAGINATION.EVENTS_LIMIT,
+        );
     }
 
     @Query()
@@ -137,9 +140,9 @@ export class DataHubVersioningResolver {
         @Args() args: { input: SaveDraftInput },
     ): Promise<PipelineRevision | null> {
         return this.revisionService.saveDraft(ctx, {
-            pipelineId: args.input.pipelineId as number,
+            pipelineId: args.input.pipelineId,
             definition: this.toCanonical(args.input.definition),
-            authorUserId: ctx.activeUserId as string,
+            authorUserId: ctx.activeUserId?.toString(),
             authorName: this.getUserDisplayName(ctx),
         });
     }
@@ -152,10 +155,10 @@ export class DataHubVersioningResolver {
         @Args() args: { input: PublishVersionInput },
     ): Promise<PipelineRevision> {
         return this.revisionService.publishVersion(ctx, {
-            pipelineId: args.input.pipelineId as number,
+            pipelineId: args.input.pipelineId,
             commitMessage: args.input.commitMessage,
             definition: this.toCanonical(args.input.definition),
-            authorUserId: ctx.activeUserId as string,
+            authorUserId: ctx.activeUserId?.toString(),
             authorName: this.getUserDisplayName(ctx),
         });
     }
@@ -168,9 +171,9 @@ export class DataHubVersioningResolver {
         @Args() args: { input: RevertInput },
     ): Promise<PipelineRevision> {
         return this.revisionService.revertToRevision(ctx, {
-            revisionId: args.input.revisionId as number,
+            revisionId: args.input.revisionId,
             commitMessage: args.input.commitMessage,
-            authorUserId: ctx.activeUserId as string,
+            authorUserId: ctx.activeUserId?.toString(),
             authorName: this.getUserDisplayName(ctx),
         });
     }

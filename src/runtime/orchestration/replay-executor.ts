@@ -23,8 +23,16 @@ import {
 } from '../executors';
 import { LOGGER_CONTEXTS } from '../../constants/core';
 import { DataHubLoggerFactory } from '../../services/logger';
+import { resolveEffectiveStepContext } from './effective-context';
 
 const logger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.REPLAY_EXECUTOR);
+
+export interface ReplayExecutionResult {
+    processed: number;
+    succeeded: number;
+    failed: number;
+    skipped: number;
+}
 
 /**
  * Replay from a specific step in a linear pipeline
@@ -42,7 +50,7 @@ export async function replayFromStepLinear(params: {
     sinkExecutor: SinkExecutor;
     onCancelRequested?: () => Promise<boolean>;
     onRecordError?: OnRecordErrorCallback;
-}): Promise<{ processed: number; succeeded: number; failed: number }> {
+}): Promise<ReplayExecutionResult> {
     const {
         ctx,
         definition,
@@ -63,24 +71,42 @@ export async function replayFromStepLinear(params: {
     if (idx === -1) {
         throw new Error(`Replay start step "${startStepKey}" not found in pipeline definition`);
     }
-    const steps = definition.steps.slice(idx + 1);
+    const steps = definition.steps.slice(idx);
 
     let records: RecordObject[] = seed;
     let processed = 0;
     let succeeded = 0;
     let failed = 0;
+    let skipped = 0;
 
     for (const step of steps) {
         if (onCancelRequested && (await onCancelRequested())) break;
+        const pipelineContext = resolveEffectiveStepContext(
+            ctx,
+            definition.context,
+            step.context,
+        );
 
         switch (step.type) {
             case StepType.TRANSFORM: {
-                records = await transformExecutor.executeOperator(ctx, step, records, executorCtx);
+                records = await transformExecutor.executeOperator(
+                    ctx,
+                    step,
+                    records,
+                    executorCtx,
+                    pipelineContext,
+                );
                 break;
             }
 
             case StepType.ENRICH: {
-                records = await transformExecutor.executeEnrich(ctx, step, records, executorCtx);
+                records = await transformExecutor.executeEnrich(
+                    ctx,
+                    step,
+                    records,
+                    executorCtx,
+                    pipelineContext,
+                );
                 break;
             }
 
@@ -95,15 +121,31 @@ export async function replayFromStepLinear(params: {
             }
 
             case StepType.LOAD: {
-                const { ok, fail } = await loadExecutor.execute(ctx, step, records, onRecordError);
+                const result = await loadExecutor.execute(
+                    ctx,
+                    step,
+                    records,
+                    onRecordError,
+                    definition.context?.errorHandling,
+                    pipelineContext,
+                );
+                const { ok, fail } = result;
                 succeeded += ok;
                 failed += fail;
+                skipped += result.skipped;
                 processed += records.length;
                 break;
             }
 
             case StepType.EXPORT: {
-                const { ok, fail } = await exportExecutor.execute(ctx, step, records, onRecordError);
+                const { ok, fail } = await exportExecutor.execute(
+                    ctx,
+                    step,
+                    records,
+                    onRecordError,
+                    pipelineContext,
+                    executorCtx,
+                );
                 succeeded += ok;
                 failed += fail;
                 processed += records.length;
@@ -111,7 +153,13 @@ export async function replayFromStepLinear(params: {
             }
 
             case StepType.FEED: {
-                const { ok, fail } = await feedExecutor.execute(ctx, step, records, onRecordError);
+                const { ok, fail } = await feedExecutor.execute(
+                    ctx,
+                    step,
+                    records,
+                    onRecordError,
+                    pipelineContext,
+                );
                 succeeded += ok;
                 failed += fail;
                 processed += records.length;
@@ -119,7 +167,13 @@ export async function replayFromStepLinear(params: {
             }
 
             case StepType.SINK: {
-                const { ok, fail } = await sinkExecutor.execute(ctx, step, records, onRecordError);
+                const { ok, fail } = await sinkExecutor.execute(
+                    ctx,
+                    step,
+                    records,
+                    onRecordError,
+                    pipelineContext,
+                );
                 succeeded += ok;
                 failed += fail;
                 processed += records.length;
@@ -138,7 +192,7 @@ export async function replayFromStepLinear(params: {
         }
     }
 
-    return { processed, succeeded, failed };
+    return { processed, succeeded, failed, skipped };
 }
 
 /**
@@ -157,7 +211,7 @@ export async function replayFromStepGraph(params: {
     sinkExecutor: SinkExecutor;
     onCancelRequested?: () => Promise<boolean>;
     onRecordError?: OnRecordErrorCallback;
-}): Promise<{ processed: number; succeeded: number; failed: number }> {
+}): Promise<ReplayExecutionResult> {
     const {
         ctx,
         definition,
@@ -176,6 +230,9 @@ export async function replayFromStepGraph(params: {
     const steps = definition.steps;
     const stepByKey = new Map<string, typeof steps[number]>();
     for (const s of steps) stepByKey.set(s.key, s);
+    if (!stepByKey.has(startStepKey)) {
+        throw new Error(`Replay start step "${startStepKey}" not found in pipeline definition`);
+    }
 
     const edges = definition.edges ?? [];
 
@@ -217,23 +274,16 @@ export async function replayFromStepGraph(params: {
     }
 
     const outputs = new Map<string, RecordObject[] | BranchOutput>();
-    outputs.set(startStepKey, seed);
-
-    // Reduce indegree of neighbors of start step
-    for (const n of adj.get(startStepKey) ?? []) {
-        indeg.set(n.to, Math.max(0, (indeg.get(n.to) ?? 1) - 1));
-    }
-
-    // Build initial queue (steps with zero indegree, excluding start step)
-    const queue: string[] = [];
+    const queue: string[] = [startStepKey];
     for (const [k, d] of indeg.entries()) {
         if (k === startStepKey) continue;
-        if ((d ?? 0) === 0 && k !== startStepKey) queue.push(k);
+        if ((d ?? 0) === 0) queue.push(k);
     }
 
     let processed = 0;
     let succeeded = 0;
     let failed = 0;
+    let skipped = 0;
 
     while (queue.length) {
         const key = queue.shift();
@@ -241,9 +291,14 @@ export async function replayFromStepGraph(params: {
         const step = stepByKey.get(key);
         if (!step) continue;
         if (onCancelRequested && (await onCancelRequested())) break;
+        const pipelineContext = resolveEffectiveStepContext(
+            ctx,
+            definition.context,
+            step.context,
+        );
 
         // Gather input from predecessors
-        let input: RecordObject[] = [];
+        let input: RecordObject[] = key === startStepKey ? seed : [];
         const parents = (preds.get(key) ?? []).filter(
             p => p.from === startStepKey || reachable.has(p.from)
         );
@@ -271,12 +326,24 @@ export async function replayFromStepGraph(params: {
         // Execute step
         switch (step.type) {
             case StepType.TRANSFORM: {
-                outputs.set(key, await transformExecutor.executeOperator(ctx, step, input, executorCtx));
+                outputs.set(key, await transformExecutor.executeOperator(
+                    ctx,
+                    step,
+                    input,
+                    executorCtx,
+                    pipelineContext,
+                ));
                 break;
             }
 
             case StepType.ENRICH: {
-                outputs.set(key, await transformExecutor.executeEnrich(ctx, step, input, executorCtx));
+                outputs.set(key, await transformExecutor.executeEnrich(
+                    ctx,
+                    step,
+                    input,
+                    executorCtx,
+                    pipelineContext,
+                ));
                 break;
             }
 
@@ -291,16 +358,32 @@ export async function replayFromStepGraph(params: {
             }
 
             case StepType.LOAD: {
-                const { ok, fail } = await loadExecutor.execute(ctx, step, input, onRecordError);
+                const result = await loadExecutor.execute(
+                    ctx,
+                    step,
+                    input,
+                    onRecordError,
+                    definition.context?.errorHandling,
+                    pipelineContext,
+                );
+                const { ok, fail } = result;
                 succeeded += ok;
                 failed += fail;
+                skipped += result.skipped;
                 processed += input.length;
                 outputs.set(key, []);
                 break;
             }
 
             case StepType.EXPORT: {
-                const { ok, fail } = await exportExecutor.execute(ctx, step, input, onRecordError);
+                const { ok, fail } = await exportExecutor.execute(
+                    ctx,
+                    step,
+                    input,
+                    onRecordError,
+                    pipelineContext,
+                    executorCtx,
+                );
                 succeeded += ok;
                 failed += fail;
                 processed += input.length;
@@ -309,7 +392,13 @@ export async function replayFromStepGraph(params: {
             }
 
             case StepType.FEED: {
-                const { ok, fail } = await feedExecutor.execute(ctx, step, input, onRecordError);
+                const { ok, fail } = await feedExecutor.execute(
+                    ctx,
+                    step,
+                    input,
+                    onRecordError,
+                    pipelineContext,
+                );
                 succeeded += ok;
                 failed += fail;
                 processed += input.length;
@@ -318,7 +407,13 @@ export async function replayFromStepGraph(params: {
             }
 
             case StepType.SINK: {
-                const { ok, fail } = await sinkExecutor.execute(ctx, step, input, onRecordError);
+                const { ok, fail } = await sinkExecutor.execute(
+                    ctx,
+                    step,
+                    input,
+                    onRecordError,
+                    pipelineContext,
+                );
                 succeeded += ok;
                 failed += fail;
                 processed += input.length;
@@ -348,5 +443,5 @@ export async function replayFromStepGraph(params: {
         }
     }
 
-    return { processed, succeeded, failed };
+    return { processed, succeeded, failed, skipped };
 }

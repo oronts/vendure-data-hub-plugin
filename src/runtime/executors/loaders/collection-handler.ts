@@ -10,6 +10,7 @@ import {
     Collection,
     ID,
 } from '@vendure/core';
+import { createChannelCodeRequestContext } from '../../helpers/channel-request-context';
 import {
     LanguageCode,
     CreateCollectionTranslationInput,
@@ -17,20 +18,33 @@ import {
     UpdateCollectionInput,
 } from '@vendure/common/lib/generated-types';
 import { PipelineStepDefinition, ErrorHandlingConfig } from '../../../types/index';
-import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
-import { LoaderHandler } from './types';
+import { RecordObject, OnRecordErrorCallback, LoaderExecutionResult } from '../../executor-types';
+import { LoaderHandler, LoaderSimulationResult } from './types';
+import { assertCreateDuplicateCanBeSkipped, CreateDuplicateHandlingConfig } from './duplicate-handling';
 import { LoadStrategy } from '../../../constants/enums';
 import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
-import { getStringValue, getObjectValue } from '../../../loaders/shared-helpers';
-import { parseTranslationsInput, resolveChannelIds } from './shared-lookups';
-import { slugify } from '../../utils';
-import { LOGGER_CONTEXTS } from '../../../constants/index';
-import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
+import {
+    getBooleanValue,
+    getObjectValue,
+    getStringValue,
+    slugify,
+} from '../../../loaders/shared-helpers';
+import {
+    getTranslationString,
+    parseTranslationsInput,
+    resolveChannelIds,
+} from './shared-lookups';
+import { LOGGER_CONTEXTS } from '../../../constants/core';
+import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger/datahub-logger';
+import {
+    createUpsertSimulationDetail,
+    summarizeSimulationDetails,
+} from './loader-simulation';
 
 /**
  * Configuration for collection handler step
  */
-interface CollectionHandlerConfig {
+interface CollectionHandlerConfig extends CreateDuplicateHandlingConfig {
     /** Field name for collection name */
     nameField?: string;
     /** Field name for collection slug */
@@ -53,6 +67,11 @@ interface CollectionHandlerConfig {
     channelsField?: string;
     /** Record field containing isPrivate flag */
     isPrivateField?: string;
+}
+
+interface CollectionUpsertResult {
+    collectionId: ID | undefined;
+    skipped: boolean;
 }
 
 /**
@@ -89,6 +108,23 @@ function coerceCollectionFields(rec: RecordObject, cfg: CollectionHandlerConfig)
     };
 }
 
+function applyCollectionTranslationIdentityFallback(
+    record: RecordObject,
+    config: CollectionHandlerConfig,
+    fields: CoercedCollectionFields,
+): void {
+    if ((fields.name && fields.slug) || !config.translationsField) return;
+    const raw = record[config.translationsField];
+    if (!raw) return;
+    const first = parseTranslationsInput(raw)[0];
+    if (!first) return;
+    const firstName = getTranslationString(first, 'name');
+    if (!fields.name && firstName) fields.name = firstName;
+    if (!fields.slug && firstName) {
+        fields.slug = getTranslationString(first, 'slug') ?? slugify(firstName);
+    }
+}
+
 @Injectable()
 export class CollectionHandler implements LoaderHandler {
     private readonly logger: DataHubLogger;
@@ -108,9 +144,10 @@ export class CollectionHandler implements LoaderHandler {
         input: RecordObject[],
         onRecordError?: OnRecordErrorCallback,
         _errorHandling?: ErrorHandlingConfig,
-    ): Promise<ExecutionResult> {
+    ): Promise<LoaderExecutionResult> {
         let ok = 0;
         let fail = 0;
+        let skipped = 0;
         const cfg = getConfig(step.config);
 
         const channelCache = new Map<string, ID>();
@@ -118,22 +155,10 @@ export class CollectionHandler implements LoaderHandler {
         for (const rec of input) {
             try {
                 const fields = coerceCollectionFields(rec, cfg);
-                let { slug, name } = fields;
+                applyCollectionTranslationIdentityFallback(rec, cfg, fields);
+                const { slug, name } = fields;
                 const { description } = fields;
                 const { parentSlug } = fields;
-
-                // Multi-language: extract name/slug from first translation if missing
-                if ((!name || !slug) && cfg.translationsField) {
-                    const raw = rec[cfg.translationsField];
-                    if (raw) {
-                        const parsed = parseTranslationsInput(raw);
-                        if (parsed.length > 0) {
-                            const first = parsed[0];
-                            if (!name) name = String(first.name ?? '');
-                            if (!slug) slug = first.slug != null ? String(first.slug) : slugify(String(first.name ?? ''));
-                        }
-                    }
-                }
 
                 if (!slug || !name) {
                     if (onRecordError) {
@@ -145,18 +170,32 @@ export class CollectionHandler implements LoaderHandler {
 
                 const customFieldsKey = cfg.customFieldsField ?? 'customFields';
                 const customFields = getObjectValue(rec, customFieldsKey);
-                const strategy = cfg.strategy ?? LoadStrategy.UPSERT;
 
                 // Resolve isPrivate from record
                 const isPrivate = cfg.isPrivateField
-                    ? Boolean(rec[cfg.isPrivateField])
+                    ? getBooleanValue(rec, cfg.isPrivateField)
                     : undefined;
 
                 // Build translations
                 const translations = this.buildTranslations(ctx, rec, cfg, name, slug, description);
 
                 const opCtx = await this.resolveRequestContext(ctx, cfg);
-                const collectionId = await this.upsertCollection(opCtx, slug, name, description, parentSlug, customFields, strategy, translations, isPrivate);
+                const collectionResult = await this.upsertCollection(
+                    opCtx,
+                    slug,
+                    name,
+                    description,
+                    parentSlug,
+                    customFields,
+                    cfg,
+                    translations,
+                    isPrivate,
+                );
+                if (collectionResult.skipped) {
+                    skipped++;
+                    continue;
+                }
+                const { collectionId } = collectionResult;
 
                 if (collectionId) {
                     await this.maybeApplyFilters(opCtx, cfg, collectionId);
@@ -175,7 +214,7 @@ export class CollectionHandler implements LoaderHandler {
                 fail++;
             }
         }
-        return { ok, fail };
+        return { ok, fail, skipped };
     }
 
     /**
@@ -190,17 +229,12 @@ export class CollectionHandler implements LoaderHandler {
             return ctx;
         }
 
-        try {
-            return await this.requestContextService.create({
-                apiType: 'admin',
-                channelOrToken: channel,
-            });
-        } catch (err) {
-            // Channel resolution failed - fall back to original context
-            // This is expected when the channel token is invalid
-            this.logger.warn(`Failed to resolve channel context: ${getErrorMessage(err)}`);
-            return ctx;
-        }
+        return createChannelCodeRequestContext(
+            this.requestContextService,
+            this.channelService,
+            ctx,
+            channel,
+        );
     }
 
     /**
@@ -221,12 +255,16 @@ export class CollectionHandler implements LoaderHandler {
             if (raw) {
                 const parsed = parseTranslationsInput(raw);
                 if (parsed.length > 0) {
-                    return parsed.map(t => ({
-                        languageCode: String(t.languageCode) as LanguageCode,
-                        name: String(t.name ?? name),
-                        slug: t.slug != null ? String(t.slug) : slugify(String(t.name ?? name)),
-                        description: t.description != null ? String(t.description) : '',
-                    }));
+                    return parsed.map(translation => {
+                        const translatedName = getTranslationString(translation, 'name', name);
+                        return {
+                            languageCode: translation.languageCode as LanguageCode,
+                            name: translatedName,
+                            slug: getTranslationString(translation, 'slug')
+                                ?? slugify(translatedName),
+                            description: getTranslationString(translation, 'description', ''),
+                        };
+                    });
                 }
             }
         }
@@ -259,9 +297,12 @@ export class CollectionHandler implements LoaderHandler {
         try {
             await this.channelService.assignToChannels(opCtx, Collection, collectionId, channelIds);
         } catch (error) {
-            this.logger.warn(
-                `Failed to assign collection ${String(collectionId)} to channels: ${getErrorMessage(error)}`,
-            );
+            this.logger.warn('Failed to assign collection to record channels', {
+                collectionId,
+                channelIds,
+                error: getErrorMessage(error),
+            });
+            throw error;
         }
     }
 
@@ -275,15 +316,17 @@ export class CollectionHandler implements LoaderHandler {
         description: string | undefined,
         parentSlug: string | undefined,
         customFields: Record<string, unknown> | undefined,
-        strategy: LoadStrategy,
+        cfg: CollectionHandlerConfig,
         translations: CreateCollectionTranslationInput[],
         isPrivate: boolean | undefined,
-    ): Promise<ID | undefined> {
+    ): Promise<CollectionUpsertResult> {
+        const strategy = cfg.strategy ?? LoadStrategy.UPSERT;
         const existing = await this.collectionService.findOneBySlug(opCtx, slug);
 
         if (existing) {
             if (strategy === LoadStrategy.CREATE) {
-                return existing.id;
+                assertCreateDuplicateCanBeSkipped(cfg, 'collection', slug);
+                return { collectionId: existing.id, skipped: true };
             }
             const updateInput: UpdateCollectionInput = {
                 id: existing.id,
@@ -294,11 +337,11 @@ export class CollectionHandler implements LoaderHandler {
                 updateInput.customFields = customFields;
             }
             const updated = await this.collectionService.update(opCtx, updateInput);
-            return updated.id;
+            return { collectionId: updated.id, skipped: false };
         }
 
         if (strategy === LoadStrategy.UPDATE) {
-            return undefined;
+            return { collectionId: undefined, skipped: false };
         }
 
         // Creating new collection
@@ -320,7 +363,7 @@ export class CollectionHandler implements LoaderHandler {
             createInput.customFields = customFields;
         }
         const created = await this.collectionService.create(opCtx, createInput);
-        return created.id;
+        return { collectionId: created.id, skipped: false };
     }
 
     /**
@@ -349,23 +392,38 @@ export class CollectionHandler implements LoaderHandler {
         ctx: RequestContext,
         step: PipelineStepDefinition,
         input: RecordObject[],
-    ): Promise<Record<string, unknown>> {
-        let exists = 0;
-        let missing = 0;
+    ): Promise<LoaderSimulationResult> {
         const cfg = getConfig(step.config);
+        const recordDetails = [];
 
-        for (const rec of input) {
-            const fields = coerceCollectionFields(rec, cfg);
-            const { slug } = fields;
-            if (!slug) continue;
-
-            const collection = await this.collectionService.findOneBySlug(ctx, slug);
-            if (collection) {
-                exists++;
-            } else {
-                missing++;
-            }
+        for (let index = 0; index < input.length; index++) {
+            const record = input[index];
+            const fields = coerceCollectionFields(record, cfg);
+            applyCollectionTranslationIdentityFallback(record, cfg, fields);
+            const opCtx = await this.resolveRequestContext(ctx, cfg);
+            const existing = fields.slug
+                ? await this.collectionService.findOneBySlug(opCtx, fields.slug)
+                : undefined;
+            const missingField = !fields.name ? 'name' : !fields.slug ? 'slug' : undefined;
+            recordDetails.push(createUpsertSimulationDetail({
+                record,
+                index,
+                entityType: 'Collection',
+                existing,
+                strategy: cfg.strategy,
+                skipDuplicates: cfg.skipDuplicates,
+                identifier: fields.slug,
+                missingIdentifier: missingField
+                    ? `Missing required field "${missingField}" for collectionUpsert`
+                    : undefined,
+            }));
         }
-        return { exists, missing };
+
+        return {
+            supported: true,
+            recordsIn: input.length,
+            recordDetails,
+            ...summarizeSimulationDetails(recordDetails),
+        };
     }
 }

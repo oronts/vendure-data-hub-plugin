@@ -22,16 +22,26 @@
  */
 
 import { createPipeline } from '../../../src';
-import { MOCK_PORTS, mockUrl } from '../../ports';
+import { getMockApiUrl } from '../../ports';
+import {
+    PIMCORE_API_CONNECTION_CODE,
+    PIMCORE_API_URL,
+} from '../../pimcore-api';
+import {
+    SHOPIFY_ADMIN_API_VERSION,
+    SHOPIFY_API_CONNECTION_CODE,
+} from '../../shopify-api';
 
 // ── External API URLs ───────────────────────────────────────────────────────
-const PIMCORE_API_URL = process.env.PIMCORE_API_URL || mockUrl(MOCK_PORTS.PIMCORE);
-const MAGENTO_API_URL = process.env.MAGENTO_API_URL || mockUrl(MOCK_PORTS.MAGENTO);
-const SHOPIFY_API_URL = process.env.SHOPIFY_API_URL || mockUrl(MOCK_PORTS.SHOPIFY);
+const MAGENTO_API_URL = getMockApiUrl('MAGENTO');
+const PIMCORE_FREIGHT_SHIPPING_METHOD_CODE = 'freight-shipping';
+const DEV_FALLBACK_SHIPPING_METHOD_CODE = 'standard-shipping';
+const PIMCORE_AUTHORIZED_ORDER_STATE = 'PaymentAuthorized';
+const DEV_SETTLED_ORDER_STATE = 'PaymentSettled';
 
 // =============================================================================
 // MS-1: MULTI-SOURCE PRODUCT AGGREGATION
-// Parallel Pimcore + Magento extraction → normalize → dedup → enrich → load → sink → export
+// Parallel Pimcore + Magento extraction → normalize → deduplicate → validate → enrich → load → sink → export
 // =============================================================================
 
 /**
@@ -39,13 +49,13 @@ const SHOPIFY_API_URL = process.env.SHOPIFY_API_URL || mockUrl(MOCK_PORTS.SHOPIF
  *
  * Graph topology:
  *   trigger → extract-pimcore → normalize-pimcore ─┐
- *                                                    ├→ dedup-by-sku → enrich-categories → load-products → sink-meili-unified → export-report
+ *                                                    ├→ deduplicate-skus → validate-merged → enrich-categories → load-products → sink-meili-unified → export-report
  *   trigger → extract-magento → normalize-magento ──┘
  *
  * Features:
  * - Parallel extraction from 2 different API formats (Pimcore REST + Magento REST)
  * - Per-source normalization (field mapping to unified schema)
- * - Deduplication by SKU via `unique` operator (Pimcore preferred over Magento)
+ * - SKU conflicts are resolved deterministically in favor of Pimcore records
  * - Category enrichment via Vendure collection lookup
  * - UPSERT to Vendure with SOURCE_WINS conflict strategy
  * - Meilisearch indexing with custom `products-unified` index
@@ -53,8 +63,8 @@ const SHOPIFY_API_URL = process.env.SHOPIFY_API_URL || mockUrl(MOCK_PORTS.SHOPIF
  */
 export const multiSourceProductAggregation = createPipeline()
     .name('Multi-Source Product Aggregation')
-    .description('Parallel extraction from Pimcore + Magento, normalize, dedup by SKU, load to Vendure, sink to Meilisearch')
-    .capabilities({ requires: ['UpdateCatalog'] })
+    .description('Parallel extraction from Pimcore + Magento, deduplicate by SKU, load to Vendure, sink to Meilisearch')
+    .capabilities({ requires: ['UpdateCatalog'], writes: ['CATALOG'] })
     .parallel({ maxConcurrentSteps: 4, errorPolicy: 'CONTINUE' })
 
     // Single trigger → both extraction branches
@@ -62,21 +72,28 @@ export const multiSourceProductAggregation = createPipeline()
 
     // ── Branch A: Pimcore extraction ────────────────────────────────────────
     .extract('extract-pimcore', {
-        adapterCode: 'httpApi',
-        url: `${PIMCORE_API_URL}/api/products?includeTranslations=true&limit=100`,
-        method: 'GET',
-        headers: { apiKey: 'test-pimcore-api-key' },
-        itemsField: 'products',
+       adapterCode: 'httpApi',
+      url: `${PIMCORE_API_URL}/api/products?includeTranslations=true&limit=100`,
+      method: 'GET',
+        connectionCode: PIMCORE_API_CONNECTION_CODE,
+      auth: {
+          type: 'API_KEY',
+           secretCode: 'pimcore-api-key',
+            headerName: 'apiKey',
+        },
+        dataPath: 'products',
     })
 
     // Enrich with product detail (to get variant-level prices)
     .transform('enrich-pimcore-detail', {
         operators: [
             {
-                op: 'httpLookup',
-                args: {
-                    url: `${PIMCORE_API_URL}/api/products/{{id}}?includeTranslations=true`,
-                    headers: { apiKey: 'test-pimcore-api-key' },
+               op: 'httpLookup',
+               args: {
+                  url: `${PIMCORE_API_URL}/api/products/{{id}}?includeTranslations=true`,
+                    connectionCode: PIMCORE_API_CONNECTION_CODE,
+                  apiKeySecretCode: 'pimcore-api-key',
+                  apiKeyHeader: 'apiKey',
                     target: '_detail',
                     cacheTtlSec: 300,
                 },
@@ -121,10 +138,8 @@ export const multiSourceProductAggregation = createPipeline()
                         if (variants.length > 0) {
                             const firstVariant = variants[0];
                             record.price = firstVariant.price?.EUR || 0;
-                            record.priceInCents = Math.round((firstVariant.price?.EUR || 0) * 100);
                         } else {
                             record.price = 0;
-                            record.priceInCents = 0;
                         }
 
                         record._source = 'pimcore';
@@ -144,13 +159,13 @@ export const multiSourceProductAggregation = createPipeline()
         adapterCode: 'httpApi',
         url: `${MAGENTO_API_URL}/rest/V1/products`,
         method: 'GET',
-        bearerTokenSecretCode: 'magento-bearer-token',
-        itemsField: 'items',
+        auth: { type: 'BEARER', secretCode: 'magento-bearer-token' },
+        dataPath: 'items',
         pagination: {
-            type: 'offset',
+            type: 'PAGE',
             pageParam: 'searchCriteria[currentPage]',
             pageSizeParam: 'searchCriteria[pageSize]',
-            pageSize: 50,
+            limit: 50,
             maxPages: 2, // Limit to 100 products for testing
         },
     })
@@ -174,7 +189,6 @@ export const multiSourceProductAggregation = createPipeline()
                         // Map to unified format
                         record.description = record._attr_description || record._attr_short_description || '';
                         record.name_de = record.name; // Magento is single-locale in this mock
-                        record.priceInCents = Math.round((record.price || 0) * 100);
                         record.enabled = record.status === 1;
                         record.categoryCode = '';
 
@@ -209,10 +223,12 @@ export const multiSourceProductAggregation = createPipeline()
         ],
     })
 
-    // ── Fan-in: Deduplicate by SKU ──────────────────────────────────────────
-    .transform('dedup-by-sku', {
+    .transform('deduplicate-skus', {
         operators: [
-            { op: 'unique', args: { byKey: 'sku' } },
+            {
+                op: 'deduplicateRecords',
+                args: { key: 'sku', keep: 'LOWEST', priority: '_sourcePriority' },
+            },
         ],
     })
 
@@ -249,13 +265,12 @@ export const multiSourceProductAggregation = createPipeline()
         strategy: 'UPSERT',
         conflictStrategy: 'SOURCE_WINS',
         channel: '__default_channel__',
-        matchField: 'slug',
         nameField: 'name',
         slugField: 'slug',
         descriptionField: 'description',
         enabledField: 'enabled',
         skuField: 'sku',
-        priceField: 'priceInCents',
+        priceField: 'price',
     })
 
     // ── Sink to Meilisearch ─────────────────────────────────────────────────
@@ -265,7 +280,7 @@ export const multiSourceProductAggregation = createPipeline()
         primaryKey: 'sku',
         host: 'http://localhost:7700',
         apiKeySecretCode: 'meilisearch-api-key',
-        bulkSize: 100,
+        batchSize: 100,
         languageCode: 'en',
         searchableFields: ['name', 'description', 'sku', 'categoryCode'],
         filterableFields: ['_source', 'enabled', 'categoryCode'],
@@ -287,14 +302,14 @@ export const multiSourceProductAggregation = createPipeline()
     // Pimcore branch
     .edge('extract-pimcore', 'enrich-pimcore-detail')
     .edge('enrich-pimcore-detail', 'normalize-pimcore')
-    .edge('normalize-pimcore', 'dedup-by-sku')
+    .edge('normalize-pimcore', 'deduplicate-skus')
 
     // Magento branch
     .edge('extract-magento', 'normalize-magento')
-    .edge('normalize-magento', 'dedup-by-sku')
+    .edge('normalize-magento', 'deduplicate-skus')
 
     // Fan-in to pipeline tail
-    .edge('dedup-by-sku', 'validate-merged')
+    .edge('deduplicate-skus', 'validate-merged')
     .edge('validate-merged', 'enrich-categories')
     .edge('enrich-categories', 'load-products')
     .edge('load-products', 'sink-meili-unified')
@@ -323,7 +338,7 @@ export const multiSourceProductAggregation = createPipeline()
 export const webhookMultiApiEnrichment = createPipeline()
     .name('Webhook Multi-API Enrichment')
     .description('Webhook receives SKU, enriches from Pimcore + Shopify, loads to Vendure, sinks to Meilisearch')
-    .capabilities({ requires: ['UpdateCatalog'] })
+    .capabilities({ requires: ['UpdateCatalog'], writes: ['CATALOG'] })
 
     // Webhook trigger — receives { sku: "...", source: "..." }
     .trigger('webhook', {
@@ -337,10 +352,12 @@ export const webhookMultiApiEnrichment = createPipeline()
     .transform('enrich-pimcore', {
         operators: [
             {
-                op: 'httpLookup',
-                args: {
-                    url: `${PIMCORE_API_URL}/api/products?includeTranslations=true&limit=100`,
-                    headers: { apiKey: 'test-pimcore-api-key' },
+               op: 'httpLookup',
+               args: {
+                  url: `${PIMCORE_API_URL}/api/products?includeTranslations=true&limit=100`,
+                    connectionCode: PIMCORE_API_CONNECTION_CODE,
+                  apiKeySecretCode: 'pimcore-api-key',
+                  apiKeyHeader: 'apiKey',
                     target: '_pimcoreProducts',
                     cacheTtlSec: 60,
                 },
@@ -376,8 +393,8 @@ export const webhookMultiApiEnrichment = createPipeline()
             {
                 op: 'httpLookup',
                 args: {
-                    url: `${SHOPIFY_API_URL}/admin/api/2024-01/products.json?limit=50`,
-                    headers: { 'X-Shopify-Access-Token': 'shpat_test_mock_access_token_123456' },
+                    url: `/admin/api/${SHOPIFY_ADMIN_API_VERSION}/products.json?limit=50`,
+                    connectionCode: SHOPIFY_API_CONNECTION_CODE,
                     target: '_shopifyProducts',
                     cacheTtlSec: 60,
                 },
@@ -452,7 +469,6 @@ export const webhookMultiApiEnrichment = createPipeline()
         strategy: 'UPSERT',
         conflictStrategy: 'SOURCE_WINS',
         channel: '__default_channel__',
-        matchField: 'slug',
         nameField: 'name',
         slugField: 'slug',
         enabledField: 'enabled',
@@ -467,7 +483,7 @@ export const webhookMultiApiEnrichment = createPipeline()
         primaryKey: 'sku',
         host: 'http://localhost:7700',
         apiKeySecretCode: 'meilisearch-api-key',
-        bulkSize: 10,
+        batchSize: 10,
         languageCode: 'en',
         searchableFields: ['name', 'sku'],
         filterableFields: ['categoryCode', 'enrichedFrom'],
@@ -496,18 +512,25 @@ export const webhookMultiApiEnrichment = createPipeline()
  * - new/settled orders → create in Vendure
  * - processing/shipped orders → update existing
  * - cancelled orders → cancel in Vendure
- * All branches converge to an export step for the sync report.
+ * Missing update/cancel targets are reported without attempting a load. Loader
+ * branches export an attempt log; run metrics and record errors remain the
+ * authoritative outcome.
+ * Operators must publish and run pim-catalog-sync and pim-customer-sync first;
+ * dependsOn exposes that relationship but does not execute either pipeline.
  *
  * Graph topology:
- *   trigger → extract-orders → enrich-customers → transform-orders → route-by-status
- *     route:settled    → load-create-orders ──┐
- *     route:processing → load-update-orders ──┼→ export-sync-report
- *     route:cancelled  → load-cancel-orders ──┘
+ *   trigger → extract-orders → enrich-customers → transform-orders
+ *     → find-existing-order → route-by-status-and-target
+ *       route:settled             → load-create-orders ──┐
+ *       route:processing-existing → load-update-orders ──┼→ export-sync-attempts
+ *       route:cancelled-existing  → load-cancel-orders ──┘
+ *       route:*missing            → export-missing-targets
  */
 export const crossSystemOrderSync = createPipeline()
     .name('Cross-System Order Sync')
-    .description('Extract Pimcore orders, enrich with Shopify customer data, route by status, sync to Vendure')
-    .capabilities({ requires: ['UpdateOrder'] })
+    .description('Sync Pimcore orders after catalog/customer imports; report missing update and cancellation targets')
+    .capabilities({ requires: ['UpdateOrder'], writes: ['ORDERS'] })
+    .dependsOn('pim-catalog-sync', 'pim-customer-sync')
 
     .trigger('start', { type: 'MANUAL' })
 
@@ -516,8 +539,13 @@ export const crossSystemOrderSync = createPipeline()
         adapterCode: 'httpApi',
         url: `${PIMCORE_API_URL}/api/orders`,
         method: 'GET',
-        headers: { apiKey: 'test-pimcore-api-key' },
-        itemsField: 'orders',
+        connectionCode: PIMCORE_API_CONNECTION_CODE,
+        auth: {
+            type: 'API_KEY',
+            secretCode: 'pimcore-api-key',
+            headerName: 'apiKey',
+        },
+        dataPath: 'orders',
     })
 
     // Enrich with Shopify customer data (lookup by email)
@@ -526,8 +554,8 @@ export const crossSystemOrderSync = createPipeline()
             {
                 op: 'httpLookup',
                 args: {
-                    url: `${SHOPIFY_API_URL}/admin/api/2024-01/customers.json?limit=100`,
-                    headers: { 'X-Shopify-Access-Token': 'shpat_test_mock_access_token_123456' },
+                    url: `/admin/api/${SHOPIFY_ADMIN_API_VERSION}/customers.json?limit=100`,
+                    connectionCode: SHOPIFY_API_CONNECTION_CODE,
                     target: '_shopifyCustomers',
                     cacheTtlSec: 300,
                 },
@@ -573,6 +601,20 @@ export const crossSystemOrderSync = createPipeline()
                         record.orderTotal = subtotal;
                         record.lineCount = lines.length;
 
+                        // Fresh dev data has standard/express shipping only. Preserve the
+                        // mock source code while selecting an eligible local fallback.
+                        record.sourceShippingMethodCode = record.shippingMethodCode;
+                        if (record.shippingMethodCode === '${PIMCORE_FREIGHT_SHIPPING_METHOD_CODE}') {
+                            record.shippingMethodCode = '${DEV_FALLBACK_SHIPPING_METHOD_CODE}';
+                        }
+
+                        // The fresh dummy payment handler settles immediately and cannot
+                        // remain PaymentAuthorized. Preserve the source state for audit.
+                        record.sourceState = record.state;
+                        if (record.state === '${PIMCORE_AUTHORIZED_ORDER_STATE}') {
+                            record.state = '${DEV_SETTLED_ORDER_STATE}';
+                        }
+
                         // Determine order status bucket for routing
                         const state = record.state || '';
                         if (['PaymentSettled', 'PaymentAuthorized', 'ArrangingPayment'].includes(state)) {
@@ -600,59 +642,146 @@ export const crossSystemOrderSync = createPipeline()
         ],
     })
 
-    // Route by order status
+    .enrich('find-existing-order', {
+        sourceType: 'VENDURE',
+        entityType: 'ORDER',
+        sourceField: 'code',
+        lookupField: 'code',
+        target: '_vendureOrder',
+    })
+
+    // Updates and cancellations only apply to target orders that already exist.
     .route('route-by-status', {
         branches: [
             { name: 'settled', when: [{ field: '_routeStatus', cmp: 'eq', value: 'settled' }] },
-            { name: 'processing', when: [{ field: '_routeStatus', cmp: 'eq', value: 'processing' }] },
-            { name: 'cancelled', when: [{ field: '_routeStatus', cmp: 'eq', value: 'cancelled' }] },
+            {
+                name: 'processing-existing',
+                when: [
+                    { field: '_routeStatus', cmp: 'eq', value: 'processing' },
+                    { field: '_vendureOrder', cmp: 'exists', value: true },
+                ],
+            },
+            {
+                name: 'processing-missing',
+                when: [
+                    { field: '_routeStatus', cmp: 'eq', value: 'processing' },
+                    { field: '_vendureOrder', cmp: 'isNull', value: true },
+                ],
+            },
+            {
+                name: 'cancelled-existing',
+                when: [
+                    { field: '_routeStatus', cmp: 'eq', value: 'cancelled' },
+                    { field: '_vendureOrder', cmp: 'exists', value: true },
+                ],
+            },
+            {
+                name: 'cancelled-missing',
+                when: [
+                    { field: '_routeStatus', cmp: 'eq', value: 'cancelled' },
+                    { field: '_vendureOrder', cmp: 'isNull', value: true },
+                ],
+            },
         ],
     })
 
     // Settled orders → create in Vendure
     .transform('prepare-create', {
         operators: [
-            { op: 'set', args: { path: 'syncAction', value: 'CREATE' } },
-            { op: 'omit', args: { fields: ['_routeStatus'] } },
+            { op: 'set', args: { path: 'syncIntent', value: 'CREATE' } },
+            { op: 'omit', args: { fields: ['_routeStatus', '_vendureOrder'] } },
         ],
+    })
+
+    .load('load-create-orders', {
+        adapterCode: 'orderUpsert',
+        strategy: 'CREATE',
+        lookupFields: 'code',
+        skipDuplicates: true,
     })
 
     // Processing orders → update in Vendure
     .transform('prepare-update', {
         operators: [
-            { op: 'set', args: { path: 'syncAction', value: 'UPDATE' } },
-            { op: 'omit', args: { fields: ['_routeStatus'] } },
+            { op: 'set', args: { path: 'syncIntent', value: 'UPDATE' } },
+            { op: 'omit', args: { fields: ['_routeStatus', '_vendureOrder'] } },
         ],
+    })
+
+    .load('load-update-orders', {
+        adapterCode: 'orderUpsert',
+        strategy: 'UPDATE',
+        lookupFields: 'code',
+        linesMode: 'SKIP',
     })
 
     // Cancelled orders → cancel in Vendure
     .transform('prepare-cancel', {
         operators: [
-            { op: 'set', args: { path: 'syncAction', value: 'CANCEL' } },
-            { op: 'omit', args: { fields: ['_routeStatus'] } },
+            { op: 'set', args: { path: 'syncIntent', value: 'CANCEL' } },
+            { op: 'omit', args: { fields: ['_routeStatus', '_vendureOrder'] } },
         ],
     })
 
-    // Export sync report (fan-in from all 3 branches)
-    .export('export-sync-report', {
+    .load('load-cancel-orders', {
+        adapterCode: 'orderTransition',
+        orderCodeField: 'code',
+        state: 'Cancelled',
+    })
+
+    .transform('prepare-missing-update', {
+        operators: [
+            { op: 'set', args: { path: 'syncIntent', value: 'UPDATE' } },
+            { op: 'set', args: { path: 'syncOutcome', value: 'NOT_ATTEMPTED' } },
+            { op: 'set', args: { path: 'syncReason', value: 'ORDER_NOT_FOUND' } },
+            { op: 'omit', args: { fields: ['_routeStatus', '_vendureOrder'] } },
+        ],
+    })
+
+    .transform('prepare-missing-cancel', {
+        operators: [
+            { op: 'set', args: { path: 'syncIntent', value: 'CANCEL' } },
+            { op: 'set', args: { path: 'syncOutcome', value: 'NOT_ATTEMPTED' } },
+            { op: 'set', args: { path: 'syncReason', value: 'ORDER_NOT_FOUND' } },
+            { op: 'omit', args: { fields: ['_routeStatus', '_vendureOrder'] } },
+        ],
+    })
+
+    // Load-step output contains attempted records. Actual outcomes are recorded
+    // in run metrics and record errors, so this export must not claim success.
+    .export('export-sync-attempts', {
         adapterCode: 'csvExport',
         path: './exports',
-        filenamePattern: 'order-sync-report.csv',
+        filenamePattern: 'order-sync-attempts.csv',
+    })
+
+    .export('export-missing-targets', {
+        adapterCode: 'csvExport',
+        path: './exports',
+        filenamePattern: 'order-sync-missing-targets.csv',
     })
 
     // Graph edges
     .edge('start', 'extract-orders')
     .edge('extract-orders', 'enrich-customers')
     .edge('enrich-customers', 'transform-orders')
-    .edge('transform-orders', 'route-by-status')
+    .edge('transform-orders', 'find-existing-order')
+    .edge('find-existing-order', 'route-by-status')
     // Route branches
     .edge('route-by-status', 'prepare-create', 'settled')
-    .edge('route-by-status', 'prepare-update', 'processing')
-    .edge('route-by-status', 'prepare-cancel', 'cancelled')
-    // Fan-in to export report
-    .edge('prepare-create', 'export-sync-report')
-    .edge('prepare-update', 'export-sync-report')
-    .edge('prepare-cancel', 'export-sync-report')
+    .edge('route-by-status', 'prepare-update', 'processing-existing')
+    .edge('route-by-status', 'prepare-missing-update', 'processing-missing')
+    .edge('route-by-status', 'prepare-cancel', 'cancelled-existing')
+    .edge('route-by-status', 'prepare-missing-cancel', 'cancelled-missing')
+    // Fan-in to attempt and preflight reports
+    .edge('prepare-create', 'load-create-orders')
+    .edge('load-create-orders', 'export-sync-attempts')
+    .edge('prepare-update', 'load-update-orders')
+    .edge('load-update-orders', 'export-sync-attempts')
+    .edge('prepare-cancel', 'load-cancel-orders')
+    .edge('load-cancel-orders', 'export-sync-attempts')
+    .edge('prepare-missing-update', 'export-missing-targets')
+    .edge('prepare-missing-cancel', 'export-missing-targets')
     .build();
 
 
@@ -670,27 +799,34 @@ export const crossSystemOrderSync = createPipeline()
 export const biDirectionalSyncA = createPipeline()
     .name('Bi-Directional Sync A: Import')
     .description('Import products from Pimcore to Vendure, export change log (triggers Pipeline B via events)')
-    .capabilities({ requires: ['UpdateCatalog'] })
+    .capabilities({ requires: ['UpdateCatalog'], writes: ['CATALOG'] })
 
     .trigger('start', { type: 'MANUAL' })
 
     // Extract products from Pimcore
     .extract('extract-products', {
-        adapterCode: 'httpApi',
-        url: `${PIMCORE_API_URL}/api/products?includeTranslations=true&limit=100`,
-        method: 'GET',
-        headers: { apiKey: 'test-pimcore-api-key' },
-        itemsField: 'products',
+       adapterCode: 'httpApi',
+      url: `${PIMCORE_API_URL}/api/products?includeTranslations=true&limit=100`,
+      method: 'GET',
+        connectionCode: PIMCORE_API_CONNECTION_CODE,
+      auth: {
+          type: 'API_KEY',
+           secretCode: 'pimcore-api-key',
+            headerName: 'apiKey',
+        },
+        dataPath: 'products',
     })
 
     // Enrich with detail
     .transform('enrich-detail', {
         operators: [
             {
-                op: 'httpLookup',
-                args: {
-                    url: `${PIMCORE_API_URL}/api/products/{{id}}?includeTranslations=true`,
-                    headers: { apiKey: 'test-pimcore-api-key' },
+               op: 'httpLookup',
+               args: {
+                  url: `${PIMCORE_API_URL}/api/products/{{id}}?includeTranslations=true`,
+                    connectionCode: PIMCORE_API_CONNECTION_CODE,
+                  apiKeySecretCode: 'pimcore-api-key',
+                  apiKeyHeader: 'apiKey',
                     target: '_detail',
                     cacheTtlSec: 300,
                 },
@@ -731,7 +867,6 @@ export const biDirectionalSyncA = createPipeline()
         strategy: 'UPSERT',
         conflictStrategy: 'SOURCE_WINS',
         channel: '__default_channel__',
-        matchField: 'slug',
         nameField: 'name',
         slugField: 'slug',
         descriptionField: 'description',
@@ -800,7 +935,7 @@ export const biDirectionalSyncB = createPipeline()
         primaryKey: 'objectID',
         host: 'http://localhost:7700',
         apiKeySecretCode: 'meilisearch-api-key',
-        bulkSize: 50,
+        batchSize: 50,
         languageCode: 'en',
         searchableFields: ['name', 'description', 'slug'],
         filterableFields: ['syncSource', 'enabled'],
@@ -837,28 +972,38 @@ export const biDirectionalSyncB = createPipeline()
 export const multiSinkFanOut = createPipeline()
     .name('Multi-Sink Fan-Out')
     .description('Extract from Pimcore, transform, fan-out to Meilisearch + webhook + CSV export')
-    .capabilities({ requires: ['ReadCatalog'] })
+    .capabilities({
+        requires: ['ReadCatalog', 'UpdateDataHubSettings'],
+        writes: ['CUSTOM'],
+    })
     .parallel({ maxConcurrentSteps: 3, errorPolicy: 'CONTINUE' })
 
     .trigger('start', { type: 'MANUAL' })
 
     // Extract products from Pimcore
     .extract('extract-products', {
-        adapterCode: 'httpApi',
-        url: `${PIMCORE_API_URL}/api/products?includeTranslations=true&limit=100`,
-        method: 'GET',
-        headers: { apiKey: 'test-pimcore-api-key' },
-        itemsField: 'products',
+       adapterCode: 'httpApi',
+      url: `${PIMCORE_API_URL}/api/products?includeTranslations=true&limit=100`,
+      method: 'GET',
+        connectionCode: PIMCORE_API_CONNECTION_CODE,
+      auth: {
+          type: 'API_KEY',
+           secretCode: 'pimcore-api-key',
+            headerName: 'apiKey',
+        },
+        dataPath: 'products',
     })
 
     // Enrich with product detail for complete data
     .transform('enrich-detail', {
         operators: [
             {
-                op: 'httpLookup',
-                args: {
-                    url: `${PIMCORE_API_URL}/api/products/{{id}}?includeTranslations=true`,
-                    headers: { apiKey: 'test-pimcore-api-key' },
+               op: 'httpLookup',
+               args: {
+                  url: `${PIMCORE_API_URL}/api/products/{{id}}?includeTranslations=true`,
+                    connectionCode: PIMCORE_API_CONNECTION_CODE,
+                  apiKeySecretCode: 'pimcore-api-key',
+                  apiKeyHeader: 'apiKey',
                     target: '_detail',
                     cacheTtlSec: 300,
                 },
@@ -912,7 +1057,7 @@ export const multiSinkFanOut = createPipeline()
         primaryKey: 'sku',
         host: 'http://localhost:7700',
         apiKeySecretCode: 'meilisearch-api-key',
-        bulkSize: 50,
+        batchSize: 50,
         languageCode: 'en',
         searchableFields: ['name', 'description', 'sku'],
         filterableFields: ['category', 'enabled', 'source'],

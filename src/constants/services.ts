@@ -35,7 +35,6 @@ export const SERVICE_DEFAULTS = {
     MEILISEARCH_URL: SEARCH_SERVICE_URLS.MEILISEARCH,
     ELASTICSEARCH_URL: SEARCH_SERVICE_URLS.ELASTICSEARCH,
     TYPESENSE_URL: SEARCH_SERVICE_URLS.TYPESENSE,
-    EXAMPLE_BASE_URL: EXAMPLE_URLS.BASE,
     DEFAULT_CURRENCY: 'USD',
 } as const;
 
@@ -86,6 +85,10 @@ export const EXTENSION_MIME_MAP: Record<string, string> = {
     '.gif': 'image/gif',
     '.webp': 'image/webp',
     '.svg': 'image/svg+xml',
+    '.mp4': 'video/mp4',
+    '.webm': 'video/webm',
+    '.mp3': 'audio/mpeg',
+    '.wav': 'audio/wav',
 } as const;
 
 export const HTTP_HEADERS = {
@@ -95,6 +98,7 @@ export const HTTP_HEADERS = {
     USER_AGENT: 'User-Agent',
     X_API_KEY: 'X-API-Key',
     X_REQUEST_ID: 'X-Request-ID',
+    IDEMPOTENCY_KEY: 'Idempotency-Key',
     X_DATAHUB_SIGNATURE: 'X-DataHub-Signature',
     X_TYPESENSE_API_KEY: 'X-TYPESENSE-API-KEY',
 } as const;
@@ -136,4 +140,3 @@ export const FEED_FORMATS: readonly FeedFormatInfo[] = [
 ] as const;
 
 export const FEED_FORMAT_MAP = new Map(FEED_FORMATS.map(f => [f.code, f]));
-

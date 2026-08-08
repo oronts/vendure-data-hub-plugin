@@ -13,12 +13,14 @@ import {
     EntityFieldSchema,
     TargetOperation,
 } from '../../types/index';
-import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
-import { LOGGER_CONTEXTS } from '../../constants/index';
+import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger/datahub-logger';
+import { LOGGER_CONTEXTS } from '../../constants/core';
 import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
 import {
     BaseEntityLoader,
     ExistingEntityLookupResult,
+    getLoaderExecutionCache,
+    LoaderExecutionState,
     LoaderMetadata,
     ValidationBuilder,
     EntityLookupHelper,
@@ -33,14 +35,13 @@ import {
     shouldUpdateField,
 } from './helpers';
 
+const FACET_CACHE_NAMESPACE = 'facet-value-loader:facets';
+
 /** Loads FacetValue entities via FacetValueService. Supports CREATE, UPDATE, UPSERT. */
 @Injectable()
 export class FacetValueLoader extends BaseEntityLoader<FacetValueInput, FacetValue> {
     protected readonly logger: DataHubLogger;
     protected readonly metadata: LoaderMetadata = FACET_VALUE_LOADER_METADATA;
-
-    // Cache for resolved facet IDs to avoid repeated lookups
-    private facetCache = new Map<string, ID>();
 
     private readonly lookupHelper: EntityLookupHelper<FacetValueService, FacetValue, FacetValueInput>;
 
@@ -54,11 +55,6 @@ export class FacetValueLoader extends BaseEntityLoader<FacetValueInput, FacetVal
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.FACET_VALUE_LOADER);
         this.lookupHelper = new EntityLookupHelper<FacetValueService, FacetValue, FacetValueInput>(this.facetValueService)
             .addIdStrategy((ctx, svc, id) => svc.findOne(ctx, id) as Promise<FacetValue | null>);
-    }
-
-    protected preprocessRecords(records: FacetValueInput[]): FacetValueInput[] {
-        this.facetCache.clear();
-        return records;
     }
 
     protected getDuplicateErrorMessage(record: FacetValueInput): string {
@@ -111,7 +107,12 @@ export class FacetValueLoader extends BaseEntityLoader<FacetValueInput, FacetVal
         ctx: RequestContext,
         record: FacetValueInput,
         operation: TargetOperation,
+        executionState?: LoaderExecutionState,
     ): Promise<EntityValidationResult> {
+        const facetCache = getLoaderExecutionCache(
+            executionState,
+            FACET_CACHE_NAMESPACE,
+        );
         const builder = new ValidationBuilder()
             .requireStringForCreate('name', record.name, operation, 'Facet value name is required')
             .requireStringForCreate('code', record.code, operation, 'Facet value code is required');
@@ -138,7 +139,7 @@ export class FacetValueLoader extends BaseEntityLoader<FacetValueInput, FacetVal
 
             // Validate that the parent facet exists
             if (record.facetCode || record.facetId) {
-                const facetId = await resolveFacetId(ctx, this.facetService, record, this.facetCache);
+                const facetId = await resolveFacetId(ctx, this.facetService, record, facetCache);
                 if (!facetId) {
                     builder.addError(
                         'facetCode',
@@ -201,10 +202,18 @@ export class FacetValueLoader extends BaseEntityLoader<FacetValueInput, FacetVal
         };
     }
 
-    protected async createEntity(context: LoaderContext, record: FacetValueInput): Promise<ID | null> {
+    protected async createEntity(
+        context: LoaderContext,
+        record: FacetValueInput,
+        executionState?: LoaderExecutionState,
+    ): Promise<ID | null> {
         const { ctx } = context;
+        const facetCache = getLoaderExecutionCache(
+            executionState,
+            FACET_CACHE_NAMESPACE,
+        );
 
-        const facetId = await resolveFacetId(ctx, this.facetService, record, this.facetCache);
+        const facetId = await resolveFacetId(ctx, this.facetService, record, facetCache);
         if (!facetId) {
             // This shouldn't happen if validation passed, but handle defensively
             this.logger.error(`Parent facet "${record.facetCode}" not found during create`);

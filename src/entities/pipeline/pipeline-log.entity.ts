@@ -1,4 +1,4 @@
-import { DeepPartial, VendureEntity } from '@vendure/core';
+import { DeepPartial, EntityId, ID, VendureEntity } from '@vendure/core';
 import { Column, Entity, Index, ManyToOne } from 'typeorm';
 import type { JsonObject } from '../../types/index';
 import { LogLevel } from '../../constants/enums';
@@ -37,14 +37,14 @@ export class PipelineLog extends VendureEntity {
     @ManyToOne(() => Pipeline, { nullable: true, onDelete: 'CASCADE' })
     pipeline!: Pipeline | null;
 
-    @Column({ type: 'int', nullable: true })
-    pipelineId!: number | null;
+    @EntityId({ nullable: true })
+    pipelineId!: ID | null;
 
     @ManyToOne(() => PipelineRun, { nullable: true, onDelete: 'CASCADE' })
     run!: PipelineRun | null;
 
-    @Column({ type: 'int', nullable: true })
-    runId!: number | null;
+    @EntityId({ nullable: true })
+    runId!: ID | null;
 
     @Column({ type: 'int', nullable: true })
     durationMs!: number | null;

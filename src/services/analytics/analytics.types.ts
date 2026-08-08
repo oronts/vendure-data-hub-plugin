@@ -7,7 +7,7 @@
 /**
  * Time range for analytics queries
  */
-export type TimeRange = '1h' | '24h' | '7d' | '30d' | '90d' | 'custom';
+export type TimeRange = '1h' | '24h' | '7d' | '30d' | '90d';
 
 /**
  * Time series data point
@@ -22,7 +22,7 @@ export interface TimeSeriesPoint {
  */
 export interface AnalyticsOverview {
     totalPipelines: number;
-    activePipelines: number;
+    enabledPipelines: number;
     runsToday: number;
     runsThisWeek: number;
     successRateToday: number;
@@ -93,7 +93,7 @@ export interface ThroughputMetrics {
     recordsPerMinute: number;
     recordsPerHour: number;
     peakThroughput: number;
-    peakThroughputAt: Date;
+    peakThroughputAt: Date | null;
     throughputTrend: TimeSeriesPoint[];
 }
 

@@ -14,12 +14,14 @@ import {
     EntityFieldSchema,
     TargetOperation,
 } from '../../types/index';
-import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
-import { LOGGER_CONTEXTS } from '../../constants/index';
+import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger/datahub-logger';
+import { LOGGER_CONTEXTS } from '../../constants/core';
 import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
 import {
     BaseEntityLoader,
     ExistingEntityLookupResult,
+    getLoaderExecutionCache,
+    LoaderExecutionState,
     LoaderMetadata,
     ValidationBuilder,
     EntityLookupHelper,
@@ -38,14 +40,13 @@ import {
     shouldUpdateField,
 } from './helpers';
 
+const ZONE_CACHE_NAMESPACE = 'channel-loader:zones';
+
 /** Loads Channel entities via ChannelService. Supports CREATE, UPDATE, UPSERT. */
 @Injectable()
 export class ChannelLoader extends BaseEntityLoader<ChannelInput, Channel> {
     protected readonly logger: DataHubLogger;
     protected readonly metadata: LoaderMetadata = CHANNEL_LOADER_METADATA;
-
-    // Cache for resolved zone IDs to avoid repeated lookups
-    private zoneCache = new Map<string, ID>();
 
     private readonly lookupHelper: EntityLookupHelper<ChannelService, Channel, ChannelInput>;
 
@@ -62,8 +63,7 @@ export class ChannelLoader extends BaseEntityLoader<ChannelInput, Channel> {
                 lookup: async (ctx, svc, value) => {
                     if (!value || typeof value !== 'string') return null;
                     const channels = await svc.findAll(ctx);
-                    const channelsList = channels as unknown as Array<{ id: ID; code: string }>;
-                    const match = channelsList.find((c) => c.code === value);
+                    const match = channels.items.find(channel => channel.code === value);
                     if (match) {
                         const fullChannel = await svc.findOne(ctx, match.id);
                         if (fullChannel) {
@@ -87,11 +87,6 @@ export class ChannelLoader extends BaseEntityLoader<ChannelInput, Channel> {
             .addIdStrategy((ctx, svc, id) => svc.findOne(ctx, id));
     }
 
-    protected preprocessRecords(records: ChannelInput[]): ChannelInput[] {
-        this.zoneCache.clear();
-        return records;
-    }
-
     protected getDuplicateErrorMessage(record: ChannelInput): string {
         return `Channel with code "${record.code}" already exists`;
     }
@@ -108,7 +103,12 @@ export class ChannelLoader extends BaseEntityLoader<ChannelInput, Channel> {
         ctx: RequestContext,
         record: ChannelInput,
         operation: TargetOperation,
+        executionState?: LoaderExecutionState,
     ): Promise<EntityValidationResult> {
+        const zoneCache = getLoaderExecutionCache(
+            executionState,
+            ZONE_CACHE_NAMESPACE,
+        );
         const builder = new ValidationBuilder()
             .requireStringForCreate('code', record.code, operation, 'Channel code is required');
 
@@ -178,7 +178,7 @@ export class ChannelLoader extends BaseEntityLoader<ChannelInput, Channel> {
                     this.zoneService,
                     record.defaultTaxZoneCode,
                     record.defaultTaxZoneId,
-                    this.zoneCache,
+                    zoneCache,
                 );
                 if (!taxZoneId) {
                     builder.addError(
@@ -195,7 +195,7 @@ export class ChannelLoader extends BaseEntityLoader<ChannelInput, Channel> {
                     this.zoneService,
                     record.defaultShippingZoneCode,
                     record.defaultShippingZoneId,
-                    this.zoneCache,
+                    zoneCache,
                 );
                 if (!shippingZoneId) {
                     builder.addError(
@@ -301,8 +301,16 @@ export class ChannelLoader extends BaseEntityLoader<ChannelInput, Channel> {
         };
     }
 
-    protected async createEntity(context: LoaderContext, record: ChannelInput): Promise<ID | null> {
+    protected async createEntity(
+        context: LoaderContext,
+        record: ChannelInput,
+        executionState?: LoaderExecutionState,
+    ): Promise<ID | null> {
         const { ctx } = context;
+        const zoneCache = getLoaderExecutionCache(
+            executionState,
+            ZONE_CACHE_NAMESPACE,
+        );
 
         // Resolve zone IDs
         let defaultTaxZoneId: ID | undefined;
@@ -312,7 +320,7 @@ export class ChannelLoader extends BaseEntityLoader<ChannelInput, Channel> {
                 this.zoneService,
                 record.defaultTaxZoneCode,
                 record.defaultTaxZoneId,
-                this.zoneCache,
+                zoneCache,
             );
             if (!taxZoneId) {
                 this.logger.error(`Default tax zone "${record.defaultTaxZoneCode}" not found during create`);
@@ -328,7 +336,7 @@ export class ChannelLoader extends BaseEntityLoader<ChannelInput, Channel> {
                 this.zoneService,
                 record.defaultShippingZoneCode,
                 record.defaultShippingZoneId,
-                this.zoneCache,
+                zoneCache,
             );
             if (!shippingZoneId) {
                 this.logger.error(`Default shipping zone "${record.defaultShippingZoneCode}" not found during create`);
@@ -388,9 +396,22 @@ export class ChannelLoader extends BaseEntityLoader<ChannelInput, Channel> {
         return channel.id;
     }
 
-    protected async updateEntity(context: LoaderContext, channelId: ID, record: ChannelInput): Promise<void> {
+    protected async updateEntity(
+        context: LoaderContext,
+        channelId: ID,
+        record: ChannelInput,
+        executionState?: LoaderExecutionState,
+    ): Promise<void> {
         const { ctx, options } = context;
+        const zoneCache = getLoaderExecutionCache(
+            executionState,
+            ZONE_CACHE_NAMESPACE,
+        );
 
+        const existing = await this.channelService.findOne(ctx, channelId);
+        if (!existing) {
+            throw new Error(`Channel ${String(channelId)} was not found`);
+        }
         // Resolve zone IDs if needed
         let defaultTaxZoneId: ID | undefined;
         if ((record.defaultTaxZoneCode || record.defaultTaxZoneId) && shouldUpdateField('defaultTaxZoneId', options.updateOnlyFields)) {
@@ -399,7 +420,7 @@ export class ChannelLoader extends BaseEntityLoader<ChannelInput, Channel> {
                 this.zoneService,
                 record.defaultTaxZoneCode,
                 record.defaultTaxZoneId,
-                this.zoneCache,
+                zoneCache,
             ) || undefined;
         }
 
@@ -410,7 +431,7 @@ export class ChannelLoader extends BaseEntityLoader<ChannelInput, Channel> {
                 this.zoneService,
                 record.defaultShippingZoneCode,
                 record.defaultShippingZoneId,
-                this.zoneCache,
+                zoneCache,
             ) || undefined;
         }
 
@@ -419,21 +440,44 @@ export class ChannelLoader extends BaseEntityLoader<ChannelInput, Channel> {
         if (record.code !== undefined && shouldUpdateField('code', options.updateOnlyFields)) {
             updateInput.code = record.code;
         }
+        if (record.token !== undefined && shouldUpdateField('token', options.updateOnlyFields)) {
+            updateInput.token = record.token;
+        }
 
+        const defaultLanguageCode = record.defaultLanguageCode !== undefined
+            ? parseLanguageCode(record.defaultLanguageCode)
+            : existing.defaultLanguageCode;
         if (record.defaultLanguageCode !== undefined && shouldUpdateField('defaultLanguageCode', options.updateOnlyFields)) {
-            updateInput.defaultLanguageCode = parseLanguageCode(record.defaultLanguageCode);
+            if (!defaultLanguageCode) {
+                throw new Error(`Invalid default language code "${record.defaultLanguageCode}"`);
+            }
+            updateInput.defaultLanguageCode = defaultLanguageCode;
         }
 
         if (record.availableLanguageCodes !== undefined && shouldUpdateField('availableLanguageCodes', options.updateOnlyFields)) {
-            updateInput.availableLanguageCodes = parseLanguageCodes(record.availableLanguageCodes);
+            const availableLanguageCodes = parseLanguageCodes(record.availableLanguageCodes);
+            if (defaultLanguageCode && !availableLanguageCodes.includes(defaultLanguageCode)) {
+                availableLanguageCodes.unshift(defaultLanguageCode);
+            }
+            updateInput.availableLanguageCodes = availableLanguageCodes;
         }
 
+        const defaultCurrencyCode = record.defaultCurrencyCode !== undefined
+            ? parseCurrencyCode(record.defaultCurrencyCode)
+            : existing.defaultCurrencyCode;
         if (record.defaultCurrencyCode !== undefined && shouldUpdateField('defaultCurrencyCode', options.updateOnlyFields)) {
-            updateInput.defaultCurrencyCode = parseCurrencyCode(record.defaultCurrencyCode);
+            if (!defaultCurrencyCode) {
+                throw new Error(`Invalid default currency code "${record.defaultCurrencyCode}"`);
+            }
+            updateInput.defaultCurrencyCode = defaultCurrencyCode;
         }
 
         if (record.availableCurrencyCodes !== undefined && shouldUpdateField('availableCurrencyCodes', options.updateOnlyFields)) {
-            updateInput.availableCurrencyCodes = parseCurrencyCodes(record.availableCurrencyCodes);
+            const availableCurrencyCodes = parseCurrencyCodes(record.availableCurrencyCodes);
+            if (defaultCurrencyCode && !availableCurrencyCodes.includes(defaultCurrencyCode)) {
+                availableCurrencyCodes.unshift(defaultCurrencyCode);
+            }
+            updateInput.availableCurrencyCodes = availableCurrencyCodes;
         }
 
         if (record.pricesIncludeTax !== undefined && shouldUpdateField('pricesIncludeTax', options.updateOnlyFields)) {
@@ -451,8 +495,17 @@ export class ChannelLoader extends BaseEntityLoader<ChannelInput, Channel> {
         if (record.customFields !== undefined && shouldUpdateField('customFields', options.updateOnlyFields)) {
             updateInput.customFields = record.customFields;
         }
+        if (record.sellerId !== undefined && shouldUpdateField('sellerId', options.updateOnlyFields)) {
+            updateInput.sellerId = record.sellerId;
+        }
 
-        await this.channelService.update(ctx, updateInput as Parameters<typeof this.channelService.update>[1]);
+        const updateResult = await this.channelService.update(
+            ctx,
+            updateInput as Parameters<typeof this.channelService.update>[1],
+        );
+        if ('errorCode' in updateResult) {
+            throw new Error(`Failed to update channel: ${updateResult.message}`);
+        }
 
         this.logger.debug(`Updated channel ${record.code} (ID: ${channelId})`);
     }

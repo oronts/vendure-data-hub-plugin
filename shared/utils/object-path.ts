@@ -24,3 +24,41 @@ export function getNestedValue(obj: Record<string, unknown>, path: string): unkn
     }
     return current;
 }
+
+function assertSafePath(path: string): string[] {
+    const parts = path.split('.');
+    if (!path || parts.some(part => !part || DANGEROUS_KEYS.has(part))) {
+        throw new Error(`Invalid object path "${path}"`);
+    }
+    return parts;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+/**
+ * Return a copy with a dot-notation path updated without mutating the input.
+ * Only objects along the changed path are cloned.
+ */
+export function setNestedValue<T extends Record<string, unknown>>(
+    obj: T,
+    path: string,
+    value: unknown,
+): T {
+    const parts = assertSafePath(path);
+    const root: Record<string, unknown> = { ...obj };
+    let source: Record<string, unknown> = obj;
+    let target = root;
+
+    for (const part of parts.slice(0, -1)) {
+        const sourceChild = source[part];
+        const child = isRecord(sourceChild) ? { ...sourceChild } : {};
+        target[part] = child;
+        source = isRecord(sourceChild) ? sourceChild : {};
+        target = child;
+    }
+
+    target[parts[parts.length - 1]] = value;
+    return root as T;
+}

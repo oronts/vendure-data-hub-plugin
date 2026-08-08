@@ -1,26 +1,36 @@
 /**
  * DataHub Seed Data
  *
- * Service for syncing code-first configurations to the database on startup.
- * Implements safe initialization with retry logic and transactional guarantees.
+ * Service for syncing database-backed code-first configuration on startup.
+ * Implements serialized reconciliation with validation and retry handling.
  */
 
 import { Injectable, OnApplicationBootstrap, Inject } from '@nestjs/common';
-import { TransactionalConnection, RequestContext, RequestContextService } from '@vendure/core';
+import { ProcessContext, RequestContext, RequestContextService } from '@vendure/core';
+import { isDeepStrictEqual } from 'node:util';
 import { DATAHUB_PLUGIN_OPTIONS, LOGGER_CONTEXTS, HTTP } from '../constants/index';
-import { DataHubPluginOptions, CodeFirstPipeline, CodeFirstSecret, CodeFirstConnection } from '../types/index';
-import { Pipeline } from '../entities/pipeline/pipeline.entity';
-import { DataHubSecret } from '../entities/config/secret.entity';
-import { DataHubConnection } from '../entities/config/connection.entity';
-import { SecretProvider, ConnectionType } from '../constants/enums';
+import { DataHubPluginOptions, CodeFirstPipeline, CodeFirstConnection } from '../types/index';
 import { DataHubLoggerFactory } from '../services/logger';
 import { SecretService } from '../services/config/secret.service';
 import { getErrorMessage, toErrorOrUndefined } from '../utils/error.utils';
 import { sleep } from '../utils/retry.utils';
-import type { JsonObject, JsonValue } from '../../shared/types';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as yaml from 'js-yaml';
+import { loadDataHubConfigFile } from '../utils/config-file.utils';
+import { assertConnectionCode, ConnectionService } from '../services/config/connection.service';
+import { assertConnectionConfig, parseConnectionType } from '../services/config/connection-config.validation';
+import { ManagedResourceChannelService } from '../services/config/managed-resource-channel.service';
+import { ConfigurationSource, ConnectionType, PipelineStatus } from '../constants/enums';
+import { assertValidPipelineCode, definitionsEqual, normalizePipelineDefinition } from '../services/pipeline/pipeline-policy';
+import { validatePipelineDefinition } from '../validation/pipeline-definition.validator';
+import { PipelineService } from '../services/pipeline/pipeline.service';
+import { DistributedLockService } from '../services/runtime/distributed-lock.service';
+import { DISTRIBUTED_LOCK } from '../constants/defaults/reliability-defaults';
+import { DataHubRegistryService } from '../sdk/registry.service';
+import { withEffectivePipelineCapabilities } from '../services/pipeline/pipeline-capabilities';
+import {
+    collectAdapterUsages,
+    validateAdapterBindings,
+    withResolvedAdapterBindings,
+} from '../sdk/adapter-bindings';
 
 const logger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.CONFIG_SYNC);
 
@@ -29,32 +39,93 @@ const MAX_BOOTSTRAP_RETRIES = HTTP.MAX_RETRIES;
 /** Delay between retry attempts in milliseconds */
 const RETRY_DELAY_MS = HTTP.RETRY_DELAY_MS;
 
+class ConfigurationValidationError extends Error {}
+
+function mergeByCode<T extends { code: string }>(fileEntries: T[], inlineEntries: T[]): T[] {
+    const entries = new Map<string, T>();
+    for (const entry of [...fileEntries, ...inlineEntries]) {
+        entries.set(entry.code, entry);
+    }
+    return Array.from(entries.values());
+}
+
+function validateCodeFirstConnection(connection: CodeFirstConnection): ConnectionType {
+    if (typeof connection.code !== 'string') {
+        throw new Error('Connection code must be a string');
+    }
+    if (typeof connection.type !== 'string') {
+        throw new Error(`Connection "${connection.code}" type must be a string`);
+    }
+    assertConnectionCode(connection.code);
+    const type = parseConnectionType(connection.type);
+    assertConnectionConfig(type, connection.settings);
+    return type;
+}
+
+function validateCodeFirstPipeline(pipeline: CodeFirstPipeline): CodeFirstPipeline['definition'] {
+    if (typeof pipeline.code !== 'string') {
+        throw new Error('Pipeline code must be a string');
+    }
+    assertValidPipelineCode(pipeline.code);
+    if (typeof pipeline.name !== 'string' || pipeline.name.trim() === '') {
+        throw new Error(`Pipeline "${pipeline.code}" name must be a non-empty string`);
+    }
+    if (!pipeline.definition) {
+        throw new Error(`Pipeline "${pipeline.code}" definition is required`);
+    }
+    const definition = normalizePipelineDefinition(pipeline.definition, 1);
+    validatePipelineDefinition(definition);
+    return definition;
+}
+
 /**
- * ConfigSyncService syncs code-first configurations to the database on startup.
- * Define pipelines, secrets, and connections in code or config files
- * instead of via the UI.
+ * ConfigSyncService syncs database-backed pipelines and connections on startup.
+ * Inline plugin options override file configuration.
  */
 @Injectable()
 export class ConfigSyncService implements OnApplicationBootstrap {
+    private synchronization?: Promise<void>;
 
     constructor(
-        private connection: TransactionalConnection,
         private requestContextService: RequestContextService,
         private secretService: SecretService,
         @Inject(DATAHUB_PLUGIN_OPTIONS) private options: DataHubPluginOptions,
+        private connectionService: ConnectionService,
+        private pipelineService: PipelineService,
+        private processContext: ProcessContext,
+        private distributedLock: DistributedLockService,
+        private registry: DataHubRegistryService,
+        private managedResourceChannels: ManagedResourceChannelService,
     ) {}
 
-    async onApplicationBootstrap() {
+    onApplicationBootstrap(): Promise<void> {
+        return this.ensureSynchronized();
+    }
+
+    ensureSynchronized(): Promise<void> {
+        this.synchronization ??= this.runSynchronization();
+        return this.synchronization;
+    }
+
+    private async runSynchronization(): Promise<void> {
         if (this.options.enabled === false) {
+            return;
+        }
+        if (!this.processContext.isServer) {
+            await this.waitForPersistedConfiguration();
             return;
         }
 
         // Retry loop to handle race conditions with database readiness
         for (let attempt = 1; attempt <= MAX_BOOTSTRAP_RETRIES; attempt++) {
             try {
-                await this.performConfigSync();
+                await this.performLockedConfigSync();
                 return; // Success, exit retry loop
             } catch (e: unknown) {
+                if (e instanceof ConfigurationValidationError) {
+                    logger.error('Invalid DataHub code-first configuration', e);
+                    throw e;
+                }
                 const isLastAttempt = attempt === MAX_BOOTSTRAP_RETRIES;
                 const errorMessage = getErrorMessage(e);
 
@@ -62,6 +133,7 @@ export class ConfigSyncService implements OnApplicationBootstrap {
                     logger.error('Failed to sync DataHub config after all retries', toErrorOrUndefined(e), {
                         attempts: attempt,
                     });
+                    throw e;
                 } else {
                     logger.warn(`DataHub config sync attempt ${attempt} failed, retrying...`, {
                         error: errorMessage,
@@ -73,41 +145,59 @@ export class ConfigSyncService implements OnApplicationBootstrap {
         }
     }
 
+    private async performLockedConfigSync(): Promise<void> {
+        const lock = await this.distributedLock.acquire(DISTRIBUTED_LOCK.CONFIG_SYNC_LOCK_KEY, {
+            ttlMs: DISTRIBUTED_LOCK.CONFIG_SYNC_LOCK_TTL_MS,
+            waitForLock: true,
+            waitTimeoutMs: DISTRIBUTED_LOCK.CONFIG_SYNC_LOCK_WAIT_TIMEOUT_MS,
+        });
+        if (!lock.acquired || !lock.token) {
+            throw new Error('Could not acquire the DataHub configuration sync lock');
+        }
+
+        try {
+            await this.performConfigSync();
+        } finally {
+            await this.distributedLock.release(
+                DISTRIBUTED_LOCK.CONFIG_SYNC_LOCK_KEY,
+                lock.token,
+            ).catch(error => logger.warn('Failed to release DataHub configuration sync lock', {
+                error: getErrorMessage(error),
+            }));
+        }
+    }
+
     /**
      * Perform the actual configuration sync with proper error handling
      */
     private async performConfigSync(): Promise<void> {
-        // Load config from file if specified
-        let fileConfig: Partial<DataHubPluginOptions> = {};
-        if (this.options.configPath) {
-            fileConfig = await this.loadConfigFile(this.options.configPath);
-        }
+        const { connections, pipelines } = this.loadEffectiveConfiguration();
 
-        // Merge file config with inline options (inline takes precedence)
-        const pipelines = [...(fileConfig.pipelines ?? []), ...(this.options.pipelines ?? [])];
-        const secrets = [...(fileConfig.secrets ?? []), ...(this.options.secrets ?? [])];
-        const connections = [...(fileConfig.connections ?? []), ...(this.options.connections ?? [])];
-
-        // Create a background context for sync operations
-        const ctx = await this.requestContextService.create({ apiType: 'admin' });
-
-        // Sync all configurations in dependency order (secrets first, then connections, then pipelines)
-        // This ensures pipelines can reference secrets and connections
         const results = {
-            secrets: { synced: 0, failed: 0 },
-            connections: { synced: 0, failed: 0 },
-            pipelines: { synced: 0, failed: 0 },
+            secrets: { registered: this.secretService.getConfigSecretCount() },
+            connections: { synced: 0, failed: 0, released: 0 },
+            pipelines: { synced: 0, failed: 0, released: 0 },
         };
-
-        if (secrets.length > 0) {
-            results.secrets = await this.syncSecrets(ctx, secrets);
-        }
+        const ctx = await this.requestContextService.create({ apiType: 'admin' });
+        await this.managedResourceChannels.initializeDefaultChannel(ctx);
         if (connections.length > 0) {
-            results.connections = await this.syncConnections(ctx, connections);
+            const syncResult = await this.syncConnections(ctx, connections);
+            results.connections.synced = syncResult.synced;
+            results.connections.failed = syncResult.failed;
         }
         if (pipelines.length > 0) {
-            results.pipelines = await this.syncPipelines(ctx, pipelines);
+            const syncResult = await this.syncPipelines(ctx, pipelines);
+            results.pipelines.synced = syncResult.synced;
+            results.pipelines.failed = syncResult.failed;
         }
+        results.connections.released = await this.connectionService.releaseCodeFirstOwnership(
+            ctx,
+            new Set(connections.map(connection => connection.code)),
+        );
+        results.pipelines.released = await this.pipelineService.releaseCodeFirstOwnership(
+            ctx,
+            new Set(pipelines.map(pipeline => pipeline.code)),
+        );
 
         if (this.options.debug) {
             logger.info('DataHub config sync complete', {
@@ -117,244 +207,280 @@ export class ConfigSyncService implements OnApplicationBootstrap {
             });
         }
 
-        // Log warning if any configs failed to sync
-        const totalFailed = results.secrets.failed + results.connections.failed + results.pipelines.failed;
+        const totalFailed = results.connections.failed + results.pipelines.failed;
         if (totalFailed > 0) {
-            logger.warn('Some configurations failed to sync', { totalFailed, results });
+            logger.error('Some configurations failed to sync', undefined, {
+                totalFailed,
+                results,
+            });
+            throw new ConfigurationValidationError(
+                `Failed to sync ${totalFailed} DataHub configuration records`,
+            );
         }
     }
 
-    private async loadConfigFile(configPath: string): Promise<Partial<DataHubPluginOptions>> {
-        const absolutePath = path.isAbsolute(configPath) ? configPath : path.resolve(process.cwd(), configPath);
-
-        // Check if file exists before attempting to read
-        if (!fs.existsSync(absolutePath)) {
-            logger.warn(`Config file not found: ${absolutePath}`);
-            return {};
-        }
-
-        try {
-            const content = fs.readFileSync(absolutePath, 'utf-8');
-            const ext = path.extname(configPath).toLowerCase();
-
-            if (ext === '.json') {
-                return JSON.parse(content);
-            } else if (ext === '.yaml' || ext === '.yml') {
-                return yaml.load(content) as Partial<DataHubPluginOptions>;
-            }
-
-            logger.warn(`Unsupported config file extension: ${ext}. Supported: .json, .yaml, .yml`);
-            return {};
-        } catch (e: unknown) {
-            const errorMessage = getErrorMessage(e);
-            // Distinguish between parse errors and file read errors
-            if (errorMessage.includes('JSON') || errorMessage.includes('YAML') || errorMessage.includes('yaml')) {
-                logger.error(`Failed to parse config file ${configPath}`, toErrorOrUndefined(e));
-                throw e; // Re-throw parse errors as they indicate invalid configuration
-            }
-            logger.warn(`Could not load config file ${configPath}`, { error: errorMessage });
-            return {};
-        }
+    private loadEffectiveConfiguration(): {
+        connections: CodeFirstConnection[];
+        pipelines: CodeFirstPipeline[];
+    } {
+        const fileConfig = this.options.configPath
+            ? loadDataHubConfigFile(this.options.configPath)
+            : {};
+        const pipelines = mergeByCode(
+            fileConfig.pipelines ?? [],
+            this.options.pipelines ?? [],
+        );
+        const connections = mergeByCode(
+            fileConfig.connections ?? [],
+            this.options.connections ?? [],
+        );
+        this.validateConfiguration(connections, pipelines);
+        return { connections, pipelines };
     }
 
-    private async syncSecrets(ctx: RequestContext, secrets: CodeFirstSecret[]): Promise<{ synced: number; failed: number }> {
-        const repo = this.connection.getRepository(ctx, DataHubSecret);
-        let synced = 0;
-        let failed = 0;
+    private async waitForPersistedConfiguration(): Promise<void> {
+        const { connections, pipelines } = this.loadEffectiveConfiguration();
+        const ctx = await this.requestContextService.create({ apiType: 'admin' });
+        const deadline = Date.now() + DISTRIBUTED_LOCK.CONFIG_SYNC_READINESS_TIMEOUT_MS;
+        let mismatches = this.configurationCodes(connections, pipelines);
+        let lastError: string | undefined;
 
-        for (const secret of secrets) {
+        while (Date.now() < deadline) {
             try {
-                // Validate required fields
-                if (!secret.code || typeof secret.code !== 'string') {
-                    logger.warn('Skipping secret with invalid code', { secret });
-                    failed++;
-                    continue;
+                mismatches = await this.findConfigurationMismatches(
+                    ctx,
+                    connections,
+                    pipelines,
+                );
+                const unassigned = await this.managedResourceChannels.countUnassigned(ctx);
+                if (unassigned > 0) {
+                    mismatches.push(`channel-backfill:${unassigned}`);
                 }
-
-                const existing = await repo.findOne({ where: { code: secret.code } });
-
-                // Map string provider to enum
-                const upperProvider = (secret.provider ?? 'INLINE').toUpperCase();
-                if (upperProvider !== 'ENV' && upperProvider !== 'INLINE') {
-                    logger.warn(`Skipping secret "${secret.code}": unknown provider "${secret.provider}". Use ENV or INLINE.`);
-                    failed++;
-                    continue;
+                lastError = undefined;
+                if (mismatches.length === 0) {
+                    return;
                 }
-                const providerEnum = upperProvider === 'ENV' ? SecretProvider.ENV : SecretProvider.INLINE;
-
-                let storedValue = secret.value;
-                if (providerEnum === SecretProvider.ENV) {
-                    if (!secret.value) {
-                        logger.warn(`ENV secret ${secret.code} has no env var name configured`);
-                    }
-                } else {
-                    storedValue = secret.value
-                        ? await this.secretService.encryptValue(secret.value)
-                        : secret.value;
-                }
-                const encryptedValue = storedValue;
-
-                if (existing) {
-                    // Update existing
-                    existing.provider = providerEnum;
-                    existing.value = encryptedValue;
-                    existing.metadata = secret.metadata ?? null;
-                    await repo.save(existing);
-                } else {
-                    // Create new
-                    const entity = new DataHubSecret();
-                    entity.code = secret.code;
-                    entity.provider = providerEnum;
-                    entity.value = encryptedValue;
-                    entity.metadata = secret.metadata ?? null;
-                    await repo.save(entity);
-                }
-                synced++;
-            } catch (e: unknown) {
-                logger.warn(`Failed to sync secret ${secret.code}`, { error: getErrorMessage(e) });
-                failed++;
+            } catch (error: unknown) {
+                lastError = getErrorMessage(error);
             }
+            await sleep(DISTRIBUTED_LOCK.CONFIG_SYNC_READINESS_POLL_INTERVAL_MS);
         }
 
-        return { synced, failed };
+        const details = lastError
+            ? `${mismatches.join(', ')}; last lookup error: ${lastError}`
+            : mismatches.join(', ');
+        throw new Error(
+            `Timed out waiting for server-owned DataHub configuration sync: ${details}`,
+        );
     }
+
+    private configurationCodes(
+        connections: CodeFirstConnection[],
+        pipelines: CodeFirstPipeline[],
+    ): string[] {
+        return [
+            ...connections.map(connection => `connection:${connection.code}`),
+            ...pipelines.map(pipeline => `pipeline:${pipeline.code}`),
+        ];
+    }
+
+    private async findConfigurationMismatches(
+        ctx: RequestContext,
+        connections: CodeFirstConnection[],
+        pipelines: CodeFirstPipeline[],
+    ): Promise<string[]> {
+        const mismatches: string[] = [];
+        for (const connection of connections) {
+            const type = validateCodeFirstConnection(connection);
+            const existing = await this.connectionService.getByCode(ctx, connection.code);
+            if (
+                !existing
+                || existing.configurationSource !== ConfigurationSource.CODE_FIRST
+                || existing.type !== type
+                || !isDeepStrictEqual(existing.config, connection.settings)
+            ) {
+                mismatches.push(`connection:${connection.code}`);
+            }
+        }
+        for (const pipeline of pipelines) {
+            const definition = this.getEffectivePipelineDefinition(pipeline);
+            const existing = await this.pipelineService.findByCode(ctx, pipeline.code);
+            if (
+                !existing
+                || existing.configurationSource !== ConfigurationSource.CODE_FIRST
+                || existing.name !== pipeline.name
+                || existing.enabled !== (pipeline.enabled ?? true)
+                || !definitionsEqual(existing.definition, definition)
+            ) {
+                mismatches.push(`pipeline:${pipeline.code}`);
+            }
+        }
+        return mismatches;
+    }
+
+    private validateConfiguration(
+        connections: CodeFirstConnection[],
+        pipelines: CodeFirstPipeline[],
+    ): void {
+        const failures: string[] = [];
+        for (const connection of connections) {
+            try {
+                validateCodeFirstConnection(connection);
+            } catch (error: unknown) {
+                failures.push(`Connection ${String(connection.code)}: ${getErrorMessage(error)}`);
+            }
+        }
+        for (const pipeline of pipelines) {
+            try {
+                validateCodeFirstPipeline(pipeline);
+            } catch (error: unknown) {
+                failures.push(`Pipeline ${String(pipeline.code)}: ${getErrorMessage(error)}`);
+            }
+        }
+        if (failures.length > 0) {
+            throw new ConfigurationValidationError(failures.join('\n'));
+        }
+    }
+
 
     private async syncConnections(ctx: RequestContext, connections: CodeFirstConnection[]): Promise<{ synced: number; failed: number }> {
-        const repo = this.connection.getRepository(ctx, DataHubConnection);
         let synced = 0;
         let failed = 0;
 
         for (const conn of connections) {
+            let type: ConnectionType;
             try {
-                // Validate required fields
-                if (!conn.code || typeof conn.code !== 'string') {
-                    logger.warn('Skipping connection with invalid code', { connection: conn });
-                    failed++;
-                    continue;
-                }
-
-                if (!conn.type) {
-                    logger.warn(`Skipping connection ${conn.code} with missing type`);
-                    failed++;
-                    continue;
-                }
-
-                const existing = await repo.findOne({ where: { code: conn.code } });
-
-                // Resolve environment variables in settings
-                const resolvedConfig = this.resolveEnvVars(conn.settings ?? {});
-
-                if (existing) {
-                    existing.type = conn.type as ConnectionType;
-                    existing.config = resolvedConfig;
-                    await repo.save(existing);
-                } else {
-                    const entity = new DataHubConnection();
-                    entity.code = conn.code;
-                    entity.type = conn.type as ConnectionType;
-                    entity.config = resolvedConfig;
-                    await repo.save(entity);
-                }
-                synced++;
-            } catch (e: unknown) {
-                logger.warn(`Failed to sync connection ${conn.code}`, { error: getErrorMessage(e) });
+                type = validateCodeFirstConnection(conn);
+            } catch (error: unknown) {
+                logger.warn(`Invalid code-first connection ${String(conn.code)}`, {
+                    error: getErrorMessage(error),
+                });
                 failed++;
+                continue;
             }
+
+            const existing = await this.connectionService.getByCode(ctx, conn.code);
+            if (existing) {
+                if (
+                    existing.configurationSource === ConfigurationSource.CODE_FIRST
+                    && existing.type === type
+                    && isDeepStrictEqual(existing.config, conn.settings)
+                ) {
+                    synced++;
+                    continue;
+                }
+                const updated = await this.connectionService.update(ctx, existing.id, {
+                    type,
+                    config: conn.settings,
+                }, {
+                    configurationSource: ConfigurationSource.CODE_FIRST,
+                    allowCodeFirstManaged: true,
+                });
+                if (!updated) {
+                    throw new Error(
+                        `Connection "${conn.code}" disappeared during code-first synchronization`,
+                    );
+                }
+            } else {
+                await this.connectionService.create(ctx, {
+                    code: conn.code,
+                    type,
+                    config: conn.settings,
+                }, {
+                    configurationSource: ConfigurationSource.CODE_FIRST,
+                });
+            }
+            synced++;
         }
 
         return { synced, failed };
     }
 
     private async syncPipelines(ctx: RequestContext, pipelines: CodeFirstPipeline[]): Promise<{ synced: number; failed: number }> {
-        const repo = this.connection.getRepository(ctx, Pipeline);
         let synced = 0;
         let failed = 0;
 
         for (const pipeline of pipelines) {
+            let definition: CodeFirstPipeline['definition'];
             try {
-                // Validate required fields
-                if (!pipeline.code || typeof pipeline.code !== 'string') {
-                    logger.warn('Skipping pipeline with invalid code', { pipeline });
-                    failed++;
-                    continue;
-                }
-
-                if (!pipeline.name) {
-                    logger.warn(`Skipping pipeline ${pipeline.code} with missing name`);
-                    failed++;
-                    continue;
-                }
-
-                if (!pipeline.definition) {
-                    logger.warn(`Skipping pipeline ${pipeline.code} with missing definition`);
-                    failed++;
-                    continue;
-                }
-
-                // Debug: Log the pipeline definition being synced
-                if (this.options.debug) {
-                    logger.debug(`Syncing pipeline "${pipeline.code}"`);
-                }
-
-                const existing = await repo.findOne({ where: { code: pipeline.code } });
-
-                if (existing) {
-                    existing.name = pipeline.name;
-                    existing.definition = pipeline.definition;
-                    existing.enabled = pipeline.enabled ?? true;
-                    await repo.save(existing);
-                } else {
-                    const entity = new Pipeline();
-                    entity.code = pipeline.code;
-                    entity.name = pipeline.name;
-                    entity.definition = pipeline.definition;
-                    entity.enabled = pipeline.enabled ?? true;
-                    await repo.save(entity);
-                }
-                synced++;
-            } catch (e: unknown) {
-                logger.warn(`Failed to sync pipeline ${pipeline.code}`, { error: getErrorMessage(e) });
+                definition = this.getEffectivePipelineDefinition(pipeline);
+            } catch (error: unknown) {
+                logger.warn(`Invalid code-first pipeline ${String(pipeline.code)}`, {
+                    error: getErrorMessage(error),
+                });
                 failed++;
+                continue;
             }
+
+            if (this.options.debug) {
+                logger.debug(`Syncing pipeline "${pipeline.code}"`);
+            }
+            const existing = await this.pipelineService.findByCode(ctx, pipeline.code);
+            if (existing) {
+                const enabled = pipeline.enabled ?? true;
+                if (
+                    existing.name === pipeline.name
+                    && existing.enabled === enabled
+                    && definitionsEqual(existing.definition, definition)
+                ) {
+                    if (
+                        existing.configurationSource
+                        !== ConfigurationSource.CODE_FIRST
+                    ) {
+                        await this.pipelineService.claimCodeFirstOwnership(ctx, existing);
+                    }
+                    if (
+                        existing.status === PipelineStatus.PUBLISHED
+                        && existing.currentRevisionId != null
+                        && collectAdapterUsages(definition).length > 0
+                        && validateAdapterBindings(
+                            this.registry,
+                            existing.definition,
+                            true,
+                        ).length > 0
+                    ) {
+                        await this.pipelineService.refreshCodeFirstPublishedDefinition(
+                            ctx,
+                            existing.id,
+                            withResolvedAdapterBindings(this.registry, definition),
+                        );
+                    }
+                    synced++;
+                    continue;
+                }
+                await this.pipelineService.update(ctx, {
+                    id: existing.id,
+                    name: pipeline.name,
+                    definition,
+                    enabled,
+                }, {
+                    configurationSource: ConfigurationSource.CODE_FIRST,
+                    allowCodeFirstManaged: true,
+                });
+            } else {
+                await this.pipelineService.create(ctx, {
+                    code: pipeline.code,
+                    name: pipeline.name,
+                    definition,
+                    enabled: pipeline.enabled ?? true,
+                    version: definition.version,
+                }, {
+                    configurationSource: ConfigurationSource.CODE_FIRST,
+                });
+            }
+            synced++;
         }
 
         return { synced, failed };
     }
 
-    /**
-     * Resolve ${ENV_VAR} patterns in settings object
-     */
-    private resolveEnvVars(obj: Record<string, unknown>): JsonObject {
-        const result: Record<string, JsonValue> = {};
-        for (const [key, value] of Object.entries(obj)) {
-            if (typeof value === 'string') {
-                result[key] = value.replace(/\$\{([^}]+)\}/g, (_, varName) => {
-                    const envVal = process.env[varName];
-                    if (envVal === undefined) {
-                        logger.warn(`Missing environment variable: ${varName} (in connection config key "${key}")`);
-                    }
-                    return envVal ?? '';
-                });
-            } else if (Array.isArray(value)) {
-                result[key] = value.map(item => {
-                    if (typeof item === 'string') {
-                        return item.replace(/\$\{([^}]+)\}/g, (_, varName) => {
-                            const v = process.env[varName];
-                            if (v === undefined) logger.warn(`Missing environment variable: ${varName} (in array element of key "${key}")`);
-                            return v ?? '';
-                        });
-                    }
-                    if (typeof item === 'object' && item !== null) {
-                        return this.resolveEnvVars(item as Record<string, unknown>) as JsonValue;
-                    }
-                    return item as JsonValue;
-                }) as JsonValue;
-            } else if (typeof value === 'object' && value !== null) {
-                result[key] = this.resolveEnvVars(value as Record<string, unknown>);
-            } else {
-                result[key] = value as JsonValue;
-            }
-        }
-        return result;
+    private getEffectivePipelineDefinition(
+        pipeline: CodeFirstPipeline,
+    ): CodeFirstPipeline['definition'] {
+        return withEffectivePipelineCapabilities(
+            this.registry,
+            validateCodeFirstPipeline(pipeline),
+        );
     }
+
 }

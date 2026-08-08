@@ -6,11 +6,13 @@ export {
     DATAHUB_PERMISSION_DEFINITIONS,
     DataHubPipelinePermission,
     DataHubSecretPermission,
+    DataHubSchemaPermission,
     RunDataHubPipelinePermission,
     ViewDataHubRunsPermission,
-    RetryDataHubRecordPermission,
     ManageDataHubAdaptersPermission,
     ManageDataHubConnectionsPermission,
+    UseDataHubConnectionPermission,
+    UseDataHubSecretPermission,
     ViewDataHubQuarantinePermission,
     EditDataHubQuarantinePermission,
     ReplayDataHubRecordPermission,
@@ -22,7 +24,6 @@ export {
     ManageDataHubDestinationsPermission,
     ManageDataHubFeedsPermission,
     ViewDataHubEntitySchemasPermission,
-    SubscribeDataHubEventsPermission,
     ManageDataHubFilesPermission,
     ReadDataHubFilesPermission,
 } from './permissions';
@@ -68,7 +69,6 @@ export {
     STEP_EVENT_TYPES,
     GATE_EVENT_TYPES,
     TRIGGER_EVENT_TYPES,
-    LOG_EVENT_TYPES,
     PIPELINE_EVENT_TYPES,
     INTERNAL_EVENT_TYPES,
 } from './constants/index';
@@ -79,7 +79,6 @@ export type {
     StepEventType,
     GateEventType,
     TriggerEventType,
-    LogEventType,
     PipelineEventType,
 } from './constants/index';
 
@@ -93,14 +92,17 @@ export {
     PipelineRevision,
     DataHubConnection,
     DataHubSettings,
+    DataHubSchema,
     PipelineLog,
 } from './entities';
 
 export {
     PipelineService,
     PipelineRunnerService,
+    PipelineFormatService,
     SecretService,
     ConnectionService,
+    SchemaRegistryService,
     DataHubSettingsService,
     AnalyticsService,
     DataHubLoggerFactory,
@@ -111,7 +113,19 @@ export {
     DomainEventsService,
     DataHubDomainEvent,
 } from './services';
-export type { DataHubEvent, DomainEventPayload } from './services';
+export type {
+    BackendVisualConversionMetadata,
+    BackendVisualEdgeBaseline,
+    BackendVisualNodeBaseline,
+    DataHubEvent,
+    DomainEventPayload,
+    NodePosition,
+    VisualEdge,
+    VisualNode,
+    VisualNodeCategory,
+    VisualNodeData,
+    VisualPipelineDefinition,
+} from './services';
 export {
     FeedGeneratorService,
     FeedConfig,
@@ -119,48 +133,71 @@ export {
     FeedFieldMapping,
     FeedOptions,
     GeneratedFeed,
+    GeneratedFeedArtifact,
+    RegisteredFeedConfig,
     CustomFeedGenerator,
     FeedGeneratorContext,
     CustomFeedResult,
 } from './feeds/feed-generator.service';
 export type { VariantWithCustomFields, ProductWithCustomFields } from './feeds/feed-generator.service';
+export { majorToMinorUnits, minorToMajorUnits } from './utils/money.utils';
 export { DataHubScheduleHandler, DataHubRunQueueHandler } from './jobs';
 
 export { createPipeline, definePipeline, step, steps, edge, operators, conditions, hooks, context, throughput, capabilities } from './sdk/dsl';
-export type { PipelineBuilder } from './sdk/dsl';
+export type {
+    EnrichStepConfig,
+    ExportStepConfig,
+    ExtractStepConfig,
+    FeedStepConfig,
+    GateStepConfig,
+    LoadStepConfig,
+    PipelineBuilder,
+    RouteBranchConfig,
+    RouteConditionConfig,
+    RouteStepConfig,
+    SinkStepConfig,
+    TransformStepConfig,
+    TriggerConfig,
+    ValidateStepConfig,
+    ValidationRuleConfig,
+    ValidationRuleSpec,
+} from './sdk/dsl';
 export type { ScriptFunction } from '../shared/types';
 
-// Auto-generated loader configuration types for IDE auto-complete
 export type {
-    LoaderConfig,
     LoaderConfigMap,
     ConfigByCode,
     LoaderCode,
-    ProductUpsertConfig,
-    VariantUpsertConfig,
-    CustomerUpsertConfig,
-    OrderUpsertConfig,
-    OrderNoteConfig,
-    StockAdjustConfig,
-    ApplyCouponConfig,
-    CollectionUpsertConfig,
-    PromotionUpsertConfig,
-    OrderTransitionConfig,
-    AssetAttachConfig,
-    AssetImportConfig,
-    FacetUpsertConfig,
-    FacetValueUpsertConfig,
-    RestPostConfig,
-    GraphqlMutationConfig,
-    TaxRateUpsertConfig,
-    PaymentMethodUpsertConfig,
-    ChannelUpsertConfig,
-    ShippingMethodUpsertConfig,
-    CustomerGroupUpsertConfig,
-    StockLocationUpsertConfig,
-    InventoryAdjustConfig,
-    EntityDeletionConfig,
 } from './types/loader-configs';
+export type {
+    CreateDuplicateHandlingConfig,
+    ProductUpsertLoaderConfig,
+    VariantUpsertLoaderConfig,
+    CustomerUpsertLoaderConfig,
+    OrderUpsertLoaderConfig,
+    OrderNoteLoaderConfig,
+    StockAdjustLoaderConfig,
+    ApplyCouponLoaderConfig,
+    CollectionUpsertLoaderConfig,
+    PromotionUpsertLoaderConfig,
+    OrderTransitionLoaderConfig,
+    AssetAttachLoaderConfig,
+    AssetImportLoaderConfig,
+    FacetUpsertLoaderConfig,
+    FacetValueUpsertLoaderConfig,
+    RestPostLoaderConfig,
+    GraphqlMutationLoaderConfig,
+    TaxRateUpsertLoaderConfig,
+    PaymentMethodUpsertLoaderConfig,
+    ChannelUpsertLoaderConfig,
+    ShippingMethodUpsertLoaderConfig,
+    CustomerGroupUpsertLoaderConfig,
+    StockLocationUpsertLoaderConfig,
+    InventoryAdjustLoaderConfig,
+    EntityDeletionLoaderConfig,
+    GenericLoaderConfig,
+    TypedLoaderConfig,
+} from '../shared/types';
 export { LOADER_CODES } from './types/loader-configs';
 
 export type {
@@ -191,8 +228,6 @@ export type {
     SinkAdapter,
     SinkContext,
     SinkType,
-    TriggerAdapter,
-    TriggerContext,
     AdapterOperatorHelpers,
     AdapterFormatHelpers,
     ConversionHelpers,
@@ -206,10 +241,6 @@ export type {
     ConnectionType,
     ConnectionAuth,
     AdapterLogger,
-    MessengerType,
-    EnqueueOptions,
-    QueueStats,
-    MessengerAdapter,
     ExtractMetrics,
     ExtractResult,
     LoadError,
@@ -255,16 +286,14 @@ export { LoadExecutor } from './runtime/executors/load.executor';
 export { ExportExecutor } from './runtime/executors/export.executor';
 export { FeedExecutor } from './runtime/executors/feed.executor';
 export { SinkExecutor } from './runtime/executors/sink.executor';
-export { TransformExecutor as RuntimeTransformExecutor } from './runtime/executors/transform.executor';
+export { TransformExecutor } from './runtime/executors/transform.executor';
 
 export { ExtractorRegistryService } from './extractors';
 export { HttpApiExtractor } from './extractors/http-api';
 export { DatabaseExtractor } from './extractors/database';
 export { S3Extractor } from './extractors/s3';
 export { FtpExtractor } from './extractors/ftp';
-export { WebhookExtractor } from './extractors/webhook';
 export { VendureQueryExtractor } from './extractors/vendure-query';
-export { FileExtractor } from './extractors/file';
 
 export { LoaderRegistryService } from './loaders/registry';
 export { ProductLoader } from './loaders/product';
@@ -284,7 +313,6 @@ export { StockLocationLoader } from './loaders/stock-location';
 export { BaseEntityLoader, EntityLookupHelper, createLookupHelper, ValidationBuilder, createValidationResult } from './loaders/base';
 export type { LoaderMetadata, ExistingEntityLookupResult, LookupStrategy, LoaderValidationError, LoaderValidationWarning } from './loaders/base';
 
-export type { CustomTransformInfo, CustomTransformFn } from './transforms/types';
 
 export { ChannelLoader } from './loaders/channel';
 export { TaxRateLoader } from './loaders/tax-rate';
@@ -293,6 +321,7 @@ export { PaymentMethodLoader } from './loaders/payment-method';
 export { ALL_OPERATOR_DEFINITIONS } from './operators';
 
 export { DataHubRegistryService } from './sdk/registry.service';
+export { CURRENT_ADAPTER_API_VERSION } from './sdk/adapter-version';
 
 export { RuntimeConfigService } from './services/runtime/runtime-config.service';
 
@@ -305,7 +334,6 @@ export {
     registerSink,
     registerValidator,
     registerEnricher,
-    registerTransform,
     registerScript,
     registerAdapter,
     registerAdapterSafe,
@@ -326,11 +354,6 @@ export {
     getSinks,
     getValidators,
     getEnrichers,
-    getTransform,
-    getTransformTypes,
-    getTransformCount,
-    hasTransform,
-    clearTransforms,
     getScript,
     getScriptNames,
     getScriptCount,
@@ -344,12 +367,32 @@ export {
     getRegistrySummary,
 } from './adapters/registry';
 
-export { FieldMapperService, AutoMapperService } from './mappers';
+export {
+    FieldMapperService,
+    AutoMapperService,
+    DEFAULT_AUTO_MAPPER_CONFIG,
+    validateAutoMapperConfig,
+} from './mappers';
+export type {
+    MapperTransformType,
+    MapperTransformConfig,
+    MapperFieldMapping,
+    MapperMappingResult,
+    MapperMappingError,
+    MapperLookupTable,
+    MapperExecutionOptions,
+    AutoMapperConfig,
+    AutoMapperConfigInput,
+    AutoMapperConfigValidation,
+    MatchConfidence,
+    MappingSuggestion,
+    SourceFieldAnalysis,
+    SuggestMappingsOptions,
+} from './mappers';
 
 export { FileParserService, registerParser } from './parsers/file-parser.service';
 export type { FormatParserFn } from './parsers/file-parser.service';
 
-export { TransformExecutor } from './transforms/transform-executor';
 
 export { validatePipelineDefinition } from './validation/pipeline-definition.validator';
 export { PipelineDefinitionError, PipelineDefinitionIssue } from './validation/pipeline-definition-error';
@@ -364,11 +407,11 @@ export {
     isPrivateIP,
     isBlockedHostname,
     validateResolvedIp,
-    createSafeAgent,
     configureGlobalSsrfProtection,
 } from './utils/url-security.utils';
 export type { UrlSecurityConfig, UrlSafetyResult } from './utils/url-security.utils';
 
+export { secureFetch } from './utils/secure-fetch.utils';
 export type {
     PipelineRunJobData,
     ScheduledPipelineJobData,
@@ -421,7 +464,13 @@ export {
 export type { CodeSecurityConfig } from './utils/code-security.utils';
 
 // Security configuration type exports
-export type { ScriptSecurityConfig, SecurityConfig, NotificationSmtpConfig } from './types/plugin-options';
+export type {
+    DataHubAdapterFactory,
+    ScriptSecurityConfig,
+    SecurityConfig,
+    NotificationSmtpConfig,
+    OtlpTelemetryConfig,
+} from './types/plugin-options';
 
 // Custom template registration types
 export type { CustomImportTemplate, CustomExportTemplate } from './types/plugin-options';

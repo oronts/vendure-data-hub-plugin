@@ -15,12 +15,16 @@
 
 import { Controller, Post, Get, Delete, Param, Query, Req, Res, HttpStatus } from '@nestjs/common';
 import { Request, Response } from 'express';
-import multer from 'multer';
-
-/** Multer error type with code property */
-interface MulterErrorLike extends Error {
-    code?: string;
-}
+import {
+    FileUploadInputError,
+    fileUploadMiddleware,
+    MulterErrorLike,
+    resolveFileListLimit,
+    resolveFileListOffset,
+    resolveFilePreviewRows,
+    resolveMulterUploadError,
+    resolveUploadExpiry,
+} from './file-upload.config';
 import {
     Ctx,
     RequestContext,
@@ -30,39 +34,15 @@ import { FileStorageService } from '../../services';
 import { FileParserService } from '../../parsers/file-parser.service';
 import { ManageDataHubFilesPermission, ReadDataHubFilesPermission } from '../../permissions';
 import { PAGINATION, LOGGER_CONTEXTS, FILE_STORAGE, CONTENT_TYPES, HTTP_HEADERS } from '../../constants/index';
-import { detectFormat, isValidFileId, formatFileResponse, detectMimeType } from './file-upload.utils';
+import {
+    detectFormat,
+    isValidFileId,
+    formatFileResponse,
+    detectMimeType,
+    getBase64DecodedSize,
+} from './file-upload.utils';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { toErrorOrUndefined } from '../../utils/error.utils';
-
-
-/** Multer configuration for file uploads */
-const upload = multer({
-    storage: multer.memoryStorage(),
-    limits: {
-        fileSize: FILE_STORAGE.MAX_FILE_SIZE_BYTES,
-        files: FILE_STORAGE.FILE_MAX_FILES,
-    },
-    fileFilter: (_req, file, cb) => {
-        // Allow common data file types
-        const allowedMimeTypes = [
-            CONTENT_TYPES.CSV,
-            CONTENT_TYPES.PLAIN,
-            CONTENT_TYPES.JSON,
-            CONTENT_TYPES.XML,
-            'text/xml',
-            'application/vnd.ms-excel',
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            CONTENT_TYPES.OCTET_STREAM, // For files without specific mime type
-        ];
-
-        if (allowedMimeTypes.includes(file.mimetype) || file.originalname.match(/\.(csv|json|xml|xlsx|xls|txt)$/i)) {
-            cb(null, true);
-        } else {
-            cb(new Error(`Unsupported file type: ${file.mimetype}. Allowed: CSV, JSON, XML, XLSX, XLS, TXT`));
-        }
-    },
-});
-
 @Controller('data-hub')
 export class DataHubFileUploadController {
     private readonly logger: DataHubLogger;
@@ -75,14 +55,6 @@ export class DataHubFileUploadController {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.FILE_UPLOAD_CONTROLLER);
     }
 
-    // FILE UPLOAD
-
-    /**
-     * Upload a file
-     *
-     * Accepts multipart/form-data with a 'file' field or
-     * JSON body with base64-encoded content.
-     */
     @Post('upload')
     @Allow(ManageDataHubFilesPermission.Permission)
     async uploadFile(
@@ -91,18 +63,21 @@ export class DataHubFileUploadController {
         @Res() res: Response,
     ) {
         try {
-            const contentType = req.headers['content-type'] || '';
+            const contentTypeHeader = req.headers['content-type'];
+            const contentType = typeof contentTypeHeader === 'string'
+                ? contentTypeHeader.split(';', 1)[0].trim().toLowerCase()
+                : '';
 
-            if (contentType.includes(CONTENT_TYPES.MULTIPART)) {
+            if (contentType === CONTENT_TYPES.MULTIPART) {
                 return this.handleMultipartUpload(ctx, req, res);
-            } else if (contentType.includes(CONTENT_TYPES.JSON)) {
-                return this.handleBase64Upload(ctx, req, res);
-            } else {
-                return res.status(HttpStatus.BAD_REQUEST).json({
-                    success: false,
-                    error: 'Unsupported content type. Use multipart/form-data or application/json',
-                });
             }
+            if (contentType === CONTENT_TYPES.JSON) {
+                return this.handleBase64Upload(ctx, req, res);
+            }
+            return res.status(HttpStatus.BAD_REQUEST).json({
+                success: false,
+                error: 'Unsupported content type. Use multipart/form-data or application/json',
+            });
         } catch (error) {
             this.logger.error('Upload failed', toErrorOrUndefined(error));
             return res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
@@ -112,38 +87,45 @@ export class DataHubFileUploadController {
         }
     }
 
-    // FILE LIST & METADATA
-
-    /**
-     * List uploaded files
-     */
     @Get('files')
     @Allow(ReadDataHubFilesPermission.Permission)
     async listFiles(
+        @Ctx() ctx: RequestContext,
+        @Res() res: Response,
         @Query('limit') limit?: string,
         @Query('offset') offset?: string,
         @Query('mimeType') mimeType?: string,
     ) {
-        const parsedLimit = limit ? parseInt(limit, 10) : NaN;
-        const parsedOffset = offset ? parseInt(offset, 10) : NaN;
-        const result = await this.fileStorage.listFiles({
-            limit: Math.min(PAGINATION.MAX_QUERY_LIMIT, Math.max(1, isNaN(parsedLimit) ? PAGINATION.LIST_PAGE_SIZE : parsedLimit)),
-            offset: Math.max(0, isNaN(parsedOffset) ? 0 : parsedOffset),
+        let pagination: { limit: number; offset: number };
+        try {
+            pagination = {
+                limit: resolveFileListLimit(limit),
+                offset: resolveFileListOffset(offset),
+            };
+        } catch (error) {
+            if (error instanceof FileUploadInputError) {
+                return res.status(HttpStatus.BAD_REQUEST).json({
+                    success: false,
+                    error: error.message,
+                });
+            }
+            throw error;
+        }
+        const result = await this.fileStorage.listFiles(ctx, {
+            ...pagination,
             filter: mimeType ? { mimeType } : undefined,
         });
 
-        return {
+        return res.json({
             items: result.files.map(f => formatFileResponse(f)),
             totalItems: result.totalItems,
-        };
+        });
     }
 
-    /**
-     * Get file metadata
-     */
     @Get('files/:id')
     @Allow(ReadDataHubFilesPermission.Permission)
     async getFile(
+        @Ctx() ctx: RequestContext,
         @Param('id') fileId: string,
         @Res() res: Response,
     ) {
@@ -154,7 +136,7 @@ export class DataHubFileUploadController {
             });
         }
 
-        const file = await this.fileStorage.getFile(fileId);
+        const file = await this.fileStorage.getFile(ctx, fileId);
 
         if (!file) {
             return res.status(HttpStatus.NOT_FOUND).json({
@@ -169,14 +151,10 @@ export class DataHubFileUploadController {
         });
     }
 
-    // FILE DOWNLOAD & PREVIEW
-
-    /**
-     * Download file
-     */
     @Get('files/:id/download')
     @Allow(ReadDataHubFilesPermission.Permission)
     async downloadFile(
+        @Ctx() ctx: RequestContext,
         @Param('id') fileId: string,
         @Res() res: Response,
     ) {
@@ -187,7 +165,7 @@ export class DataHubFileUploadController {
             });
         }
 
-        const file = await this.fileStorage.getFile(fileId);
+        const file = await this.fileStorage.getFile(ctx, fileId);
 
         if (!file) {
             return res.status(HttpStatus.NOT_FOUND).json({
@@ -196,7 +174,7 @@ export class DataHubFileUploadController {
             });
         }
 
-        const content = await this.fileStorage.readFile(fileId);
+        const content = await this.fileStorage.readFile(ctx, fileId);
 
         if (!content) {
             return res.status(HttpStatus.NOT_FOUND).json({
@@ -205,24 +183,17 @@ export class DataHubFileUploadController {
             });
         }
 
+        res.attachment(file.originalName);
         res.setHeader(HTTP_HEADERS.CONTENT_TYPE, file.mimeType);
-        /* eslint-disable no-control-regex */
-        const sanitizedName = file.originalName
-            .replace(/[\x00-\x1f\x7f"\\]/g, '')
-            .replace(/[^\x20-\x7e]/g, '_');
-        /* eslint-enable no-control-regex */
-        res.setHeader('Content-Disposition', `attachment; filename="${sanitizedName}"`);
         res.setHeader('Content-Length', file.size);
 
         return res.send(content);
     }
 
-    /**
-     * Preview file with field detection
-     */
     @Get('files/:id/preview')
     @Allow(ReadDataHubFilesPermission.Permission)
     async previewFile(
+        @Ctx() ctx: RequestContext,
         @Param('id') fileId: string,
         @Res() res: Response,
         @Query('rows') rows?: string,
@@ -233,8 +204,17 @@ export class DataHubFileUploadController {
                 error: 'Invalid file ID format',
             });
         }
+        let previewRows: number;
+        try {
+            previewRows = resolveFilePreviewRows(rows);
+        } catch (error) {
+            return res.status(HttpStatus.BAD_REQUEST).json({
+                success: false,
+                error: error instanceof Error ? error.message : 'Invalid rows value',
+            });
+        }
 
-        const file = await this.fileStorage.getFile(fileId);
+        const file = await this.fileStorage.getFile(ctx, fileId);
 
         if (!file) {
             return res.status(HttpStatus.NOT_FOUND).json({
@@ -243,7 +223,14 @@ export class DataHubFileUploadController {
             });
         }
 
-        const content = await this.fileStorage.readFileAsString(fileId);
+        if (file.size > PAGINATION.FILE_PREVIEW_MAX_BYTES) {
+            return res.status(HttpStatus.BAD_REQUEST).json({
+                success: false,
+                error: `File preview source exceeds ${PAGINATION.FILE_PREVIEW_MAX_BYTES} bytes`,
+            });
+        }
+
+        const content = await this.fileStorage.readFile(ctx, fileId);
 
         if (!content) {
             return res.status(HttpStatus.NOT_FOUND).json({
@@ -256,10 +243,9 @@ export class DataHubFileUploadController {
         const format = detectFormat(file.mimeType, file.originalName);
 
         try {
-            // Use file parser to analyze the file
             const preview = await this.fileParser.preview(content, {
                 format,
-            }, Math.min(PAGINATION.MAX_QUERY_LIMIT, Math.max(1, parseInt(rows ?? '', 10) || PAGINATION.FILE_PREVIEW_ROWS)));
+            }, previewRows);
 
             return res.json({
                 success: true,
@@ -280,14 +266,10 @@ export class DataHubFileUploadController {
         }
     }
 
-    // FILE DELETE
-
-    /**
-     * Delete file
-     */
     @Delete('files/:id')
     @Allow(ManageDataHubFilesPermission.Permission)
     async deleteFile(
+        @Ctx() ctx: RequestContext,
         @Param('id') fileId: string,
         @Res() res: Response,
     ) {
@@ -298,7 +280,7 @@ export class DataHubFileUploadController {
             });
         }
 
-        const deleted = await this.fileStorage.deleteFile(fileId);
+        const deleted = await this.fileStorage.deleteFile(ctx, fileId);
 
         if (!deleted) {
             return res.status(HttpStatus.NOT_FOUND).json({
@@ -313,45 +295,29 @@ export class DataHubFileUploadController {
         });
     }
 
-    // STORAGE STATS
-
-    /**
-     * Get storage stats
-     */
     @Get('storage/stats')
     @Allow(ReadDataHubFilesPermission.Permission)
-    async getStorageStats() {
-        return this.fileStorage.getStorageStats();
+    async getStorageStats(@Ctx() ctx: RequestContext) {
+        return this.fileStorage.getStorageStats(ctx);
     }
 
-    // HELPER METHODS
-
-    /**
-     * Handle multipart form-data upload using multer
-     */
     private handleMultipartUpload(
         ctx: RequestContext,
         req: Request,
         res: Response,
     ): Promise<void> {
         return new Promise((resolve) => {
-            const singleUpload = upload.single('file');
+            const singleUpload = fileUploadMiddleware.single('file');
 
             // multer callback signature differs from Express NextFunction
             const multerCallback = async (err: MulterErrorLike | null): Promise<void> => {
                 try {
                     if (err) {
-                        if (err.code === 'LIMIT_FILE_SIZE') {
-                            res.status(HttpStatus.PAYLOAD_TOO_LARGE).json({
+                        const inputError = resolveMulterUploadError(err);
+                        if (inputError) {
+                            res.status(inputError.status).json({
                                 success: false,
-                                error: `File too large. Maximum size is ${FILE_STORAGE.MAX_FILE_SIZE_BYTES / (1024 * 1024)}MB`,
-                            });
-                            return resolve();
-                        }
-                        if (err.code === 'LIMIT_FILE_COUNT') {
-                            res.status(HttpStatus.BAD_REQUEST).json({
-                                success: false,
-                                error: `Too many files. Maximum is ${FILE_STORAGE.FILE_MAX_FILES}`,
+                                error: inputError.error,
                             });
                             return resolve();
                         }
@@ -377,7 +343,7 @@ export class DataHubFileUploadController {
                         file.buffer,
                         file.originalname,
                         file.mimetype || detectMimeType(file.originalname),
-                        { expiresInMinutes: FILE_STORAGE.EXPIRY_MINUTES },
+                        { expiresInMinutes: resolveUploadExpiry(req.body as unknown) },
                     );
 
                     if (result.success && result.file) {
@@ -393,6 +359,14 @@ export class DataHubFileUploadController {
                     }
                     resolve();
                 } catch (error) {
+                    if (error instanceof FileUploadInputError) {
+                        res.status(HttpStatus.BAD_REQUEST).json({
+                            success: false,
+                            error: error.message,
+                        });
+                        resolve();
+                        return;
+                    }
                     this.logger.error('Upload processing error', toErrorOrUndefined(error));
                     res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
                         success: false,
@@ -407,23 +381,40 @@ export class DataHubFileUploadController {
         });
     }
 
-    /**
-     * Handle base64 JSON upload
-     */
     private async handleBase64Upload(
         ctx: RequestContext,
         req: Request,
         res: Response,
     ): Promise<void> {
         try {
-            const body: Record<string, unknown> = (req as any).body && typeof (req as any).body === 'object'
-                ? (req as any).body
-                : await this.readJsonBody(req);
+            const requestBody: unknown = req.body;
+            if (!requestBody || typeof requestBody !== 'object' || Array.isArray(requestBody)) {
+                res.status(HttpStatus.BAD_REQUEST).json({
+                    success: false,
+                    error: 'JSON upload body must be an object',
+                });
+                return;
+            }
+            const body = requestBody as Record<string, unknown>;
 
-            if (!body.content || !body.filename || typeof body.filename !== 'string') {
+            if (body.content === undefined || body.filename === undefined) {
                 res.status(HttpStatus.BAD_REQUEST).json({
                     success: false,
                     error: 'Missing content or filename in request body',
+                });
+                return;
+            }
+            if (typeof body.filename !== 'string' || body.filename.length === 0) {
+                res.status(HttpStatus.BAD_REQUEST).json({
+                    success: false,
+                    error: 'Filename must be a non-empty string',
+                });
+                return;
+            }
+            if (body.mimeType !== undefined && typeof body.mimeType !== 'string') {
+                res.status(HttpStatus.BAD_REQUEST).json({
+                    success: false,
+                    error: 'mimeType must be a string',
                 });
                 return;
             }
@@ -436,8 +427,8 @@ export class DataHubFileUploadController {
                 return;
             }
 
-            const estimatedSize = Math.ceil(body.content.length * 0.75);
-            if (estimatedSize > FILE_STORAGE.MAX_FILE_SIZE_BYTES) {
+            const decodedSize = getBase64DecodedSize(body.content);
+            if (decodedSize > FILE_STORAGE.MAX_FILE_SIZE_BYTES) {
                 res.status(HttpStatus.PAYLOAD_TOO_LARGE).json({
                     success: false,
                     error: `File too large. Maximum size is ${FILE_STORAGE.MAX_FILE_SIZE_BYTES / (1024 * 1024)}MB`,
@@ -445,12 +436,13 @@ export class DataHubFileUploadController {
                 return;
             }
 
+            const mimeType = body.mimeType ?? detectMimeType(body.filename);
             const result = await this.fileStorage.storeBase64(
                 ctx,
                 body.content,
-                body.filename as string,
-                (body.mimeType as string) || detectMimeType(body.filename as string),
-                { expiresInMinutes: Math.max(1, Math.min(Number(body.expiresInMinutes) || FILE_STORAGE.EXPIRY_MINUTES, FILE_STORAGE.EXPIRY_MINUTES * 10)) },
+                body.filename,
+                mimeType,
+                { expiresInMinutes: resolveUploadExpiry(body) },
             );
 
             if (result.success && result.file) {
@@ -465,41 +457,18 @@ export class DataHubFileUploadController {
                 });
             }
         } catch (error) {
-            this.logger.error('Base64 upload error', toErrorOrUndefined(error));
+            if (!(error instanceof FileUploadInputError)) {
+                this.logger.error('Base64 upload error', toErrorOrUndefined(error));
+            }
             if (!res.headersSent) {
                 res.status(HttpStatus.BAD_REQUEST).json({
                     success: false,
-                    error: 'Failed to parse request body',
+                    error: error instanceof FileUploadInputError
+                        ? error.message
+                        : 'Failed to parse request body',
                 });
             }
         }
-    }
-
-    private readJsonBody(req: Request): Promise<Record<string, unknown>> {
-        return new Promise((resolve, reject) => {
-            const chunks: Buffer[] = [];
-            let totalSize = 0;
-            const maxBodySize = FILE_STORAGE.MAX_FILE_SIZE_BYTES * 2;
-
-            req.on('data', (chunk: Buffer) => {
-                totalSize += chunk.length;
-                if (totalSize > maxBodySize) {
-                    req.destroy();
-                    reject(new Error('Request body too large'));
-                    return;
-                }
-                chunks.push(chunk);
-            });
-            req.on('error', (err) => reject(err));
-            req.on('end', () => {
-                try {
-                    const body = JSON.parse(Buffer.concat(chunks).toString('utf-8'));
-                    resolve(body);
-                } catch (e) {
-                    reject(e);
-                }
-            });
-        });
     }
 
 }

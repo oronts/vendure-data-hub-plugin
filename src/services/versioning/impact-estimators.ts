@@ -13,6 +13,7 @@ import {
 import { IMPACT_ANALYSIS, SortOrder, RunStatus, StepType } from '../../constants/index';
 import { PipelineRun } from '../../entities/pipeline';
 import { EstimateConfidence, EstimateBasis } from '../../constants/enums';
+import { getActivePipelineRunChannelId } from '../pipeline/pipeline-run-channel';
 
 /**
  * Calculate impact summary from entity breakdown and metrics
@@ -74,8 +75,9 @@ async function fetchHistoricalData(
 
     return runRepo.find({
         where: {
-            pipelineId: Number(pipelineId),
+            pipelineId,
             status: RunStatus.COMPLETED,
+            channelId: getActivePipelineRunChannelId(ctx),
         },
         order: { finishedAt: SortOrder.DESC },
         take: IMPACT_ANALYSIS.RECENT_RUNS_COUNT,

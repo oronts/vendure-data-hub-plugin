@@ -15,11 +15,18 @@ export const TRIGGER_TYPE = {
 } as const;
 
 /**
+ * Identifies whether a persisted resource is owned by deployed configuration.
+ */
+export const CONFIGURATION_SOURCE = {
+    DATABASE: 'DATABASE',
+    CODE_FIRST: 'CODE_FIRST',
+} as const;
+
+/**
  * * Pipeline run execution status
  */
 export const RUN_STATUS = {
     PENDING: 'PENDING',
-    QUEUED: 'QUEUED',
     RUNNING: 'RUNNING',
     PAUSED: 'PAUSED',
     COMPLETED: 'COMPLETED',
@@ -27,6 +34,23 @@ export const RUN_STATUS = {
     TIMEOUT: 'TIMEOUT',
     CANCELLED: 'CANCELLED',
     CANCEL_REQUESTED: 'CANCEL_REQUESTED',
+} as const;
+
+/** DryRunMessageLevel */
+export const DRY_RUN_MESSAGE_LEVEL = {
+    INFO: 'INFO',
+    WARNING: 'WARNING',
+    ERROR: 'ERROR',
+} as const;
+
+/** DryRunMessageCode */
+export const DRY_RUN_MESSAGE_CODE = {
+    NO_RECORDS: 'NO_RECORDS',
+    EXTRACT_ADAPTER: 'EXTRACT_ADAPTER',
+    COMPLETED: 'COMPLETED',
+    PROCESSED_RECORDS: 'PROCESSED_RECORDS',
+    RECORD_ERROR: 'RECORD_ERROR',
+    STEP_SIMULATION_SKIPPED: 'STEP_SIMULATION_SKIPPED',
 } as const;
 
 /**
@@ -120,15 +144,6 @@ export const FILE_FORMAT = {
 } as const;
 
 /**
- * * Checkpoint strategies for pipeline resumability
- */
-export const CHECKPOINT_STRATEGY = {
-    COUNT: 'COUNT',
-    INTERVAL: 'INTERVAL',
-    TIMESTAMP: 'TIMESTAMP',
-} as const;
-
-/**
  * * Message queue types for message triggers and queue sinks
  * Supported adapters:
  * - rabbitmq: RabbitMQ via HTTP Management API (fallback)
@@ -138,6 +153,7 @@ export const CHECKPOINT_STRATEGY = {
  * - internal: In-memory queue for testing
  */
 export const QUEUE_TYPE = {
+    /** @deprecated Use RABBITMQ_AMQP. RabbitMQ discourages HTTP API publishing. */
     RABBITMQ: 'RABBITMQ',
     RABBITMQ_AMQP: 'RABBITMQ_AMQP',
     SQS: 'SQS',
@@ -155,18 +171,13 @@ export const ACK_MODE = {
 
 /**
  * Export destination types for file/data delivery.
- * Backend runtime excludes DOWNLOAD (UI-only); use the narrowed
- * DestinationType from src/constants/enums.ts for runtime code.
  */
 export const DESTINATION_TYPE = {
-    FILE: 'FILE',
-    DOWNLOAD: 'DOWNLOAD',
     S3: 'S3',
     FTP: 'FTP',
     SFTP: 'SFTP',
     HTTP: 'HTTP',
     EMAIL: 'EMAIL',
-    WEBHOOK: 'WEBHOOK',
     LOCAL: 'LOCAL',
 } as const;
 

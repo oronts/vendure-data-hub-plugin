@@ -44,7 +44,7 @@ export const COLLECTION_LOADER_METADATA = {
     name: 'Collection Loader',
     description: 'Imports collections/categories with hierarchical structure support',
     adapterCode: 'collectionUpsert',
-    supportedOperations: ['CREATE', 'UPDATE', 'UPSERT', 'DELETE'] as TargetOperation[],
+    supportedOperations: ['CREATE', 'UPDATE', 'UPSERT'] as TargetOperation[],
     lookupFields: ['slug', 'id', 'name', 'customFields.externalId'],
     requiredFields: ['name'],
 } as const;

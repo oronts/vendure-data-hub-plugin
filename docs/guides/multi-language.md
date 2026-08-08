@@ -11,7 +11,8 @@ Import products in multiple languages (English and German):
 ```typescript
 datahub.pipeline('import-products-multilang')
   .extract('csv', {
-    path: '/data/products-multilang.csv'
+    adapterCode: 'csv',
+    fileId: 'products-multilang-upload-id'
   })
   .load('product', {
     nameField: 'name_en',
@@ -439,7 +440,7 @@ If your source data only has one language at a time:
 ```typescript
 // Pipeline 1: Import English translations
 datahub.pipeline('import-products-en')
-  .extract('csv', { path: '/data/products-en.csv' })
+  .extract('csv', { adapterCode: 'csv', fileId: 'products-en-upload-id' })
   .load('product', {
     nameField: 'name',
     slugField: 'slug',
@@ -449,7 +450,7 @@ datahub.pipeline('import-products-en')
 
 // Pipeline 2: Import German translations
 datahub.pipeline('import-products-de')
-  .extract('csv', { path: '/data/products-de.csv' })
+  .extract('csv', { adapterCode: 'csv', fileId: 'products-de-upload-id' })
   .load('product', {
     nameField: 'name',
     slugField: 'slug',
@@ -672,20 +673,26 @@ Then transform to translations format:
 ]
 ```
 
-**Pipeline**:
+**Pipeline definition**:
 ```typescript
-datahub.pipeline('import-multilang-products')
-  .extract('json', {
-    path: '/data/products-multilang.json'
+import { createPipeline } from '@oronts/vendure-data-hub-plugin/sdk';
+
+const importMultilangProducts = createPipeline()
+  .name('Import multilingual products')
+  .extract('read-products', {
+    adapterCode: 'json',
+    fileId: 'products-multilang-upload-id',
   })
-  .load('product', {
-    translationsField: 'translations',  // ← Enable multi-language
+  .load('upsert-products', {
+    adapterCode: 'productUpsert',
+    translationsField: 'translations',
     skuField: 'sku',
     priceField: 'price',
     enabledField: 'enabled',
-    strategy: 'UPSERT'  // Update if exists, create if not
+    strategy: 'UPSERT'
   })
-  .run();
+  .edge('read-products', 'upsert-products')
+  .build();
 ```
 
 **Result**:
@@ -694,17 +701,24 @@ datahub.pipeline('import-multilang-products')
 ✅ Facet values assigned
 ✅ Assets created and linked
 
-**Export the same product**:
+**Export products while preserving their translation arrays**:
 ```typescript
-datahub.pipeline('export-multilang-products')
-  .extract('vendure', {
-    entityType: 'PRODUCT',
-    query: { take: 100 }
+const exportMultilangProducts = createPipeline()
+  .name('Export multilingual products')
+  .extract('read-products', {
+    adapterCode: 'vendureQuery',
+    entity: 'PRODUCT',
+    relations: ['translations'],
+    flattenTranslations: false,
+    batchSize: 100
   })
-  .export('json', {
-    path: '/data/products-export.json'
+  .export('write-json', {
+    adapterCode: 'jsonExport',
+    path: 'data',
+    filenamePattern: 'products-export.json'
   })
-  .run();
+  .edge('read-products', 'write-json')
+  .build();
 ```
 
 **Exported Data**:
@@ -712,8 +726,6 @@ datahub.pipeline('export-multilang-products')
 [
   {
     "id": "1",
-    "sku": "WIDGET-001",
-    "price": 9999,
     "enabled": true,
     "translations": [
       {
@@ -739,7 +751,7 @@ datahub.pipeline('export-multilang-products')
 ]
 ```
 
-✅ **Round-trip compatible**: Exported data can be re-imported with the same pipeline!
+Setting `relations: ['translations']` and `flattenTranslations: false` preserves the raw translation array. Re-import it with a separate `productUpsert` pipeline that sets `translationsField: 'translations'` and maps the identifiers and variant fields required by your catalog; an identity round trip is not automatic.
 
 ---
 
@@ -833,31 +845,25 @@ Only include fields that actually differ by language:
 
 ### Q: Can I update only one language without affecting others?
 
-**A**: Yes, but you need to include ALL languages in the update:
+**A**: Yes. Include only the language codes you intend to add or update;
+existing translations in other languages are preserved:
 
 ```typescript
-// Vendure behavior: Translations are REPLACED, not merged
-// When you update a product with new translations, existing translations are kept ONLY if included
-
-// WRONG (will lose German translation):
 {
   "slug": "premium-widget",
   "translations": {
-    "en": { "name": "Updated English Name" }  // ← German translation is REMOVED
-  }
-}
-
-// CORRECT (keeps both languages):
-{
-  "slug": "premium-widget",
-  "translations": {
-    "de": { "name": "Premium-Widget" },        // ← Keep German
-    "en": { "name": "Updated English Name" }   // ← Update English
+    "en": {
+      "name": "Updated English Name",
+      "slug": "updated-english-name",
+      "description": "Updated English description"
+    }
   }
 }
 ```
 
-**Best Practice**: Always export → modify → import to preserve all languages.
+For every language you do supply, include the translatable fields whose current
+values must be preserved. Product normalization generates an omitted `slug`
+from `name` and turns an omitted `description` into an empty string.
 
 ---
 
@@ -924,15 +930,25 @@ The Data Hub plugin accepts ANY `languageCode` in translations, but Vendure will
 
 ### Q: Can I export products with translations?
 
-**A**: Yes! The Vendure extractor automatically includes ALL translations:
+**A**: Yes, when the translation relation is requested and flattening is disabled:
 
 ```typescript
-.extract('vendure', {
-  entityType: 'PRODUCT'
-})
-.export('json', {
-  path: '/data/products-export.json'
-})
+const exportMultilangProducts = createPipeline()
+  .name('Export multilingual products')
+  .extract('read-products', {
+    adapterCode: 'vendureQuery',
+    entity: 'PRODUCT',
+    relations: ['translations'],
+    flattenTranslations: false,
+    batchSize: 100
+  })
+  .export('write-json', {
+    adapterCode: 'jsonExport',
+    path: 'data',
+    filenamePattern: 'products-export.json'
+  })
+  .edge('read-products', 'write-json')
+  .build();
 ```
 
 Exported data format:
@@ -945,7 +961,7 @@ Exported data format:
 }
 ```
 
-✅ **Round-trip compatible**: You can re-import this data using `translationsField: 'translations'`.
+This preserves the raw `translations` relation in the export. To re-import it, configure a `productUpsert` load step with `translationsField: 'translations'` and supply the other identifiers and fields required by that loader.
 
 ---
 

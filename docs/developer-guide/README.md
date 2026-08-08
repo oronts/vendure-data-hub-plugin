@@ -17,14 +17,15 @@ This guide covers the code-first DSL, architecture, and extending the Data Hub p
    - [Operators](./dsl/operators.md) - All transform operators
    - [Examples](./dsl/examples.md) - Real-world pipeline examples
 3. [Testing Guide](./testing.md) - Unit, integration, and end-to-end testing
-4. [Extending the Plugin](./extending/README.md)
+4. [Programmatic Field Mapping](./field-mapping.md) - Typed record mapping and auto-mapping services
+5. [Extending the Plugin](./extending/README.md)
    - [Custom Extractors](./extending/custom-extractors.md)
    - [Custom Loaders](./extending/custom-loaders.md)
    - [Custom Operators](./extending/custom-operators.md)
    - [Event Subscriptions](./extending/events.md) - Subscribe to pipeline lifecycle events
-   - **Hook Scripts** - Register functions for data modification at any pipeline stage
+   - **Hook Scripts** - Register functions for data modification at the 18 data-processing stages
    - **Wizard Templates** - Add custom templates for import/export wizards
-5. [GraphQL API](./graphql-api.md) - API reference for integration
+6. [GraphQL API](./graphql-api.md) - API reference for integration
 
 ## When to Use Code-First
 
@@ -67,7 +68,7 @@ const pipeline = createPipeline()
     .load('upsert-products', {
         adapterCode: 'productUpsert',
         strategy: 'UPSERT',
-        matchField: 'slug',
+        slugField: 'slug',
     })
     .edge('schedule', 'fetch-erp')
     .edge('fetch-erp', 'map-fields')
@@ -77,7 +78,7 @@ const pipeline = createPipeline()
 
 ## Hook Scripts
 
-Register functions that can modify records at any pipeline stage:
+Register functions that can modify records at the 18 data-processing stages:
 
 ```typescript
 DataHubPlugin.init({
@@ -100,7 +101,9 @@ const pipeline = createPipeline()
 
 24 hook stages are available (18 for step types and 6 global): BEFORE/AFTER for each step type (EXTRACT, TRANSFORM, VALIDATE, ENRICH, ROUTE, LOAD, EXPORT, FEED, SINK), plus PIPELINE_STARTED/COMPLETED/FAILED, ON_ERROR/ON_RETRY/ON_DEAD_LETTER.
 
-All 24 hook stages support record modification via interceptor and script hooks. This includes terminal steps like SINK (search indexing), EXPORT (file export), and FEED (feed generation) — allowing you to programmatically modify records right before they reach Meilisearch, Elasticsearch, CSV export, XML feeds, etc.
+The 18 data stages support record modification via interceptor and script hooks.
+The six lifecycle/error stages are observe-only and accept `WEBHOOK`, `EMIT`,
+`LOG`, or `TRIGGER_PIPELINE` actions.
 
 ## Type Safety
 
@@ -123,4 +126,5 @@ The DSL is fully typed. TypeScript will catch errors like:
 
 - [Architecture](./architecture.md) - Understand how it works
 - [Pipeline Builder](./dsl/pipeline-builder.md) - Start building with DSL
+- [Programmatic Field Mapping](./field-mapping.md) - Map records in custom plugins
 - [Examples](./dsl/examples.md) - See real-world patterns

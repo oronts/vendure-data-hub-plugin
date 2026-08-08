@@ -212,6 +212,8 @@ export const TRANSFORM_OPERATOR = {
     COUNT: 'count',
     /** Deduplicate array values */
     UNIQUE: 'unique',
+    /** Deduplicate records by a scalar key */
+    DEDUPLICATE_RECORDS: 'deduplicateRecords',
     /** Flatten nested arrays */
     FLATTEN: 'flatten',
     /** Get first element of an array */

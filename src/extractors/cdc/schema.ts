@@ -8,7 +8,7 @@ export const CDC_EXTRACTOR_SCHEMA: StepConfigSchema = {
         { id: 'tracking', label: 'Change Tracking', description: 'How changes are detected' },
         { id: 'columns', label: 'Columns', description: 'Which columns to extract' },
         { id: 'deletes', label: 'Deletes', description: 'Soft-delete tracking' },
-        { id: 'advanced', label: 'Advanced', description: 'Batch size and polling' },
+        { id: 'advanced', label: 'Advanced', description: 'Batch size' },
     ],
     fields: [
         {
@@ -39,7 +39,7 @@ export const CDC_EXTRACTOR_SCHEMA: StepConfigSchema = {
         {
             key: 'primaryKey',
             label: 'Primary Key Column',
-            description: 'Primary key column of the table',
+            description: 'Unique, immutable primary key used to order rows that share a tracking value',
             type: 'string',
             required: true,
             placeholder: 'id',
@@ -92,14 +92,6 @@ export const CDC_EXTRACTOR_SCHEMA: StepConfigSchema = {
             description: 'Maximum rows per extraction',
             type: 'number',
             defaultValue: CDC_DEFAULTS.batchSize,
-            group: 'advanced',
-        },
-        {
-            key: 'pollIntervalMs',
-            label: 'Poll Interval (ms)',
-            description: 'Milliseconds between polls (used by scheduler)',
-            type: 'number',
-            defaultValue: CDC_DEFAULTS.pollIntervalMs,
             group: 'advanced',
         },
     ],

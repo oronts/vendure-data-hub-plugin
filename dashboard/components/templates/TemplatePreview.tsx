@@ -18,9 +18,11 @@ import {
     ChevronRight,
 } from 'lucide-react';
 import { Badge, Button } from '@vendure/dashboard';
+import { Trans, useLingui } from '@lingui/react/macro';
 import { toast } from 'sonner';
-import { TOAST_TEMPLATE } from '../../constants';
 import type { ImportTemplate } from '../../hooks/use-import-templates';
+import { downloadBrowserBlob } from '../../utils/browser-download';
+import { buildTemplateSampleCsv } from './template-sample-csv';
 
 export interface TemplatePreviewProps {
     template: ImportTemplate;
@@ -28,55 +30,34 @@ export interface TemplatePreviewProps {
 }
 
 function TemplatePreviewComponent({ template, onUseTemplate }: TemplatePreviewProps) {
+    const { t } = useLingui();
     const [showSampleData, setShowSampleData] = React.useState(false);
 
     const handleCopySampleData = React.useCallback(() => {
         if (template.sampleData) {
-            const csvHeader = [...template.requiredFields, ...template.optionalFields].join(',');
-            const csvRows = template.sampleData.map(row =>
-                [...template.requiredFields, ...template.optionalFields]
-                    .map(field => row[field] ?? '')
-                    .join(','),
-            );
-            const csv = [csvHeader, ...csvRows].join('\n');
-            navigator.clipboard.writeText(csv).catch(() => {
-                // Silently fail if clipboard API is not available
-            });
-            toast.success(TOAST_TEMPLATE.SAMPLE_COPIED);
+            const csv = buildTemplateSampleCsv(template);
+            void navigator.clipboard.writeText(csv)
+                .then(() => {
+                    toast.success(t`Sample data copied to clipboard`);
+                })
+                .catch(() => {
+                    toast.error(t`Failed to copy`);
+                });
         }
-    }, [template]);
+    }, [t, template]);
 
     const handleDownloadSample = React.useCallback(() => {
         if (template.sampleData) {
-            const csvHeader = [...template.requiredFields, ...template.optionalFields].join(',');
-            const csvRows = template.sampleData.map(row =>
-                [...template.requiredFields, ...template.optionalFields]
-                    .map(field => {
-                        const value = row[field] ?? '';
-                        // Escape commas and quotes in CSV
-                        const strValue = String(value);
-                        if (strValue.includes(',') || strValue.includes('"')) {
-                            return `"${strValue.replace(/"/g, '""')}"`;
-                        }
-                        return strValue;
-                    })
-                    .join(','),
-            );
-            const csv = [csvHeader, ...csvRows].join('\n');
-
-            const blob = new Blob([csv], { type: 'text/csv' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `${template.id}-sample.csv`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-
-            toast.success(TOAST_TEMPLATE.SAMPLE_DOWNLOADED);
+            try {
+                const csv = buildTemplateSampleCsv(template);
+                const blob = new Blob([csv], { type: 'text/csv' });
+                downloadBrowserBlob(blob, `${template.id}-sample.csv`);
+                toast.success(t`Sample file downloaded`);
+            } catch {
+                toast.error(t`Failed to download`);
+            }
         }
-    }, [template]);
+    }, [t, template]);
 
     return (
         <div className="border rounded-lg bg-card">
@@ -88,7 +69,7 @@ function TemplatePreviewComponent({ template, onUseTemplate }: TemplatePreviewPr
                         <p className="text-sm text-muted-foreground mt-1">{template.description}</p>
                     </div>
                     <Button onClick={onUseTemplate}>
-                        Use Template
+                        <Trans>Use template</Trans>
                     </Button>
                 </div>
 
@@ -118,7 +99,7 @@ function TemplatePreviewComponent({ template, onUseTemplate }: TemplatePreviewPr
             <div className="p-4 border-b">
                 <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
                     <FileText className="h-4 w-4" />
-                    Required Fields
+                    <Trans>Required fields</Trans>
                 </h4>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                     {template.requiredFields.map(field => (
@@ -136,7 +117,9 @@ function TemplatePreviewComponent({ template, onUseTemplate }: TemplatePreviewPr
             {/* Optional Fields */}
             {template.optionalFields.length > 0 && (
                 <div className="p-4 border-b">
-                    <h4 className="text-sm font-medium mb-3">Optional Fields</h4>
+                    <h4 className="text-sm font-medium mb-3">
+                        <Trans>Optional fields</Trans>
+                    </h4>
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                         {template.optionalFields.map(field => (
                             <div
@@ -157,6 +140,7 @@ function TemplatePreviewComponent({ template, onUseTemplate }: TemplatePreviewPr
                     <button
                         type="button"
                         onClick={() => setShowSampleData(!showSampleData)}
+                        aria-expanded={showSampleData}
                         className="flex items-center gap-2 text-sm font-medium w-full text-left"
                     >
                         {showSampleData ? (
@@ -164,7 +148,9 @@ function TemplatePreviewComponent({ template, onUseTemplate }: TemplatePreviewPr
                         ) : (
                             <ChevronRight className="h-4 w-4" />
                         )}
-                        Sample Data ({template.sampleData.length} rows)
+                        {template.sampleData.length === 1
+                            ? t`Sample data (${template.sampleData.length} row)`
+                            : t`Sample data (${template.sampleData.length} rows)`}
                     </button>
 
                     {showSampleData && (
@@ -172,19 +158,22 @@ function TemplatePreviewComponent({ template, onUseTemplate }: TemplatePreviewPr
                             <div className="flex justify-end gap-2 mb-2">
                                 <Button variant="ghost" size="sm" onClick={handleCopySampleData}>
                                     <Copy className="h-3.5 w-3.5 mr-1" />
-                                    Copy CSV
+                                    <Trans>Copy CSV</Trans>
                                 </Button>
                                 <Button variant="ghost" size="sm" onClick={handleDownloadSample}>
                                     <Download className="h-3.5 w-3.5 mr-1" />
-                                    Download
+                                    <Trans>Download</Trans>
                                 </Button>
                             </div>
                             <div className="overflow-x-auto border rounded">
                                 <table className="w-full text-xs">
+                                    <caption className="sr-only">
+                                        <Trans>Preview data</Trans>
+                                    </caption>
                                     <thead className="bg-muted">
                                         <tr>
                                             {[...template.requiredFields, ...template.optionalFields].map(field => (
-                                                <th key={field} className="px-3 py-2 text-left font-medium">
+                                                <th scope="col" key={field} className="px-3 py-2 text-left font-medium">
                                                     {field}
                                                 </th>
                                             ))}

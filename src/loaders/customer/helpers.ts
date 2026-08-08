@@ -1,5 +1,5 @@
 import { ID, RequestContext, CustomerGroupService, CustomerService, CountryService, Address } from '@vendure/core';
-import { DataHubLogger } from '../../services/logger';
+import { DataHubLogger } from '../../services/logger/datahub-logger';
 import { CustomerAddressInput } from './types';
 import type { AddressesMode } from '../../../shared/types/adapter-config.types';
 import { PAGINATION } from '../../constants/defaults';
@@ -77,17 +77,16 @@ export async function handleCustomerAddresses(
             break;
 
         case 'APPEND_ONLY':
-            await appendAddresses(ctx, customerService, countryService, customerId, newAddresses, logger);
+            await appendAddresses(ctx, customerService, countryService, customerId, newAddresses);
             break;
 
-        case 'UPDATE_BY_ID':
-            await updateAddressesByID(ctx, customerService, countryService, customerId, newAddresses, logger);
-            break;
+        default:
+            throw new Error(`Unsupported customer address mode "${String(options.mode)}"`);
     }
 }
 
 /**
- * REPLACE_ALL mode: Delete all existing addresses and create new ones from source.
+ * REPLACE_ALL mode: Create the complete replacement set before deleting existing addresses.
  */
 async function replaceAllAddresses(
     ctx: RequestContext,
@@ -97,17 +96,17 @@ async function replaceAllAddresses(
     newAddresses: CustomerAddressInput[],
     logger: DataHubLogger,
 ): Promise<void> {
-    // Get existing addresses, load country relation for consistency
     const customer = await customerService.findOne(ctx, customerId, ['addresses', 'addresses.country']);
-    if (!customer) return;
-
-    // Delete all existing addresses
-    for (const addr of customer.addresses || []) {
-        await customerService.deleteAddress(ctx, addr.id);
+    if (!customer) {
+        throw new Error(`Customer "${String(customerId)}" not found while replacing addresses`);
     }
-    logger.debug(`Deleted ${customer.addresses?.length || 0} existing addresses for customer ${customerId}`);
 
-    await createAddressesInternal(ctx, customerService, countryService, customerId, newAddresses, logger);
+    await createAddressesInternal(ctx, customerService, countryService, customerId, newAddresses);
+
+    for (const address of customer.addresses ?? []) {
+        await customerService.deleteAddress(ctx, address.id);
+    }
+    logger.debug(`Replaced ${customer.addresses?.length ?? 0} existing addresses for customer ${customerId}`);
 }
 
 /**
@@ -156,10 +155,8 @@ async function upsertAddressesByMatch(
             });
             logger.debug(`Updated existing address ${matchingAddr.id} for customer ${customerId}`);
         } else {
-            const country = countryMap.get(newAddr.countryCode.toUpperCase());
-            if (!country) {
-                logger.warn(`Country "${newAddr.countryCode}" not found, skipping address`);
-                continue;
+            if (!countryMap.has(newAddr.countryCode.toUpperCase())) {
+                throw new Error(`Unknown country code "${newAddr.countryCode}"`);
             }
 
             await customerService.createAddress(ctx, customerId, {
@@ -188,65 +185,10 @@ async function appendAddresses(
     countryService: CountryService,
     customerId: ID,
     newAddresses: CustomerAddressInput[],
-    logger: DataHubLogger,
 ): Promise<void> {
-    await createAddressesInternal(ctx, customerService, countryService, customerId, newAddresses, logger);
+    await createAddressesInternal(ctx, customerService, countryService, customerId, newAddresses);
 }
 
-/**
- * UPDATE_BY_ID mode: Update addresses by Vendure ID if provided, create if not.
- */
-async function updateAddressesByID(
-    ctx: RequestContext,
-    customerService: CustomerService,
-    countryService: CountryService,
-    customerId: ID,
-    newAddresses: CustomerAddressInput[],
-    logger: DataHubLogger,
-): Promise<void> {
-    const allCountries = await countryService.findAll(ctx, { take: PAGINATION.MAX_LOOKUP_LIMIT });
-    const countryMap = new Map(allCountries.items.map(c => [c.code.toUpperCase(), c]));
-
-    for (const newAddr of newAddresses) {
-        // Vendure API accepts dynamic input; id may be present on records for direct update
-        if ((newAddr as any).id) {
-            await customerService.updateAddress(ctx, {
-                id: (newAddr as any).id,
-                fullName: newAddr.fullName,
-                streetLine1: newAddr.streetLine1,
-                streetLine2: newAddr.streetLine2,
-                city: newAddr.city,
-                province: newAddr.province,
-                postalCode: newAddr.postalCode,
-                countryCode: newAddr.countryCode,
-                phoneNumber: newAddr.phoneNumber,
-                defaultShippingAddress: newAddr.defaultShippingAddress,
-                defaultBillingAddress: newAddr.defaultBillingAddress,
-            });
-            logger.debug(`Updated address ${(newAddr as any).id} for customer ${customerId}`); // Vendure API accepts dynamic input
-        } else {
-            const country = countryMap.get(newAddr.countryCode.toUpperCase());
-            if (!country) {
-                logger.warn(`Country "${newAddr.countryCode}" not found, skipping address`);
-                continue;
-            }
-
-            await customerService.createAddress(ctx, customerId, {
-                fullName: newAddr.fullName || '',
-                streetLine1: newAddr.streetLine1,
-                streetLine2: newAddr.streetLine2 || '',
-                city: newAddr.city,
-                province: newAddr.province || '',
-                postalCode: newAddr.postalCode,
-                countryCode: newAddr.countryCode,
-                phoneNumber: newAddr.phoneNumber || '',
-                defaultShippingAddress: newAddr.defaultShippingAddress ?? false,
-                defaultBillingAddress: newAddr.defaultBillingAddress ?? false,
-            });
-            logger.debug(`Created new address for customer ${customerId}`);
-        }
-    }
-}
 
 /**
  * Helper: Match addresses by specified fields with normalization.
@@ -255,26 +197,31 @@ function matchesByFields(existing: Address, newAddr: CustomerAddressInput, match
     return matchFields.every(field => {
         const existingValue = getFieldValue(existing, field);
         const newValue = getFieldValue(newAddr, field);
-
-        // Normalize for comparison (trim, lowercase, handle country)
-        const normalizeValue = (val: any) => {
-            if (typeof val === 'string') return val.trim().toLowerCase();
-            if (val && typeof val === 'object' && 'code' in val) return val.code.toLowerCase();
-            return val;
-        };
-
-        return normalizeValue(existingValue) === normalizeValue(newValue);
+        return normalizeAddressValue(existingValue) === normalizeAddressValue(newValue);
     });
 }
 
-/**
- * Helper: Get field value from address, handling country object vs code.
- */
-function getFieldValue(obj: any, field: string): any {
-    if (field === 'countryCode') {
-        return obj.country?.code || obj.countryCode;
+function normalizeAddressValue(value: unknown): unknown {
+    if (typeof value === 'string') {
+        return value.trim().toLowerCase();
     }
-    return obj[field];
+    if (value && typeof value === 'object' && 'code' in value) {
+        const code = (value as { code?: unknown }).code;
+        return typeof code === 'string' ? code.toLowerCase() : code;
+    }
+    return value;
+}
+
+function getFieldValue(obj: Address | CustomerAddressInput, field: string): unknown {
+    const record = obj as unknown as Record<string, unknown>;
+    if (field === 'countryCode') {
+        const country = record.country;
+        if (country && typeof country === 'object' && 'code' in country) {
+            return (country as { code?: unknown }).code;
+        }
+        return record.countryCode;
+    }
+    return record[field];
 }
 
 /**
@@ -287,20 +234,20 @@ async function createAddressesInternal(
     countryService: CountryService,
     customerId: ID,
     addresses: CustomerAddressInput[],
-    logger: DataHubLogger,
 ): Promise<void> {
     const allCountries = await countryService.findAll(ctx, { take: PAGINATION.MAX_LOOKUP_LIMIT });
     const countryMap = new Map(
         allCountries.items.map(c => [c.code.toUpperCase(), c])
     );
 
-    for (const addr of addresses) {
-        const country = countryMap.get(addr.countryCode.toUpperCase());
-        if (!country) {
-            logger.warn(`Country "${addr.countryCode}" not found, skipping address`);
-            continue;
-        }
+    const missingCountryCodes = addresses
+        .map(address => address.countryCode.toUpperCase())
+        .filter(code => !countryMap.has(code));
+    if (missingCountryCodes.length > 0) {
+        throw new Error(`Unknown country code(s): ${[...new Set(missingCountryCodes)].join(', ')}`);
+    }
 
+    for (const addr of addresses) {
         await customerService.createAddress(ctx, customerId, {
             fullName: addr.fullName || '',
             streetLine1: addr.streetLine1,

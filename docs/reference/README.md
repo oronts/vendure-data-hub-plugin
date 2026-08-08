@@ -14,25 +14,29 @@ Complete reference documentation for all Data Hub adapters.
 2. [Extractors](./extractors.md) - All data extractors
 3. [Loaders](./loaders.md) - All entity loaders
 4. [Operators](./operators.md) - All transform operators (curated guide)
-5. [**Operators Complete**](./operators-complete.md) - **Auto-generated complete operator reference (all 61 operators)**
+5. [**Operators Complete**](./operators-complete.md) - **Complete operator reference (all 62 operators)**
 6. [Feed Generators](./feeds.md) - Product feed generators
-7. [Search Sinks](./sinks.md) - Search engine integrations
+7. [Sinks](./sinks.md) - Search engine, queue, and outgoing webhook integrations
 
 ## Quick Reference
 
-### Extractors (9)
+### Extractors (13)
 
 | Code | Description |
 |------|-------------|
 | `httpApi` | REST API with pagination, authentication, retry |
 | `graphql` | External GraphQL endpoints with cursor/offset/Relay pagination |
 | `vendureQuery` | Vendure entity queries with automatic pagination |
-| `file` | Parse files (CSV, JSON, XML, XLSX, NDJSON, TSV) |
-| `database` | SQL databases (PostgreSQL, MySQL, SQLite, MSSQL, Oracle) |
+| `csv` | Managed CSV upload, raw CSV text, or inline rows |
+| `json` | Managed JSON upload or raw JSON text |
+| `xml` | Managed XML upload or raw XML text |
+| `xlsx` | Managed spreadsheet upload |
+| `inMemory` | Inline records from step configuration |
+| `generator` | Generated records for pipeline tests |
+| `database` | SQL databases (PostgreSQL, MySQL/MariaDB, SQLite) |
 | `s3` | S3-compatible storage (AWS, MinIO, DigitalOcean Spaces) |
 | `ftp` | FTP/SFTP servers |
 | `cdc` | Change Data Capture - poll database tables for changes |
-| `webhook` | Incoming webhook payloads |
 
 ### Loaders (24 - 16 Entity + 4 Order Operations + 1 Deletion + 1 Inventory + 2 External API)
 
@@ -63,7 +67,7 @@ Complete reference documentation for all Data Hub adapters.
 | `restPost` | POST data to custom REST endpoints |
 | `graphqlMutation` | Send records as GraphQL mutations to external APIs |
 
-### Operator Categories (61 operators)
+### Operator Categories (62 operators)
 
 | Category | Operators |
 |----------|-----------|
@@ -74,7 +78,7 @@ Complete reference documentation for all Data Hub adapters.
 | Logic (4) | `when`, `ifThenElse`, `switch`, `deltaFilter` |
 | JSON (4) | `pick`, `omit`, `parseJson`, `stringifyJson` |
 | Enrichment (5) | `lookup`, `enrich`, `coalesce`, `default`, `httpLookup` |
-| Aggregation (8) | `aggregate`, `multiJoin`, `flatten`, `count`, `unique`, `first`, `last`, `expand` |
+| Aggregation (9) | `aggregate`, `deduplicateRecords`, `multiJoin`, `flatten`, `count`, `unique`, `first`, `last`, `expand` |
 | File (3) | `imageResize`, `imageConvert`, `pdfGenerate` |
 | Validation (2) | `validateRequired`, `validateFormat` |
 | Advanced (1) | `script` |
@@ -97,9 +101,9 @@ Complete reference documentation for all Data Hub adapters.
 | `meilisearch` | MeiliSearch |
 | `algolia` | Algolia |
 | `typesense` | Typesense |
-| `queueProducer` | RabbitMQ Queue |
-| `webhook` | HTTP Webhook (POST/PUT/PATCH) |
+| `queueProducer` | RabbitMQ AMQP/HTTP, Amazon SQS, or Redis Streams |
+| `webhook` | HTTP webhook (configured POST/PUT/PATCH; DELETE for delete records) |
 
 ### API Notes
 
-- **`startDataHubPipelineRun`:** This mutation does not accept seed records. To provide seed data to a pipeline, use the webhook trigger (records passed in the request body) or the `dataHubTestWithSeedData` mutation for dry-run testing.
+- **`startDataHubPipelineRun`:** This mutation does not accept seed records. A webhook trigger passes request-body records directly through reachable extract steps without invoking an extractor adapter. Use `dataHubTestWithSeedData` for a seeded dry run.

@@ -1,5 +1,7 @@
-import type { TransformationType } from '../../shared/types';
+import type { TransformationType, VendureEventType } from '../../shared/types';
 import type { FileType } from './ui-types';
+
+type ExtensibleString<T extends string> = T | (string & Record<never, never>);
 
 export interface WizardStep {
     id: string;
@@ -9,7 +11,7 @@ export interface WizardStep {
 }
 
 export interface ImportSourceConfig {
-    type: 'FILE' | 'API' | 'DATABASE' | 'WEBHOOK' | 'CDC' | (string & {});
+    type: ExtensibleString<'FILE' | 'API' | 'DATABASE' | 'WEBHOOK' | 'CDC'>;
     fileConfig?: FileSourceConfig;
     apiConfig?: ApiSourceConfig;
     databaseConfig?: DatabaseSourceConfig;
@@ -32,10 +34,14 @@ export interface CdcSourceConfig {
 
 export interface FileSourceConfig {
     format: NonNullable<FileType>;
+    fileId?: string;
     hasHeaders: boolean;
     delimiter?: string;
     encoding?: string;
     sheetName?: string;
+    itemsPath?: string;
+    recordPath?: string;
+    attributePrefix?: string;
 }
 
 export interface ApiSourceConfig {
@@ -72,32 +78,46 @@ export interface ImportFieldMapping {
     preview?: unknown[];
 }
 
+export const IMPORT_EXISTING_RECORD_STRATEGIES = [
+    'SKIP',
+    'UPDATE',
+    'REPLACE',
+    'ERROR',
+] as const;
+
+export type ImportExistingRecordStrategy =
+    typeof IMPORT_EXISTING_RECORD_STRATEGIES[number];
+
+export interface WizardStrategyMapping {
+    wizardValue: ImportExistingRecordStrategy;
+    label: string;
+    loadStrategy: string;
+    conflictStrategy: string;
+}
+
 export interface ImportStrategies {
-    existingRecords: 'SKIP' | 'UPDATE' | 'REPLACE' | 'ERROR';
+    existingRecords: ImportExistingRecordStrategy;
     lookupFields: string[];
-    newRecords: 'CREATE' | 'SKIP' | 'ERROR';
-    publishAfterImport: boolean;
-    publishDelay?: number;
-    cleanupStrategy: 'NONE' | 'UNPUBLISH_MISSING' | 'DELETE_MISSING';
     batchSize: number;
     parallelBatches: number;
-    errorThreshold: number;
     continueOnError: boolean;
 }
 
 export interface ImportTriggerConfig {
     type: 'MANUAL' | 'SCHEDULE' | 'WEBHOOK' | 'FILE';
     schedule?: string;
-    webhookPath?: string;
-    fileWatchPath?: string;
+    connectionCode?: string;
+    path?: string;
+    pattern?: string;
+    recursive?: boolean;
+    minFileAge?: number;
+    pollIntervalMs?: number;
 }
 
 export interface QueryConfig {
-    type: 'all' | 'query' | 'graphql';
-    limit?: number;
+    type: 'all' | 'query';
     orderBy?: string;
     orderDirection?: 'ASC' | 'DESC';
-    customQuery?: string;
 }
 
 export interface ExportField {
@@ -110,7 +130,7 @@ export interface ExportField {
 
 export interface ExportFormatConfig {
     /** Known: CSV, JSON, XML, GOOGLE_SHOPPING, META_CATALOG, AMAZON. Dynamic adapters may add more. */
-    type: 'CSV' | 'JSON' | 'XML' | 'GOOGLE_SHOPPING' | 'META_CATALOG' | 'AMAZON' | (string & {});
+    type: ExtensibleString<'CSV' | 'JSON' | 'XML' | 'GOOGLE_SHOPPING' | 'META_CATALOG' | 'AMAZON'>;
     /** Schema-driven format options. Keys come from exporter adapter schema fields with group 'format-options'. */
     options: Record<string, unknown> & {
         /** Feed template identifier for feed-based formats */
@@ -119,21 +139,13 @@ export interface ExportFormatConfig {
 }
 
 export interface DestinationConfig {
-    type: 'FILE' | 'SFTP' | 'FTP' | 'HTTP' | 'S3' | 'WEBHOOK' | 'DOWNLOAD' | 'EMAIL' | 'LOCAL' | (string & {});
-    fileConfig?: FileDestinationConfig;
+    type: 'SFTP' | 'FTP' | 'HTTP' | 'S3' | 'EMAIL' | 'LOCAL';
     sftpConfig?: SftpDestinationConfig;
     ftpConfig?: FtpDestinationConfig;
     httpConfig?: HttpDestinationConfig;
     s3Config?: S3DestinationConfig;
-    webhookConfig?: WebhookDestinationConfig;
     emailConfig?: EmailDestinationConfig;
     localConfig?: LocalDestinationConfig;
-}
-
-export interface FileDestinationConfig {
-    directory: string;
-    filename: string;
-    filenamePattern?: string;
 }
 
 export interface SftpDestinationConfig {
@@ -142,46 +154,60 @@ export interface SftpDestinationConfig {
     username: string;
     passwordSecretCode?: string;
     privateKeySecretCode?: string;
+    passphraseSecretCode?: string;
+    hostKeyFingerprintSecretCode?: string;
     remotePath: string;
+    timeout?: number;
 }
 
 export interface HttpDestinationConfig {
     url: string;
-    method: 'POST' | 'PUT';
+    method?: 'POST' | 'PUT' | 'PATCH';
     headers?: Record<string, string>;
-    authType?: 'NONE' | 'BASIC' | 'BEARER' | 'API_KEY';
-    authSecretId?: string;
+    headerSecretCodes?: Record<string, string>;
+    auth?: {
+        type: 'NONE' | 'BASIC' | 'BEARER' | 'API_KEY';
+        secretCode?: string;
+        headerName?: string;
+        username?: string;
+        usernameSecretCode?: string;
+    };
 }
 
 export interface S3DestinationConfig {
     bucket: string;
     region: string;
-    key: string;
-    accessKeyIdSecretCode?: string;
-    secretAccessKeySecretCode?: string;
+    accessKeyIdSecretCode: string;
+    secretAccessKeySecretCode: string;
+    prefix?: string;
+    acl?: 'private' | 'public-read';
     endpoint?: string;
-    forcePathStyle?: boolean;
 }
 
 export interface FtpDestinationConfig {
     host: string;
     port: number;
     username: string;
-    passwordSecretCode?: string;
+    passwordSecretCode: string;
     remotePath: string;
     secure?: boolean;
 }
 
-export interface WebhookDestinationConfig {
-    url: string;
-    includeMetadata?: boolean;
-}
-
 export interface EmailDestinationConfig {
-    to: string;
+    to: string[];
+    cc?: string[];
+    bcc?: string[];
+    from?: string;
     subject: string;
     body?: string;
-    attachFile?: boolean;
+    smtp: {
+        host: string;
+        port: number;
+        secure?: boolean;
+        username?: string;
+        usernameSecretCode?: string;
+        passwordSecretCode?: string;
+    };
 }
 
 export interface LocalDestinationConfig {
@@ -191,23 +217,11 @@ export interface LocalDestinationConfig {
 export interface ExportTriggerConfig {
     type: 'MANUAL' | 'SCHEDULE' | 'EVENT' | 'WEBHOOK';
     schedule?: string;
-    events?: string[];
-    webhookPath?: string;
-}
-
-export interface CacheConfig {
-    enabled: boolean;
-    ttl: number;
-    invalidateOn?: string[];
+    event?: VendureEventType;
 }
 
 export interface ExportOptions {
     batchSize: number;
-    includeMetadata: boolean;
-    compression?: 'NONE' | 'GZIP' | 'ZIP';
-    notifyOnComplete?: boolean;
-    retryOnFailure?: boolean;
-    maxRetries?: number;
 }
 
 export interface WizardTransformationStep {
@@ -220,8 +234,6 @@ export interface WizardTransformationStep {
 export interface ParsedData {
     headers: string[];
     rows: Record<string, unknown>[];
-    totalRows: number;
-    sampleRows: number;
 }
 
 export interface FeedTemplate {

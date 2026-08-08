@@ -19,7 +19,7 @@ export interface FileFormatEntry {
     mimeTypes: string[];
     supportsPreview: boolean;
     description?: string;
-    parse: (file: File, options?: FileParseOptions) => Promise<FileParseResult>;
+    parse?: (file: File, options?: FileParseOptions) => Promise<FileParseResult>;
 }
 
 // ---------------------------------------------------------------------------
@@ -27,6 +27,15 @@ export interface FileFormatEntry {
 // ---------------------------------------------------------------------------
 
 const DEFAULT_MAX_ROWS = 100;
+
+export type FileParseErrorCode = 'INVALID_JSON' | 'EMPTY_EXCEL_WORKBOOK';
+
+export class FileParseError extends Error {
+    constructor(readonly code: FileParseErrorCode) {
+        super(code);
+        this.name = 'FileParseError';
+    }
+}
 
 async function parseCsvFile(file: File, options?: FileParseOptions): Promise<FileParseResult> {
     const text = await file.text();
@@ -57,8 +66,15 @@ async function parseCsvFile(file: File, options?: FileParseOptions): Promise<Fil
 
 async function parseJsonFile(file: File, options?: FileParseOptions): Promise<FileParseResult> {
     const text = await file.text();
-    const json = JSON.parse(text);
-    const data = json?.data;
+    let json: unknown;
+    try {
+        json = JSON.parse(text);
+    } catch {
+        throw new FileParseError('INVALID_JSON');
+    }
+    const data = json && typeof json === 'object' && 'data' in json
+        ? json.data
+        : undefined;
     const raw = Array.isArray(json) ? json : Array.isArray(data) ? data : data && typeof data === 'object' && !Array.isArray(data) ? [data] : [json];
     const items: Record<string, unknown>[] = raw.filter((item: unknown) => item != null && typeof item === 'object' && !Array.isArray(item));
     const maxRows = options?.maxRows ?? DEFAULT_MAX_ROWS;
@@ -72,34 +88,15 @@ async function parseXlsxFile(file: File, options?: FileParseOptions): Promise<Fi
     const buffer = await file.arrayBuffer();
     const workbook = read(buffer, { type: 'array' });
     const sheetName = workbook.SheetNames[0];
-    if (!sheetName) throw new Error('Excel file has no sheets');
+    if (!sheetName) {
+        throw new FileParseError('EMPTY_EXCEL_WORKBOOK');
+    }
     const sheet = workbook.Sheets[sheetName];
     const jsonRows = utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' });
     const maxRows = options?.maxRows ?? DEFAULT_MAX_ROWS;
     const sampleItems = jsonRows.slice(0, maxRows);
     const headers = [...new Set(sampleItems.flatMap(item => Object.keys(item)))];
     return { headers, rows: sampleItems };
-}
-
-async function parseXmlFile(_file: File, _options?: FileParseOptions): Promise<FileParseResult> {
-    return { headers: [], rows: [] };
-}
-
-async function parseNdjsonFile(file: File, options?: FileParseOptions): Promise<FileParseResult> {
-    const text = await file.text();
-    const maxRows = options?.maxRows ?? DEFAULT_MAX_ROWS;
-    const lines = text.split('\n').filter(line => line.trim());
-    const items: Record<string, unknown>[] = [];
-    for (const line of lines) {
-        if (items.length >= maxRows) break;
-        try {
-            items.push(JSON.parse(line) as Record<string, unknown>);
-        } catch {
-            // Skip malformed lines in preview
-        }
-    }
-    const headers = [...new Set(items.flatMap(item => Object.keys(item)))];
-    return { headers, rows: items };
 }
 
 export const FILE_FORMAT_REGISTRY = new Map<string, FileFormatEntry>([
@@ -110,14 +107,6 @@ export const FILE_FORMAT_REGISTRY = new Map<string, FileFormatEntry>([
         mimeTypes: ['text/csv'],
         supportsPreview: true,
         parse: parseCsvFile,
-    }],
-    ['TSV', {
-        value: 'TSV',
-        label: 'TSV',
-        extensions: ['.tsv'],
-        mimeTypes: ['text/tab-separated-values'],
-        supportsPreview: true,
-        parse: (file, options) => parseCsvFile(file, { ...options, delimiter: '\t' }),
     }],
     ['JSON', {
         value: 'JSON',
@@ -133,7 +122,6 @@ export const FILE_FORMAT_REGISTRY = new Map<string, FileFormatEntry>([
         extensions: ['.xml'],
         mimeTypes: ['text/xml', 'application/xml'],
         supportsPreview: false,
-        parse: parseXmlFile,
     }],
     ['XLSX', {
         value: 'XLSX',
@@ -142,14 +130,6 @@ export const FILE_FORMAT_REGISTRY = new Map<string, FileFormatEntry>([
         mimeTypes: ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel'],
         supportsPreview: true,
         parse: parseXlsxFile,
-    }],
-    ['NDJSON', {
-        value: 'NDJSON',
-        label: 'NDJSON',
-        extensions: ['.ndjson', '.jsonl'],
-        mimeTypes: ['application/x-ndjson'],
-        supportsPreview: true,
-        parse: parseNdjsonFile,
     }],
 ]);
 

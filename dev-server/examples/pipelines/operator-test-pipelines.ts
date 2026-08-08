@@ -37,7 +37,7 @@ export const testStringOperators = createPipeline()
 
     .extract('source', {
         adapterCode: 'inMemory',
-        records: [
+        data: [
             {
                 name: '  Hello World  ',
                 title: '<b>Product Title</b> with <em>HTML</em>',
@@ -1088,9 +1088,14 @@ export const testMultiJoin = createPipeline()
             {
                 op: 'multiJoin',
                 args: {
-                    sources: ['tags', 'codes'],
-                    target: 'allIdentifiers',
-                    delimiter: ',',
+                    leftKey: 'id',
+                    rightKey: 'productId',
+                    rightData: [
+                        { productId: 1, category: 'Featured' },
+                        { productId: 2, category: 'Standard' },
+                    ],
+                    type: 'LEFT',
+                    prefix: 'reference_',
                 },
             },
         ],

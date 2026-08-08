@@ -1,107 +1,63 @@
-import { Injectable, OnModuleInit, OnModuleDestroy, Optional } from '@nestjs/common';
+import { Injectable, OnApplicationBootstrap, OnModuleDestroy, Optional } from '@nestjs/common';
 import { RequestContext, RequestContextService, TransactionalConnection } from '@vendure/core';
-import { minimatch } from 'minimatch';
 import { PipelineService } from '../pipeline/pipeline.service';
-import { ConnectionService } from '../config/connection.service';
-import { SecretService } from '../config/secret.service';
 import { CheckpointService } from '../data/checkpoint.service';
 import { DistributedLockService } from '../runtime/distributed-lock.service';
 import { LOGGER_CONTEXTS, SCHEDULER, DISTRIBUTED_LOCK } from '../../constants/index';
 import { FILE_WATCH } from '../../constants/defaults';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
-import { getErrorMessage, toErrorOrUndefined, ensureError } from '../../utils/error.utils';
+import { getErrorMessage, ensureError } from '../../utils/error.utils';
+import { ActiveTaskSet, SingleFlightTask } from '../../utils/async-operation-tracker';
 import { DomainEventsService } from './domain-events.service';
+import { PipelineDefinition } from '../../types/index';
+import { RunStatus } from '../../constants/enums';
+import { createRemoteFileSourceRecord } from '../../extractors/shared/remote-file-source';
 import {
-    PipelineDefinition,
-    FileWatchTriggerConfig,
-    TriggerConfig,
-    JsonObject,
-} from '../../types/index';
-import { TriggerType as TriggerTypeEnum } from '../../constants/enums';
-import { PipelineStatus } from '../../constants';
-import { Pipeline } from '../../entities/pipeline';
-import { DataHubConnection } from '../../entities/config';
+    createPendingFileRun,
+    findNextEligibleFile,
+    isTerminalFailureStatus,
+    pendingFilePosition,
+    readFileWatchCheckpoint,
+    writeFileWatchCheckpoint,
+    type FileWatchCheckpointState,
+    type PendingFileRun,
+} from './file-watch-checkpoint';
+import {
+    buildFileWatcherConfig,
+    fileWatcherConfigsEqual,
+    findEnabledFileTriggers,
+    getFileWatcherKey,
+    type FileWatcherConfig,
+} from './file-watch-config';
+import { FileWatchSourceService } from './file-watch-source.service';
+import { ConfigSyncService } from '../../bootstrap/seed-data';
+import { loadRunnablePipelineDefinitions } from '../pipeline/active-pipeline-definitions';
 
-/**
- * File Watch Service
- *
- * Monitors remote file systems (FTP, SFTP, S3) for new files and automatically
- * triggers pipelines when files matching glob patterns are detected.
- *
- * Architecture:
- * - Discovers pipelines with FILE triggers on startup
- * - Starts watchers based on autoStart configuration
- * - Polls remote paths at configured intervals
- * - Tracks processed files using persistent checkpoints (via CheckpointService)
- * - Triggers pipeline runs for newly detected files
- * - Uses distributed locks to prevent duplicate processing
- *
- * File Detection Logic:
- * - Lists files from connection (FTP/S3/SFTP)
- * - Filters by glob pattern
- * - Compares against last checkpoint persisted in the database
- * - Processes files modified after checkpoint
- * - Updates checkpoint in both memory and database after successful processing
- * - On restart, loads the last checkpoint from the database to avoid reprocessing
- */
-
-const MAX_WATCHERS = FILE_WATCH.MAX_WATCHERS;
-const DEFAULT_POLL_INTERVAL_MS = FILE_WATCH.DEFAULT_POLL_INTERVAL_MS;
-const MIN_POLL_INTERVAL_MS = FILE_WATCH.MIN_POLL_INTERVAL_MS;
-const DEFAULT_MIN_FILE_AGE_MS = FILE_WATCH.DEFAULT_MIN_FILE_AGE_MS;
-
-/**
- * Configuration for a file watcher instance
- */
-interface FileWatcherConfig {
-    pipelineId: string;
-    pipelineCode: string;
-    triggerKey: string;
-    connectionCode: string;
-    path: string;
-    pattern?: string;
-    pollIntervalMs: number;
-    minFileAge: number;
-    recursive: boolean;
-    autoStart: boolean;
-    debounceMs?: number;
-}
-
-/**
- * Active file watcher instance
- */
 interface ActiveWatcher {
     config: FileWatcherConfig;
     timer: NodeJS.Timeout;
-    lastCheckpoint: Date | null;
+    statusTimer?: NodeJS.Timeout;
+    state: FileWatchCheckpointState;
     isProcessing: boolean;
     lockKey: string;
 }
 
-/**
- * Discovered file metadata
- */
-interface DiscoveredFile {
-    path: string;
-    name: string;
-    modifiedAt: Date;
-    size: number;
-}
-
 @Injectable()
-export class FileWatchService implements OnModuleInit, OnModuleDestroy {
+export class FileWatchService implements OnApplicationBootstrap, OnModuleDestroy {
     private readonly logger: DataHubLogger;
     private readonly watchers = new Map<string, ActiveWatcher>();
+    private readonly pollTasks = new ActiveTaskSet();
     private isDestroying = false;
     private refreshTimer?: NodeJS.Timeout;
+    private readonly refreshTask = new SingleFlightTask<void>();
 
     constructor(
         private connection: TransactionalConnection,
         private requestContextService: RequestContextService,
         private pipelineService: PipelineService,
-        private connectionService: ConnectionService,
-        private secretService: SecretService,
+        private sourceService: FileWatchSourceService,
         private checkpointService: CheckpointService,
+        private configSync: ConfigSyncService,
         loggerFactory: DataHubLoggerFactory,
         private domainEvents: DomainEventsService,
         @Optional() private distributedLock?: DistributedLockService,
@@ -109,19 +65,18 @@ export class FileWatchService implements OnModuleInit, OnModuleDestroy {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.FILE_WATCH ?? 'DataHub:FileWatch');
     }
 
-    async onModuleInit(): Promise<void> {
+    async onApplicationBootstrap(): Promise<void> {
+        await this.configSync.ensureSynchronized();
+        if (this.isDestroying) return;
         this.logger.info('File watch service initializing');
-
-        // Discover and start watchers
         try {
-            await this.discoverAndStartWatchers();
+            await this.refreshWatchers();
         } catch (error) {
             this.logger.warn('Failed to initialize file watchers on startup, will retry on refresh', {
                 error: getErrorMessage(error),
             });
         }
-
-        // Periodic refresh to discover new/changed pipelines
+        if (this.isDestroying) return;
         this.refreshTimer = setInterval(() => {
             this.refreshWatchers().catch(err => {
                 this.logger.error('Failed to refresh file watchers', ensureError(err));
@@ -141,192 +96,95 @@ export class FileWatchService implements OnModuleInit, OnModuleDestroy {
             this.refreshTimer = undefined;
         }
 
+        await this.refreshTask.settle();
+        await this.pollTasks.settle();
         await this.stopAllWatchers();
         this.logger.info('File watch service cleanup complete');
     }
 
-    /**
-     * Discover pipelines with FILE triggers and start watchers
-     */
-    private async discoverAndStartWatchers(): Promise<void> {
-        const activeConfigs = await this.discoverActiveConfigs();
-        let startedCount = 0;
-
-        for (const [, config] of activeConfigs) {
-            try {
-                await this.startWatcher(config);
-                startedCount++;
-            } catch (error) {
-                this.logger.error(`Failed to start watcher for pipeline ${config.pipelineCode}`,
-                    toErrorOrUndefined(error), {
-                        pipelineCode: config.pipelineCode,
-                        triggerKey: config.triggerKey,
-                    });
-            }
-        }
-
-        if (startedCount > 0) {
-            this.logger.info(`Started ${startedCount} file watchers`);
-        }
-    }
-
-    /**
-     * Discover all published pipelines with FILE triggers
-     */
     private async discoverActiveConfigs(): Promise<Map<string, FileWatcherConfig>> {
         const ctx = await this.requestContextService.create({ apiType: 'admin' });
         const configMap = new Map<string, FileWatcherConfig>();
 
         try {
-            const repo = this.connection.getRepository(ctx, Pipeline);
-            const pipelines = await repo.find({
-                where: { status: PipelineStatus.PUBLISHED, enabled: true },
-                select: ['id', 'code', 'definition'],
-            });
+            const pipelines = await loadRunnablePipelineDefinitions(
+                this.connection,
+                ctx,
+                FILE_WATCH.MAX_WATCHERS,
+            );
 
             for (const pipeline of pipelines) {
                 const definition = pipeline.definition as PipelineDefinition;
                 if (!definition?.steps) continue;
 
-                const fileTriggers = this.findEnabledFileTriggers(definition);
+                const fileTriggers = findEnabledFileTriggers(definition);
                 for (const { triggerKey, config } of fileTriggers) {
-                    const watcherConfig = this.buildWatcherConfig(
+                    const watcherConfig = buildFileWatcherConfig(
                         String(pipeline.id),
                         pipeline.code,
+                        String(pipeline.revisionId),
                         triggerKey,
                         config,
+                        message => this.logger.warn(message),
                     );
 
                     if (watcherConfig) {
-                        const key = this.getWatcherKey(pipeline.code, triggerKey);
+                        const key = getFileWatcherKey(
+                            pipeline.code,
+                            triggerKey,
+                        );
                         configMap.set(key, watcherConfig);
                     }
                 }
             }
         } catch (error) {
             this.logger.error('Failed to discover file watch configurations', ensureError(error));
+            throw error;
         }
 
         return configMap;
     }
 
-    /**
-     * Find all enabled FILE triggers in a pipeline definition
-     */
-    private findEnabledFileTriggers(definition: PipelineDefinition): Array<{
-        triggerKey: string;
-        config: FileWatchTriggerConfig;
-    }> {
-        const triggers: Array<{ triggerKey: string; config: FileWatchTriggerConfig }> = [];
-
-        for (const step of definition.steps) {
-            if (step.type !== 'TRIGGER') continue;
-
-            const triggerConfig = step.config as unknown as TriggerConfig | undefined;
-            if (!triggerConfig) continue;
-
-            const isEnabled = triggerConfig.enabled !== false;
-            const isFileType = triggerConfig.type === TriggerTypeEnum.FILE;
-            const fileWatchConfig = triggerConfig.fileWatch;
-
-            if (isEnabled && isFileType && fileWatchConfig) {
-                triggers.push({
-                    triggerKey: step.key,
-                    config: fileWatchConfig,
-                });
-            }
-        }
-
-        return triggers;
-    }
-
-    /**
-     * Build watcher configuration from trigger config
-     */
-    private buildWatcherConfig(
-        pipelineId: string,
-        pipelineCode: string,
-        triggerKey: string,
-        config: FileWatchTriggerConfig,
-    ): FileWatcherConfig | null {
-        if (!config.path) {
-            this.logger.warn(`FILE trigger missing path for pipeline ${pipelineCode}`);
-            return null;
-        }
-
-        if (!config.connectionCode) {
-            this.logger.warn(`FILE trigger missing connectionCode for pipeline ${pipelineCode}`);
-            return null;
-        }
-
-        const pollIntervalMs = Math.max(
-            config.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS,
-            MIN_POLL_INTERVAL_MS,
-        );
-
-        const minFileAge = config.minFileAge
-            ? config.minFileAge * 1000
-            : DEFAULT_MIN_FILE_AGE_MS;
-
-        return {
-            pipelineId,
-            pipelineCode,
-            triggerKey,
-            connectionCode: config.connectionCode,
-            path: config.path,
-            pattern: config.pattern,
-            pollIntervalMs,
-            minFileAge,
-            recursive: config.recursive ?? true,
-            autoStart: true, // Always auto-start for published pipelines
-            debounceMs: config.debounceMs,
-        };
-    }
-
-    /**
-     * Start a file watcher
-     */
     private async startWatcher(config: FileWatcherConfig): Promise<void> {
-        const key = this.getWatcherKey(config.pipelineCode, config.triggerKey);
+        if (this.isDestroying) return;
+        const key = getFileWatcherKey(config.pipelineCode, config.triggerKey);
 
         if (this.watchers.has(key)) {
             this.logger.debug(`Watcher already exists for ${key}`);
             return;
         }
 
-        if (this.watchers.size >= MAX_WATCHERS) {
-            this.logger.warn(`Maximum watchers (${MAX_WATCHERS}) reached, skipping ${key}`);
+        if (this.watchers.size >= FILE_WATCH.MAX_WATCHERS) {
+            this.logger.warn(`Maximum watchers (${FILE_WATCH.MAX_WATCHERS}) reached, skipping ${key}`);
             return;
         }
 
-        const lockKey = `file-watch:${key}`;
+        const lockKey = `file-watch:${config.pipelineCode}`;
 
-        // Load persisted checkpoint from database to survive restarts
-        let savedCheckpoint: Date | null = null;
+        let savedState: FileWatchCheckpointState = {};
         try {
             const ctx = await this.requestContextService.create({ apiType: 'admin' });
             const checkpoint = await this.checkpointService.getByPipeline(ctx, config.pipelineId);
-            const fileWatchCheckpoint = (checkpoint?.data as Record<string, unknown> | undefined)?.fileWatchCheckpoint;
-            if (typeof fileWatchCheckpoint === 'string') {
-                savedCheckpoint = new Date(fileWatchCheckpoint);
+            savedState = readFileWatchCheckpoint(checkpoint?.data, config.triggerKey);
+            if (savedState.cursor || savedState.pending) {
                 this.logger.debug(`Restored file-watch checkpoint for ${key}`, {
-                    checkpoint: fileWatchCheckpoint,
+                    cursor: savedState.cursor,
+                    pendingRunId: savedState.pending?.runId,
                 });
             }
         } catch (error) {
-            this.logger.warn(`Failed to load file-watch checkpoint for ${key}`, {
-                error: getErrorMessage(error),
-            });
+            this.logger.error(`Failed to load file-watch checkpoint for ${key}`, ensureError(error));
+            throw error;
         }
+        if (this.isDestroying) return;
 
-        // Start periodic polling
         const timer = setInterval(() => {
             if (this.isDestroying) return;
 
             const watcher = this.watchers.get(key);
             if (!watcher || watcher.isProcessing) return;
 
-            this.pollForFiles(config, watcher.lastCheckpoint, lockKey).catch(err => {
+            this.runPoll(config, lockKey).catch(err => {
                 this.logger.error(`Poll error for ${key}`, ensureError(err));
             });
         }, config.pollIntervalMs);
@@ -335,17 +193,15 @@ export class FileWatchService implements OnModuleInit, OnModuleDestroy {
             timer.unref();
         }
 
-        // Register watcher BEFORE initial poll so pollForFiles can find it in the map
         this.watchers.set(key, {
             config,
             timer,
-            lastCheckpoint: savedCheckpoint,
+            state: savedState,
             isProcessing: false,
             lockKey,
         });
 
-        // Initial poll (must happen after watcher is in the map)
-        await this.pollForFiles(config, savedCheckpoint, lockKey);
+        await this.runPoll(config, lockKey);
 
         this.logger.info(`Started file watcher for ${key}`, {
             path: config.path,
@@ -354,19 +210,16 @@ export class FileWatchService implements OnModuleInit, OnModuleDestroy {
         });
     }
 
-    /**
-     * Poll for new files
-     */
-    private async pollForFiles(
-        config: FileWatcherConfig,
-        lastCheckpoint: Date | null,
-        lockKey: string,
-    ): Promise<void> {
-        const key = this.getWatcherKey(config.pipelineCode, config.triggerKey);
+    private runPoll(config: FileWatcherConfig, lockKey: string): Promise<void> {
+        if (this.isDestroying) return Promise.resolve();
+        return this.pollTasks.run(() => this.pollForFiles(config, lockKey));
+    }
+
+    private async pollForFiles(config: FileWatcherConfig, lockKey: string): Promise<void> {
+        const key = getFileWatcherKey(config.pipelineCode, config.triggerKey);
         const watcher = this.watchers.get(key);
         if (!watcher) return;
 
-        // Acquire distributed lock if available
         const lock = await this.acquireLock(lockKey);
         if (!lock) {
             this.logger.debug(`Could not acquire lock for ${key}, skipping poll`);
@@ -375,62 +228,36 @@ export class FileWatchService implements OnModuleInit, OnModuleDestroy {
 
         try {
             watcher.isProcessing = true;
-
             const ctx = await this.requestContextService.create({ apiType: 'admin' });
-            const files = await this.listFiles(ctx, config);
+            if (!(await this.reconcilePendingRun(ctx, config, watcher))) {
+                return;
+            }
 
-            // Filter files by timestamp and age
-            const now = new Date();
-            const checkpoint = lastCheckpoint || new Date(0);
-            const newFiles = files.filter(file => {
-                const isNewer = file.modifiedAt > checkpoint;
-                const isOldEnough = (now.getTime() - file.modifiedAt.getTime()) >= config.minFileAge;
-                return isNewer && isOldEnough;
-            });
-
-            if (newFiles.length === 0) {
+            const nextFile = findNextEligibleFile(
+                await this.sourceService.listFiles(
+                    ctx,
+                    config,
+                    async () => this.isDestroying,
+                ),
+                watcher.state.cursor,
+                new Date(),
+                config.minFileAge,
+            );
+            if (!nextFile) {
                 this.logger.debug(`No new files for ${key}`);
                 return;
             }
 
-            this.logger.info(`Found ${newFiles.length} new files for ${key}`);
-
-            let allSucceeded = true;
-            for (const file of newFiles) {
-                try {
-                    await this.processFile(ctx, config, file);
-                } catch {
-                    allSucceeded = false;
-                    this.logger.warn(`File processing failed, checkpoint not advanced`, {
-                        file: file.name,
-                        pipeline: config.pipelineCode,
-                    });
-                }
-            }
-
-            // Only advance checkpoint if all files processed successfully
-            if (allSucceeded && newFiles.length > 0) {
-                const latestFile = newFiles.reduce((latest, file) =>
-                    file.modifiedAt > latest.modifiedAt ? file : latest
-                , newFiles[0]);
-
-                watcher.lastCheckpoint = latestFile.modifiedAt;
-
-                // Persist checkpoint to database so it survives restarts
-                try {
-                    const existingCheckpoint = await this.checkpointService.getByPipeline(ctx, config.pipelineId);
-                    const existingData = (existingCheckpoint?.data ?? {}) as JsonObject;
-                    await this.checkpointService.setForPipeline(ctx, config.pipelineId, {
-                        ...existingData,
-                        fileWatchCheckpoint: watcher.lastCheckpoint.toISOString(),
-                    });
-                } catch (cpError) {
-                    this.logger.warn(`Failed to persist file-watch checkpoint for ${key}`, {
-                        error: getErrorMessage(cpError),
-                    });
-                }
-            }
-
+            const stateWithIntent: FileWatchCheckpointState = {
+                ...watcher.state,
+                pending: createPendingFileRun(
+                    nextFile,
+                    config.revisionId,
+                    config.connectionCode,
+                ),
+            };
+            await this.persistWatcherState(ctx, config, stateWithIntent);
+            await this.startPendingRun(ctx, config, watcher);
         } catch (error) {
             this.logger.error(`Failed to poll files for ${key}`, ensureError(error));
         } finally {
@@ -439,256 +266,212 @@ export class FileWatchService implements OnModuleInit, OnModuleDestroy {
         }
     }
 
-    /**
-     * List files from connection
-     */
-    private async listFiles(
+    private async reconcilePendingRun(
         ctx: RequestContext,
         config: FileWatcherConfig,
-    ): Promise<DiscoveredFile[]> {
-        const connection = await this.connectionService.getByCode(ctx, config.connectionCode);
-        if (!connection) {
-            throw new Error(`Connection not found: ${config.connectionCode}`);
+        watcher: ActiveWatcher,
+    ): Promise<boolean> {
+        const pending = watcher.state.pending;
+        if (!pending) return true;
+        if (!pending.runId) {
+            await this.startPendingRun(ctx, config, watcher);
+            return false;
         }
 
-        const files: DiscoveredFile[] = [];
-
-        // Handle different connection types
-        const connectionType = connection.type.toUpperCase();
-        if (connectionType === 'FTP' || connectionType === 'SFTP') {
-            const ftpFiles = await this.listFtpFiles(connection, config);
-            files.push(...ftpFiles);
-        } else if (connectionType === 'S3') {
-            const s3Files = await this.listS3Files(connection, config);
-            files.push(...s3Files);
-        } else {
-            throw new Error(`Unsupported connection type for file watch: ${connection.type}`);
-        }
-
-        // Apply glob pattern filter
-        if (config.pattern) {
-            return files.filter(file => minimatch(file.name, config.pattern!));
-        }
-
-        return files;
-    }
-
-    /**
-     * List files from FTP/SFTP
-     */
-    private async listFtpFiles(connection: DataHubConnection, config: FileWatcherConfig): Promise<DiscoveredFile[]> {
-        if (config.recursive) {
-            this.logger.warn(
-                `Recursive file listing is not yet supported for FTP/SFTP connections. ` +
-                `Only the top-level directory "${config.path}" will be listed.`,
-                { pipelineCode: config.pipelineCode, path: config.path },
-            );
-        }
-
-        const rawCfg = connection.config as Record<string, unknown>;
-        const ctx = await this.requestContextService.create({ apiType: 'admin' });
-        const cfg = await this.resolveSecretFields(ctx, rawCfg);
-        if (cfg.protocol === 'sftp' || !cfg.protocol) {
-            try {
-                const Client = (await import('ssh2-sftp-client')).default;
-                const sftp = new Client();
-
-                await sftp.connect({
-                    host: cfg.host as string,
-                    port: (cfg.port as number) || 22,
-                    username: cfg.username as string,
-                    password: cfg.password as string,
-                    privateKey: cfg.privateKey as string | Buffer | undefined,
-                });
-
-                try {
-                    const fileList: any[] = await sftp.list(config.path);
-                    return fileList
-                        .filter((f: any) => f.type === '-') // Regular files only
-                        .map((f: any) => ({
-                            path: `${config.path}/${f.name}`.replace(/\/+/g, '/'),
-                            name: f.name,
-                            modifiedAt: new Date(f.modifyTime),
-                            size: f.size,
-                        }));
-                } finally {
-                    await sftp.end();
-                }
-            } catch (error) {
-                this.logger.error('SFTP list failed', ensureError(error));
-                return [];
-            }
-        }
-
-        // For FTP, would need basic-ftp or similar
-        throw new Error('FTP protocol not yet supported in file watch (use SFTP)');
-    }
-
-    /**
-     * List files from S3
-     */
-    private async listS3Files(connection: DataHubConnection, config: FileWatcherConfig): Promise<DiscoveredFile[]> {
-        const rawCfg = connection.config as Record<string, unknown>;
-        const ctx = await this.requestContextService.create({ apiType: 'admin' });
-        const cfg = await this.resolveSecretFields(ctx, rawCfg);
-        try {
-            const { S3Client, ListObjectsV2Command } = await import('@aws-sdk/client-s3');
-
-            const client = new S3Client({
-                region: cfg.region as string,
-                credentials: {
-                    accessKeyId: cfg.accessKeyId as string,
-                    secretAccessKey: cfg.secretAccessKey as string,
-                },
-                endpoint: cfg.endpoint as string | undefined,
-            });
-
-            const allFiles: DiscoveredFile[] = [];
-            let continuationToken: string | undefined;
-
-            do {
-                const command = new ListObjectsV2Command({
-                    Bucket: cfg.bucket as string,
-                    Prefix: config.path,
-                    ContinuationToken: continuationToken,
-                });
-
-                const response = await client.send(command);
-                const objects = response.Contents || [];
-
-                for (const obj of objects) {
-                    if (obj.Key && !obj.Key.endsWith('/')) {
-                        allFiles.push({
-                            path: obj.Key,
-                            name: obj.Key.split('/').pop() || obj.Key,
-                            modifiedAt: obj.LastModified || new Date(),
-                            size: obj.Size || 0,
-                        });
-                    }
-                }
-
-                continuationToken = response.IsTruncated ? response.NextContinuationToken : undefined;
-            } while (continuationToken);
-
-            return allFiles;
-        } catch (error) {
-            this.logger.error('S3 list failed', ensureError(error));
-            return [];
-        }
-    }
-
-    private async resolveSecretFields(
-        ctx: import('@vendure/core').RequestContext,
-        raw: Record<string, unknown>,
-    ): Promise<Record<string, unknown>> {
-        const resolved = { ...raw };
-        const secretFields = [
-            ['passwordSecretCode', 'password'],
-            ['accessKeyIdSecretCode', 'accessKeyId'],
-            ['secretAccessKeySecretCode', 'secretAccessKey'],
-            ['privateKeySecretCode', 'privateKey'],
-        ];
-        for (const [secretField, targetField] of secretFields) {
-            const code = raw[secretField];
-            if (typeof code === 'string' && code) {
-                const value = await this.secretService.resolve(ctx, code);
-                if (value) resolved[targetField] = value;
-            }
-        }
-        return resolved;
-    }
-
-    /**
-     * Process a discovered file by triggering the pipeline
-     */
-    private async processFile(
-        ctx: RequestContext,
-        config: FileWatcherConfig,
-        file: DiscoveredFile,
-    ): Promise<void> {
-        try {
-            this.logger.info(`Processing file: ${file.path}`, {
-                pipeline: config.pipelineCode,
-                file: file.name,
-                size: file.size,
-            });
-
-            // Trigger pipeline with file metadata
-            const seedRecord = {
-                path: file.path,
-                name: file.name,
-                modifiedAt: file.modifiedAt.toISOString(),
-                size: file.size,
-                connectionCode: config.connectionCode,
+        const run = await this.pipelineService.runById(ctx, pending.runId);
+        if (run?.status === RunStatus.COMPLETED) {
+            const completedState: FileWatchCheckpointState = {
+                cursor: pendingFilePosition(pending),
             };
+            await this.persistWatcherState(ctx, config, completedState);
+            this.logger.info('File pipeline completed; checkpoint advanced', {
+                pipeline: config.pipelineCode,
+                file: pending.file.path,
+                runId: pending.runId,
+            });
+            return true;
+        }
 
-            await this.pipelineService.startRunByCode(ctx, config.pipelineCode, {
-                seedRecords: [seedRecord],
+        if (run && !isTerminalFailureStatus(run.status)) {
+            this.scheduleStatusPoll(config, watcher);
+            return false;
+        }
+
+        const retryState: FileWatchCheckpointState = {
+            ...watcher.state,
+            pending: {
+                ...pending,
+                attempt: pending.attempt + 1,
+                runId: undefined,
+            },
+        };
+        await this.persistWatcherState(ctx, config, retryState);
+        this.logger.warn('File pipeline did not complete successfully; file remains retryable', {
+            pipeline: config.pipelineCode,
+            file: pending.file.path,
+            runId: pending.runId,
+            status: run?.status ?? 'MISSING',
+            nextAttempt: retryState.pending?.attempt,
+        });
+        return false;
+    }
+
+    private async startPendingRun(
+        ctx: RequestContext,
+        config: FileWatcherConfig,
+        watcher: ActiveWatcher,
+    ): Promise<void> {
+        const key = getFileWatcherKey(config.pipelineCode, config.triggerKey);
+        if (this.isDestroying || this.watchers.get(key) !== watcher) return;
+        const pending = watcher.state.pending;
+        if (!pending || pending.runId) return;
+
+        const runId = await this.startFileRun(ctx, config, pending);
+        await this.persistWatcherState(ctx, config, {
+            ...watcher.state,
+            pending: {
+                ...pending,
+                runId,
+            },
+        });
+        this.scheduleStatusPoll(config, watcher);
+    }
+
+    private async persistWatcherState(
+        ctx: RequestContext,
+        config: FileWatcherConfig,
+        state: FileWatchCheckpointState,
+    ): Promise<void> {
+        await this.checkpointService.updateForPipeline(
+            ctx,
+            config.pipelineId,
+            current => writeFileWatchCheckpoint(current, config.triggerKey, state),
+        );
+
+        const key = getFileWatcherKey(config.pipelineCode, config.triggerKey);
+        const watcher = this.watchers.get(key);
+        if (watcher) watcher.state = state;
+    }
+
+    private scheduleStatusPoll(config: FileWatcherConfig, watcher: ActiveWatcher): void {
+        if (this.isDestroying || watcher.statusTimer) return;
+
+        watcher.statusTimer = setTimeout(() => {
+            watcher.statusTimer = undefined;
+            if (this.isDestroying) return;
+            if (watcher.isProcessing) {
+                this.scheduleStatusPoll(config, watcher);
+                return;
+            }
+            this.runPoll(config, watcher.lockKey).catch(error => {
+                this.logger.error(
+                    `Run status poll failed for ${config.pipelineCode}:${config.triggerKey}`,
+                    ensureError(error),
+                );
+            });
+        }, FILE_WATCH.RUN_STATUS_POLL_INTERVAL_MS);
+
+        if (typeof watcher.statusTimer.unref === 'function') {
+            watcher.statusTimer.unref();
+        }
+    }
+
+    private async startFileRun(
+        ctx: RequestContext,
+        config: FileWatcherConfig,
+        pending: PendingFileRun,
+    ): Promise<string> {
+        const { file } = pending;
+        this.logger.info(`Processing file: ${file.path}`, {
+            pipeline: config.pipelineCode,
+            file: file.name,
+            size: file.size,
+            attempt: pending.attempt,
+        });
+
+        const seedRecord = createRemoteFileSourceRecord({
+            path: file.path,
+            name: file.name,
+            modifiedAt: file.modifiedAt,
+            size: file.size,
+            connectionCode: pending.connectionCode,
+        });
+        const runIdentity = JSON.stringify({
+            pipelineId: config.pipelineId,
+            triggerKey: config.triggerKey,
+            revisionId: pending.revisionId,
+            connectionCode: pending.connectionCode,
+            file,
+            attempt: pending.attempt,
+        });
+        const result = await this.pipelineService.startPinnedIdempotentRunWithSeed(
+            ctx,
+            config.pipelineId,
+            pending.revisionId,
+            [seedRecord],
+            {
+                idempotencyKey: runIdentity,
+                idempotencyTtlSeconds: FILE_WATCH.RUN_IDEMPOTENCY_TTL_SEC,
+                requestFingerprint: runIdentity,
+                triggerKey: config.triggerKey,
+                seedMode: 'SOURCE_REFERENCES',
                 skipPermissionCheck: true,
                 triggeredBy: `file:${config.triggerKey}`,
-            });
+            },
+        );
 
-            this.logger.info(`Pipeline triggered for file: ${file.path}`, {
-                pipeline: config.pipelineCode,
-            });
-
-        } catch (error) {
-            this.logger.error(`Failed to process file: ${file.path}`, ensureError(error), {
-                pipeline: config.pipelineCode,
-                file: file.name,
-            });
-            throw error;
-        }
+        this.logger.info(`Pipeline triggered for file: ${file.path}`, {
+            pipeline: config.pipelineCode,
+            runId: result.run.id,
+            duplicate: result.duplicate,
+        });
+        return String(result.run.id);
     }
 
-    /**
-     * Stop a file watcher
-     */
     private async stopWatcher(key: string): Promise<void> {
         const watcher = this.watchers.get(key);
         if (!watcher) return;
 
         clearInterval(watcher.timer);
+        if (watcher.statusTimer) {
+            clearTimeout(watcher.statusTimer);
+        }
         this.watchers.delete(key);
 
         this.logger.info(`Stopped file watcher: ${key}`);
     }
 
-    /**
-     * Stop all watchers
-     */
     private async stopAllWatchers(): Promise<void> {
         for (const key of Array.from(this.watchers.keys())) {
             await this.stopWatcher(key);
         }
     }
 
-    /**
-     * Refresh watchers - stop removed, start new
-     */
-    private async refreshWatchers(): Promise<void> {
-        if (this.isDestroying) return;
+    private refreshWatchers(): Promise<void> {
+        if (this.isDestroying) return Promise.resolve();
+        return this.refreshTask.run(() => this.reconcileWatchers());
+    }
 
+    private async reconcileWatchers(): Promise<void> {
         const activeConfigs = await this.discoverActiveConfigs();
-
-        // Stop watchers for removed/disabled pipelines
+        if (this.isDestroying) return;
         for (const key of Array.from(this.watchers.keys())) {
             if (!activeConfigs.has(key)) {
                 await this.stopWatcher(key);
             }
         }
-
-        // Start new watchers
         for (const [key, config] of activeConfigs) {
-            if (!this.watchers.has(key)) {
+            if (this.isDestroying) return;
+            const watcher = this.watchers.get(key);
+            if (!watcher) {
+                await this.startWatcher(config);
+            } else if (!fileWatcherConfigsEqual(watcher.config, config)) {
+                await this.stopWatcher(key);
                 await this.startWatcher(config);
             }
         }
     }
 
-    /**
-     * Acquire distributed lock
-     */
     private async acquireLock(key: string): Promise<{ token: string } | null> {
         if (!this.distributedLock) return { token: 'no-lock' }; // No lock service, proceed
 
@@ -701,9 +484,6 @@ export class FileWatchService implements OnModuleInit, OnModuleDestroy {
         }
     }
 
-    /**
-     * Release distributed lock
-     */
     private async releaseLock(lockKey: string, lock: { token: string } | null): Promise<void> {
         if (!lock || !this.distributedLock || lock.token === 'no-lock') return;
 
@@ -712,12 +492,5 @@ export class FileWatchService implements OnModuleInit, OnModuleDestroy {
         } catch (error) {
             this.logger.warn(`Failed to release lock: ${lockKey}`, { error: getErrorMessage(error) });
         }
-    }
-
-    /**
-     * Get unique key for watcher
-     */
-    private getWatcherKey(pipelineCode: string, triggerKey: string): string {
-        return `${pipelineCode}:${triggerKey}`;
     }
 }

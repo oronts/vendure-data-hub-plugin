@@ -2,6 +2,62 @@
 
 All notable changes to the Data Hub Plugin are documented here.
 
+## [0.1.7] - 2026-07-16
+
+### Added
+- Persisted `DATABASE`/`CODE_FIRST` ownership for pipelines and connections,
+  with read-only Dashboard state, backend mutation guards, worker readiness
+  checks, and non-destructive release when a deployed definition is removed
+- Separate `UseDataHubConnection` and `UseDataHubSecret` permissions for
+  publishing and interactively executing resource-backed pipeline definitions
+- Durable managed feeds and export destinations, backed by the new
+  `data_hub_feed` and `data_hub_export_destination` tables. Host applications
+  must generate and apply a TypeORM migration before enabling these features.
+- Durable, channel-scoped Vendure event outbox and outgoing webhook delivery queues with leasing, restart recovery, dead-letter persistence, and encrypted replay envelopes
+- Bounded recursive remote file watch support for S3, FTP, and SFTP with durable pending intents and checkpoint advancement only after successful processing
+- End-to-end export delivery for local storage, HTTP, S3, SFTP, FTP, and email destinations
+- Strict schedule parsing with cron timezone support and interval validation
+- UUID-compatible entity references using Vendure's active Entity ID strategy
+- Nested schema-form and wizard configuration paths with prototype-pollution protection
+- Magento SearchCriteria filtering, grouping, pagination, and Express 5 extended-query parsing in the development mock
+- Durable per-run gate deadlines with bounded leased timeout processing and
+  exact-gate concurrency protection. Host applications must add the documented
+  nullable run columns and indexes before enabling timeout gates.
+- Docker acceptance commands for multi-process Redis coordination, real OTLP
+  Collector outage recovery, and S3/FTP/SFTP/PostgreSQL/MySQL transport
+  contracts. These local services do not replace target-environment sign-off.
+
+### Fixed
+- Incoming webhook authentication, raw-body HMAC verification, durable idempotency, pre-authentication rate limiting, and JWT expiration/issuer/audience checks
+- Outgoing credentials now use Secret Codes and resolve immediately before network operations; sensitive plaintext headers and raw credential aliases are rejected
+- Queue acknowledgment, negative acknowledgment, dead-letter, and delivery-tag handling
+- Customer address replacement and country validation, loader duplicate modes, graph dry runs, replay execution, and seeded trigger routing
+- Product facet-value modes and order line modes now propagate through production handlers with exact persisted-state coverage
+- Export wizard destination and format contracts now match registered backend handlers and fail closed for unsupported mappings
+- File upload persistence, format-specific extraction, nested adapter validation, and dashboard round-trip conversion
+- Connection, pipeline, trigger, destination, and code-first configuration validation now rejects malformed or unsupported values before persistence
+- Pipeline definitions require a positive integer version without mutating caller input
+- Multi-join definitions now validate operator arguments before publication,
+  use type-strict non-null scalar keys, preserve deterministic outer-join
+  ordering and shape, and fail closed on bounded right-side and output sizes
+- Gate definitions now reject unknown approval modes, missing or out-of-range
+  timeout and threshold values, invalid notification endpoints, and unbounded
+  previews before publication
+
+### Changed
+- Vendure peer and development dependencies require the patched 3.5.7 line
+- Published runtime dependencies now include every directly imported GraphQL, dashboard-form, and optional SQLite package
+- Vendure dashboard development builds use one React instance and a compatible TanStack Router 1.154 toolchain
+- Removed obsolete subscription APIs, duplicate file extractors, unsafe transform registries, legacy trigger aliases, and inert trigger options
+- Code-first connections now expose only persisted fields
+- Documentation and examples were aligned with implemented triggers, destinations, Secret Codes, migrations, middleware, and SDK contracts
+- Host applications must generate, review, rehearse, and apply the complete
+  driver-specific 0.1.7 migration described in
+  [the migration guide](docs/deployment/migrations.md); the change is broader
+  than the newly introduced feed and destination tables.
+- Replaced the inert `multiJoin.rightDataPath` contract with explicit inline
+  `rightData` and documented the required configuration upgrade
+
 ## [0.1.6] - 2026-03-29
 
 ### Added

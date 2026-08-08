@@ -5,6 +5,8 @@ import {
     PimcoreVariant,
     PimcoreLocalizedField,
     PimcoreMappingConfig,
+    PimcoreProductTransformMappingConfig,
+    PimcoreAssetTransformMappingConfig,
     VendureProductInput,
     VendureVariantInput,
     VendureCategoryInput,
@@ -12,6 +14,7 @@ import {
 import { JsonObject } from '../../../src/types';
 import { getNestedValue } from '../../../shared/utils/object-path';
 import { priceToCents } from '../utils/math.utils';
+import { resolvePimcoreAssetUrl } from '../utils/url.utils';
 
 // ============================================================================
 // Type Guards
@@ -96,8 +99,9 @@ const DEFAULT_PRODUCT_MAPPING = {
     slugField: 'slug',
     descriptionField: 'description',
     assetsField: 'images',
-    categoriesField: 'categories',
     variantsField: 'variants',
+    priceField: 'price',
+    stockQuantityField: 'stockQuantity',
     enabledField: 'published',
 };
 
@@ -110,7 +114,7 @@ const DEFAULT_CATEGORY_MAPPING = {
 };
 
 const DEFAULT_ASSET_MAPPING = {
-    urlField: 'fullPath',
+    urlField: 'fullpath',
     altField: 'filename',
     filenameField: 'filename',
 };
@@ -175,7 +179,7 @@ export function generateSlug(text: string): string {
 
 export function transformProduct(
     pimcoreProduct: PimcoreProduct,
-    mapping?: PimcoreMappingConfig['product'],
+    mapping?: PimcoreProductTransformMappingConfig,
     defaultLanguage = 'en',
     languages: string[] = ['en'],
 ): VendureProductInput {
@@ -256,9 +260,9 @@ export function transformVariant(
     const nameField = toStringOrLocalized(rawNameField);
     const name = extractLocalizedValue(nameField, defaultLanguage) || sku;
 
-    const rawPrice = getNestedValue(pimcoreVariant, 'price');
+    const rawPrice = getNestedValue(pimcoreVariant, mapping_.priceField);
     const price = priceToCents(typeof rawPrice === 'number' || typeof rawPrice === 'string' ? rawPrice : undefined);
-    const rawStockQuantity = getNestedValue(pimcoreVariant, 'stockQuantity');
+    const rawStockQuantity = getNestedValue(pimcoreVariant, mapping_.stockQuantityField);
     const stockQuantity = typeof rawStockQuantity === 'number' ? rawStockQuantity : undefined;
 
     const result: VendureVariantInput = {
@@ -338,16 +342,13 @@ export function transformCategory(
 
 export function transformAsset(
     pimcoreAsset: PimcoreAsset,
-    mapping?: PimcoreMappingConfig['asset'],
+    mapping?: PimcoreAssetTransformMappingConfig,
     baseUrl?: string,
 ): JsonObject {
     const mapping_ = { ...DEFAULT_ASSET_MAPPING, ...mapping };
 
     const rawUrl = getNestedValue(pimcoreAsset, mapping_.urlField);
-    let url = typeof rawUrl === 'string' ? rawUrl : undefined;
-    if (url && baseUrl && !url.startsWith('http')) {
-        url = `${baseUrl.replace(/\/$/, '')}${url.startsWith('/') ? '' : '/'}${url}`;
-    }
+    const url = resolvePimcoreAssetUrl(rawUrl, baseUrl);
 
     const rawAlt = getNestedValue(pimcoreAsset, mapping_.altField);
     const alt = typeof rawAlt === 'string' ? rawAlt : undefined;
@@ -359,8 +360,8 @@ export function transformAsset(
 
     const result: JsonObject = {
         externalId: `pimcore:asset:${pimcoreAsset.id}`,
-        url: url ?? pimcoreAsset.fullPath,
-        filename: pimcoreAsset.filename,
+        url: url ?? pimcoreAsset.fullpath,
+        filename: String(getNestedValue(pimcoreAsset, mapping_.filenameField) ?? pimcoreAsset.filename),
         alt: metaAlt ?? alt ?? pimcoreAsset.filename,
     };
     if (pimcoreAsset.mimetype) result.mimeType = pimcoreAsset.mimetype;

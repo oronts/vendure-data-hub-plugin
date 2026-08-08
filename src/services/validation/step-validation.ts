@@ -1,8 +1,11 @@
 import { AdapterType as AdapterTypeEnum } from '../../constants/enums';
-import { PipelineDefinition } from '../../types/index';
 import { DataHubRegistryService } from '../../sdk/registry.service';
 import { PipelineDefinitionIssue } from '../../validation/pipeline-definition-error';
-import { validateOperatorStreamSafety } from './adapter-validation';
+import type { AdapterDefinition } from '../../sdk/types';
+import {
+    addAdapterDeprecationWarning,
+    validateAdapterFields,
+} from './adapter-validation';
 
 // ============================================================================
 // Type Definitions
@@ -16,6 +19,7 @@ export interface OperatorConfig {
 export interface TransformStepConfig {
     operators?: unknown[];
     adapterCode?: string;
+    [key: string]: unknown;
 }
 
 // ============================================================================
@@ -47,18 +51,38 @@ export function isOperatorConfig(value: unknown): value is OperatorConfig {
 export function validateTransformOperators(
     stepKey: string,
     cfg: TransformStepConfig,
-    definition: PipelineDefinition,
     registry: DataHubRegistryService,
     issues: PipelineDefinitionIssue[],
+    warnings: PipelineDefinitionIssue[],
 ): void {
     const operators = cfg.operators;
-    if (!validateOperatorChain(stepKey, operators, issues)) {
+    if (operators !== undefined && !Array.isArray(operators)) {
+        validateOperatorChain(stepKey, operators, issues);
         return;
     }
 
-    for (let i = 0; i < operators.length; i++) {
-        validateOperatorParams(stepKey, operators[i], i, definition, registry, issues);
+    if (Array.isArray(operators) && operators.length > 0) {
+        for (let i = 0; i < operators.length; i++) {
+            validateOperatorParams(stepKey, operators[i], i, registry, issues, warnings);
+        }
+        return;
     }
+
+    if (typeof cfg.adapterCode === 'string' && cfg.adapterCode.trim() !== '') {
+        const adapter = validateOperatorCode(
+            stepKey,
+            cfg.adapterCode,
+            registry,
+            issues,
+            warnings,
+        );
+        if (adapter) {
+            validateAdapterFields(stepKey, cfg, adapter, issues);
+        }
+        return;
+    }
+
+    validateOperatorChain(stepKey, operators, issues);
 }
 
 export function validateOperatorChain(
@@ -91,9 +115,9 @@ export function validateOperatorParams(
     stepKey: string,
     op: unknown,
     index: number,
-    definition: PipelineDefinition,
     registry: DataHubRegistryService,
     issues: PipelineDefinitionIssue[],
+    warnings: PipelineDefinitionIssue[] = [],
 ): void {
     if (!isOperatorConfig(op)) {
         issues.push({
@@ -114,6 +138,25 @@ export function validateOperatorParams(
         return;
     }
 
+    const adapter = validateOperatorCode(
+        stepKey,
+        opCode,
+        registry,
+        issues,
+        warnings,
+    );
+    if (adapter) {
+        validateAdapterFields(stepKey, op.args ?? {}, adapter, issues);
+    }
+}
+
+function validateOperatorCode(
+    stepKey: string,
+    opCode: string,
+    registry: DataHubRegistryService,
+    issues: PipelineDefinitionIssue[],
+    warnings: PipelineDefinitionIssue[],
+): AdapterDefinition | undefined {
     const adapter = registry.find(AdapterTypeEnum.OPERATOR, opCode);
     if (!adapter) {
         issues.push({
@@ -121,8 +164,8 @@ export function validateOperatorParams(
             stepKey,
             errorCode: 'unknown-operator',
         });
-        return;
+        return undefined;
     }
-
-    validateOperatorStreamSafety(stepKey, opCode, adapter, definition, issues);
+    addAdapterDeprecationWarning(stepKey, adapter, warnings, 'operator');
+    return adapter;
 }

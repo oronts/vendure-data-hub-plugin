@@ -1,10 +1,9 @@
 import { Args, Query, Resolver, Mutation } from '@nestjs/graphql';
 import {
-    Ctx,
-    RequestContext,
-    Allow,
-    Transaction,
-} from '@vendure/core';
+    DeletionResponse,
+    DeletionResult,
+} from '@vendure/common/lib/generated-types';
+import { Ctx, ID, RequestContext, Allow, Transaction } from '@vendure/core';
 import {
     AnalyticsService,
     WebhookRetryService,
@@ -28,32 +27,18 @@ import type {
     TimeRange,
 } from '../../services/analytics/analytics.types';
 import type {
-    WebhookDelivery,
+    WebhookDeliverySummary,
     WebhookStats,
 } from '../../services/webhooks/webhook.types';
-import type {
-    DeliveryResult,
-} from '../../services/destinations/destination.types';
+import type { DeliveryResult } from '../../services/destinations/destination.types';
 import type { ConnectionTestResult } from '../../../shared/types';
 import { PAGINATION } from '../../constants/index';
-
-/** Redacted destination config for API responses */
-interface RedactedDestinationConfig extends Omit<DestinationConfig,
-    'secretAccessKey' | 'password' | 'privateKey' | 'accessKeyId' | 'passphrase' | 'authConfig' | 'smtp'
-> {
-    secretAccessKey?: string;
-    password?: string;
-    privateKey?: string;
-    accessKeyId?: string;
-    passphrase?: string;
-    authConfig?: { username?: string; password?: string; token?: string; apiKey?: string; apiKeyHeader?: string };
-    smtp?: { host: string; port: number; secure?: boolean; auth?: { user: string; pass: string } };
-}
+import { summarizeWebhookDelivery } from '../../services/webhooks/webhook.helpers';
 
 /** Result of retry dead letter operation */
 interface RetryDeadLetterResult {
     success: boolean;
-    delivery: WebhookDelivery | null;
+    delivery: WebhookDeliverySummary | null;
 }
 
 /** Result of remove dead letter operation */
@@ -67,6 +52,24 @@ interface RegisterDestinationResult {
     id: string;
 }
 
+const ANALYTICS_TIME_RANGES = new Set<TimeRange>(['1h', '24h', '7d', '30d', '90d']);
+
+function parseAnalyticsTimeRange(value: string | undefined, fallback: TimeRange): TimeRange {
+    const range = value ?? fallback;
+    if (!ANALYTICS_TIME_RANGES.has(range as TimeRange)) {
+        throw new Error(`Unsupported analytics time range: ${range}`);
+    }
+    return range as TimeRange;
+}
+
+function parsePositiveLimit(value: number | undefined, fallback: number): number {
+    const limit = value ?? fallback;
+    if (!Number.isInteger(limit) || limit <= 0) {
+        throw new Error('Limit must be a positive integer');
+    }
+    return Math.min(limit, PAGINATION.MAX_QUERY_LIMIT);
+}
+
 @Resolver()
 export class DataHubAnalyticsAdminResolver {
     constructor(
@@ -78,7 +81,9 @@ export class DataHubAnalyticsAdminResolver {
 
     @Query()
     @Allow(ViewDataHubAnalyticsPermission.Permission)
-    async dataHubAnalyticsOverview(@Ctx() ctx: RequestContext): Promise<AnalyticsOverview> {
+    async dataHubAnalyticsOverview(
+        @Ctx() ctx: RequestContext,
+    ): Promise<AnalyticsOverview> {
         return this.analyticsService.getOverview(ctx);
     }
 
@@ -86,12 +91,12 @@ export class DataHubAnalyticsAdminResolver {
     @Allow(ViewDataHubAnalyticsPermission.Permission)
     async dataHubPipelinePerformance(
         @Ctx() ctx: RequestContext,
-        @Args() args: { pipelineId?: string; timeRange?: string; limit?: number },
+        @Args() args: { pipelineId?: ID; timeRange?: string; limit?: number },
     ): Promise<PipelinePerformance[]> {
         return this.analyticsService.getPipelinePerformance(ctx, {
             pipelineId: args.pipelineId,
-            timeRange: args.timeRange as TimeRange | undefined,
-            limit: Math.min(args.limit ?? 100, PAGINATION.MAX_QUERY_LIMIT),
+            timeRange: parseAnalyticsTimeRange(args.timeRange, '30d'),
+            limit: parsePositiveLimit(args.limit, 100),
         });
     }
 
@@ -99,11 +104,11 @@ export class DataHubAnalyticsAdminResolver {
     @Allow(ViewDataHubAnalyticsPermission.Permission)
     async dataHubErrorAnalytics(
         @Ctx() ctx: RequestContext,
-        @Args() args: { pipelineId?: string; timeRange?: string },
+        @Args() args: { pipelineId?: ID; timeRange?: string },
     ): Promise<ErrorAnalytics> {
         return this.analyticsService.getErrorAnalytics(ctx, {
             pipelineId: args.pipelineId,
-            timeRange: args.timeRange as TimeRange | undefined,
+            timeRange: parseAnalyticsTimeRange(args.timeRange, '7d'),
         });
     }
 
@@ -111,28 +116,30 @@ export class DataHubAnalyticsAdminResolver {
     @Allow(ViewDataHubAnalyticsPermission.Permission)
     async dataHubThroughputMetrics(
         @Ctx() ctx: RequestContext,
-        @Args() args: { pipelineId?: string; timeRange?: string },
+        @Args() args: { pipelineId?: ID; timeRange?: string },
     ): Promise<ThroughputMetrics> {
         return this.analyticsService.getThroughputMetrics(ctx, {
             pipelineId: args.pipelineId,
-            timeRange: args.timeRange as TimeRange | undefined,
+            timeRange: parseAnalyticsTimeRange(args.timeRange, '24h'),
         });
     }
 
     @Query()
     @Allow(ViewDataHubAnalyticsPermission.Permission)
-    async dataHubRealTimeStats(@Ctx() ctx: RequestContext): Promise<RealTimeStats> {
+    async dataHubRealTimeStats(
+        @Ctx() ctx: RequestContext,
+    ): Promise<RealTimeStats> {
         return this.analyticsService.getRealTimeStats(ctx);
     }
 
     @Query()
     @Allow(ReadDataHubFilesPermission.Permission)
-    async dataHubStorageStats(@Ctx() _ctx: RequestContext): Promise<{
+    async dataHubStorageStats(@Ctx() ctx: RequestContext): Promise<{
         totalFiles: number;
         totalSize: number;
         byMimeType: Record<string, { count: number; size: number }>;
     }> {
-        const stats = await this.fileStorageService.getStorageStats();
+        const stats = await this.fileStorageService.getStorageStats(ctx);
         return {
             totalFiles: stats.totalFiles,
             totalSize: stats.totalSize,
@@ -143,137 +150,149 @@ export class DataHubAnalyticsAdminResolver {
     @Query()
     @Allow(ManageDataHubWebhooksPermission.Permission)
     async dataHubWebhookDeliveries(
-        @Ctx() _ctx: RequestContext,
+        @Ctx() ctx: RequestContext,
         @Args() args: { status?: string; webhookId?: string; limit?: number },
-    ): Promise<WebhookDelivery[]> {
-        return this.webhookRetryService.getDeliveries({
+    ): Promise<WebhookDeliverySummary[]> {
+        const deliveries = await this.webhookRetryService.getDeliveries(ctx, {
             status: args.status as WebhookDeliveryStatus | undefined,
             webhookId: args.webhookId,
-            limit: Math.min(args.limit ?? 100, PAGINATION.MAX_QUERY_LIMIT),
+            limit: parsePositiveLimit(args.limit, 100),
         });
+        return deliveries.map(summarizeWebhookDelivery);
     }
 
     @Query()
     @Allow(ManageDataHubWebhooksPermission.Permission)
     async dataHubWebhookDelivery(
-        @Ctx() _ctx: RequestContext,
+        @Ctx() ctx: RequestContext,
         @Args() args: { deliveryId: string },
-    ): Promise<WebhookDelivery | undefined> {
-        return this.webhookRetryService.getDelivery(args.deliveryId);
+    ): Promise<WebhookDeliverySummary | undefined> {
+        const delivery = await this.webhookRetryService.getDelivery(
+            ctx,
+            args.deliveryId,
+        );
+        return delivery ? summarizeWebhookDelivery(delivery) : undefined;
     }
 
     @Query()
     @Allow(ManageDataHubWebhooksPermission.Permission)
-    async dataHubDeadLetterQueue(@Ctx() _ctx: RequestContext): Promise<WebhookDelivery[]> {
-        return this.webhookRetryService.getDeadLetterQueue();
+    async dataHubDeadLetterQueue(
+        @Ctx() ctx: RequestContext,
+    ): Promise<WebhookDeliverySummary[]> {
+        const deliveries =
+            await this.webhookRetryService.getDeadLetterQueue(ctx);
+        return deliveries.map(summarizeWebhookDelivery);
     }
 
     @Query()
     @Allow(ManageDataHubWebhooksPermission.Permission)
-    async dataHubWebhookStats(@Ctx() _ctx: RequestContext): Promise<WebhookStats> {
-        return this.webhookRetryService.getStats();
+    async dataHubWebhookStats(
+        @Ctx() ctx: RequestContext,
+    ): Promise<WebhookStats> {
+        return this.webhookRetryService.getStats(ctx);
     }
 
     @Mutation()
-    @Transaction()
     @Allow(ManageDataHubWebhooksPermission.Permission)
     async dataHubRetryDeadLetter(
-        @Ctx() _ctx: RequestContext,
+        @Ctx() ctx: RequestContext,
         @Args() args: { deliveryId: string },
     ): Promise<RetryDeadLetterResult> {
-        const result = await this.webhookRetryService.retryDeadLetter(args.deliveryId);
+        const result = await this.webhookRetryService.retryDeadLetter(
+            ctx,
+            args.deliveryId,
+        );
         return {
             success: result !== null,
-            delivery: result,
+            delivery: result ? summarizeWebhookDelivery(result) : null,
         };
     }
 
     @Mutation()
-    @Transaction()
     @Allow(ManageDataHubWebhooksPermission.Permission)
     async dataHubRemoveDeadLetter(
-        @Ctx() _ctx: RequestContext,
+        @Ctx() ctx: RequestContext,
         @Args() args: { deliveryId: string },
     ): Promise<RemoveDeadLetterResult> {
-        const success = this.webhookRetryService.removeDeadLetter(args.deliveryId);
+        const success = await this.webhookRetryService.removeDeadLetter(
+            ctx,
+            args.deliveryId,
+        );
         return { success };
     }
 
     @Query()
     @Allow(ManageDataHubDestinationsPermission.Permission)
-    async dataHubExportDestinations(@Ctx() _ctx: RequestContext): Promise<RedactedDestinationConfig[]> {
-        return this.exportDestinationService.getDestinations().map(dest => this.redactDestinationSecrets(dest));
+    async dataHubExportDestinations(
+        @Ctx() ctx: RequestContext,
+    ): Promise<DestinationConfig[]> {
+        return this.exportDestinationService.getDestinations(ctx);
     }
 
     @Query()
     @Allow(ManageDataHubDestinationsPermission.Permission)
     async dataHubExportDestination(
-        @Ctx() _ctx: RequestContext,
+        @Ctx() ctx: RequestContext,
         @Args() args: { id: string },
-    ): Promise<RedactedDestinationConfig | null> {
-        const dest = this.exportDestinationService.getDestination(args.id);
-        if (!dest) return null;
-        return this.redactDestinationSecrets(dest);
-    }
-
-    private redactDestinationSecrets(dest: DestinationConfig): RedactedDestinationConfig {
-        const redacted: RedactedDestinationConfig = {
-            ...dest,
-            secretAccessKey: dest.type === 'S3' ? '***' : undefined,
-            accessKeyId: dest.type === 'S3' ? '***' : undefined,
-            password: (['SFTP', 'FTP'] as const).includes(dest.type as 'SFTP' | 'FTP') ? '***' : undefined,
-            privateKey: dest.type === 'SFTP' ? '***' : undefined,
-            passphrase: dest.type === 'SFTP' && 'passphrase' in dest && dest.passphrase ? '***' : undefined,
-        };
-
-        if (dest.type === 'HTTP' && 'authConfig' in dest && dest.authConfig) {
-            redacted.authConfig = {
-                ...dest.authConfig,
-                password: dest.authConfig.password ? '***' : undefined,
-                token: dest.authConfig.token ? '***' : undefined,
-                apiKey: dest.authConfig.apiKey ? '***' : undefined,
-            };
-        }
-
-        if (dest.type === 'EMAIL' && 'smtp' in dest && dest.smtp) {
-            redacted.smtp = {
-                ...dest.smtp,
-                auth: dest.smtp.auth ? { user: dest.smtp.auth.user, pass: '***' } : undefined,
-            };
-        }
-
-        return redacted;
+    ): Promise<DestinationConfig | null> {
+        return (await this.exportDestinationService.getDestination(ctx, args.id)) ?? null;
     }
 
     @Mutation()
-    @Transaction()
     @Allow(ManageDataHubDestinationsPermission.Permission)
     async dataHubRegisterExportDestination(
-        @Ctx() _ctx: RequestContext,
+        @Ctx() ctx: RequestContext,
         @Args() args: { input: DestinationConfig },
     ): Promise<RegisterDestinationResult> {
-        this.exportDestinationService.registerDestination(args.input);
+        await this.exportDestinationService.createDestination(
+            ctx,
+            args.input,
+        );
         return { success: true, id: args.input.id };
+    }
+
+    @Mutation()
+    @Allow(ManageDataHubDestinationsPermission.Permission)
+    async dataHubDeleteExportDestination(
+        @Ctx() ctx: RequestContext,
+        @Args() args: { id: string },
+    ): Promise<DeletionResponse> {
+        const deleted = await this.exportDestinationService.deleteDestination(
+            ctx,
+            args.id,
+        );
+        return {
+            result: deleted
+                ? DeletionResult.DELETED
+                : DeletionResult.NOT_DELETED,
+        };
     }
 
     @Mutation()
     @Transaction()
     @Allow(ManageDataHubDestinationsPermission.Permission)
     async dataHubTestExportDestination(
-        @Ctx() _ctx: RequestContext,
+        @Ctx() ctx: RequestContext,
         @Args() args: { id: string },
     ): Promise<ConnectionTestResult> {
-        return this.exportDestinationService.testDestination(args.id);
+        return this.exportDestinationService.testDestination(ctx, args.id);
     }
 
     @Mutation()
     @Transaction()
     @Allow(ManageDataHubDestinationsPermission.Permission)
     async dataHubDeliverToDestination(
-        @Ctx() _ctx: RequestContext,
-        @Args() args: { destinationId: string; content: string; filename: string; mimeType?: string },
+        @Ctx() ctx: RequestContext,
+        @Args()
+        args: {
+            destinationId: string;
+            content: string;
+            filename: string;
+            mimeType?: string;
+        },
     ): Promise<DeliveryResult> {
         return this.exportDestinationService.deliver(
+            ctx,
             args.destinationId,
             args.content,
             args.filename,

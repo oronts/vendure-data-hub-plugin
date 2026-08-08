@@ -7,6 +7,10 @@
 
 import { JsonObject, JsonValue } from './json.types';
 import { StepMetrics, StepError } from './step.types';
+import {
+    DRY_RUN_MESSAGE_CODE,
+    DRY_RUN_MESSAGE_LEVEL,
+} from '../constants/enums';
 
 /**
  * Pipeline metrics collected during runtime.
@@ -21,10 +25,35 @@ export interface PipelineMetrics {
     succeeded?: number;
     /** Number of failed records */
     failed?: number;
+    /** Number of records intentionally skipped without a write */
+    skipped?: number;
+    /** Number of records read from source steps */
+    sourceRecords?: number;
     /** Duration in milliseconds */
     durationMs?: number;
     /** Additional custom metrics */
     [key: string]: JsonValue | undefined;
+}
+
+export type DryRunMessageLevel = typeof DRY_RUN_MESSAGE_LEVEL[
+    keyof typeof DRY_RUN_MESSAGE_LEVEL
+];
+
+export type DryRunMessageCode = typeof DRY_RUN_MESSAGE_CODE[
+    keyof typeof DRY_RUN_MESSAGE_CODE
+];
+
+export interface DryRunRecordError {
+    stepKey: string;
+    message: string;
+}
+
+export interface DryRunMessage {
+    level: DryRunMessageLevel;
+    code: DryRunMessageCode;
+    detail?: string;
+    stepKey?: string;
+    values?: JsonObject;
 }
 
 /**

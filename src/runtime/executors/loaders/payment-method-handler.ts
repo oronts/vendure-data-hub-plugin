@@ -15,19 +15,29 @@ import {
 } from '@vendure/core';
 import { LanguageCode } from '@vendure/common/lib/generated-types';
 import { PipelineStepDefinition, ErrorHandlingConfig, JsonObject } from '../../../types/index';
-import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
+import { RecordObject, OnRecordErrorCallback, LoaderExecutionResult } from '../../executor-types';
 import { LoaderHandler } from './types';
+import { assertCreateDuplicateCanBeSkipped, CreateDuplicateHandlingConfig } from './duplicate-handling';
 import { LoadStrategy } from '../../../constants/enums';
 import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
-import { getStringValue, getObjectValue } from '../../../loaders/shared-helpers';
-import { parseTranslationsInput, resolveChannelIds, toConfigurableOperation } from './shared-lookups';
-import { LOGGER_CONTEXTS } from '../../../constants/index';
-import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
+import {
+    getBooleanValue,
+    getObjectValue,
+    getStringValue,
+} from '../../../loaders/shared-helpers';
+import {
+    getTranslationString,
+    parseTranslationsInput,
+    resolveChannelIds,
+    toConfigurableOperation,
+} from './shared-lookups';
+import { LOGGER_CONTEXTS } from '../../../constants/core';
+import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger/datahub-logger';
 
 /**
  * Configuration for the payment method handler step (mirrors loader-adapters.ts schema)
  */
-interface PaymentMethodHandlerConfig {
+interface PaymentMethodHandlerConfig extends CreateDuplicateHandlingConfig {
     nameField?: string;
     codeField?: string;
     descriptionField?: string;
@@ -69,9 +79,10 @@ export class PaymentMethodHandler implements LoaderHandler {
         input: RecordObject[],
         onRecordError?: OnRecordErrorCallback,
         _errorHandling?: ErrorHandlingConfig,
-    ): Promise<ExecutionResult> {
+    ): Promise<LoaderExecutionResult> {
         let ok = 0;
         let fail = 0;
+        let skipped = 0;
         const cfg = getConfig(step.config);
         const channelCache = new Map<string, ID>();
 
@@ -92,8 +103,8 @@ export class PaymentMethodHandler implements LoaderHandler {
                     const raw = rec[cfg.translationsField];
                     if (raw) {
                         const parsed = parseTranslationsInput(raw);
-                        if (parsed.length > 0 && parsed[0].name) {
-                            name = String(parsed[0].name);
+                        if (parsed[0]) {
+                            name = getTranslationString(parsed[0], 'name');
                         }
                     }
                 }
@@ -116,8 +127,7 @@ export class PaymentMethodHandler implements LoaderHandler {
                 }
 
                 const description = getStringValue(rec, descriptionField) ?? '';
-                const enabledRaw = rec[enabledField];
-                const enabled = enabledRaw === undefined ? true : Boolean(enabledRaw);
+                const enabled = getBooleanValue(rec, enabledField) ?? true;
                 const checkerOp = toConfigurableOperation(rec[checkerField]);
                 const customFieldsKey = cfg.customFieldsField ?? 'customFields';
                 const customFields = getObjectValue(rec, customFieldsKey);
@@ -132,7 +142,8 @@ export class PaymentMethodHandler implements LoaderHandler {
 
                 if (existing) {
                     if (strategy === LoadStrategy.CREATE) {
-                        ok++;
+                        assertCreateDuplicateCanBeSkipped(cfg, 'payment method', code);
+                        skipped++;
                         continue;
                     }
                     const updateInput: Record<string, unknown> = {
@@ -188,7 +199,14 @@ export class PaymentMethodHandler implements LoaderHandler {
                         if (channelIds.length > 0) {
                             try {
                                 await this.channelService.assignToChannels(ctx, PaymentMethod, pmId, channelIds);
-                            } catch { /* channel assignment is best-effort */ }
+                            } catch (error) {
+                                this.logger.warn('Failed to assign payment method to record channels', {
+                                    paymentMethodId: pmId,
+                                    channelIds,
+                                    error: getErrorMessage(error),
+                                });
+                                throw error;
+                            }
                         }
                     }
                 }
@@ -201,7 +219,7 @@ export class PaymentMethodHandler implements LoaderHandler {
                 fail++;
             }
         }
-        return { ok, fail };
+        return { ok, fail, skipped };
     }
 
     /**
@@ -221,9 +239,9 @@ export class PaymentMethodHandler implements LoaderHandler {
                 const parsed = parseTranslationsInput(raw);
                 if (parsed.length > 0) {
                     return parsed.map(t => ({
-                        languageCode: String(t.languageCode) as LanguageCode,
-                        name: String(t.name ?? name),
-                        description: t.description != null ? String(t.description) : '',
+                        languageCode: t.languageCode as LanguageCode,
+                        name: getTranslationString(t, 'name', name),
+                        description: getTranslationString(t, 'description', ''),
                     }));
                 }
             }

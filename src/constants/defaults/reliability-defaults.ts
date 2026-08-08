@@ -14,6 +14,14 @@ export const RATE_LIMIT = {
     PAUSE_CHECK_INTERVAL_MS: 100,
     /** Maximum number of rate limit entries to prevent unbounded memory growth */
     MAX_ENTRIES: 1000,
+    /** Maximum time to establish the Redis rate-limit connection */
+    REDIS_CONNECT_TIMEOUT_MS: 3_000,
+    /** Maximum duration of one Redis rate-limit command */
+    REDIS_COMMAND_TIMEOUT_MS: 2_000,
+    /** Base delay between bounded Redis reconnect attempts */
+    REDIS_RETRY_DELAY_MS: 100,
+    /** Minimum delay before an unavailable Redis backend is retried */
+    REDIS_RECONNECT_DELAY_MS: 5_000,
 } as const;
 
 /**
@@ -56,10 +64,50 @@ export const CIRCUIT_BREAKER = {
  * Distributed lock defaults
  */
 export const DISTRIBUTED_LOCK = {
+    /** Namespace for checkpoint mutation locks. */
+    CHECKPOINT_LOCK_PREFIX: 'data-hub:checkpoint:',
+    /** Maximum lease for one checkpoint read-modify-write cycle. */
+    CHECKPOINT_LOCK_TTL_MS: 30_000,
+    /** Maximum time a checkpoint writer waits for another writer. */
+    CHECKPOINT_LOCK_WAIT_TIMEOUT_MS: 30_000,
+    /** Namespace for remote source acknowledgement locks. */
+    REMOTE_SOURCE_ACKNOWLEDGEMENT_LOCK_PREFIX: 'data-hub:remote-source-acknowledgement:',
+    /** Maximum lease for one bounded remote acknowledgement pass. */
+    REMOTE_SOURCE_ACKNOWLEDGEMENT_LOCK_TTL_MS: 5 * 60 * 1000,
+    /** Renewal interval for an active remote acknowledgement lease. */
+    REMOTE_SOURCE_ACKNOWLEDGEMENT_LOCK_REFRESH_MS: 100_000,
+    /** Maximum time a duplicate acknowledgement worker waits for the active pass. */
+    REMOTE_SOURCE_ACKNOWLEDGEMENT_LOCK_WAIT_TIMEOUT_MS: 30_000,
+    /** Namespace for bounded remote acknowledgement queue-dispatch leases. */
+    REMOTE_SOURCE_ACKNOWLEDGEMENT_DISPATCH_LOCK_PREFIX:
+        'data-hub:remote-source-acknowledgement-dispatch:',
+    /** Prevents retrying remote systems from amplifying the durable queue. */
+    REMOTE_SOURCE_ACKNOWLEDGEMENT_DISPATCH_LOCK_TTL_MS: 5 * 60 * 1000,
+    /** Single-leader lease for checkpoint reconciliation across replicas. */
+    REMOTE_SOURCE_ACKNOWLEDGEMENT_RECOVERY_LOCK_KEY:
+        'data-hub:remote-source-acknowledgement-recovery',
+    /** Leadership lease spans three reconciliation intervals. */
+    REMOTE_SOURCE_ACKNOWLEDGEMENT_RECOVERY_LOCK_TTL_MS: 90_000,
+    /** Global lock key used to serialize database-backed code-first sync. */
+    CONFIG_SYNC_LOCK_KEY: 'data-hub:config-sync',
+    /** Maximum lease for one bounded configuration sync pass. */
+    CONFIG_SYNC_LOCK_TTL_MS: 30 * 60 * 1000,
+    /** Maximum time another server waits for the active sync pass. */
+    CONFIG_SYNC_LOCK_WAIT_TIMEOUT_MS: 30 * 60 * 1000,
+    /** Maximum time a worker waits for server-owned configuration persistence. */
+    CONFIG_SYNC_READINESS_TIMEOUT_MS: 60_000,
+    /** Worker polling interval while waiting for persisted configuration. */
+    CONFIG_SYNC_READINESS_POLL_INTERVAL_MS: 1_000,
     /** Default Redis URL for auto-detection */
     DEFAULT_REDIS_URL: 'redis://localhost:6379',
-    /** Maximum retries per Redis request */
-    MAX_RETRIES_PER_REQUEST: 3,
+    /** Maximum time to establish the Redis lock connection */
+    REDIS_CONNECT_TIMEOUT_MS: 3_000,
+    /** Maximum duration of one Redis lock command */
+    REDIS_COMMAND_TIMEOUT_MS: 2_000,
+    /** Base delay between bounded Redis reconnect attempts */
+    REDIS_RETRY_DELAY_MS: 100,
+    /** Fail ambiguous Redis writes instead of resending them after reconnect. */
+    MAX_RETRIES_PER_REQUEST: 0,
     /** Maximum retry delay for Redis connection */
     MAX_RETRY_DELAY_MS: 3000,
     /** Maximum iterations for scan operations */
@@ -92,8 +140,12 @@ export const DISTRIBUTED_LOCK = {
  * Metrics defaults
  */
 export const METRICS = {
+    /** Maximum distinct metric names retained in one registry */
+    MAX_METRICS: 500,
     /** Maximum samples to keep in memory */
     MAX_SAMPLES: 1000,
+    /** Maximum distinct label series retained per metric */
+    MAX_SERIES: 1000,
     /** Percentile precision */
     PERCENTILE_PRECISION: 100,
 } as const;

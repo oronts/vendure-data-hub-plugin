@@ -2,19 +2,25 @@
  * Collection Modes E2E Tests
  *
  * Tests 2 nested entity modes for Collection loader:
- * - assetsMode (REPLACE_ALL, MERGE, SKIP)
+ * - assetsMode (REPLACE_ALL, UPSERT_BY_URL, SKIP)
  * - filtersMode (REPLACE_ALL, MERGE, SKIP)
  *
  * Uses CollectionLoader (BaseEntityLoader) which supports configurable modes
  * through LoaderContext.options.config.
  */
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { CollectionService, AssetService, ID } from '@vendure/core';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { CollectionService, ID } from '@vendure/core';
 import { createDataHubTestEnvironment } from '../test-config';
 import { CollectionLoader } from '../../src/loaders/collection/collection.loader';
 import { getSuperadminContext, LOADER_TEST_INITIAL_DATA } from './loader-test-helpers';
 import type { LoaderContext } from '../../src/types/loader-interfaces';
 import type { CollectionInput } from '../../src/loaders/collection/types';
+import * as assetDownload from '../../src/utils/asset-download.utils';
+
+const TEST_PNG = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nWQAAAAASUVORK5CYII=',
+    'base64',
+);
 
 /**
  * Build a LoaderContext suitable for CollectionLoader.load()
@@ -40,10 +46,10 @@ describe('Collection Modes', () => {
     const { server, adminClient } = createDataHubTestEnvironment();
     let loader: CollectionLoader;
     let collectionService: CollectionService;
-    let assetService: AssetService;
     let ctx: import('@vendure/core').RequestContext;
 
     beforeAll(async () => {
+        vi.spyOn(assetDownload, 'downloadAsset').mockResolvedValue(TEST_PNG);
         await server.init({
             initialData: LOADER_TEST_INITIAL_DATA,
             productsCsvPath: undefined,
@@ -51,12 +57,12 @@ describe('Collection Modes', () => {
         await adminClient.asSuperAdmin();
         loader = server.app.get(CollectionLoader);
         collectionService = server.app.get(CollectionService);
-        assetService = server.app.get(AssetService);
         ctx = await getSuperadminContext(server.app);
     });
 
     afterAll(async () => {
         await server.destroy();
+        vi.restoreAllMocks();
     });
 
     describe('assetsMode', () => {
@@ -100,7 +106,7 @@ describe('Collection Modes', () => {
                     slug: 'coll-asset-merge',
                     assetUrls: ['https://via.placeholder.com/10x10.png?text=CM1'],
                 }]);
-                const result = await loader.load(makeLoaderContext(ctx, { assetsMode: 'MERGE' }), [{
+                const result = await loader.load(makeLoaderContext(ctx, { assetsMode: 'UPSERT_BY_URL' }), [{
                     name: 'Coll Asset Merge',
                     slug: 'coll-asset-merge',
                     assetUrls: ['https://via.placeholder.com/10x10.png?text=CM2'],
@@ -110,12 +116,12 @@ describe('Collection Modes', () => {
 
             it('should match assets by URL to prevent duplicates', async () => {
                 const url = 'https://via.placeholder.com/10x10.png?text=SameColl';
-                await loader.load(makeLoaderContext(ctx, { assetsMode: 'MERGE' }), [{
+                await loader.load(makeLoaderContext(ctx, { assetsMode: 'UPSERT_BY_URL' }), [{
                     name: 'Coll Asset Merge URL',
                     slug: 'coll-asset-merge-url',
                     assetUrls: [url],
                 }]);
-                await loader.load(makeLoaderContext(ctx, { assetsMode: 'MERGE' }), [{
+                await loader.load(makeLoaderContext(ctx, { assetsMode: 'UPSERT_BY_URL' }), [{
                     name: 'Coll Asset Merge URL',
                     slug: 'coll-asset-merge-url',
                     assetUrls: [url],
@@ -152,7 +158,7 @@ describe('Collection Modes', () => {
                 const data: CollectionInput[] = [{
                     name: 'Coll Filter Replace',
                     slug: 'coll-filter-replace',
-                    filters: [{ code: 'facet-value-filter', args: { facetValueNames: '["Red"]' } }],
+                    filters: [{ code: 'variant-name-filter', args: { operator: 'contains', term: 'Red' } }],
                 }];
                 const result = await loader.load(loaderCtx, data);
                 expect(result.succeeded).toBeGreaterThanOrEqual(1);
@@ -167,7 +173,7 @@ describe('Collection Modes', () => {
                 await loader.load(loaderCtx, [{
                     name: 'Coll Filter Replace New',
                     slug: 'coll-filter-replace-new',
-                    filters: [{ code: 'facet-value-filter', args: { facetValueNames: '["Red"]' } }],
+                    filters: [{ code: 'variant-name-filter', args: { operator: 'contains', term: 'Red' } }],
                 }]);
                 const result = await loader.load(loaderCtx, [{
                     name: 'Coll Filter Replace New',
@@ -182,7 +188,7 @@ describe('Collection Modes', () => {
                 await loader.load(loaderCtx, [{
                     name: 'Coll Filter Empty',
                     slug: 'coll-filter-empty',
-                    filters: [{ code: 'facet-value-filter', args: { facetValueNames: '["Blue"]' } }],
+                    filters: [{ code: 'variant-name-filter', args: { operator: 'contains', term: 'Blue' } }],
                 }]);
                 // Replace with empty
                 const result = await loader.load(loaderCtx, [{
@@ -203,18 +209,18 @@ describe('Collection Modes', () => {
                 const createResult = await loader.load(makeLoaderContext(ctx, { filtersMode: 'REPLACE_ALL' }), [{
                     name: 'Coll Filter Merge',
                     slug: 'coll-filter-merge',
-                    filters: [{ code: 'facet-value-filter', args: { facetValueNames: '["Red"]' } }],
+                    filters: [{ code: 'variant-name-filter', args: { operator: 'contains', term: 'Red' } }],
                 }]);
                 expect(createResult.succeeded).toBeGreaterThanOrEqual(1);
 
-                // Merge a new filter - update may succeed or fail depending on
-                // filter format compatibility, but should not crash
                 const result = await loader.load(makeLoaderContext(ctx, { filtersMode: 'MERGE' }), [{
                     name: 'Coll Filter Merge',
                     slug: 'coll-filter-merge',
                     filters: [{ code: 'variant-name-filter', args: { term: 'Glove' } }],
                 }]);
-                expect(result.succeeded + result.failed).toBeGreaterThanOrEqual(1);
+                expect(result).toMatchObject({ succeeded: 1, failed: 0 });
+                const collection = await collectionService.findOneBySlug(ctx, 'coll-filter-merge');
+                expect(collection?.filters).toHaveLength(2);
             });
 
             it('should prevent duplicate filters on re-run', async () => {
@@ -222,14 +228,14 @@ describe('Collection Modes', () => {
                 const data: CollectionInput[] = [{
                     name: 'Coll Filter Merge Idemp',
                     slug: 'coll-filter-merge-idemp',
-                    filters: [{ code: 'facet-value-filter', args: { facetValueNames: '["Green"]' } }],
+                    filters: [{ code: 'variant-name-filter', args: { operator: 'contains', term: 'Green' } }],
                 }];
                 await loader.load(loaderCtx, data);
                 await loader.load(loaderCtx, data);
                 await loader.load(loaderCtx, data);
 
                 const coll = await collectionService.findOneBySlug(ctx, 'coll-filter-merge-idemp');
-                expect(coll?.filters?.length ?? 0).toBeGreaterThanOrEqual(1);
+                expect(coll?.filters).toHaveLength(1);
             });
         });
 
@@ -239,7 +245,7 @@ describe('Collection Modes', () => {
                 await loader.load(makeLoaderContext(ctx, { filtersMode: 'REPLACE_ALL' }), [{
                     name: 'Coll Filter Skip',
                     slug: 'coll-filter-skip',
-                    filters: [{ code: 'facet-value-filter', args: { facetValueNames: '["Red"]' } }],
+                    filters: [{ code: 'variant-name-filter', args: { operator: 'contains', term: 'Red' } }],
                 }]);
 
                 const result = await loader.load(makeLoaderContext(ctx, { filtersMode: 'SKIP' }), [{
@@ -247,7 +253,7 @@ describe('Collection Modes', () => {
                     slug: 'coll-filter-skip',
                     filters: [
                         { code: 'variant-name-filter', args: { term: 'NewFilter' } },
-                        { code: 'facet-value-filter', args: { facetValueNames: '["Blue"]' } },
+                        { code: 'variant-name-filter', args: { operator: 'contains', term: 'Blue' } },
                     ],
                 }]);
                 expect(result.succeeded).toBeGreaterThanOrEqual(1);
@@ -268,7 +274,7 @@ describe('Collection Modes', () => {
                 name: 'Coll Combined',
                 slug: 'coll-combined',
                 assetUrls: ['https://via.placeholder.com/10x10.png?text=Comb'],
-                filters: [{ code: 'facet-value-filter', args: { facetValueNames: '["Red"]' } }],
+                filters: [{ code: 'variant-name-filter', args: { operator: 'contains', term: 'Red' } }],
             }]);
             expect(result.succeeded).toBeGreaterThanOrEqual(1);
             expect(result.failed).toBe(0);
@@ -277,7 +283,7 @@ describe('Collection Modes', () => {
 
     describe('Edge cases', () => {
         it('should handle missing assetsField', async () => {
-            const loaderCtx = makeLoaderContext(ctx, { assetsMode: 'MERGE' });
+            const loaderCtx = makeLoaderContext(ctx, { assetsMode: 'UPSERT_BY_URL' });
             const result = await loader.load(loaderCtx, [{
                 name: 'Coll No Assets',
                 slug: 'coll-no-assets',
@@ -298,15 +304,15 @@ describe('Collection Modes', () => {
             expect(result.failed).toBe(0);
         });
 
-        it('should handle invalid filter configurations', async () => {
+        it('rejects invalid filter configurations', async () => {
             const loaderCtx = makeLoaderContext(ctx, { filtersMode: 'REPLACE_ALL' });
             const result = await loader.load(loaderCtx, [{
                 name: 'Coll Bad Filter',
                 slug: 'coll-bad-filter',
                 filters: [{ code: 'nonexistent-filter-handler', args: {} }],
             }]);
-            // Invalid filter code may cause error or be silently skipped
-            expect(result.succeeded + result.failed).toBeGreaterThanOrEqual(1);
+            expect(result).toMatchObject({ succeeded: 0, failed: 1 });
+            expect(result.errors[0]?.message).toContain('no-configurable-operation-def');
         });
     });
 
@@ -316,7 +322,7 @@ describe('Collection Modes', () => {
             const data: CollectionInput[] = Array.from({ length: 100 }, (_, i) => ({
                 name: `Coll Perf ${i}`,
                 slug: `coll-perf-${i}`,
-                filters: [{ code: 'facet-value-filter', args: { facetValueNames: `["Val${i}"]` } }],
+                filters: [{ code: 'variant-name-filter', args: { operator: 'contains', term: `Val${i}` } }],
             }));
 
             const start = Date.now();

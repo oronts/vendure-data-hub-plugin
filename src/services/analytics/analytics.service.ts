@@ -16,6 +16,7 @@ import { DataHubRecordError } from '../../entities/data';
 import { RunStatus } from '../../types/index';
 import { PAGINATION, TIME, LOGGER_CONTEXTS, SortOrder } from '../../constants/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
+import { getActivePipelineRunChannelId } from '../pipeline/pipeline-run-channel';
 
 import {
     TimeRange,
@@ -33,6 +34,7 @@ import {
     aggregateRunStats,
     calculateSuccessRates,
     buildOverviewMetrics,
+    getStartOfCalendarWeek,
 } from './overview.helpers';
 import {
     aggregatePipelineMetrics,
@@ -44,6 +46,8 @@ import {
 } from './throughput.helpers';
 
 export type { TimeRange, TimeSeriesPoint, AnalyticsOverview, PipelinePerformance, ErrorAnalytics, ThroughputMetrics };
+
+const ANALYTICS_PAGE_SIZE = PAGINATION.MAX_QUERY_LIMIT;
 
 @Injectable()
 export class AnalyticsService implements OnModuleInit {
@@ -60,21 +64,52 @@ export class AnalyticsService implements OnModuleInit {
         this.logger.info('AnalyticsService initialized');
     }
 
+    private async loadAllPages<T>(
+        loadPage: (skip: number, take: number) => Promise<T[]>,
+    ): Promise<T[]> {
+        const rows: T[] = [];
+        let skip = 0;
+        let page: T[];
+        do {
+            page = await loadPage(skip, ANALYTICS_PAGE_SIZE);
+            rows.push(...page);
+            skip += page.length;
+        } while (page.length === ANALYTICS_PAGE_SIZE);
+        return rows;
+    }
+
     /** Fetch all overview data from the database in parallel */
     private async fetchOverviewData(ctx: RequestContext, startOfDay: Date, startOfWeek: Date) {
+        const channelId = getActivePipelineRunChannelId(ctx);
         return Promise.all([
-            this.connection.getRepository(ctx, Pipeline).count(),
-            this.connection.getRepository(ctx, Pipeline).count({ where: { enabled: true } }),
-            this.connection.getRepository(ctx, PipelineRun).count({ where: { createdAt: MoreThan(startOfDay) } }),
-            this.connection.getRepository(ctx, PipelineRun).count({ where: { createdAt: MoreThan(startOfWeek) } }),
-            this.connection.getRepository(ctx, PipelineRun).find({
-                where: { createdAt: MoreThan(startOfDay) },
-                select: ['status', 'metrics'],
+            this.connection.getRepository(ctx, Pipeline).count({
+                where: { channels: { id: ctx.channelId } },
             }),
-            this.connection.getRepository(ctx, PipelineRun).find({
-                where: { createdAt: MoreThan(startOfWeek) },
-                select: ['status'],
+            this.connection.getRepository(ctx, Pipeline).count({
+                where: { enabled: true, channels: { id: ctx.channelId } },
             }),
+            this.connection.getRepository(ctx, PipelineRun).count({
+                where: { channelId, createdAt: MoreThan(startOfDay) },
+            }),
+            this.connection.getRepository(ctx, PipelineRun).count({
+                where: { channelId, createdAt: MoreThan(startOfWeek) },
+            }),
+            this.loadAllPages((skip, take) =>
+                this.connection.getRepository(ctx, PipelineRun).find({
+                    where: { channelId, createdAt: MoreThan(startOfDay) },
+                    select: ['id', 'status', 'metrics'],
+                    order: { createdAt: SortOrder.DESC, id: SortOrder.DESC },
+                    skip,
+                    take,
+                })),
+            this.loadAllPages((skip, take) =>
+                this.connection.getRepository(ctx, PipelineRun).find({
+                    where: { channelId, createdAt: MoreThan(startOfWeek) },
+                    select: ['id', 'status'],
+                    order: { createdAt: SortOrder.DESC, id: SortOrder.DESC },
+                    skip,
+                    take,
+                })),
         ]);
     }
 
@@ -83,27 +118,25 @@ export class AnalyticsService implements OnModuleInit {
         const startOfDay = new Date();
         startOfDay.setHours(0, 0, 0, 0);
 
-        const startOfWeek = new Date();
-        startOfWeek.setDate(startOfWeek.getDate() - 7);
-        startOfWeek.setHours(0, 0, 0, 0);
+        const startOfWeek = getStartOfCalendarWeek();
 
         // Fetch all data in parallel
-        const [totalPipelines, activePipelines, runsToday, runsThisWeek, todayRuns, weekRuns] =
+        const [totalPipelines, enabledPipelines, runsToday, runsThisWeek, todayRuns, weekRuns] =
             await this.fetchOverviewData(ctx, startOfDay, startOfWeek);
 
         // Aggregate run statistics and calculate success rates
         const runStats = aggregateRunStats(todayRuns, weekRuns);
         const successRates = calculateSuccessRates(
             runStats.successfulRunsToday,
-            todayRuns.length,
+            runStats.outcomeRunsToday,
             runStats.successfulRunsWeek,
-            weekRuns.length,
+            runStats.outcomeRunsWeek,
         );
 
         // Build and return the overview metrics
         return buildOverviewMetrics({
             totalPipelines,
-            activePipelines,
+            enabledPipelines,
             runsToday,
             runsThisWeek,
             recordsProcessedToday: runStats.recordsProcessedToday,
@@ -115,16 +148,28 @@ export class AnalyticsService implements OnModuleInit {
     }
 
     /** Fetch pipelines based on optional ID filter */
-    private async fetchPipelines(ctx: RequestContext, pipelineId?: string, limit?: number): Promise<Pipeline[]> {
+    private async fetchPipelines(ctx: RequestContext, pipelineId?: ID, limit?: number): Promise<Pipeline[]> {
         if (pipelineId) {
-            const pipeline = await this.connection.getRepository(ctx, Pipeline).findOne({
-                where: { id: pipelineId as ID },
-            });
+            const pipeline = await this.connection.findOneInChannel(
+                ctx,
+                Pipeline,
+                pipelineId,
+                ctx.channelId,
+            );
             return pipeline ? [pipeline] : [];
         }
         return this.connection.getRepository(ctx, Pipeline).find({
-            take: limit || PAGINATION.LIST_PAGE_SIZE,
+            where: { channels: { id: ctx.channelId } },
+            take: this.normalizeLimit(limit),
         });
+    }
+
+    private normalizeLimit(limit?: number): number {
+        if (limit === undefined) return PAGINATION.LIST_PAGE_SIZE;
+        if (!Number.isInteger(limit) || limit <= 0) {
+            throw new Error('Analytics limit must be a positive integer');
+        }
+        return Math.min(limit, PAGINATION.MAX_QUERY_LIMIT);
     }
 
     /** Load all runs for given pipelines and group by pipeline ID */
@@ -134,14 +179,26 @@ export class AnalyticsService implements OnModuleInit {
         startDate: Date,
     ): Promise<Map<string | number, PipelineRun[]>> {
         const pipelineIds = pipelines.map(p => p.id);
-        const allRuns = await this.connection.getRepository(ctx, PipelineRun).find({
+        const repository = this.connection.getRepository(ctx, PipelineRun);
+        const channelId = getActivePipelineRunChannelId(ctx);
+        const allRuns = await this.loadAllPages((skip, take) => repository.find({
             where: {
                 pipeline: { id: In(pipelineIds) },
+                channelId,
                 createdAt: MoreThan(startDate),
             },
             relations: ['pipeline'],
-            order: { createdAt: SortOrder.DESC },
-        });
+            select: {
+                id: true,
+                status: true,
+                metrics: true,
+                createdAt: true,
+                pipeline: { id: true, code: true, name: true },
+            },
+            order: { createdAt: SortOrder.DESC, id: SortOrder.DESC },
+            skip,
+            take,
+        }));
 
         const runsByPipelineId = new Map<string | number, PipelineRun[]>();
         for (const run of allRuns) {
@@ -159,7 +216,7 @@ export class AnalyticsService implements OnModuleInit {
     async getPipelinePerformance(
         ctx: RequestContext,
         options?: {
-            pipelineId?: string;
+            pipelineId?: ID;
             timeRange?: TimeRange;
             limit?: number;
         },
@@ -187,16 +244,26 @@ export class AnalyticsService implements OnModuleInit {
     }
 
     /** Build where clause for error analytics query */
-    private buildErrorWhereClause(startDate: Date, pipelineId?: string): FindOptionsWhere<DataHubRecordError> {
-        const whereClause: FindOptionsWhere<DataHubRecordError> = { createdAt: MoreThan(startDate) };
-        if (pipelineId) {
-            whereClause.run = { pipeline: { id: pipelineId as ID } };
-        }
-        return whereClause;
+    private buildErrorWhereClause(
+        channelId: string,
+        startDate: Date,
+        pipelineId?: ID,
+    ): FindOptionsWhere<DataHubRecordError> {
+        return {
+            createdAt: MoreThan(startDate),
+            run: {
+                channelId,
+                ...(pipelineId === undefined ? {} : { pipeline: { id: pipelineId } }),
+            },
+        };
     }
 
     /** Group errors and build analytics result */
-    private buildErrorAnalyticsResult(errors: DataHubRecordError[], timeRange: TimeRange): ErrorAnalytics {
+    private buildErrorAnalyticsResult(
+        errors: DataHubRecordError[],
+        timeRange: TimeRange,
+        totalErrors: number,
+    ): ErrorAnalytics {
         // Group errors by step
         const errorsByStepMap = groupErrorsByKey(errors, error => error.stepKey);
         const errorsByStep = Object.entries(errorsByStepMap).map(([stepKey, count]) => ({
@@ -221,35 +288,55 @@ export class AnalyticsService implements OnModuleInit {
         );
         const errorTrend = calculateTimeSeries(errors.map(e => e.createdAt), timeRange);
 
-        return { totalErrors: errors.length, errorsByStep, errorsByPipeline, topErrors, errorTrend };
+        return { totalErrors, errorsByStep, errorsByPipeline, topErrors, errorTrend };
     }
 
     /** Get error analytics */
     async getErrorAnalytics(
         ctx: RequestContext,
         options?: {
-            pipelineId?: string;
+            pipelineId?: ID;
             timeRange?: TimeRange;
         },
     ): Promise<ErrorAnalytics> {
         const timeRange = options?.timeRange || '7d';
         const startDate = getStartDate(timeRange);
-        const whereClause = this.buildErrorWhereClause(startDate, options?.pipelineId);
+        const whereClause = this.buildErrorWhereClause(
+            getActivePipelineRunChannelId(ctx),
+            startDate,
+            options?.pipelineId,
+        );
 
-        const errors = await this.connection.getRepository(ctx, DataHubRecordError).find({
-            where: whereClause,
-            relations: ['run', 'run.pipeline'],
-            order: { createdAt: SortOrder.DESC },
-        });
+        const repository = this.connection.getRepository(ctx, DataHubRecordError);
+        const [totalErrors, errors] = await Promise.all([
+            repository.count({ where: whereClause }),
+            this.loadAllPages((skip, take) => repository.find({
+                where: whereClause,
+                relations: ['run', 'run.pipeline'],
+                select: {
+                    id: true,
+                    stepKey: true,
+                    message: true,
+                    createdAt: true,
+                    run: {
+                        id: true,
+                        pipeline: { id: true, code: true },
+                    },
+                },
+                order: { createdAt: SortOrder.DESC, id: SortOrder.DESC },
+                skip,
+                take,
+            })),
+        ]);
 
-        return this.buildErrorAnalyticsResult(errors, timeRange);
+        return this.buildErrorAnalyticsResult(errors, timeRange, totalErrors);
     }
 
     /** Get throughput metrics */
     async getThroughputMetrics(
         ctx: RequestContext,
         options?: {
-            pipelineId?: string;
+            pipelineId?: ID;
             timeRange?: TimeRange;
         },
     ): Promise<ThroughputMetrics> {
@@ -257,29 +344,36 @@ export class AnalyticsService implements OnModuleInit {
         const startDate = getStartDate(timeRange);
         const durationHours = (Date.now() - startDate.getTime()) / TIME.HOUR;
 
-        const whereClause: FindOptionsWhere<PipelineRun> = { createdAt: MoreThan(startDate) };
+        const whereClause: FindOptionsWhere<PipelineRun> = {
+            channelId: getActivePipelineRunChannelId(ctx),
+            createdAt: MoreThan(startDate),
+        };
         if (options?.pipelineId) {
-            whereClause.pipeline = { id: options.pipelineId as ID };
+            whereClause.pipeline = { id: options.pipelineId };
         }
 
-        const runs = await this.connection.getRepository(ctx, PipelineRun).find({
+        const repository = this.connection.getRepository(ctx, PipelineRun);
+        const runs = await this.loadAllPages((skip, take) => repository.find({
             where: whereClause,
-            select: ['metrics', 'createdAt', 'finishedAt'],
-        });
+            select: ['id', 'metrics', 'createdAt', 'finishedAt'],
+            order: { createdAt: SortOrder.DESC, id: SortOrder.DESC },
+            skip,
+            take,
+        }));
 
         const throughputData = calculateThroughputData(runs);
         return buildThroughputResult(throughputData, durationHours, timeRange);
     }
 
     /** Build where clause for run history query */
-    private buildRunHistoryWhereClause(options?: {
-        pipelineId?: string;
+    private buildRunHistoryWhereClause(channelId: string, options?: {
+        pipelineId?: ID;
         status?: string;
         timeRange?: TimeRange;
     }): FindOptionsWhere<PipelineRun> {
-        const whereClause: FindOptionsWhere<PipelineRun> = {};
+        const whereClause: FindOptionsWhere<PipelineRun> = { channelId };
         if (options?.pipelineId) {
-            whereClause.pipeline = { id: options.pipelineId as ID };
+            whereClause.pipeline = { id: options.pipelineId };
         }
         if (options?.status) {
             whereClause.status = options.status as RunStatus;
@@ -312,21 +406,29 @@ export class AnalyticsService implements OnModuleInit {
     async getRunHistory(
         ctx: RequestContext,
         options?: {
-            pipelineId?: string;
+            pipelineId?: ID;
             status?: string;
             timeRange?: TimeRange;
             limit?: number;
             offset?: number;
         },
     ): Promise<{ runs: RunHistoryItem[]; totalItems: number }> {
-        const whereClause = this.buildRunHistoryWhereClause(options);
+        const whereClause = this.buildRunHistoryWhereClause(
+            getActivePipelineRunChannelId(ctx),
+            options,
+        );
+
+        const offset = options?.offset ?? 0;
+        if (!Number.isSafeInteger(offset) || offset < 0) {
+            throw new Error('Analytics offset must be a non-negative integer');
+        }
 
         const [runs, totalItems] = await this.connection.getRepository(ctx, PipelineRun).findAndCount({
             where: whereClause,
             relations: ['pipeline'],
             order: { createdAt: SortOrder.DESC },
-            take: options?.limit || PAGINATION.LIST_PAGE_SIZE,
-            skip: options?.offset || 0,
+            take: this.normalizeLimit(options?.limit),
+            skip: offset,
         });
 
         return {
@@ -339,21 +441,29 @@ export class AnalyticsService implements OnModuleInit {
     async getRealTimeStats(ctx: RequestContext): Promise<RealTimeStats> {
         const oneMinuteAgo = new Date(Date.now() - TIME.ONE_MINUTE_MS);
         const fiveMinutesAgo = new Date(Date.now() - TIME.FIVE_MINUTES_MS);
+        const channelId = getActivePipelineRunChannelId(ctx);
 
         const [activeRuns, queuedRuns, recentErrors, recentRuns] = await Promise.all([
             this.connection.getRepository(ctx, PipelineRun).count({
-                where: { status: RunStatus.RUNNING },
+                where: { status: RunStatus.RUNNING, channelId },
             }),
             this.connection.getRepository(ctx, PipelineRun).count({
-                where: { status: RunStatus.PENDING },
+                where: { status: RunStatus.PENDING, channelId },
             }),
             this.connection.getRepository(ctx, DataHubRecordError).count({
-                where: { createdAt: MoreThan(fiveMinutesAgo) },
+                where: {
+                    createdAt: MoreThan(fiveMinutesAgo),
+                    run: { channelId },
+                },
             }),
-            this.connection.getRepository(ctx, PipelineRun).find({
-                where: { finishedAt: MoreThan(oneMinuteAgo) },
-                select: ['metrics'],
-            }),
+            this.loadAllPages((skip, take) =>
+                this.connection.getRepository(ctx, PipelineRun).find({
+                    where: { channelId, finishedAt: MoreThan(oneMinuteAgo) },
+                    select: ['id', 'metrics'],
+                    order: { finishedAt: SortOrder.DESC, id: SortOrder.DESC },
+                    skip,
+                    take,
+                })),
         ]);
 
         let recordsLastMinute = 0;

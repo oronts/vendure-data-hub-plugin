@@ -7,18 +7,11 @@ import type {
 } from '../../shared/types';
 import type {
     DataHubPipeline,
-    DataHubAdapter,
     DataHubValidationIssue,
     DataHubValidationResult,
     DataHubDryRunResult,
     DataHubPipelineRun,
 } from '../gql/graphql';
-import type {
-    UINodeStatus,
-    PipelineNode,
-    PipelineNodeData,
-    VisualPipelineDefinition,
-} from './pipeline';
 import type { FileType } from '../utils';
 
 export type {
@@ -41,6 +34,7 @@ export interface AdapterListItem {
 }
 
 export interface AdapterSelectorProps {
+    id?: string;
     stepType: StepType;
     value?: string;
     onChange: (code: string) => void;
@@ -54,7 +48,6 @@ export interface TriggerFormProps {
     onChange: (trigger: PipelineTrigger) => void;
     onRemove?: () => void;
     readOnly?: boolean;
-    secretCodes?: string[];
     compact?: boolean;
 }
 
@@ -65,8 +58,6 @@ export interface SchemaFormRendererProps {
     errors?: Record<string, string>;
     readOnly?: boolean;
     hideOptional?: boolean;
-    secretCodes?: string[];
-    connectionCodes?: string[];
     compact?: boolean;
 }
 
@@ -164,6 +155,7 @@ export interface PipelineEditorProps {
     readonly definition: PipelineDefinition;
     readonly onChange: (definition: PipelineDefinition) => void;
     readonly issues?: ValidationIssue[];
+    readonly readOnly?: boolean;
 }
 
 /**
@@ -171,7 +163,19 @@ export interface PipelineEditorProps {
  */
 export type PipelineEntity = Pick<
     DataHubPipeline,
-    'id' | 'code' | 'name' | 'enabled' | 'status' | 'version' | 'publishedAt' | 'definition'
+    | 'id'
+    | 'code'
+    | 'name'
+    | 'enabled'
+    | 'configurationSource'
+    | 'status'
+    | 'version'
+    | 'currentRevisionId'
+    | 'publishedVersionCount'
+    | 'publishedAt'
+    | 'requiredCapabilities'
+    | 'writeCapabilities'
+    | 'definition'
 >;
 
 export interface PipelineStep {
@@ -186,12 +190,6 @@ export interface PipelineStep {
     [key: string]: unknown;
 }
 
-export interface PipelineFormControl {
-    watch: (name: string) => unknown;
-    setValue: (name: string, value: unknown, options?: { shouldDirty?: boolean }) => void;
-    getValues: (name: string) => unknown;
-}
-
 /**
  * Types for pipeline runs
  */
@@ -199,6 +197,8 @@ export interface IndividualRunMetrics extends Record<string, unknown> {
     processed?: number;
     succeeded?: number;
     failed?: number;
+    skipped?: number;
+    sourceRecords?: number;
     durationMs?: number;
     details?: StepMetricsDetail[];
 }
@@ -209,6 +209,7 @@ export interface StepMetricsDetail extends Record<string, unknown> {
     adapterCode?: string;
     ok?: number;
     fail?: number;
+    skipped?: number;
     durationMs?: number;
     counters?: Record<string, number>;
 }
@@ -221,13 +222,21 @@ export interface RunDetailsPanelProps {
     runId: string;
     initialData: RunRow;
     onCancel: (id: string) => void;
-    onRerun: (pipelineId: string) => void;
+    onRerun: (
+        pipelineId: string,
+        expectedRevisionId?: string | number | null,
+    ) => void;
+    canRerun: boolean;
     isCancelling: boolean;
 }
 
 export interface RunErrorsListProps {
     items: Array<{ id: string; stepKey: string; message: string; payload: unknown }>;
-    onRetry: (errorId: string, patch: Record<string, unknown>) => Promise<void>;
+    totalItems: number;
+    hasNextPage: boolean;
+    isFetchingNextPage: boolean;
+    onLoadMore: () => void;
+    onRetry: (errorId: string, patch: Record<string, unknown>) => Promise<boolean>;
 }
 
 /** Props for ValidationErrorDisplay component (feedback/) */
@@ -259,6 +268,7 @@ export interface SelectableCardProps {
     onClick: () => void;
     disabled?: boolean;
     className?: string;
+    'data-testid'?: string;
 }
 
 /**
@@ -275,7 +285,7 @@ export interface SelectableCardGridProps {
  */
 export interface FileDropzoneProps {
     onFileSelect: (file: File) => void;
-    allowedTypes?: FileType[];
+    allowedTypes?: string[];
     accept?: string;
     loading?: boolean;
     loadingMessage?: string;
@@ -352,7 +362,7 @@ export interface ConfigurationNameCardProps {
  * Props for TriggerSelector component (wizard-trigger/)
  */
 export interface TriggerSelectorProps {
-    options: readonly Array<{ id: string; label: string; desc?: string }>;
+    options: ReadonlyArray<{ id: string; label: string; desc?: string }>;
     value: string;
     onChange: (type: string) => void;
     columns?: 2 | 3 | 4;
@@ -379,7 +389,6 @@ export interface TriggersPanelExplicitProps {
     removeTrigger: (index: number) => void;
     onChange?: never;
     readOnly?: boolean;
-    secretCodes?: string[];
     variant?: 'compact' | 'full';
 }
 
@@ -390,7 +399,6 @@ export interface TriggersPanelOnChangeProps {
     updateTrigger?: never;
     removeTrigger?: never;
     readOnly?: boolean;
-    secretCodes?: string[];
     variant?: 'compact' | 'full';
 }
 

@@ -3,11 +3,15 @@
  * Delegates to specialized validation modules for different aspects of validation.
  */
 
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { RequestContext, TransactionalConnection } from '@vendure/core';
 import { In } from 'typeorm';
 import { PipelineDefinition, StepType } from '../../types/index';
-import { StepType as StepTypeEnum } from '../../constants/enums';
+import {
+    AdapterType as AdapterTypeEnum,
+    PIPELINE_VALIDATION_ERROR,
+    StepType as StepTypeEnum,
+} from '../../constants/enums';
 import { LOGGER_CONTEXTS, STEP_TYPE_TO_ADAPTER_TYPE } from '../../constants/index';
 import { Pipeline } from '../../entities/pipeline';
 import { DataHubRegistryService } from '../../sdk/registry.service';
@@ -21,14 +25,26 @@ import {
     AdapterStepConfig,
     AdapterType,
     validateAdapterConfig,
-    validateAdapterConnectivity,
     validateAdapterFields,
+    validateExtractorConfigContract,
+    validateLoaderConfigContract,
+    validateSinkConfigContract,
     validateGraphQLExtractor,
-    isUsingBuiltInEnrichment,
+    validateHttpLookupConnectionContract,
+    addAdapterDeprecationWarning,
     isGraphQLExtractor,
 } from './adapter-validation';
+import { validateEnrichmentConfig } from '../../validation/enrichment-config.validator';
 import { validateTransformOperators, TransformStepConfig } from './step-validation';
 import { validateCapabilities, validateContext } from './context-validation';
+import { validateHooks } from './hook-security';
+import { parseInlineExportDestination } from '../destinations/inline-export-destination';
+import { ResourceReferenceService } from '../config/resource-reference.service';
+import { HookScriptRegistryService } from '../events/hook-script-registry.service';
+import { validateAdapterBindings } from '../../sdk/adapter-bindings';
+import { SchemaRegistryService } from '../schema/schema-registry.service';
+import { schemaReferenceKey } from '../schema/schema-reference';
+import { validateHookReferences } from './hook-reference-validation';
 
 // ============================================================================
 // Type Definitions
@@ -43,6 +59,7 @@ export enum ValidationLevel {
 interface ValidationOptions {
     level?: ValidationLevel;
     skipDependencyCheck?: boolean;
+    requireAdapterBindings?: boolean;
 }
 
 interface DefinitionValidationResult {
@@ -67,7 +84,10 @@ export class DefinitionValidationService {
     constructor(
         private registry: DataHubRegistryService,
         private connection: TransactionalConnection,
+        private resourceReferences: ResourceReferenceService,
+        private hookScripts: HookScriptRegistryService,
         loggerFactory: DataHubLoggerFactory,
+        @Optional() private schemaRegistry?: SchemaRegistryService,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.DEFINITION_VALIDATION_SERVICE);
     }
@@ -100,8 +120,21 @@ export class DefinitionValidationService {
         this.validateDependsOn(definition, issues);
         validateTrigger(definition, issues, warnings);
         this.validateAdapters(definition, issues, warnings);
+        if (options.requireAdapterBindings === true) {
+            issues.push(...validateAdapterBindings(
+                this.registry,
+                definition,
+                true,
+            ).map(issue => ({
+                message: issue.message,
+                stepKey: issue.stepKey,
+                field: issue.location,
+                errorCode: issue.errorCode,
+            })));
+        }
         validateCapabilities(definition, issues);
         validateContext(definition, issues);
+        validateHooks(definition, issues);
 
         return { isValid: issues.length === 0, issues, warnings, level };
     }
@@ -113,11 +146,16 @@ export class DefinitionValidationService {
         const level = options.level ?? ValidationLevel.FULL;
         const result = this.validateSync(definition, { ...options, level: ValidationLevel.SEMANTIC });
 
-        if (level !== ValidationLevel.FULL || options.skipDependencyCheck) {
+        if (level !== ValidationLevel.FULL) {
             return { ...result, level };
         }
 
-        await this.validateDependsOnAsync(definition, result, ctx);
+        if (!options.skipDependencyCheck) {
+            await this.validateDependsOnAsync(definition, result, ctx);
+            await this.validateResourceReferencesAsync(definition, result, ctx);
+            await this.validateHookReferencesAsync(definition, result, ctx);
+        }
+        await this.validateSchemaReferencesAsync(definition, result, ctx);
 
         return {
             isValid: result.issues.length === 0,
@@ -130,8 +168,8 @@ export class DefinitionValidationService {
     /**
      * Validates and throws if invalid.
      */
-    validate(definition: PipelineDefinition): void {
-        const result = this.validateSync(definition);
+    validate(definition: PipelineDefinition, options: ValidationOptions = {}): void {
+        const result = this.validateSync(definition, options);
         if (!result.isValid) {
             throw new PipelineDefinitionError(result.issues);
         }
@@ -159,6 +197,37 @@ export class DefinitionValidationService {
         }
     }
 
+    private async validateSchemaReferencesAsync(
+        definition: PipelineDefinition,
+        result: DefinitionValidationResult,
+        ctx?: RequestContext,
+    ): Promise<void> {
+        const referencedSteps = definition.steps.filter(
+            step => step.schemaRef !== undefined,
+        );
+        if (referencedSteps.length === 0) return;
+        if (!this.schemaRegistry || !ctx) {
+            result.issues.push({
+                message: 'Schema references could not be verified',
+                errorCode: PIPELINE_VALIDATION_ERROR.SCHEMA_REFERENCE_CHECK_UNAVAILABLE,
+            });
+            return;
+        }
+
+        const references = referencedSteps.flatMap(step => step.schemaRef ? [step.schemaRef] : []);
+        const schemas = await this.schemaRegistry.getByReferences(ctx, references);
+        for (const step of referencedSteps) {
+            const reference = step.schemaRef;
+            if (!reference || schemas.has(schemaReferenceKey(reference))) continue;
+            result.issues.push({
+                message: `Schema "${reference.schemaId}" version "${reference.version}" does not exist`,
+                stepKey: step.key,
+                field: 'schemaRef',
+                errorCode: PIPELINE_VALIDATION_ERROR.SCHEMA_REFERENCE_NOT_FOUND,
+            });
+        }
+    }
+
     private async validateDependsOnAsync(
         definition: PipelineDefinition,
         result: DefinitionValidationResult,
@@ -178,7 +247,10 @@ export class DefinitionValidationService {
                 ? this.connection.getRepository(ctx, Pipeline)
                 : this.connection.rawConnection.getRepository(Pipeline);
             const foundPipelines = await repo.find({
-                where: { code: In(dependsOnCodes) },
+                where: {
+                    code: In(dependsOnCodes),
+                    ...(ctx ? { channels: { id: ctx.channelId } } : {}),
+                },
                 select: { code: true },
             });
             const foundCodes = new Set(foundPipelines.map(p => p.code));
@@ -200,10 +272,57 @@ export class DefinitionValidationService {
         }
     }
 
+    private async validateResourceReferencesAsync(
+        definition: PipelineDefinition,
+        result: DefinitionValidationResult,
+        ctx?: RequestContext,
+    ): Promise<void> {
+        try {
+            const missing = await this.resourceReferences
+                .findMissingDefinitionReferences(ctx, definition);
+            for (const code of missing.connections) {
+                result.issues.push({
+                    message: `Pipeline references unknown connection code "${code}"`,
+                    errorCode: 'connection-unknown-code',
+                });
+            }
+            for (const code of missing.secrets) {
+                result.issues.push({
+                    message: `Pipeline references unknown secret code "${code}"`,
+                    errorCode: 'secret-unknown-code',
+                });
+            }
+        } catch (error: unknown) {
+            this.logger.warn('Failed to validate pipeline resource references', {
+                error: getErrorMessage(error),
+            });
+            result.warnings.push({
+                message: 'Could not verify pipeline resource references',
+                errorCode: 'resource-reference-check-failed',
+            });
+        }
+    }
+
+    private async validateHookReferencesAsync(
+        definition: PipelineDefinition,
+        result: DefinitionValidationResult,
+        ctx?: RequestContext,
+    ): Promise<void> {
+        await validateHookReferences({
+            connection: this.connection,
+            ctx,
+            definition,
+            hookScripts: this.hookScripts,
+            issues: result.issues,
+            logger: this.logger,
+            warnings: result.warnings,
+        });
+    }
+
     private validateAdapters(
         definition: PipelineDefinition,
         issues: PipelineDefinitionIssue[],
-        _warnings: PipelineDefinitionIssue[],
+        warnings: PipelineDefinitionIssue[],
     ): void {
         // Only validate adapter config for step types that use adapter-based dispatch.
         // Step types like TRIGGER, VALIDATE, ROUTE, and GATE use inline config
@@ -220,7 +339,7 @@ export class DefinitionValidationService {
         for (const step of definition.steps) {
             const type = step.type as StepType;
             const rawConfig = (step.config ?? {}) as AdapterStepConfig;
-            const cfg = step.adapterCode && !rawConfig.adapterCode
+            const cfg = step.adapterCode
                 ? { ...rawConfig, adapterCode: step.adapterCode }
                 : rawConfig;
             const adapterType = adapterTypeFor(type);
@@ -231,12 +350,26 @@ export class DefinitionValidationService {
 
             // Handle TRANSFORM steps with operators (special validation path)
             if (type === StepTypeEnum.TRANSFORM) {
-                validateTransformOperators(step.key, cfg as TransformStepConfig, definition, this.registry, issues);
+                validateTransformOperators(
+                    step.key,
+                    cfg as TransformStepConfig,
+                    this.registry,
+                    issues,
+                    warnings,
+                );
                 continue;
             }
 
-            // ENRICH steps can use built-in config without an adapter
-            if (isUsingBuiltInEnrichment(type, cfg)) {
+            if (type === StepTypeEnum.ENRICH && !cfg.adapterCode) {
+                const result = validateEnrichmentConfig(cfg);
+                issues.push(...result.issues.map(issue => ({
+                    ...issue,
+                    stepKey: step.key,
+                    message: `Step "${step.key}": ${issue.message}`,
+                })));
+                if (result.sourceType === 'HTTP') {
+                    validateHttpLookupConnectionContract(step.key, cfg, issues);
+                }
                 continue;
             }
 
@@ -252,8 +385,29 @@ export class DefinitionValidationService {
             }
 
             const { adapter, adapterCode } = adapterResult;
-            validateAdapterConnectivity(step.key, adapterCode, adapterType, adapter, definition, issues);
+            addAdapterDeprecationWarning(step.key, adapter, warnings);
             validateAdapterFields(step.key, cfg, adapter, issues);
+            if (adapterType === AdapterTypeEnum.EXTRACTOR) {
+                validateExtractorConfigContract(step.key, adapterCode, cfg, issues);
+            }
+            if (adapterType === AdapterTypeEnum.LOADER) {
+                validateLoaderConfigContract(step.key, adapterCode, cfg, issues);
+            }
+            if (adapterType === AdapterTypeEnum.SINK) {
+                validateSinkConfigContract(step.key, adapterCode, cfg, issues);
+            }
+            if (type === StepTypeEnum.EXPORT) {
+                try {
+                    parseInlineExportDestination(step.key, cfg);
+                } catch (error) {
+                    issues.push({
+                        message: `Step "${step.key}": ${getErrorMessage(error)}`,
+                        stepKey: step.key,
+                        field: 'destinationType',
+                        errorCode: 'invalid-export-destination',
+                    });
+                }
+            }
 
             // Special validation for GraphQL extractors
             if (isGraphQLExtractor(adapterType, adapterCode)) {

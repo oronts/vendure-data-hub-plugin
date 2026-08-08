@@ -14,9 +14,12 @@ export interface DeadLetter {
 
 export interface Consumer {
     pipelineCode: string;
+    triggerKey: string;
     queueName: string;
     isActive: boolean;
     messagesProcessed: number;
     messagesFailed: number;
+    autoStart: boolean;
+    desiredEnabled: boolean;
     lastMessageAt?: string | null;
 }

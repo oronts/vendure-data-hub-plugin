@@ -7,7 +7,8 @@
  */
 import { RequestContext } from '@vendure/core';
 import { SecretService } from '../../../services/config/secret.service';
-import { ConnectionAuthType, HTTP_HEADERS, AUTH_SCHEMES } from '../../../constants/index';
+import { ConnectionAuthType } from '../../../../shared/types/adapter-config.types';
+import { HTTP_HEADERS, AUTH_SCHEMES } from '../../../constants/services';
 
 export interface AuthConfig {
     auth?: string;
@@ -15,36 +16,44 @@ export interface AuthConfig {
     basicSecretCode?: string;
 }
 
-/**
- * Resolve bearer / basic auth headers from secret codes.
- *
- * Returns a new headers object with the Authorization header added (if
- * applicable), merged on top of the supplied `baseHeaders`.
- *
- * The caller is responsible for catching errors thrown by SecretService and
- * logging them appropriately.
- */
+/** Resolve required bearer or basic auth headers from secret codes. */
 export async function resolveAuthHeaders(
     ctx: RequestContext,
     secretService: SecretService,
     cfg: AuthConfig,
     baseHeaders: Record<string, string>,
 ): Promise<Record<string, string>> {
-    let headers = baseHeaders;
     const auth = String(cfg.auth ?? ConnectionAuthType.NONE);
-
-    if (auth === ConnectionAuthType.BEARER && cfg.bearerTokenSecretCode) {
-        const token = await secretService.resolve(ctx, String(cfg.bearerTokenSecretCode));
-        if (token) {
-            headers = { ...headers, [HTTP_HEADERS.AUTHORIZATION]: `${AUTH_SCHEMES.BEARER} ${token}` };
-        }
-    } else if (auth === ConnectionAuthType.BASIC && cfg.basicSecretCode) {
-        const credentials = await secretService.resolve(ctx, String(cfg.basicSecretCode));
-        if (credentials && credentials.includes(':')) {
-            const token = Buffer.from(credentials).toString('base64');
-            headers = { ...headers, [HTTP_HEADERS.AUTHORIZATION]: `${AUTH_SCHEMES.BASIC} ${token}` };
-        }
+    if (auth === ConnectionAuthType.NONE) {
+        return baseHeaders;
     }
 
-    return headers;
+    if (auth === ConnectionAuthType.BEARER) {
+        if (!cfg.bearerTokenSecretCode) {
+            throw new Error('BEARER authentication requires bearerTokenSecretCode');
+        }
+        const token = await secretService.resolve(ctx, cfg.bearerTokenSecretCode);
+        if (!token) {
+            throw new Error(`BEARER authentication secret "${cfg.bearerTokenSecretCode}" is empty or unavailable`);
+        }
+        return { ...baseHeaders, [HTTP_HEADERS.AUTHORIZATION]: `${AUTH_SCHEMES.BEARER} ${token}` };
+    }
+
+    if (auth === ConnectionAuthType.BASIC) {
+        if (!cfg.basicSecretCode) {
+            throw new Error('BASIC authentication requires basicSecretCode');
+        }
+        const credentials = await secretService.resolve(ctx, cfg.basicSecretCode);
+        if (!credentials) {
+            throw new Error(`BASIC authentication secret "${cfg.basicSecretCode}" is empty or unavailable`);
+        }
+        const separator = credentials.indexOf(':');
+        if (separator <= 0 || separator === credentials.length - 1) {
+            throw new Error(`BASIC authentication secret "${cfg.basicSecretCode}" must contain non-empty username and password values`);
+        }
+        const token = Buffer.from(credentials).toString('base64');
+        return { ...baseHeaders, [HTTP_HEADERS.AUTHORIZATION]: `${AUTH_SCHEMES.BASIC} ${token}` };
+    }
+
+    throw new Error(`Unsupported loader authentication type: ${auth}`);
 }

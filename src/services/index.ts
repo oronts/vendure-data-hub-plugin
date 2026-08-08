@@ -13,5 +13,6 @@ export * from './runtime';
 export * from './versioning';
 export * from './rate-limit';
 export * from './testing';
+export * from './schema';
 export { TemplateRegistryService } from './templates/template-registry.service';
 export type { TemplateCategoryResult } from './templates/template-registry.service';

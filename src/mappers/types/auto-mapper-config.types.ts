@@ -97,8 +97,21 @@ export function validateAutoMapperConfig(config: Partial<AutoMapperConfigInput>)
     const errors: string[] = [];
     const warnings: string[] = [];
 
+    for (const field of [
+        'enableFuzzyMatching',
+        'enableTypeInference',
+        'caseSensitive',
+    ] as const) {
+        const value = config[field];
+        if (value !== undefined && typeof value !== 'boolean') {
+            errors.push(`${field} must be a boolean`);
+        }
+    }
+
     if (config.confidenceThreshold !== undefined) {
-        if (config.confidenceThreshold < 0 || config.confidenceThreshold > 1) {
+        if (!Number.isFinite(config.confidenceThreshold)
+            || config.confidenceThreshold < 0
+            || config.confidenceThreshold > 1) {
             errors.push('confidenceThreshold must be between 0 and 1');
         }
     }
@@ -112,29 +125,61 @@ export function validateAutoMapperConfig(config: Partial<AutoMapperConfigInput>)
         const descWeight = config.weightDescriptionMatch ?? DEFAULT_AUTO_MAPPER_CONFIG.weights.descriptionMatch;
         const total = nameWeight + typeWeight + descWeight;
 
-        if (total < 0.9 || total > 1.1) {
+        if (Number.isFinite(total) && (total < 0.9 || total > 1.1)) {
             warnings.push(`Scoring weights sum to ${total.toFixed(2)}, should be approximately 1.0`);
         }
 
-        if (nameWeight < 0 || nameWeight > 1) {
+        if (!Number.isFinite(nameWeight) || nameWeight < 0 || nameWeight > 1) {
             errors.push('weightNameSimilarity must be between 0 and 1');
         }
-        if (typeWeight < 0 || typeWeight > 1) {
+        if (!Number.isFinite(typeWeight) || typeWeight < 0 || typeWeight > 1) {
             errors.push('weightTypeCompatibility must be between 0 and 1');
         }
-        if (descWeight < 0 || descWeight > 1) {
+        if (!Number.isFinite(descWeight) || descWeight < 0 || descWeight > 1) {
             errors.push('weightDescriptionMatch must be between 0 and 1');
         }
     }
 
-    // Validate customAliases structure
-    if (config.customAliases) {
-        if (Object.keys(config.customAliases).length > TRUNCATION.MAX_CUSTOM_ALIASES) {
-            errors.push(`customAliases cannot exceed ${TRUNCATION.MAX_CUSTOM_ALIASES} entries`);
+    if (config.customAliases !== undefined) {
+        if (!isRecord(config.customAliases)) {
+            errors.push('customAliases must be an object');
+        } else {
+            if (Object.keys(config.customAliases).length > TRUNCATION.MAX_CUSTOM_ALIASES) {
+                errors.push(`customAliases cannot exceed ${TRUNCATION.MAX_CUSTOM_ALIASES} entries`);
+            }
+            for (const [key, values] of Object.entries(config.customAliases)) {
+                if (!isValidFieldName(key)) {
+                    errors.push(`customAliases contains an invalid canonical field name: ${key}`);
+                }
+                if (!Array.isArray(values)) {
+                    errors.push(`customAliases[${key}] must be an array of strings`);
+                    continue;
+                }
+                if (values.length > TRUNCATION.MAX_ALIASES_PER_FIELD) {
+                    errors.push(
+                        `customAliases[${key}] cannot exceed ${TRUNCATION.MAX_ALIASES_PER_FIELD} aliases`,
+                    );
+                }
+                if (!values.every(value => typeof value === 'string' && isValidFieldName(value))) {
+                    errors.push(`customAliases[${key}] must contain valid field-name strings`);
+                }
+            }
         }
-        for (const [key, values] of Object.entries(config.customAliases)) {
-            if (!Array.isArray(values)) {
-                errors.push(`customAliases[${key}] must be an array of strings`);
+    }
+
+    if (config.excludeFields !== undefined) {
+        if (!Array.isArray(config.excludeFields)) {
+            errors.push('excludeFields must be an array of strings');
+        } else {
+            if (config.excludeFields.length > TRUNCATION.MAX_AUTOMAPPER_EXCLUDED_FIELDS) {
+                errors.push(
+                    `excludeFields cannot exceed ${TRUNCATION.MAX_AUTOMAPPER_EXCLUDED_FIELDS} entries`,
+                );
+            }
+            if (!config.excludeFields.every(
+                value => typeof value === 'string' && isValidFieldName(value),
+            )) {
+                errors.push('excludeFields must contain valid field-name strings');
             }
         }
     }
@@ -144,4 +189,15 @@ export function validateAutoMapperConfig(config: Partial<AutoMapperConfigInput>)
         errors,
         warnings,
     };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isValidFieldName(value: string): boolean {
+    const length = value.trim().length;
+    return value === value.trim()
+        && length > 0
+        && length <= TRUNCATION.MAX_AUTOMAPPER_FIELD_NAME_LENGTH;
 }

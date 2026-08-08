@@ -8,5 +8,7 @@
 export * from './validation';
 export { getErrorMessage, ensureError, toErrorOrUndefined } from './error';
 export { screamingSnakeToKebab, kebabToScreamingSnake } from './string-case';
-export { getNestedValue } from './object-path';
+export { getNestedValue, setNestedValue } from './object-path';
 export { parseCSVLine } from './csv-parse';
+export * from './resource-references';
+export * from './http-policy';

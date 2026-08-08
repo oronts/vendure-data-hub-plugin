@@ -22,6 +22,8 @@ export type {
     SchemaIndex,
     SchemaValidationRule,
     ComputedField,
+    SchemaCompatibility,
+    SchemaReference,
 } from './schema.types';
 
 export type {
@@ -75,9 +77,13 @@ export type {
 
 export type {
     HookStageValue,
+    HookExecutionFailure,
+    HookExecutionResult,
+    HookExecutionStatus,
     HookActionType,
     LogLevel,
     WebhookHookAction,
+    TriggerPipelineHookAction,
     LogHookAction,
     InterceptorHookAction,
     ScriptHookAction,
@@ -156,17 +162,16 @@ export type {
     RunProgress,
 } from './run.types';
 
+export { VENDURE_EVENT_TYPES } from './trigger.types';
 export type {
     TriggerType,
     WebhookAuthType,
     HmacAlgorithm,
-    TriggerConditionOperator,
-    TriggerCondition,
+    VendureEventType,
     ScheduleTriggerConfig,
     WebhookTriggerConfig,
     EventTriggerConfig,
     QueueTypeValue,
-    FileWatchEvent,
     FileWatchTriggerConfig,
     AckMode,
     MessageTriggerConfig,
@@ -176,6 +181,10 @@ export type {
 
 export type {
     PipelineMetrics,
+    DryRunMessage,
+    DryRunMessageCode,
+    DryRunMessageLevel,
+    DryRunRecordError,
     LoadError,
     ExportError,
     SinkError,
@@ -198,9 +207,6 @@ export type {
     DestinationType,
     FeedType,
     ErrorHandlingConfig,
-    CheckpointStrategy,
-    CheckpointingConfig,
-    RunModeValue,
     LanguageStrategyValue,
     ConflictStrategyValue,
     PipelineContext,
@@ -215,6 +221,7 @@ export type {
     HttpMethod,
     UnifiedPipelineDefinition,
     PipelineDefinition,
+    AdapterBinding,
 } from './pipeline.types';
 
 export type {
@@ -291,13 +298,8 @@ export type {
 } from './loader.types';
 
 export type {
-    BatchConfig,
-    HttpConfig,
     CircuitBreakerConfig,
-    ConnectionPoolConfig,
-    RuntimePaginationConfig,
     SchedulerConfig,
-    EventTriggerServiceConfig,
     RuntimeLimitsConfig,
     CodeFirstPipeline,
     CodeFirstSecret,
@@ -317,26 +319,16 @@ export type {
     GroupsMode,
     CsvExtractorConfig,
     JsonExtractorConfig,
-    ExcelExtractorConfig,
+    XmlExtractorConfig,
+    XlsxExtractorConfig,
     HttpApiExtractorConfig,
     GraphqlExtractorConfig,
     VendureQueryExtractorConfig,
-    WebhookExtractorConfig,
     DatabaseExtractorConfig,
     CdcExtractorConfig,
     GenericExtractorConfig,
     TypedExtractorConfig,
-    MapOperatorConfig,
-    TemplateOperatorConfig,
-    FilterOperatorConfig,
-    WhenOperatorConfig,
-    LookupOperatorConfig,
-    AggregateOperatorConfig,
-    DedupeOperatorConfig,
-    CoerceOperatorConfig,
-    EnrichOperatorConfig,
-    GenericOperatorConfig,
-    TypedOperatorConfig,
+    CreateDuplicateHandlingConfig,
     ProductUpsertLoaderConfig,
     VariantUpsertLoaderConfig,
     CustomerUpsertLoaderConfig,
@@ -368,13 +360,14 @@ export type {
     XmlExportConfig,
     GenericExporterConfig,
     TypedExporterConfig,
+    FeedLocalizationConfig,
+    CommerceFeedFieldMappingConfig,
     GoogleMerchantFeedConfig,
     MetaCatalogFeedConfig,
     AmazonFeedConfig,
     CustomFeedConfig,
     GenericFeedConfig,
     TypedFeedConfig,
-    SchemaValidatorConfig,
     RouteConfig,
     UpdateCatalogLoaders,
     UpdateCustomerLoaders,

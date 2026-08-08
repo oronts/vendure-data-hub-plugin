@@ -36,6 +36,8 @@ export const PAGINATION = {
     MAX_GRAPHQL_PAGES: 100,
     /** Default page size for data extraction */
     PAGE_SIZE: 100,
+    /** Maximum page size accepted for remote HTTP and GraphQL extraction */
+    MAX_REMOTE_PAGE_SIZE: 10_000,
     /** Default page size for database queries (larger for SQL) */
     DATABASE_PAGE_SIZE: 1000,
     /** Maximum page size for database queries (safety limit) */
@@ -50,16 +52,24 @@ export const PAGINATION = {
     EVENTS_LIMIT: 50,
     /** Limit for feed preview records */
     FEED_PREVIEW_LIMIT: 10,
+    /** Vendure variants loaded per feed query page */
+    FEED_QUERY_PAGE_SIZE: 100,
+    /** Maximum concurrent stock and collection lookups during feed hydration */
+    FEED_HYDRATION_CONCURRENCY: 10,
+    /** Maximum records accepted by the feed preview Admin API */
+    FEED_PREVIEW_MAX_LIMIT: 1000,
+    /** Maximum UTF-8 bytes returned by a feed preview */
+    FEED_PREVIEW_MAX_BYTES: 1024 * 1024,
     /** Limit for file preview rows */
     FILE_PREVIEW_ROWS: 10,
+    /** Maximum source bytes parsed by an extract preview */
+    FILE_PREVIEW_MAX_BYTES: 10 * 1024 * 1024,
     /** Limit for top errors display */
     TOP_ERRORS_LIMIT: 10,
     /** Limit for recent activity display */
     RECENT_ACTIVITY_LIMIT: 10,
     /** Limit for search results */
     SEARCH_RESULTS_LIMIT: 100,
-    /** Limit for querying all records (safety) */
-    QUERY_ALL_LIMIT: 999,
 } as const;
 
 /**
@@ -84,6 +94,12 @@ export const TRUNCATION = {
     MAX_UNIQUE_VALUES: 1000,
     /** Maximum custom aliases allowed */
     MAX_CUSTOM_ALIASES: 1000,
+    /** Maximum aliases accepted for one canonical field */
+    MAX_ALIASES_PER_FIELD: 100,
+    /** Maximum excluded fields accepted by AutoMapper */
+    MAX_AUTOMAPPER_EXCLUDED_FIELDS: 1000,
+    /** Maximum canonical, alias, or excluded field-name length */
+    MAX_AUTOMAPPER_FIELD_NAME_LENGTH: 255,
     /** Maximum sample values to store per field for preview */
     SAMPLE_VALUES_LIMIT: 5,
 } as const;

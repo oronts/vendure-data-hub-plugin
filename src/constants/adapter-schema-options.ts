@@ -4,9 +4,8 @@
  * Import these constants in handler registry files (loader-handler-registry.ts, extractor-handler-registry.ts, etc.)
  * to avoid duplicating option arrays across multiple adapter definitions.
  */
-import { LoadStrategy, ConflictStrategy, FileFormat, FileEncoding, HttpMethod, PaginationType, TriggerType, QueueType, AckMode, VendureEntityType, DatabaseType, DatabasePaginationType, GraphQLPaginationType, SortOrder } from './enums';
+import { LoadStrategy, ConflictStrategy, FileFormat, FileEncoding, HttpMethod, PaginationType, QueueType, VendureEntityType, DatabaseType, DatabasePaginationType, GraphQLPaginationType, SortOrder } from './enums';
 import { ConnectionAuthType } from '../../shared/types/adapter-config.types';
-import type { OptionValue, TypedOptionValue } from './enum-metadata';
 import { LOAD_STRATEGY_METADATA, CONFLICT_STRATEGY_METADATA } from './enum-metadata';
 
 /** Load strategy select options for loader adapter schemas (auto-derived from metadata; excludes delete strategies) */
@@ -169,12 +168,6 @@ export const HTTP_METHOD_GET_POST_OPTIONS = httpMethodsByScope('enrich');
 /** Auth type select options for HTTP destinations: NONE, BASIC, BEARER, API_KEY (auto-derived from AUTH_TYPE_METADATA) */
 export const AUTH_TYPE_HTTP_DESTINATION_OPTIONS = authTypesByScope('destination');
 
-/** S3 Select input serialization options (CSV/JSON only, as S3 Select supports only these) */
-export const S3_SELECT_FORMAT_OPTIONS = [
-    { value: FileFormat.CSV, label: 'CSV' },
-    { value: FileFormat.JSON, label: 'JSON' },
-];
-
 /** Pagination type options for HTTP extractors */
 export const PAGINATION_TYPE_OPTIONS = [
     { value: PaginationType.NONE, label: 'None' },
@@ -191,6 +184,11 @@ export const CSV_DELIMITER_OPTIONS = [
     { value: '\t', label: 'Tab' },
     { value: '|', label: 'Pipe (|)' },
 ];
+
+export const CSV_FORMULA_MODE_OPTIONS = [
+    { value: 'SPREADSHEET_SAFE', label: 'Spreadsheet-safe' },
+    { value: 'PRESERVE', label: 'Preserve values' },
+] as const;
 
 /** Boolean select options (string values for schema forms) */
 export const BOOLEAN_SELECT_OPTIONS = [
@@ -220,9 +218,17 @@ export const PROTOCOL_OPTIONS = [
 /** Queue type options for sink producers (excludes INTERNAL) */
 export const QUEUE_TYPE_OPTIONS = [
     { value: QueueType.RABBITMQ_AMQP, label: 'RabbitMQ (AMQP) - Recommended' },
-    { value: QueueType.RABBITMQ, label: 'RabbitMQ (HTTP API)' },
+    { value: QueueType.RABBITMQ, label: 'RabbitMQ (HTTP API) - Deprecated' },
     { value: QueueType.SQS, label: 'Amazon SQS' },
     { value: QueueType.REDIS_STREAMS, label: 'Redis Streams' },
+];
+
+/** Queue types that can defer message-trigger acknowledgment until run completion */
+export const MESSAGE_QUEUE_TYPE_OPTIONS = [
+    { value: QueueType.RABBITMQ_AMQP, label: 'RabbitMQ (AMQP) - Recommended' },
+    { value: QueueType.SQS, label: 'Amazon SQS' },
+    { value: QueueType.REDIS_STREAMS, label: 'Redis Streams' },
+    { value: QueueType.INTERNAL, label: 'Internal (Development)' },
 ];
 
 /** Batch mode options for REST loader (single record vs array batch) */
@@ -362,13 +368,11 @@ export const CUSTOM_FEED_FORMAT_OPTIONS = [
 // Database & extractor options
 // ---------------------------------------------------------------------------
 
-/** Single-source metadata for database types, each type declares whether it supports CDC */
-const DATABASE_TYPE_METADATA: Record<string, { label: string; supportsCDC: boolean }> = {
+/** Single-source metadata for supported database types and CDC capability. */
+const DATABASE_TYPE_METADATA: Record<DatabaseType, { label: string; supportsCDC: boolean }> = {
     [DatabaseType.POSTGRESQL]: { label: 'PostgreSQL', supportsCDC: true },
     [DatabaseType.MYSQL]:      { label: 'MySQL / MariaDB', supportsCDC: true },
     [DatabaseType.SQLITE]:     { label: 'SQLite', supportsCDC: false },
-    [DatabaseType.MSSQL]:      { label: 'SQL Server', supportsCDC: false },
-    [DatabaseType.ORACLE]:     { label: 'Oracle', supportsCDC: false },
 };
 
 /** Database type options for all database adapters (auto-derived from DATABASE_TYPE_METADATA) */
@@ -413,27 +417,17 @@ export const CDC_TRACKING_TYPE_OPTIONS = [
     { value: 'VERSION', label: 'Version / Sequence Number' },
 ];
 
-/** Incremental extraction column type options */
-export const INCREMENTAL_COLUMN_TYPE_OPTIONS = [
-    { value: 'timestamp', label: 'Timestamp' },
-    { value: 'sequence', label: 'Sequence/Numeric' },
-    { value: 'id', label: 'Auto-increment ID' },
-];
-
 /** HMAC/signature algorithm options */
 export const SIGNATURE_ALGORITHM_OPTIONS = [
     { value: 'sha256', label: 'SHA-256' },
-    { value: 'sha1', label: 'SHA-1' },
-    { value: 'md5', label: 'MD5' },
+    { value: 'sha512', label: 'SHA-512' },
 ];
 
 /** Hash algorithm options for cryptographic hashing */
 export const HASH_ALGORITHM_OPTIONS = [
-    { value: 'md5', label: 'MD5' },
-    { value: 'sha1', label: 'SHA-1' },
     { value: 'sha256', label: 'SHA-256' },
     { value: 'sha512', label: 'SHA-512' },
-];
+] as const;
 
 /** Hash output encoding options */
 export const HASH_ENCODING_OPTIONS = [
@@ -465,257 +459,6 @@ export const FTP_PROTOCOL_OPTIONS = [
     { value: 'sftp', label: 'SFTP' },
 ];
 
-// ---------------------------------------------------------------------------
-// Config option arrays (served via GraphQL dataHubConfigOptions query)
-// ---------------------------------------------------------------------------
-
-/** Compression type options for export/feed destinations */
-export const COMPRESSION_TYPES: OptionValue[] = [
-    { value: 'NONE', label: 'None' },
-    { value: 'GZIP', label: 'GZIP' },
-    { value: 'ZIP', label: 'ZIP' },
-];
-
-/** New-record strategy options for import wizard (CREATE/SKIP/ERROR are wizard-internal values, not in LoadStrategy enum) */
-export const NEW_RECORD_STRATEGIES: OptionValue[] = [
-    { value: 'CREATE', label: 'Create new records', description: 'Create new records when no existing match is found' },
-    { value: 'SKIP', label: 'Skip new records', description: 'Skip records that don\'t match existing entries' },
-    { value: 'ERROR', label: 'Error on new record', description: 'Raise an error when encountering unmatched records' },
-];
-
-/** Cleanup strategy options for post-import record management */
-export const CLEANUP_STRATEGIES: OptionValue[] = [
-    { value: 'NONE', label: 'No Cleanup', description: 'Do not remove any records' },
-    { value: 'UNPUBLISH_MISSING', label: 'Unpublish Missing', description: 'Unpublish records not in source' },
-    { value: 'DELETE_MISSING', label: 'Delete Missing', description: 'Delete records not in source' },
-];
-
-/** Destination type options for export/feed delivery */
-export const DESTINATION_TYPES: OptionValue[] = [
-    { value: 'FILE', label: 'Local File', icon: 'folder-open' },
-    { value: 'DOWNLOAD', label: 'Download', icon: 'folder-open' },
-    { value: 'SFTP', label: 'SFTP Server', icon: 'server' },
-    { value: 'FTP', label: 'FTP Server', icon: 'upload' },
-    { value: 'HTTP', label: 'HTTP Endpoint', icon: 'send' },
-    { value: 'S3', label: 'AWS S3', icon: 'cloud' },
-    { value: 'WEBHOOK', label: 'Webhook', icon: 'globe' },
-    { value: 'EMAIL', label: 'Email', icon: 'mail' },
-    { value: 'LOCAL', label: 'Local Directory', icon: 'hard-drive' },
-];
-
-/** Common gate config fields shown for all approval types */
-const GATE_COMMON_FIELDS: TypedOptionValue['fields'] = [
-    { key: 'notifyWebhook', label: 'Notify Webhook', type: 'string', placeholder: 'https://hooks.example.com/gate-notify', description: 'Webhook URL to call when the gate is reached (optional)' },
-    { key: 'notifyEmail', label: 'Notify Email', type: 'string', placeholder: 'approver@example.com', description: 'Email address to notify when the gate is reached (optional)' },
-    { key: 'previewCount', label: 'Preview Count', type: 'number', placeholder: '10', description: 'Number of records to include in the gate preview (default: 10)' },
-];
-
-/** Approval type options for gate steps (with per-type field schemas) */
-export const APPROVAL_TYPES: TypedOptionValue[] = [
-    {
-        value: 'MANUAL',
-        label: 'Manual',
-        description: 'Requires explicit human approval to proceed',
-        fields: [...GATE_COMMON_FIELDS],
-    },
-    {
-        value: 'THRESHOLD',
-        label: 'Threshold',
-        description: 'Auto-approve if error rate is below threshold',
-        fields: [
-            { key: 'errorThresholdPercent', label: 'Error Threshold (%)', type: 'number', placeholder: '10', description: 'Auto-approve if error rate is below this percentage (0-100)' },
-            ...GATE_COMMON_FIELDS,
-        ],
-    },
-    {
-        value: 'TIMEOUT',
-        label: 'Timeout',
-        description: 'Auto-approve after a timeout period',
-        fields: [
-            { key: 'timeoutSeconds', label: 'Timeout (seconds)', type: 'number', placeholder: '300', description: 'Number of seconds to wait before auto-approving' },
-            ...GATE_COMMON_FIELDS,
-        ],
-    },
-];
-
-/** Backoff strategy options for retry configuration */
-export const BACKOFF_STRATEGIES: OptionValue[] = [
-    { value: 'FIXED', label: 'Fixed', description: 'Wait a fixed duration between retries' },
-    { value: 'EXPONENTIAL', label: 'Exponential', description: 'Double the wait time after each retry' },
-];
-
-/** Trigger type options with field schemas and wizard scope metadata */
-export const TRIGGER_TYPE_SCHEMAS: TypedOptionValue[] = [
-    {
-        value: TriggerType.MANUAL,
-        label: 'Manual',
-        description: 'Run manually from the dashboard',
-        icon: 'play',
-        fields: [],
-        wizardScopes: ['import', 'export'],
-    },
-    {
-        value: TriggerType.SCHEDULE,
-        label: 'Schedule',
-        description: 'Run on a cron schedule',
-        icon: 'clock',
-        fields: [
-            { key: 'schedule', label: 'Cron Expression', type: 'string', required: true, placeholder: '* * * * *', description: 'Format: minute hour day month weekday', optionsRef: 'cronPresets' },
-            { key: 'timezone', label: 'Timezone', type: 'string', placeholder: 'UTC (default)' },
-        ],
-        configKeyMap: { schedule: 'cron' },
-        wizardScopes: ['import', 'export'],
-    },
-    {
-        value: TriggerType.WEBHOOK,
-        label: 'Webhook',
-        description: 'Trigger via HTTP webhook',
-        icon: 'webhook',
-        fields: [
-            { key: 'webhookCode', label: 'Webhook Code', type: 'string', required: true, placeholder: 'my-webhook', description: 'Endpoint: /data-hub/webhook/{code}' },
-            { key: 'authentication', label: 'Authentication', type: 'select', optionsRef: 'authTypes', defaultValue: 'NONE' },
-            { key: 'secretCode', label: 'Secret', type: 'secret', placeholder: 'Select secret...' },
-        ],
-        wizardScopes: ['import', 'export'],
-    },
-    {
-        value: TriggerType.EVENT,
-        label: 'Event',
-        description: 'Trigger on Vendure events',
-        icon: 'zap',
-        fields: [
-            { key: 'event', label: 'Event Type', type: 'select', required: true, optionsRef: 'vendureEvents', placeholder: 'Select event...' },
-        ],
-        wizardScopes: ['export'],
-    },
-    {
-        value: TriggerType.FILE,
-        label: 'File Watch',
-        description: 'Watch for new files',
-        icon: 'folder-open',
-        fields: [
-            { key: 'connectionCode', label: 'Connection Code', type: 'string', required: true, placeholder: 'my-sftp-connection' },
-            { key: 'path', label: 'Watch Path', type: 'string', required: true, placeholder: '/incoming/*.csv', description: 'Glob patterns supported (e.g., *.csv, **/*.json)' },
-        ],
-        configKeyMap: { connectionCode: 'fileWatch.connectionCode', path: 'fileWatch.path' },
-        wizardScopes: ['import'],
-    },
-    {
-        value: TriggerType.MESSAGE,
-        label: 'Message Queue',
-        description: 'Trigger from message queue',
-        icon: 'message-square',
-        fields: [
-            { key: 'queueType', label: 'Queue Type', type: 'select', required: true, optionsRef: 'queueTypes' },
-            { key: 'connectionCode', label: 'Connection Code', type: 'string', required: true, placeholder: 'my-queue-connection', description: 'Reference to a connection with queue credentials' },
-            { key: 'queueName', label: 'Queue Name', type: 'string', required: true, placeholder: 'my-queue' },
-            { key: 'batchSize', label: 'Batch Size', type: 'number', defaultValue: 10, description: 'Messages per poll (1-100)' },
-            { key: 'ackMode', label: 'Ack Mode', type: 'select', optionsRef: 'ackModes', defaultValue: 'MANUAL' },
-            { key: 'consumerGroup', label: 'Consumer Group (Optional)', type: 'string', placeholder: 'datahub-consumers', description: 'Consumer group for Redis Streams or Kafka' },
-            { key: 'deadLetterQueue', label: 'Dead Letter Queue (Optional)', type: 'string', placeholder: 'my-queue-dlq', description: 'Failed messages are routed here' },
-            { key: 'autoStart', label: 'Auto-start consumer on startup', type: 'boolean', defaultValue: true },
-        ],
-        configKeyMap: {
-            queueType: 'message.queueType',
-            connectionCode: 'message.connectionCode',
-            queueName: 'message.queueName',
-            batchSize: 'message.batchSize',
-            ackMode: 'message.ackMode',
-            consumerGroup: 'message.consumerGroup',
-            deadLetterQueue: 'message.deadLetterQueue',
-            autoStart: 'message.autoStart',
-        },
-        wizardScopes: [],
-    },
-];
-
-/** Enrichment source type options with field schemas for enrich steps */
-export const ENRICHMENT_SOURCE_TYPES: TypedOptionValue[] = [
-    {
-        value: 'STATIC',
-        label: 'Static',
-        description: 'Use a static lookup map defined in the step config',
-        fields: [
-            { key: 'defaults', label: 'Default Values', type: 'keyValuePairs' },
-        ],
-    },
-    {
-        value: 'HTTP',
-        label: 'HTTP',
-        description: 'Fetch enrichment data from an HTTP endpoint',
-        fields: [
-            { key: 'url', label: 'URL', type: 'string', required: true, placeholder: 'https://api.example.com/lookup/${record.id}', description: 'URL to fetch enrichment data. Use ${record.field} for dynamic values.' },
-            { key: 'keyField', label: 'Key Field', type: 'string', placeholder: 'sku', description: 'Record field to use as the lookup cache key' },
-            { key: 'target', label: 'Target Field', type: 'string', placeholder: 'enrichment', description: 'Field name to store the enrichment result on each record' },
-            { key: 'responsePath', label: 'Response Path', type: 'string', placeholder: 'data', description: 'JSON path to extract from the HTTP response (e.g. data.items)' },
-            { key: 'method', label: 'HTTP Method', type: 'string', placeholder: 'GET', description: 'HTTP method (GET or POST)' },
-            { key: 'bearerTokenSecretCode', label: 'Bearer Token Secret', type: 'string', placeholder: 'my-api-token', description: 'Secret code for Bearer token authentication' },
-            { key: 'cacheTtlSec', label: 'Cache TTL (sec)', type: 'number', placeholder: '3600', description: 'Cache duration in seconds for HTTP responses' },
-            { key: 'skipOn404', label: 'Skip on 404', type: 'boolean', description: 'Skip enrichment instead of failing when endpoint returns 404' },
-        ],
-    },
-    {
-        value: 'VENDURE',
-        label: 'Vendure',
-        description: 'Query Vendure entities for enrichment data',
-        fields: [
-            { key: 'entityType', label: 'Entity Type', type: 'entitySelect', required: true },
-            { key: 'sourceField', label: 'Source Field', type: 'string', required: true, placeholder: 'sku', description: 'Record field to use for entity lookup' },
-            { key: 'lookupField', label: 'Lookup Field', type: 'string', required: true, placeholder: 'sku', description: 'Vendure entity field to match against' },
-            { key: 'target', label: 'Target Field', type: 'string', placeholder: 'vendureData', description: 'Field name to store the matched entity data' },
-        ],
-    },
-];
-
-/** Wizard strategy mappings: map wizard existingRecords option to backend load/conflict strategies */
-export const WIZARD_STRATEGY_MAPPINGS: Array<{
-    wizardValue: string;
-    label: string;
-    loadStrategy: string;
-    conflictStrategy: string;
-}> = [
-    { wizardValue: 'SKIP', label: 'Skip existing', loadStrategy: 'CREATE', conflictStrategy: 'SOURCE_WINS' },
-    { wizardValue: 'UPDATE', label: 'Update existing', loadStrategy: 'UPSERT', conflictStrategy: 'MERGE' },
-    { wizardValue: 'REPLACE', label: 'Replace existing', loadStrategy: 'UPSERT', conflictStrategy: 'SOURCE_WINS' },
-    { wizardValue: 'ERROR', label: 'Error on existing', loadStrategy: 'CREATE', conflictStrategy: 'SOURCE_WINS' },
-];
-
-/** Export query type options for the export wizard source step */
-export const QUERY_TYPE_OPTIONS: OptionValue[] = [
-    { value: 'all', label: 'All Records', description: 'Export all records of the selected entity' },
-    { value: 'query', label: 'With Filters', description: 'Apply filter conditions to select records' },
-    { value: 'graphql', label: 'Custom GraphQL', description: 'Write custom GraphQL query' },
-];
-
-/** Validation rule type options with field schemas for validate steps */
-export const VALIDATION_RULE_TYPES: TypedOptionValue[] = [
-    {
-        value: 'REQUIRED',
-        label: 'Required',
-        description: 'Field must be present and non-empty',
-        fields: [],
-        defaultValues: { required: true },
-    },
-    {
-        value: 'RANGE',
-        label: 'Range',
-        description: 'Numeric value must be within min/max bounds',
-        fields: [
-            { key: 'min', label: 'Min', type: 'number' },
-            { key: 'max', label: 'Max', type: 'number' },
-        ],
-        defaultValues: { min: 0 },
-    },
-    {
-        value: 'PATTERN',
-        label: 'Pattern',
-        description: 'Value must match a regular expression pattern',
-        fields: [
-            { key: 'pattern', label: 'Pattern', type: 'string', required: true, placeholder: '^[A-Z0-9]+$' },
-        ],
-        defaultValues: { pattern: '' },
-    },
-];
 
 // ---------------------------------------------------------------------------
 // File format visual metadata (served via GraphQL for file type icons)
@@ -726,30 +469,9 @@ export const FILE_FORMAT_ICONS: Record<string, string> = Object.fromEntries(
     Object.entries(FILE_FORMAT_METADATA).map(([k, v]) => [k, v.icon]),
 );
 
-/** Cron schedule presets for schedule trigger configuration */
-export const CRON_PRESETS: OptionValue[] = [
-    { value: '* * * * *', label: 'Every minute', description: 'Runs every minute' },
-    { value: '*/5 * * * *', label: 'Every 5 minutes', description: 'Runs every 5 minutes' },
-    { value: '*/15 * * * *', label: 'Every 15 minutes', description: 'Runs every 15 minutes' },
-    { value: '*/30 * * * *', label: 'Every 30 minutes', description: 'Runs every 30 minutes' },
-    { value: '0 * * * *', label: 'Every hour', description: 'Runs at the start of every hour' },
-    { value: '0 */2 * * *', label: 'Every 2 hours', description: 'Runs every 2 hours' },
-    { value: '0 */6 * * *', label: 'Every 6 hours', description: 'Runs every 6 hours' },
-    { value: '0 0 * * *', label: 'Daily at midnight', description: 'Runs daily at 00:00' },
-    { value: '0 6 * * *', label: 'Daily at 6 AM', description: 'Runs daily at 06:00' },
-    { value: '0 12 * * *', label: 'Daily at noon', description: 'Runs daily at 12:00' },
-    { value: '0 0 * * 1', label: 'Weekly on Monday', description: 'Runs every Monday at midnight' },
-    { value: '0 0 1 * *', label: 'Monthly on 1st', description: 'Runs on the 1st of each month' },
-];
-
-/** Acknowledgment mode options for message queue consumers */
-export const ACK_MODE_OPTIONS: OptionValue[] = [
-    { value: AckMode.AUTO, label: 'Auto', description: 'Messages are acknowledged automatically after processing' },
-    { value: AckMode.MANUAL, label: 'Manual', description: 'Messages must be explicitly acknowledged by the pipeline' },
-];
-
 /** Hex color codes for each FileFormat, auto-derived from FILE_FORMAT_METADATA */
 export const FILE_FORMAT_COLORS: Record<string, string> = Object.fromEntries(
     Object.entries(FILE_FORMAT_METADATA).map(([k, v]) => [k, v.color]),
 );
 
+export * from './config-schema-options';

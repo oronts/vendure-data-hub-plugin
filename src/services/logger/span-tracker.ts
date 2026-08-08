@@ -5,9 +5,10 @@
  * Compatible with OpenTelemetry patterns for future instrumentation.
  */
 
+import { randomBytes } from 'node:crypto';
 import { SpanData, SpanStatus } from './logger.types';
 import { MetricsRegistry } from './metrics';
-import { SPAN_TRACKER } from '../../constants/index';
+import { SPAN_TRACKER } from '../../constants/defaults/runtime-defaults';
 import { generateTimestampedId } from '../../utils/id-generation.utils';
 
 /**
@@ -15,6 +16,10 @@ import { generateTimestampedId } from '../../utils/id-generation.utils';
  */
 export function generateSpanId(): string {
     return generateTimestampedId('span');
+}
+
+export function generateTraceId(): string {
+    return randomBytes(16).toString('hex');
 }
 
 /**
@@ -25,6 +30,10 @@ export class SpanTracker {
     private completedSpans: SpanData[] = [];
     private readonly maxCompletedSpans = SPAN_TRACKER.MAX_COMPLETED_SPANS;
 
+    constructor(
+        private readonly onSpanCompleted?: (span: Readonly<SpanData>) => void,
+    ) {}
+
     startSpan(
         name: string,
         attributes: Record<string, unknown> = {},
@@ -32,7 +41,9 @@ export class SpanTracker {
     ): SpanData {
         this.cleanupAbandonedSpans();
 
+        const parentSpan = parentSpanId ? this.spans.get(parentSpanId) : undefined;
         const span: SpanData = {
+            traceId: parentSpan?.traceId ?? generateTraceId(),
             spanId: generateSpanId(),
             parentSpanId,
             name,
@@ -54,12 +65,8 @@ export class SpanTracker {
                 span.status = 'error';
                 span.attributes['abandoned'] = true;
                 this.spans.delete(spanId);
-                this.completedSpans.push(span);
+                this.completeSpan(span);
             }
-        }
-
-        while (this.completedSpans.length > this.maxCompletedSpans) {
-            this.completedSpans.shift();
         }
 
         if (this.spans.size > SPAN_TRACKER.MAX_ACTIVE_SPANS) {
@@ -71,13 +78,30 @@ export class SpanTracker {
                 span.status = 'error';
                 span.attributes['evicted'] = true;
                 this.spans.delete(spanId);
+                this.completeSpan(span);
             }
+        }
+    }
+
+    private completeSpan(span: SpanData): void {
+        this.completedSpans.push(span);
+        if (this.completedSpans.length > this.maxCompletedSpans) {
+            this.completedSpans.shift();
+        }
+        try {
+            this.onSpanCompleted?.(span);
+        } catch {
+            // Telemetry callbacks must never interrupt application execution.
         }
     }
 
     addEvent(spanId: string, name: string, attributes?: Record<string, unknown>): void {
         const span = this.spans.get(spanId);
         if (span) {
+            if (span.events.length >= SPAN_TRACKER.MAX_EVENTS_PER_SPAN) {
+                span.droppedEventsCount = (span.droppedEventsCount ?? 0) + 1;
+                return;
+            }
             span.events.push({
                 name,
                 timestamp: Date.now(),
@@ -93,11 +117,7 @@ export class SpanTracker {
             span.status = status;
             this.spans.delete(spanId);
 
-            // Keep completed spans for debugging (with limit)
-            this.completedSpans.push(span);
-            if (this.completedSpans.length > this.maxCompletedSpans) {
-                this.completedSpans.shift();
-            }
+            this.completeSpan(span);
 
             return span;
         }
@@ -166,7 +186,7 @@ export class SpanContext {
         if (completed && this.metricsRegistry) {
             const durationMs = (completed.endTime ?? Date.now()) - completed.startTime;
             this.metricsRegistry.getHistogram('datahub_span_duration_ms').record(durationMs, {
-                name: completed.name,
+                operation: completed.name,
                 status,
             });
         }

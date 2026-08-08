@@ -8,10 +8,13 @@
  * This file is imported by extractor-handler-registry.ts which is re-exported
  * from that barrel, so importing it would create a circular dependency.
  */
-import { StepConfigSchema } from '../../../shared/types/extractor.types';
+import type { StepConfigSchema } from '../../../shared/types/extractor.types';
 import { GraphQLPaginationType } from '../../constants/enums';
 import { PAGINATION } from '../../constants/defaults/ui-defaults';
+import { HTTP } from '../../../shared/constants';
 import { GRAPHQL_PAGINATION_TYPE_OPTIONS } from '../../constants/adapter-schema-options';
+
+export const GRAPHQL_EXTRACTOR_CODE = 'graphql' as const;
 
 export const GRAPHQL_EXTRACTOR_SCHEMA: StepConfigSchema = {
     groups: [
@@ -20,6 +23,13 @@ export const GRAPHQL_EXTRACTOR_SCHEMA: StepConfigSchema = {
         { id: 'pagination', label: 'Pagination', description: 'Pagination configuration' },
     ],
     fields: [
+        {
+            key: 'connectionCode',
+            label: 'Connection',
+            description: 'Saved GraphQL or HTTP connection',
+            type: 'connection',
+            group: 'connection',
+        },
         {
             key: 'url',
             label: 'GraphQL URL',
@@ -84,6 +94,7 @@ export const GRAPHQL_EXTRACTOR_SCHEMA: StepConfigSchema = {
             description: 'Number of records per page',
             type: 'number',
             defaultValue: PAGINATION.PAGE_SIZE,
+            validation: { min: 1, max: PAGINATION.MAX_REMOTE_PAGE_SIZE },
             group: 'pagination',
         },
         {
@@ -136,7 +147,24 @@ export const GRAPHQL_EXTRACTOR_SCHEMA: StepConfigSchema = {
             description: 'Maximum pages to fetch (safety limit)',
             type: 'number',
             defaultValue: PAGINATION.MAX_GRAPHQL_PAGES,
+            validation: { min: 1, max: PAGINATION.MAX_GRAPHQL_PAGES },
             group: 'pagination',
+        },
+        {
+            key: 'retry.maxAttempts',
+            label: 'Max Retry Attempts',
+            type: 'number',
+            defaultValue: HTTP.MAX_RETRIES,
+            validation: { min: 1, max: HTTP.MAX_RETRY_ATTEMPTS },
+            group: 'connection',
+        },
+        {
+            key: 'timeoutMs',
+            label: 'Timeout (ms)',
+            type: 'number',
+            defaultValue: HTTP.TIMEOUT_MS,
+            validation: { min: 1, max: HTTP.MAX_TIMEOUT_MS },
+            group: 'connection',
         },
     ],
 };

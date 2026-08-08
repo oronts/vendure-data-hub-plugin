@@ -32,7 +32,10 @@ const PARSER_REGISTRY = new Map<string, FormatParserFn>([
     ['JSON', (content, _options) => {
         const jsonContent = typeof content === 'string' ? content : content.toString('utf-8');
         if (isJsonLines(jsonContent)) {
-            return parseJsonLines(jsonContent);
+            return parseJsonLines(
+                jsonContent,
+                _options as Parameters<typeof parseJsonLines>[1],
+            );
         }
         return parseJson(jsonContent, _options as Parameters<typeof parseJson>[1]);
     }],
@@ -133,10 +136,13 @@ export class FileParserService {
         const parseResult = await this.parse(content, {
             ...options,
             csv: { ...options.csv, preview: validatedMaxRows },
+            json: { ...options.json, preview: validatedMaxRows },
+            xml: { ...options.xml, preview: validatedMaxRows },
+            xlsx: { ...options.xlsx, preview: validatedMaxRows },
         });
 
         const sampleData = parseResult.records.slice(0, validatedMaxRows);
-        const fields = this.analyzeFields(parseResult.records, parseResult.fields);
+        const fields = this.analyzeFields(sampleData, parseResult.fields);
 
         return {
             format: parseResult.format,

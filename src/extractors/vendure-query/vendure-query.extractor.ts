@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ID, TransactionalConnection } from '@vendure/core';
-import { BATCH, SortOrder } from '../../constants/index';
+import { BATCH, TRANSFORM_LIMITS } from '../../constants/index';
+import { FIELD_LIMITS } from '../../constants/validation';
 import {
     DataExtractor,
     ExtractorContext,
@@ -11,9 +12,10 @@ import {
     ExtractorPreviewResult,
 } from '../../types/index';
 import { VendureQueryExtractorConfig } from './types';
-import { getEntityClass, applyFilter, entityToRecord, EntityLike, validateFieldName } from './helpers';
+import { configureVendureQuery, getEntityClass, entityToRecord, EntityLike, validateFieldName } from './helpers';
 import { getErrorMessage, toErrorOrUndefined } from '../../utils/error.utils';
 import { VENDURE_QUERY_EXTRACTOR_SCHEMA } from './schema';
+import { resolveBoundedLimit } from '../shared/pagination.utils';
 
 interface EntityWithMeta {
     id: ID;
@@ -41,7 +43,14 @@ export class VendureQueryExtractor implements DataExtractor<VendureQueryExtracto
         const startTime = Date.now();
         let totalFetched = 0;
         let offset = 0;
-        const batchSize = config.batchSize || BATCH.BULK_SIZE;
+        const batchSize = config.batchSize ?? BATCH.BULK_SIZE;
+        if (
+            !Number.isSafeInteger(batchSize)
+            || batchSize < 1
+            || batchSize > FIELD_LIMITS.BATCH_SIZE_MAX
+        ) {
+            throw new Error(`Batch size must be an integer from 1 to ${FIELD_LIMITS.BATCH_SIZE_MAX}`);
+        }
 
         try {
             context.logger.info('Starting Vendure entity extraction', {
@@ -55,7 +64,6 @@ export class VendureQueryExtractor implements DataExtractor<VendureQueryExtracto
             }
 
             const repo = this.connection.getRepository(context.ctx, entityClass);
-            const relations = config.relations || [];
 
             let hasMore = true;
 
@@ -66,41 +74,7 @@ export class VendureQueryExtractor implements DataExtractor<VendureQueryExtracto
                 }
 
                 const queryBuilder = repo.createQueryBuilder('entity');
-
-                for (const relation of relations) {
-                    if (!validateFieldName(relation)) {
-                        throw new Error(`Invalid relation name: ${relation}`);
-                    }
-                    queryBuilder.leftJoinAndSelect(`entity.${relation}`, relation);
-                }
-
-                if (config.filters) {
-                    for (const filter of config.filters) {
-                        applyFilter(queryBuilder, filter);
-                    }
-                }
-
-                if (config.where) {
-                    if (typeof config.where === 'string') {
-                        throw new Error('Raw WHERE clauses are not supported. Use config.filters instead.');
-                    }
-                    if (typeof config.where === 'object') {
-                        for (const [field, value] of Object.entries(config.where)) {
-                            if (!validateFieldName(field)) {
-                                throw new Error(`Invalid field name in where clause: ${field}`);
-                            }
-                            const paramName = `where_${field.replace(/\./g, '_')}`;
-                            queryBuilder.andWhere(`entity.${field} = :${paramName}`, { [paramName]: value });
-                        }
-                    }
-                }
-
-                const sortBy = config.sortBy || 'createdAt';
-                if (!validateFieldName(sortBy)) {
-                    throw new Error(`Invalid sortBy field name: ${sortBy}`);
-                }
-                const sortOrder = config.sortOrder || SortOrder.ASC;
-                queryBuilder.orderBy(`entity.${sortBy}`, sortOrder);
+                configureVendureQuery(queryBuilder, config, context.ctx.channelId);
 
                 queryBuilder.skip(offset).take(batchSize);
 
@@ -168,8 +142,27 @@ export class VendureQueryExtractor implements DataExtractor<VendureQueryExtracto
             }
         }
 
-        if (config.batchSize && config.batchSize <= 0) {
-            errors.push({ field: 'batchSize', message: 'Batch size must be positive' });
+        if (
+            config.batchSize !== undefined
+            && (!Number.isSafeInteger(config.batchSize)
+                || config.batchSize < 1
+                || config.batchSize > FIELD_LIMITS.BATCH_SIZE_MAX)
+        ) {
+            errors.push({
+                field: 'batchSize',
+                message: `Batch size must be an integer from 1 to ${FIELD_LIMITS.BATCH_SIZE_MAX}`,
+            });
+        }
+        if (config.relations !== undefined) {
+            if (!Array.isArray(config.relations)) {
+                errors.push({ field: 'relations', message: 'Relations must be an array of relation paths' });
+            } else {
+                for (const relation of config.relations) {
+                    if (typeof relation !== 'string' || !validateFieldName(relation)) {
+                        errors.push({ field: 'relations', message: `Invalid relation path: ${String(relation)}` });
+                    }
+                }
+            }
         }
 
         return { valid: errors.length === 0, errors };
@@ -180,16 +173,21 @@ export class VendureQueryExtractor implements DataExtractor<VendureQueryExtracto
         config: VendureQueryExtractorConfig,
         limit: number = 10,
     ): Promise<ExtractorPreviewResult> {
+        const safeLimit = resolveBoundedLimit(
+            limit,
+            10,
+            TRANSFORM_LIMITS.MAX_PREVIEW_LIMIT,
+        );
         const entityClass = getEntityClass(config.entity);
         if (!entityClass) {
             throw new Error(`Unknown entity type: ${config.entity}`);
         }
 
         const repo = this.connection.getRepository(context.ctx, entityClass);
-        const entities = await repo.find({
-            take: limit,
-            relations: config.relations,
-        });
+        const queryBuilder = repo.createQueryBuilder('entity');
+        configureVendureQuery(queryBuilder, config, context.ctx.channelId);
+        queryBuilder.take(safeLimit);
+        const [entities, totalAvailable] = await queryBuilder.getManyAndCount();
 
         return {
             records: entities.map((entity, index) => {
@@ -202,7 +200,7 @@ export class VendureQueryExtractor implements DataExtractor<VendureQueryExtracto
                     },
                 };
             }),
-            totalAvailable: await repo.count(),
+            totalAvailable,
         };
     }
 }

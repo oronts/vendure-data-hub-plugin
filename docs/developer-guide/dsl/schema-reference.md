@@ -41,7 +41,7 @@ interface PipelineDefinition {
     /** Capabilities and permissions required */
     capabilities?: PipelineCapabilities;
 
-    /** Other pipelines that must complete before this one */
+    /** Declared dependencies used for publication validation and rename/delete protection */
     dependsOn?: string[];
 
     /** Lifecycle hooks for custom logic */
@@ -55,6 +55,11 @@ interface PipelineDefinition {
 }
 ```
 
+Definitions must serialize to at most 1,048,576 UTF-8 bytes and may contain at
+most 32 nested object or array levels, including the root. Circular code-first
+objects are rejected before persistence. Keep large lookup datasets outside the
+definition and reference them through a bounded source or custom adapter.
+
 ### PipelineCapabilities
 
 ```typescript
@@ -65,8 +70,6 @@ interface PipelineCapabilities {
     /** Additional Vendure permissions required */
     requires?: string[];
 
-    /** Safe for streaming mode execution */
-    streamSafe?: boolean;
 }
 ```
 
@@ -91,7 +94,7 @@ Global execution settings that apply to all steps unless overridden.
 
 ```typescript
 interface PipelineContext {
-    /** Default channel code */
+    /** Default Vendure channel token */
     channel?: string;
 
     /** Default language code for translatable content */
@@ -100,7 +103,7 @@ interface PipelineContext {
     /** Channel handling strategy */
     channelStrategy?: 'EXPLICIT' | 'INHERIT' | 'MULTI';
 
-    /** Specific channel IDs to operate on (for MULTI strategy) */
+    /** Specific channel IDs to operate on (for EXPLICIT or MULTI strategy) */
     channelIds?: string[];
 
     /** Validation strictness */
@@ -109,17 +112,11 @@ interface PipelineContext {
     /** Field to use as idempotency key */
     idempotencyKeyField?: string;
 
-    /** Execution mode */
-    runMode?: 'SYNC' | 'ASYNC' | 'BATCH' | 'STREAM';
-
     /** Default throughput configuration */
     throughput?: Throughput;
 
     /** Error handling configuration */
     errorHandling?: ErrorHandlingConfig;
-
-    /** Checkpointing configuration for resumable execution */
-    checkpointing?: CheckpointingConfig;
 
     /** Parallel execution configuration */
     parallelExecution?: ParallelExecutionConfig;
@@ -142,37 +139,12 @@ interface ErrorHandlingConfig {
     /** Exponential backoff multiplier */
     backoffMultiplier?: number;
 
-    /** Enable dead letter queue for failed records */
-    deadLetterQueue?: boolean;
-
-    /** Send alerts when records enter dead letter queue */
-    alertOnDeadLetter?: boolean;
-
-    /** Error rate threshold (0-100) that triggers alerts */
-    errorThresholdPercent?: number;
 }
 ```
 
-### CheckpointingConfig
-
-```typescript
-interface CheckpointingConfig {
-    /** Enable checkpointing */
-    enabled?: boolean;
-
-    /** Checkpoint creation strategy */
-    strategy?: 'COUNT' | 'TIMESTAMP' | 'INTERVAL';
-
-    /** Records between checkpoints (COUNT strategy) */
-    intervalRecords?: number;
-
-    /** Milliseconds between checkpoints (INTERVAL strategy) */
-    intervalMs?: number;
-
-    /** Timestamp field (TIMESTAMP strategy) */
-    field?: string;
-}
-```
+Checkpoints are adapter-managed state. Extractors, exporters, file watchers, and
+approval gates persist only the offsets or cursors they explicitly write. There
+is no generic count-, timestamp-, or interval-based checkpoint scheduler.
 
 ### ParallelExecutionConfig
 
@@ -181,8 +153,8 @@ interface ParallelExecutionConfig {
     /** Enable parallel step execution */
     enabled?: boolean;
 
-    /** Maximum concurrent steps (2-16, default: 4) */
-    maxConcurrentSteps?: number;
+    /** Maximum concurrent steps (1-16, default: 4) */
+    maxConcurrentSteps?: number; // Integer from 1 to 16; default 4
 
     /** Error handling policy */
     errorPolicy?: 'FAIL_FAST' | 'CONTINUE' | 'BEST_EFFORT';
@@ -212,6 +184,17 @@ interface PipelineStepDefinition {
 
     /** Whether step is disabled */
     disabled?: boolean;
+
+    /** Overrides the pipeline context for this step */
+    context?: StepContextOverride;
+}
+
+interface StepContextOverride {
+    contentLanguage?: string;
+    channelStrategy?: 'EXPLICIT' | 'INHERIT' | 'MULTI';
+    channelIds?: string[];
+    validationMode?: 'STRICT' | 'LENIENT';
+    throughput?: Throughput;
 }
 
 type StepType =
@@ -228,61 +211,142 @@ type StepType =
     | 'GATE';
 ```
 
+The effective context is resolved field by field. A step override takes
+precedence over the pipeline context, which takes precedence over the active
+Vendure request context. Missing channel IDs and content language inherit the
+active request channel and language. `channelStrategy` and `validationMode`
+default to `INHERIT` and `STRICT`. Throughput objects are
+merged so a step can override one limit without discarding the pipeline
+defaults. `EXPLICIT` and `MULTI` require at least one effective channel ID.
+The pipeline-level `channel` value is a Vendure channel token, while
+`channelIds` contains Vendure channel IDs.
+
 ### Trigger Step
 
 Defines how the pipeline starts.
 
+The public SDK export `TriggerConfig` is an alias of the canonical
+`PipelineTrigger` type. Message and file-watch configuration is nested under
+`message` and `fileWatch`; `event` contains the exact Vendure event class name.
+Schedule and webhook fields use the documented top-level form.
+
 ```typescript
-interface TriggerConfig {
-    /** Trigger type */
-    type: 'MANUAL' | 'SCHEDULE' | 'WEBHOOK' | 'EVENT' | 'FILE' | 'MESSAGE';
+type TriggerConfig = PipelineTrigger;
 
-    // SCHEDULE trigger
-    /** Cron expression */
+interface PipelineTrigger {
+    type: TriggerType;
+    enabled?: boolean;
+    event?: VendureEventType;
+    message?: MessageTriggerConfig;
+    fileWatch?: FileWatchTriggerConfig;
+
+    // Flattened schedule convenience fields
     cron?: string;
-    /** Timezone (IANA format, e.g., 'America/New_York') */
     timezone?: string;
+    intervalSec?: number;
 
-    // WEBHOOK trigger
-    /** Webhook URL path */
-    path?: string;
-    /** Signature verification method */
-    signature?: 'hmac-sha256' | 'hmac-sha1' | 'none';
-    /** Secret code for signature verification */
+    // Flattened webhook convenience fields
+    authentication?: WebhookAuthType;
     secretCode?: string;
-    /** Request header for idempotency key */
-    idempotencyKey?: string;
-
-    // EVENT trigger
-    /** Vendure event class name */
-    event?: string;
-    /** Event filter criteria */
-    filter?: Record<string, any>;
-
-    // FILE trigger
-    /** File path pattern (glob supported) */
-    filePattern?: string;
-    /** Poll interval in seconds (min: 30) */
-    pollIntervalSeconds?: number;
-    /** Minimum file age in seconds before processing */
-    minFileAge?: number;
-    /** Recursive directory watching */
-    recursive?: boolean;
-
-    // MESSAGE trigger
-    /** Queue type */
-    queueType?: 'RABBITMQ' | 'SQS' | 'REDIS_STREAMS';
-    /** Connection code */
-    connectionCode?: string;
-    /** Queue/topic name */
-    queueName?: string;
-    /** Consumer group name (Redis Streams) */
-    consumerGroup?: string;
-    /** Acknowledgment mode */
-    ackMode?: 'AUTO' | 'MANUAL';
-    /** Prefetch count */
-    prefetchCount?: number;
+    apiKeySecretCode?: string;
+    apiKeyHeaderName?: string;
+    apiKeyPrefix?: string;
+    basicSecretCode?: string;
+    jwtSecretCode?: string;
+    jwtHeaderName?: string;
+    jwtIssuer?: string;
+    jwtAudience?: string;
+    hmacHeaderName?: string;
+    hmacAlgorithm?: HmacAlgorithm;
+    rateLimit?: number;
+    rateLimitWindow?: number;
+    idempotencyKeyHeader?: string;
+    idempotencyTtlSec?: number;
+    requireIdempotencyKey?: boolean;
 }
+
+type TriggerType =
+    | 'MANUAL'
+    | 'SCHEDULE'
+    | 'WEBHOOK'
+    | 'EVENT'
+    | 'FILE'
+    | 'MESSAGE';
+
+interface ScheduleTriggerConfig {
+    cron?: string;
+    intervalSec?: number;
+    timezone?: string;
+}
+
+interface WebhookTriggerConfig {
+    authentication?: WebhookAuthType;
+    secretCode?: string;
+    apiKeySecretCode?: string;
+    apiKeyHeaderName?: string;
+    apiKeyPrefix?: string;
+    basicSecretCode?: string;
+    jwtSecretCode?: string;
+    jwtHeaderName?: string;
+    jwtIssuer?: string;
+    jwtAudience?: string;
+    hmacHeaderName?: string;
+    hmacAlgorithm?: HmacAlgorithm;
+    rateLimit?: number;
+    rateLimitWindow?: number;
+    requireIdempotencyKey?: boolean;
+    idempotencyKeyHeader?: string;
+    idempotencyTtlSec?: number;
+}
+
+interface FileWatchTriggerConfig {
+    /** Remote directory for FTP/SFTP or object prefix for S3 */
+    path: string;
+    /** Optional glob matched against each discovered file name */
+    pattern?: string;
+    /** Include subdirectories; defaults to true */
+    recursive?: boolean;
+    /** Integer seconds from 0 to 604,800; defaults to 30 */
+    minFileAge?: number;
+    connectionCode: string;
+    /** Integer milliseconds from 30,000 to 86,400,000; defaults to 300,000 */
+    pollIntervalMs?: number;
+}
+
+interface MessageTriggerConfig {
+    queueType: QueueTypeValue;
+    connectionCode?: string;
+    queueName: string;
+    consumerGroup?: string;
+    batchSize?: number;
+    ackMode?: AckMode;
+    maxRetries?: number;
+    deadLetterQueue?: string;
+    pollIntervalMs?: number;
+    concurrency?: number;
+    autoStart?: boolean;
+    prefetch?: number;
+}
+
+type WebhookAuthType = 'NONE' | 'BASIC' | 'API_KEY' | 'HMAC' | 'JWT';
+type HmacAlgorithm = 'SHA256' | 'SHA512';
+type QueueTypeValue = 'RABBITMQ_AMQP' | 'SQS' | 'REDIS_STREAMS' | 'INTERNAL';
+type AckMode = 'MANUAL';
+
+type VendureEventType =
+    | 'ProductEvent'
+    | 'ProductVariantEvent'
+    | 'ProductVariantPriceEvent'
+    | 'CollectionModificationEvent'
+    | 'AssetEvent'
+    | 'StockMovementEvent'
+    | 'OrderStateTransitionEvent'
+    | 'OrderPlacedEvent'
+    | 'RefundStateTransitionEvent'
+    | 'PaymentStateTransitionEvent'
+    | 'CustomerEvent'
+    | 'AccountRegistrationEvent'
+    | 'CustomerAddressEvent';
 ```
 
 ### Extract Step
@@ -305,43 +369,58 @@ interface ExtractStepConfig {
     /** Request headers */
     headers?: Record<string, string>;
     /** Request body */
-    body?: string | JsonObject;
+    body?: JsonObject;
     /** JSON path to extract data */
     dataPath?: string;
-    /** Authentication */
-    bearerTokenSecretCode?: string;
-    apiKeySecretCode?: string;
-    basicAuthSecretCode?: string;
-    /** Pagination configuration */
-    pagination?: PaginationConfig;
+    /** Authentication override; secret-backed modes require connectionCode */
+    auth?: {
+        type: 'NONE' | 'BASIC' | 'BEARER' | 'API_KEY';
+        /** Bearer token, API key, or Basic-auth password Secret Code */
+        secretCode?: string;
+        /** API-key header name */
+        headerName?: string;
+        /** Basic-auth username */
+        username?: string;
+        /** Basic-auth username Secret Code */
+        usernameSecretCode?: string;
+    };
+    /** Request rate limit, retry policy, and timeout */
+    rateLimit?: RateLimitConfig;
+    retry?: RetryConfig;
+    timeoutMs?: number;
+    /** Extractor-specific pagination configuration */
+    pagination?: PaginationConfig | GraphQLPaginationConfig | DatabasePaginationConfig;
 
-    // File extractors
-    /** File path */
-    path?: string;
-    /** File format */
-    format?: 'CSV' | 'JSON' | 'XML' | 'XLSX' | 'NDJSON' | 'TSV';
-    /** CSV delimiter */
+    // Uploaded or inline CSV, JSON, XML, and XLSX extractors
+    /** Data Hub upload ID */
+    fileId?: string;
+    /** Inline CSV, JSON, or XML text */
+    csvText?: string;
+    jsonText?: string;
+    xmlText?: string;
+    /** Inline CSV rows */
+    rows?: JsonValue[];
+    /** Format-specific parsing options */
     delimiter?: string;
-    /** CSV has header row */
     hasHeader?: boolean;
-    /** JSON array path */
-    arrayPath?: string;
-    /** XML root element */
-    rootElement?: string;
+    itemsPath?: string;
+    recordPath?: string;
+    attributePrefix?: string;
+    sheetName?: string | number;
 
     // Database extractors
     /** SQL query */
     query?: string;
-    /** Database table name */
-    table?: string;
+    /** Parameter values for the database query */
+    parameters?: JsonValue[];
     /** Incremental sync configuration */
-    incremental?: IncrementalConfig;
+    incremental?: DatabaseIncrementalConfig;
 
     // Vendure extractors
     /** Entity type to query */
     entity?: VendureEntityType;
     /** Relations to load */
-    relations?: string;
+    relations?: string[];
     /** Language code for translations */
     languageCode?: string;
     /** Query batch size */
@@ -354,28 +433,33 @@ interface ExtractStepConfig {
     async?: boolean;
 
     /** Additional adapter-specific config */
-    [key: string]: any;
+    [key: string]: unknown;
 }
 ```
 
-#### PaginationConfig
+For `httpApi` and `graphql`, a secret-backed `auth` object requires
+`connectionCode`. The saved HTTP, REST, or GraphQL connection must define a
+base URL. Relative URLs resolve against that base; absolute URLs and redirects
+must retain its exact origin.
+
+#### HTTP PaginationConfig
 
 ```typescript
 interface PaginationConfig {
     /** Pagination type */
-    type: 'PAGE' | 'OFFSET' | 'CURSOR' | 'LINK';
+    type: 'NONE' | 'PAGE' | 'OFFSET' | 'CURSOR' | 'LINK_HEADER';
 
     /** Records per page */
     limit?: number;
-
-    /** Starting page number */
-    startPage?: number;
 
     /** Maximum pages to fetch */
     maxPages?: number;
 
     /** Page parameter name (default: 'page') */
     pageParam?: string;
+
+    /** Page-size parameter name for PAGE pagination (default: 'limit') */
+    pageSizeParam?: string;
 
     /** Limit parameter name (default: 'limit') */
     limitParam?: string;
@@ -389,34 +473,52 @@ interface PaginationConfig {
     /** JSON path to next cursor value */
     cursorPath?: string;
 
-    /** JSON path to next link URL */
-    nextLinkPath?: string;
-
     /** JSON path to has-more indicator */
     hasMorePath?: string;
 }
 ```
 
-#### IncrementalConfig
+`LINK_HEADER` follows the HTTP `Link` response header entry with `rel="next"`.
+
+#### GraphQLPaginationConfig
 
 ```typescript
-interface IncrementalConfig {
-    /** Enable incremental extraction */
-    enabled: boolean;
-
-    /** Field to track (e.g., 'updated_at') */
-    field: string;
-
-    /** Comparison operator */
-    operator?: '>' | '>=' | '<' | '<=';
-
-    /** Initial value for first run */
-    initialValue?: string | number | Date;
-
-    /** Whether to include the checkpoint value in next run */
-    inclusive?: boolean;
+interface GraphQLPaginationConfig {
+    type: 'NONE' | 'OFFSET' | 'CURSOR' | 'RELAY';
+    limit?: number;
+    maxPages?: number;
+    offsetVariable?: string;
+    limitVariable?: string;
+    cursorVariable?: string;
+    pageInfoPath?: string;
+    hasNextPagePath?: string;
+    endCursorPath?: string;
+    totalCountPath?: string;
 }
 ```
+
+#### Database Pagination and Incremental Config
+
+```typescript
+interface DatabasePaginationConfig {
+    enabled: boolean;
+    type: 'OFFSET' | 'CURSOR';
+    pageSize: number;
+    cursorColumn?: string;
+    cursorTieBreakerColumn?: string;
+    maxPages?: number;
+}
+
+interface DatabaseIncrementalConfig {
+    enabled: boolean;
+    column: string;
+}
+```
+
+Incremental extraction requires enabled `CURSOR` pagination. Its `column` must
+match `cursorColumn`, and `cursorTieBreakerColumn` must be a different, unique,
+stable column. The runtime checkpoints both values so a bounded run cannot skip
+rows that share the same incremental value.
 
 ### Transform Step
 
@@ -446,7 +548,7 @@ interface OperatorConfig {
     op: string;
 
     /** Operator-specific arguments */
-    args: Record<string, any>;
+    args: JsonObject;
 
     /** Conditional execution */
     condition?: FilterCondition | FilterCondition[];
@@ -477,17 +579,17 @@ Validate records against rules.
 
 ```typescript
 interface ValidateStepConfig {
-    /** Error handling mode */
-    errorHandlingMode: 'FAIL_FAST' | 'ACCUMULATE';
+    /** Error handling mode; defaults to FAIL_FAST */
+    errorHandlingMode?: 'FAIL_FAST' | 'ACCUMULATE';
 
     /** Validation rules */
     rules?: ValidationRuleConfig[];
 
-    /** Schema reference for validation */
-    schemaRef?: SchemaRefConfig;
-
     /** Throughput configuration */
     throughput?: Throughput;
+
+    /** Immutable registry schema validated before inline business rules */
+    schemaRef?: { schemaId: string; version: string };
 }
 ```
 
@@ -495,19 +597,19 @@ interface ValidateStepConfig {
 
 ```typescript
 interface ValidationRuleConfig {
-    /** Rule type */
-    type: 'business' | 'schema' | 'custom';
+    /** Inline field rule */
+    type: 'business';
 
     /** Rule specification */
     spec: {
         /** Field to validate */
-        field?: string;
+        field: string;
 
         /** Field is required */
         required?: boolean;
 
         /** Field type */
-        type?: 'string' | 'number' | 'boolean' | 'date' | 'email' | 'url';
+        type?: 'string' | 'number' | 'boolean';
 
         /** Minimum value/length */
         min?: number;
@@ -519,34 +621,16 @@ interface ValidationRuleConfig {
         pattern?: string;
 
         /** Allowed values */
-        enum?: any[];
+        enum?: JsonValue[];
 
-        /** Custom validation function code */
-        validate?: string;
-
-        /** Error message template */
-        message?: string;
+        /** Custom error message */
+        error?: string;
     };
 }
 ```
 
-#### SchemaRefConfig
-
-```typescript
-interface SchemaRefConfig {
-    /** Schema format */
-    type: 'json-schema' | 'ajv' | 'yup' | 'zod';
-
-    /** Inline schema definition */
-    schema?: JsonObject;
-
-    /** External schema URL */
-    url?: string;
-
-    /** Schema validation options */
-    options?: Record<string, any>;
-}
-```
+Registry schema validation is configured with `ValidateStepConfig.schemaRef`.
+Inline `rules` only describe field-level business rules.
 
 ### Enrich Step
 
@@ -570,24 +654,32 @@ interface EnrichStepConfig {
     computed?: Record<string, string>;
 
     // HTTP lookup
-    /** Lookup endpoint URL */
-    endpoint?: string;
-    /** Field to use for lookup */
-    matchField?: string;
+    /** Required HTTP endpoint URL; supports {{field.path}} placeholders */
+    url?: string;
+    /** Record field used in cache identity */
+    keyField?: string;
     /** Target field for enriched data */
-    targetField?: string;
+    target?: string;
 
     // Vendure lookup
-    /** Entity type to lookup */
-    entity?: VendureEntityType;
-
-    /** Additional config */
-    config?: JsonObject;
+    /** Required registered loader entity type */
+    entityType?: string;
+    /** Required input record field */
+    sourceField?: string;
+    /** Required Vendure lookup field */
+    lookupField?: string;
+    /** Optional entity-field to output-field mappings */
+    targetFields?: Record<string, string>;
 
     /** Throughput configuration */
     throughput?: Throughput;
 }
 ```
+
+When `adapterCode` is absent, STATIC requires a non-empty `defaults`, `set`, or
+`computed` object; HTTP requires `url`; and VENDURE requires `entityType`,
+`sourceField`, and `lookupField`. Invalid built-in configurations fail validation
+and runtime execution rather than passing records through unchanged.
 
 ### Route Step
 
@@ -598,7 +690,7 @@ interface RouteStepConfig {
     /** Route branches */
     branches: RouteBranchConfig[];
 
-    /** Default branch for unmatched records */
+    /** Target step key for unmatched records; requires a matching edge */
     defaultTo?: string;
 }
 ```
@@ -629,7 +721,7 @@ interface FilterCondition {
     cmp: 'eq' | 'ne' | 'gt' | 'gte' | 'lt' | 'lte' | 'in' | 'nin' | 'contains' | 'regex' | 'exists';
 
     /** Comparison value */
-    value?: any;
+    value?: JsonValue;
 
     /** Negate the condition */
     not?: boolean;
@@ -654,8 +746,11 @@ interface LoadStepConfig {
     /** Channel for operation */
     channel?: string;
 
-    /** Channel handling strategy */
+    /** Channel handling strategy; emitted as per-step execution context */
     channelStrategy?: 'EXPLICIT' | 'INHERIT' | 'MULTI';
+
+    /** Vendure channel IDs for EXPLICIT or MULTI execution */
+    channelIds?: string[];
 
     /** Validation mode */
     validationMode?: 'STRICT' | 'LENIENT';
@@ -663,9 +758,7 @@ interface LoadStepConfig {
     /** Conflict resolution strategy */
     conflictStrategy?: 'SOURCE_WINS' | 'VENDURE_WINS' | 'MERGE' | 'MANUAL_QUEUE';
 
-    // Field mappings (loader-specific)
-    /** Field to match for UPDATE/UPSERT */
-    matchField?: string;
+    // Identity and field mappings (loader-specific)
     /** Name field */
     nameField?: string;
     /** Slug field */
@@ -719,41 +812,64 @@ interface ExportStepConfig {
     /** Exporter adapter code */
     adapterCode: string;
 
-    /** Export target type */
-    target?: 'FILE' | 'API' | 'WEBHOOK' | 'S3' | 'SFTP' | 'EMAIL';
+    /** Optional remote or explicit local delivery */
+    destinationType?: 'LOCAL' | 'HTTP' | 'S3' | 'SFTP' | 'FTP' | 'EMAIL';
 
     /** Export format */
     format?: 'CSV' | 'JSON' | 'XML' | 'XLSX' | 'NDJSON';
 
     // File export
-    /** Output path */
+    /** Directory relative to DATA_HUB_EXPORT_ROOT */
     path?: string;
-    /** Output filename */
-    filename?: string;
+    /** Output filename pattern */
+    filenamePattern?: string;
 
     // S3 export
     /** S3 bucket */
     bucket?: string;
     /** S3 key prefix */
     prefix?: string;
-    /** Connection code */
-    connectionCode?: string;
+    accessKeyIdSecretCode?: string;
+    secretAccessKeySecretCode?: string;
+    acl?: 'private' | 'public-read';
 
-    // API/Webhook export
-    /** Endpoint URL */
+    // HTTP export
     url?: string;
-    /** HTTP method */
     method?: 'POST' | 'PUT' | 'PATCH';
-    /** Request headers */
+    /** Records sent per request; integer from 1 to 10000, default 100 */
+    batchSize?: number;
+    /** Request timeout in milliseconds; integer from 1 to 300000, default 30000 */
+    timeoutMs?: number;
+    /** Retries after the first attempt; integer from 0 to 10, default 0 */
+    retryCount?: number;
+    /** Initial retry delay in milliseconds; integer from 0 to 300000 */
+    retryDelayMs?: number;
+    /** Maximum retry delay in milliseconds; integer from 0 to 300000 */
+    maxRetryDelayMs?: number;
+    /** Exponential backoff multiplier from 1 to 10 */
+    backoffMultiplier?: number;
+    /** Non-sensitive static headers only */
     headers?: Record<string, string>;
-    /** API key secret */
-    apiKeySecretCode?: string;
+    /** Header name to Secret Code mapping */
+    headerSecretCodes?: Record<string, string>;
+    bearerTokenSecretCode?: string;
+    /** Secret Code whose resolved value is username:password */
+    basicSecretCode?: string;
+    auth?: {
+        type: 'NONE' | 'BASIC' | 'BEARER' | 'API_KEY';
+        secretCode?: string;
+        headerName?: string;
+        username?: string;
+        usernameSecretCode?: string;
+    };
 
     // Format options
     /** CSV delimiter */
     delimiter?: string;
     /** Include header row */
     includeHeader?: boolean;
+    /** Spreadsheet formula handling; defaults to SPREADSHEET_SAFE */
+    formulaMode?: 'SPREADSHEET_SAFE' | 'PRESERVE';
     /** Pretty-print JSON */
     pretty?: boolean;
 
@@ -761,6 +877,17 @@ interface ExportStepConfig {
     throughput?: Throughput;
 }
 ```
+
+When `destinationType` is omitted, the CSV, JSON, and XML exporters keep their
+direct local-file behavior using `path`. When it is present, the value is
+validated and dispatched through the destination delivery handlers; unknown
+values never fall back to a local write. HTTP configuration uses `url`, not
+`endpoint`. Sensitive static headers such as `Authorization`, cookies, API
+keys, tokens, or passwords are rejected and must reference Secret Codes. The
+`restPostExport` and `webhookExport` adapters expose the same delivery,
+authentication, batching, timeout, and retry controls. Configure either Bearer
+or Basic authentication, never both. `maxRetryDelayMs` cannot be lower than
+`retryDelayMs`, and invalid numeric values fail before the first request.
 
 ### Feed Step
 
@@ -777,7 +904,7 @@ interface FeedStepConfig {
     /** Output format */
     format?: 'XML' | 'CSV' | 'TSV' | 'JSON' | 'NDJSON';
 
-    /** Output file path */
+    /** File path relative to DATA_HUB_EXPORT_ROOT */
     outputPath?: string;
 
     // Common feed fields
@@ -817,55 +944,60 @@ interface FeedStepConfig {
 
 ### Sink Step
 
-Index data to search engines or message queues.
+Index data to search engines, publish queue messages, or call an outgoing
+webhook. Sink-specific required fields are enforced by the selected adapter.
 
 ```typescript
 interface SinkStepConfig {
     /** Sink adapter code */
     adapterCode: string;
 
-    /** Sink type */
-    sinkType?: 'ELASTICSEARCH' | 'OPENSEARCH' | 'MEILISEARCH' | 'ALGOLIA' | 'TYPESENSE' | 'RABBITMQ' | 'SQS' | 'REDIS_STREAMS' | 'WEBHOOK' | 'CUSTOM';
+    defaultOperation?: 'UPSERT' | 'DELETE';
+    batchSize?: number;
+    fields?: string[];
+    excludeFields?: string[];
+    languageCode?: string;
+    translationsField?: string;
+    channelCode?: string;
+    channelField?: string;
 
-    // Search engine sinks
-    /** Index name */
+    // Search sinks
+    host?: string;             // MeiliSearch or Typesense
+    node?: string;             // Elasticsearch or OpenSearch
+    port?: number;             // Typesense
+    protocol?: 'http' | 'https';
     indexName?: string;
-    /** Host */
-    host?: string;
-    /** Port */
-    port?: number;
-    /** ID field */
+    collectionName?: string;
+    primaryKey?: string;       // MeiliSearch
     idField?: string;
-    /** Bulk batch size */
-    bulkSize?: number;
-    /** Connection code */
-    connectionCode?: string;
+    searchableFields?: string[];
+    filterableFields?: string[];
+    sortableFields?: string[];
+    appId?: string;            // Algolia
+    apiKeySecretCode?: string;
+    usernameSecretCode?: string;
+    passwordSecretCode?: string;
 
-    // Message queue sinks
-    /** Queue/topic name */
+    // Queue producer
+    // RABBITMQ HTTP is deprecated.
+    queueType?: 'RABBITMQ_AMQP' | 'SQS' | 'REDIS_STREAMS' | 'RABBITMQ';
+    connectionCode?: string;
     queueName?: string;
-    /** Exchange name (RabbitMQ) */
-    exchangeName?: string;
-    /** Routing key (RabbitMQ) */
     routingKey?: string;
-    /** Message group ID (SQS) */
-    messageGroupId?: string;
+    headers?: Record<string, string>;
+    persistent?: boolean;
+    priority?: number;
+    ttlMs?: number;
 
     // Webhook sink
-    /** Webhook URL */
     url?: string;
-    /** HTTP method */
-    method?: 'POST' | 'PUT';
-    /** Headers */
-    headers?: Record<string, string>;
-    /** API key secret */
-    apiKeySecretCode?: string;
-
-    /** Additional sink config */
-    config?: JsonObject;
-
-    /** Throughput configuration */
-    throughput?: Throughput;
+    method?: 'POST' | 'PUT' | 'PATCH';
+    bearerTokenSecretCode?: string;
+    apiKeyHeader?: string;
+    hmacSecretCode?: string;
+    signatureHeaderName?: string;
+    timeoutMs?: number;
+    retries?: number;
 }
 ```
 
@@ -878,10 +1010,10 @@ interface GateStepConfig {
     /** Approval type */
     approvalType: 'MANUAL' | 'THRESHOLD' | 'TIMEOUT';
 
-    /** Auto-approve timeout (seconds) */
+    /** Required for TIMEOUT; integer seconds in the range 1-31,536,000 */
     timeoutSeconds?: number;
 
-    /** Error threshold percent (0-100) */
+    /** Required for THRESHOLD; finite percent in the range 0-100 */
     errorThresholdPercent?: number;
 
     /** Webhook notification URL */
@@ -890,10 +1022,14 @@ interface GateStepConfig {
     /** Email notification address */
     notifyEmail?: string;
 
-    /** Number of records to preview */
+    /** Integer records to preview, 1-100; defaults to 10 */
     previewCount?: number;
 }
 ```
+
+THRESHOLD uses a strict comparison: equality pauses. TIMEOUT persists its
+deadline and lease metadata on `PipelineRun`; pending records and the approval
+marker remain in the pipeline checkpoint.
 
 ## Common Configuration Types
 
@@ -903,27 +1039,31 @@ Rate limiting and performance tuning.
 
 ```typescript
 interface Throughput {
-    /** Records per batch */
+    /** Records per batch; integer from 1 to 10,000 */
     batchSize?: number;
 
-    /** Parallel batch processing */
+    /** Parallel batch processing; integer from 1 to 16 */
     concurrency?: number;
 
-    /** Maximum requests per second */
+    /** Aggregate load-batch starts per second; finite from 0 to 1,000 */
     rateLimitRps?: number;
 
-    /** Drain strategy when queue is full */
+    /** Behavior when the rolling failed-record ratio reaches the threshold */
     drainStrategy?: 'BACKOFF' | 'SHED' | 'QUEUE';
 
     /** Pause on high error rate */
     pauseOnErrorRate?: {
         /** Error rate threshold (0-1) */
         threshold: number;
-        /** Check interval (seconds) */
-        intervalSec: number;
+        /** 0.1-3,600 seconds; defaults to 1 for BACKOFF and 5 for QUEUE */
+        intervalSec?: number;
     };
 }
 ```
+
+Throughput applies to load-batch execution. It does not rate-limit extractors.
+The error threshold must be greater than `0` and at most `1`. When supplied,
+`intervalSec` must be a finite value from `0.1` to `3,600`.
 
 ### VendureEntityType
 
@@ -962,10 +1102,10 @@ interface PipelineHooks {
     PIPELINE_COMPLETED?: HookAction[];
     PIPELINE_FAILED?: HookAction[];
     ON_ERROR?: HookAction[];
+    ON_RETRY?: HookAction[];
+    ON_DEAD_LETTER?: HookAction[];
 
-    // Step-level hooks (before/after each step type)
-    BEFORE_TRIGGER?: HookAction[];
-    AFTER_TRIGGER?: HookAction[];
+    // Data-stage hooks (before/after each supported step type)
     BEFORE_EXTRACT?: HookAction[];
     AFTER_EXTRACT?: HookAction[];
     BEFORE_TRANSFORM?: HookAction[];
@@ -974,10 +1114,14 @@ interface PipelineHooks {
     AFTER_VALIDATE?: HookAction[];
     BEFORE_ENRICH?: HookAction[];
     AFTER_ENRICH?: HookAction[];
+    BEFORE_ROUTE?: HookAction[];
+    AFTER_ROUTE?: HookAction[];
     BEFORE_LOAD?: HookAction[];
     AFTER_LOAD?: HookAction[];
     BEFORE_EXPORT?: HookAction[];
     AFTER_EXPORT?: HookAction[];
+    BEFORE_FEED?: HookAction[];
+    AFTER_FEED?: HookAction[];
     BEFORE_SINK?: HookAction[];
     AFTER_SINK?: HookAction[];
 }
@@ -994,30 +1138,39 @@ type HookAction =
     | TriggerPipelineHookAction
     | LogHookAction;
 
-interface InterceptorHookAction {
-    type: 'INTERCEPTOR';
-    /** Interceptor name */
-    name: string;
-    /** JavaScript code to transform records */
-    code: string;
-    /** Fail pipeline if interceptor throws */
+interface HookActionBase {
+    type: HookActionType;
+    name?: string;
     failOnError?: boolean;
 }
 
-interface ScriptHookAction {
+interface InterceptorHookAction extends HookActionBase {
+    type: 'INTERCEPTOR';
+    /** JavaScript code to transform records */
+    code: string;
+    timeout?: number;
+}
+
+interface ScriptHookAction extends HookActionBase {
     type: 'SCRIPT';
     /** Pre-registered script function name */
     scriptName: string;
     /** Arguments to pass to script */
-    args?: Record<string, any>;
+    args?: JsonObject;
+    timeout?: number;
 }
 
-interface WebhookHookAction {
+interface WebhookHookAction extends HookActionBase {
     type: 'WEBHOOK';
     /** Webhook URL */
     url: string;
     /** Request headers */
     headers?: Record<string, string>;
+    /** Secret used to sign the body */
+    secretCode?: string;
+    /** Header names mapped to Secret Codes */
+    headerSecretCodes?: Record<string, string>;
+    signatureHeader?: string;
     /** Retry configuration */
     retryConfig?: {
         maxAttempts: number;
@@ -1027,23 +1180,21 @@ interface WebhookHookAction {
     };
 }
 
-interface EmitHookAction {
+interface EmitHookAction extends HookActionBase {
     type: 'EMIT';
     /** Event name to emit */
     event: string;
-    /** Event payload */
-    payload?: JsonObject;
 }
 
-interface TriggerPipelineHookAction {
+interface TriggerPipelineHookAction extends HookActionBase {
     type: 'TRIGGER_PIPELINE';
     /** Pipeline code to trigger */
     pipelineCode: string;
-    /** Parameters to pass */
-    parameters?: JsonObject;
+    /** Trigger step that receives the hook records */
+    triggerKey: string;
 }
 
-interface LogHookAction {
+interface LogHookAction extends HookActionBase {
     type: 'LOG';
     /** Log level */
     level: 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
@@ -1052,9 +1203,14 @@ interface LogHookAction {
 }
 ```
 
+`INTERCEPTOR` and `SCRIPT` are valid only on the 18 data stages. Full validation
+also verifies registered scripts, referenced child pipelines, runnable child
+trigger routes, resources, and action-specific fields; unresolved references
+block publication.
+
 ## Operator Types
 
-See [Operators Reference](./operators.md) for the complete list of 61 built-in operators and their configurations.
+See [Operators Reference](./operators.md) for the complete list of 62 built-in operators and their configurations.
 
 Common operator patterns:
 
@@ -1073,11 +1229,11 @@ Common operator patterns:
 
 // Number operations
 { op: 'math', args: { operation: 'multiply', source: 'price', operand: '100', target: 'priceInCents' } }
-{ op: 'round', args: { source: 'price', precision: 2, target: 'price' } }
+{ op: 'round', args: { source: 'price', decimals: 2, target: 'price' } }
 
 // Date operations
-{ op: 'parseDate', args: { source: 'created_at', format: 'YYYY-MM-DD', target: 'createdDate' } }
-{ op: 'formatDate', args: { source: 'date', format: 'MM/DD/YYYY', target: 'formattedDate' } }
+{ op: 'dateParse', args: { source: 'created_at', format: 'YYYY-MM-DD', target: 'createdDate' } }
+{ op: 'dateFormat', args: { source: 'date', format: 'MM/DD/YYYY', target: 'formattedDate' } }
 
 // Array operations
 { op: 'split', args: { source: 'tags', delimiter: ',', target: 'tagArray' } }
@@ -1142,7 +1298,6 @@ const pipeline = createPipeline()
         contentLanguage: 'en',
         channelStrategy: 'EXPLICIT',
         validationMode: 'STRICT',
-        runMode: 'BATCH',
         throughput: {
             batchSize: 100,
             concurrency: 4,
@@ -1152,20 +1307,12 @@ const pipeline = createPipeline()
             maxRetries: 3,
             retryDelayMs: 1000,
             backoffMultiplier: 2,
-            deadLetterQueue: true,
-            errorThresholdPercent: 5,
-        },
-        checkpointing: {
-            enabled: true,
-            strategy: 'COUNT',
-            intervalRecords: 1000,
         },
     })
 
     // Capabilities
     .capabilities({
         writes: ['CATALOG'],
-        streamSafe: true,
     })
 
     // Lifecycle hooks
@@ -1178,7 +1325,7 @@ const pipeline = createPipeline()
         AFTER_EXTRACT: [{
             type: 'INTERCEPTOR',
             name: 'Add metadata',
-            code: 'return records.map(r => ({ ...r, _imported: new Date() }));',
+            code: 'return records.map(r => ({ ...r, _importedAtEpochMs: Date.now() }));',
         }],
         PIPELINE_COMPLETED: [{
             type: 'WEBHOOK',
@@ -1209,11 +1356,6 @@ const pipeline = createPipeline()
             type: 'PAGE',
             limit: 100,
             maxPages: 50,
-        },
-        incremental: {
-            enabled: true,
-            field: 'updated_at',
-            operator: '>',
         },
     })
 
@@ -1268,24 +1410,24 @@ const pipeline = createPipeline()
     .load('upsert-premium', {
         adapterCode: 'productUpsert',
         strategy: 'UPSERT',
-        matchField: 'slug',
+        slugField: 'slug',
         conflictStrategy: 'SOURCE_WINS',
     })
 
     .load('upsert-standard', {
         adapterCode: 'productUpsert',
         strategy: 'UPSERT',
-        matchField: 'slug',
+        slugField: 'slug',
         conflictStrategy: 'MERGE',
     })
 
     .sink('index-search', {
         adapterCode: 'meilisearch',
         indexName: 'products',
-        host: 'localhost',
-        port: 7700,
-        idField: 'id',
-        bulkSize: 500,
+        host: 'http://localhost:7700',
+        apiKeySecretCode: 'meilisearch-api-key',
+        primaryKey: 'id',
+        batchSize: 500,
     })
 
     // Edges
@@ -1306,6 +1448,6 @@ const pipeline = createPipeline()
 ## See Also
 
 - [Pipeline Builder Guide](./pipeline-builder.md) - Fluent API documentation
-- [Operators Reference](./operators.md) - All 61 built-in operators
+- [Operators Reference](./operators.md) - All 62 built-in operators
 - [DSL Examples](./examples.md) - Real-world pipeline examples
 - [Architecture Overview](../architecture.md) - Understanding the execution model

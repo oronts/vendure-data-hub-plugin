@@ -1,53 +1,46 @@
+import { Trans, useLingui } from '@lingui/react/macro';
 import {
     Card,
     CardContent,
     CardHeader,
     CardTitle,
-    CardDescription,
     Input,
     Label,
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-    Switch,
 } from '@vendure/dashboard';
-import { TRIGGER_TYPE, UI_DEFAULTS, COMPRESSION_TYPE, LOADING_STATE_TYPE } from '../../../constants';
-import { useOptionValues } from '../../../hooks/api/use-config-options';
+import {
+    LOADING_STATE_TYPE,
+    TRIGGER_TYPE,
+    UI_DEFAULTS,
+} from '../../../constants';
+import { useConfigOptions } from '../../../hooks/api/use-config-options';
 import { useTriggerTypes } from '../../../hooks';
 import { WizardStepContainer } from '../shared';
 import { TriggerSelector, TriggerSchemaFields } from '../../shared/wizard-trigger';
 import { LoadingState } from '../../shared/feedback';
-import { STEP_CONTENT, DEFAULT_EXPORT_OPTIONS } from './constants';
-import type { ExportConfiguration, ExportTriggerType, CompressionType } from './types';
+import { DEFAULT_EXPORT_OPTIONS } from './constants';
+import type { ExportConfiguration } from './types';
+import { applyTriggerSchemaDefaults } from '../../../utils/trigger-schema';
 
 interface TriggerStepProps {
     config: Partial<ExportConfiguration>;
     updateConfig: (updates: Partial<ExportConfiguration>) => void;
-    errors?: Record<string, string>;
 }
 
-export function TriggerStep({ config, updateConfig, errors = {} }: TriggerStepProps) {
+export function TriggerStep({ config, updateConfig }: TriggerStepProps) {
+    const { t } = useLingui();
     const trigger = config.trigger ?? { type: TRIGGER_TYPE.MANUAL };
     const options = config.options ?? { ...DEFAULT_EXPORT_OPTIONS };
 
-    const handleTriggerTypeChange = (type: string) => {
-        updateConfig({ trigger: { ...trigger, type: type as ExportTriggerType } });
-    };
-
     return (
         <WizardStepContainer
-            title={STEP_CONTENT.trigger.title}
-            description={STEP_CONTENT.trigger.description}
+            title={t`Schedule & Options`}
+            description={t`Configure when to run the export and additional options`}
         >
             <TriggerCard
                 trigger={trigger}
                 updateConfig={updateConfig}
-                onTriggerTypeChange={handleTriggerTypeChange}
             />
             <ExportOptionsCard options={options} updateConfig={updateConfig} />
-            <CachingCard config={config} updateConfig={updateConfig} />
         </WizardStepContainer>
     );
 }
@@ -55,35 +48,47 @@ export function TriggerStep({ config, updateConfig, errors = {} }: TriggerStepPr
 interface TriggerCardProps {
     trigger: ExportConfiguration['trigger'];
     updateConfig: (updates: Partial<ExportConfiguration>) => void;
-    onTriggerTypeChange: (type: string) => void;
 }
 
-function TriggerCard({ trigger, updateConfig, onTriggerTypeChange }: TriggerCardProps) {
+function TriggerCard({ trigger, updateConfig }: TriggerCardProps) {
     const { exportWizardTriggers, triggerSchemas, isLoading } = useTriggerTypes();
+    const { data: optionSources } = useConfigOptions();
     const currentSchema = triggerSchemas.find(s => s.value === trigger.type);
 
     const handleFieldChange = (key: string, value: unknown) => {
         updateConfig({ trigger: { ...trigger, [key]: value } });
     };
 
+    const handleTriggerTypeChange = (type: string) => {
+        const schema = triggerSchemas.find(item => item.value === type);
+        updateConfig({
+            trigger: applyTriggerSchemaDefaults(
+                trigger as unknown as Record<string, unknown>,
+                type,
+                schema,
+            ) as unknown as ExportConfiguration['trigger'],
+        });
+    };
+
     return (
         <Card>
             <CardHeader>
-                <CardTitle>Trigger</CardTitle>
+                <CardTitle><Trans>Trigger</Trans></CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
                 <TriggerSelector
                     options={exportWizardTriggers}
                     value={trigger.type}
-                    onChange={onTriggerTypeChange}
+                    onChange={handleTriggerTypeChange}
                 />
 
                 {currentSchema && currentSchema.fields.length > 0 ? (
                     <div className="pt-4 border-t">
                         <TriggerSchemaFields
                             fields={currentSchema.fields}
-                            values={trigger as Record<string, unknown>}
+                            values={{ ...trigger }}
                             onChange={handleFieldChange}
+                            optionSources={optionSources}
                         />
                     </div>
                 ) : isLoading && trigger.type !== TRIGGER_TYPE.MANUAL ? (
@@ -102,17 +107,19 @@ interface ExportOptionsCardProps {
 }
 
 function ExportOptionsCard({ options, updateConfig }: ExportOptionsCardProps) {
-    const { options: compressionOptions } = useOptionValues('compressionTypes');
     return (
         <Card>
             <CardHeader>
-                <CardTitle>Export Options</CardTitle>
+                <CardTitle><Trans>Export Options</Trans></CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:max-w-xs">
                     <div>
-                        <Label>Batch Size</Label>
+                        <Label htmlFor="export-batch-size">
+                            <Trans>Batch Size</Trans>
+                        </Label>
                         <Input
+                            id="export-batch-size"
                             type="number"
                             value={options.batchSize}
                             onChange={e => updateConfig({
@@ -121,113 +128,7 @@ function ExportOptionsCard({ options, updateConfig }: ExportOptionsCardProps) {
                         />
                     </div>
 
-                    <div>
-                        <Label>Compression</Label>
-                        <Select
-                            value={options.compression ?? COMPRESSION_TYPE.NONE}
-                            onValueChange={compression => updateConfig({
-                                options: { ...options, compression: compression as CompressionType },
-                            })}
-                        >
-                            <SelectTrigger>
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {compressionOptions.map(option => (
-                                    <SelectItem key={option.value} value={option.value}>
-                                        {option.label}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
-
-                    <div>
-                        <Label>Max Retries</Label>
-                        <Input
-                            type="number"
-                            value={options.maxRetries}
-                            onChange={e => updateConfig({
-                                options: { ...options, maxRetries: parseInt(e.target.value) || UI_DEFAULTS.DEFAULT_MAX_RETRIES },
-                            })}
-                        />
-                    </div>
                 </div>
-
-                <div className="flex flex-wrap gap-6">
-                    <div className="flex items-center gap-2">
-                        <Switch
-                            id="include-metadata"
-                            checked={options.includeMetadata}
-                            onCheckedChange={includeMetadata => updateConfig({
-                                options: { ...options, includeMetadata },
-                            })}
-                        />
-                        <Label htmlFor="include-metadata">Include metadata</Label>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                        <Switch
-                            id="notify-on-complete"
-                            checked={options.notifyOnComplete}
-                            onCheckedChange={notifyOnComplete => updateConfig({
-                                options: { ...options, notifyOnComplete },
-                            })}
-                        />
-                        <Label htmlFor="notify-on-complete">Notify on complete</Label>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                        <Switch
-                            id="retry-on-failure"
-                            checked={options.retryOnFailure}
-                            onCheckedChange={retryOnFailure => updateConfig({
-                                options: { ...options, retryOnFailure },
-                            })}
-                        />
-                        <Label htmlFor="retry-on-failure">Retry on failure</Label>
-                    </div>
-                </div>
-            </CardContent>
-        </Card>
-    );
-}
-
-interface CachingCardProps {
-    config: Partial<ExportConfiguration>;
-    updateConfig: (updates: Partial<ExportConfiguration>) => void;
-}
-
-function CachingCard({ config, updateConfig }: CachingCardProps) {
-    return (
-        <Card>
-            <CardHeader>
-                <CardTitle>Caching</CardTitle>
-                <CardDescription>Cache export results for faster delivery</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-                <div className="flex items-center gap-3">
-                    <Switch
-                        checked={config.caching?.enabled ?? false}
-                        onCheckedChange={enabled => updateConfig({
-                            caching: { ...config.caching, enabled, ttl: config.caching?.ttl ?? UI_DEFAULTS.DEFAULT_CACHE_TTL_SECONDS },
-                        })}
-                    />
-                    <Label>Enable caching</Label>
-                </div>
-
-                {config.caching?.enabled && (
-                    <div>
-                        <Label>Cache TTL (seconds)</Label>
-                        <Input
-                            type="number"
-                            value={config.caching.ttl}
-                            onChange={e => updateConfig({
-                                caching: { ...config.caching!, ttl: parseInt(e.target.value) || UI_DEFAULTS.DEFAULT_CACHE_TTL_SECONDS },
-                            })}
-                        />
-                    </div>
-                )}
             </CardContent>
         </Card>
     );

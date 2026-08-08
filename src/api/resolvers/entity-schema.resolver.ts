@@ -5,6 +5,7 @@ import { ViewDataHubEntitySchemasPermission } from '../../permissions';
 import { VendureEntityType, EntityFieldSchema, EntityField } from '../../types/index';
 import { ENTITY_DESCRIPTIONS } from '../../vendure-schemas/vendure-entity-schemas';
 import { screamingSnakeToKebab } from '../../../shared/utils/string-case';
+import { EXPORT_ENTITY_SCHEMAS } from '../../extractors/vendure-query/export-entity-schemas';
 
 function mapFieldTypeToGraphQL(type: EntityField['type']): string {
     switch (type) {
@@ -79,6 +80,12 @@ export class EntitySchemaAdminResolver {
             supportedOperations: loader.supportedOperations,
             adapterCode: loader.adapterCode,
         }));
+    }
+
+    @Query()
+    @Allow(ViewDataHubEntitySchemasPermission.Permission)
+    dataHubExportEntitySchemas() {
+        return EXPORT_ENTITY_SCHEMAS;
     }
 
     /** Convert UPPER_CASE to Title Case (e.g., PRODUCT_VARIANT -> Product Variant) */

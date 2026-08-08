@@ -1,8 +1,19 @@
 import { Args, Query, Resolver, Mutation } from '@nestjs/graphql';
-import { Allow, RequestContext, Ctx, Transaction, TransactionalConnection } from '@vendure/core';
-import { ViewDataHubRunsPermission, DataHubPipelinePermission } from '../../permissions';
+import {
+    Allow,
+    Ctx,
+    ForbiddenError,
+    RequestContext,
+    TransactionalConnection,
+} from '@vendure/core';
+import {
+    RunDataHubPipelinePermission,
+    ViewDataHubRunsPermission,
+} from '../../permissions';
 import { PipelineRun, Pipeline } from '../../entities/pipeline';
 import { MessageConsumerService } from '../../services/events/message-consumer.service';
+import { PipelineExecutionPermissionService } from '../../services/pipeline/pipeline-execution-permission.service';
+import { PipelineService } from '../../services/pipeline/pipeline.service';
 import { RunStatus, SortOrder, LOGGER_CONTEXTS, QUEUE } from '../../constants/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 
@@ -17,6 +28,9 @@ interface QueueStats {
 
 interface ConsumerStatus {
     pipelineCode: string;
+    triggerKey: string;
+    autoStart: boolean;
+    desiredEnabled: boolean;
     queueName: string;
     isActive: boolean;
     messagesProcessed: number;
@@ -32,6 +46,8 @@ export class DataHubQueueAdminResolver {
     constructor(
         private connection: TransactionalConnection,
         private messageConsumer: MessageConsumerService,
+        private pipelineService: PipelineService,
+        private executionPermissions: PipelineExecutionPermissionService,
         loggerFactory: DataHubLoggerFactory,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.QUEUE_RESOLVER);
@@ -44,12 +60,15 @@ export class DataHubQueueAdminResolver {
         const now = new Date();
         const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-        const pending = await repo.count({ where: { status: RunStatus.PENDING } });
-        const running = await repo.count({ where: { status: RunStatus.RUNNING } });
-        const failed = await repo.count({ where: { status: RunStatus.FAILED } });
+        const pending = await repo.count({ where: { status: RunStatus.PENDING, channelId: String(ctx.channelId) } });
+        const running = await repo.count({ where: { status: RunStatus.RUNNING, channelId: String(ctx.channelId) } });
+        const failed = await repo.count({ where: { status: RunStatus.FAILED, channelId: String(ctx.channelId) } });
 
         const completedTodayQb = repo.createQueryBuilder('pr')
             .where('pr.status = :st', { st: RunStatus.COMPLETED })
+            .andWhere('pr.channelId = :channelId', {
+                channelId: String(ctx.channelId),
+            })
             .andWhere('pr.finishedAt >= :mid', { mid: midnight.toISOString() });
         const completedToday = await completedTodayQb.getCount();
 
@@ -60,6 +79,9 @@ export class DataHubQueueAdminResolver {
             .addSelect('pr.status', 'status')
             .addSelect('COUNT(*)', 'count')
             .where('pr.status IN (:...statuses)', { statuses: [RunStatus.PENDING, RunStatus.RUNNING] })
+            .andWhere('pr.channelId = :channelId', {
+                channelId: String(ctx.channelId),
+            })
             .groupBy('pipeline.code')
             .addGroupBy('pr.status')
             .getRawMany<{ code: string; status: string; count: string }>();
@@ -87,6 +109,9 @@ export class DataHubQueueAdminResolver {
             .leftJoin('pr.pipeline', 'pipeline')
             .addSelect(['pipeline.code'])
             .where('pr.status = :st', { st: RunStatus.FAILED })
+            .andWhere('pr.channelId = :channelId', {
+                channelId: String(ctx.channelId),
+            })
             .orderBy('pr.finishedAt', SortOrder.DESC)
             .limit(QUEUE.DEFAULT_RECENT_FAILED_LIMIT);
         const recentFailedRows = await recentFailedQb.getMany();
@@ -102,46 +127,65 @@ export class DataHubQueueAdminResolver {
 
     @Query()
     @Allow(ViewDataHubRunsPermission.Permission)
-    dataHubConsumers(): ConsumerStatus[] {
-        const statuses = this.messageConsumer.getConsumerStatus();
-        return statuses.map(s => ({
-            pipelineCode: s.pipelineCode,
-            queueName: s.queueName,
-            isActive: s.running,
-            messagesProcessed: s.messagesProcessed,
-            messagesFailed: s.messagesFailed,
-            lastMessageAt: s.lastMessageAt ?? null,
-        }));
+    async dataHubConsumers(@Ctx() ctx: RequestContext): Promise<ConsumerStatus[]> {
+        const statuses = await this.messageConsumer.getConsumerStatus();
+        const pipelineCodes = [...new Set(statuses.map(status => status.pipelineCode))];
+        const accessiblePipelines = await this.pipelineService.findByCodes(ctx, pipelineCodes);
+        const accessibleCodes = new Set(accessiblePipelines.map(pipeline => pipeline.code));
+        return statuses
+            .filter(status => accessibleCodes.has(status.pipelineCode))
+            .map(s => ({
+                pipelineCode: s.pipelineCode,
+                triggerKey: s.triggerKey,
+                queueName: s.queueName,
+                isActive: s.running,
+                messagesProcessed: s.messagesProcessed,
+                messagesFailed: s.messagesFailed,
+                lastMessageAt: s.lastMessageAt ?? null,
+                autoStart: s.autoStart,
+                desiredEnabled: s.desiredEnabled,
+            }));
     }
 
     @Mutation()
-    @Transaction()
-    @Allow(DataHubPipelinePermission.Update)
+    @Allow(RunDataHubPipelinePermission.Permission)
     async startDataHubConsumer(
-        @Ctx() _ctx: RequestContext,
-        @Args() args: { pipelineCode: string },
+        @Ctx() ctx: RequestContext,
+        @Args() args: { pipelineCode: string; triggerKey?: string },
     ): Promise<boolean> {
         try {
-            await this.messageConsumer.startConsumerByCode(args.pipelineCode);
+            const pipeline = await this.pipelineService.findByCode(ctx, args.pipelineCode);
+            if (!pipeline) return false;
+            await this.executionPermissions.assertAllowed(ctx, pipeline.definition);
+            await this.messageConsumer.startConsumerByCode(args.pipelineCode, args.triggerKey, ctx);
             return true;
         } catch (error) {
-            this.logger.debug(`Consumer start failed for pipeline ${args.pipelineCode}`, { error });
+            if (error instanceof ForbiddenError) throw error;
+            this.logger.debug(`Consumer start failed for pipeline ${args.pipelineCode}`, {
+                error,
+                triggerKey: args.triggerKey,
+            });
             return false;
         }
     }
 
     @Mutation()
-    @Transaction()
-    @Allow(DataHubPipelinePermission.Update)
+    @Allow(RunDataHubPipelinePermission.Permission)
     async stopDataHubConsumer(
-        @Ctx() _ctx: RequestContext,
-        @Args() args: { pipelineCode: string },
+        @Ctx() ctx: RequestContext,
+        @Args() args: { pipelineCode: string; triggerKey?: string },
     ): Promise<boolean> {
         try {
-            await this.messageConsumer.stopConsumerByCode(args.pipelineCode);
+            const pipeline = await this.pipelineService.findByCode(ctx, args.pipelineCode);
+            if (!pipeline) return false;
+            await this.messageConsumer.stopConsumerByCode(args.pipelineCode, args.triggerKey, ctx);
             return true;
         } catch (error) {
-            this.logger.debug(`Consumer stop failed for pipeline ${args.pipelineCode}`, { error });
+            if (error instanceof ForbiddenError) throw error;
+            this.logger.debug(`Consumer stop failed for pipeline ${args.pipelineCode}`, {
+                error,
+                triggerKey: args.triggerKey,
+            });
             return false;
         }
     }

@@ -29,9 +29,9 @@ export {
 } from './extractors/generator.extractor';
 
 export {
-    shopifyProductsExtractor,
-    shopifyProductsSchema,
-} from './extractors/shopify-products.extractor';
+    shopifyProductGeneratorExtractor,
+    shopifyProductGeneratorSchema,
+} from './extractors/shopify-product-generator.extractor';
 
 // Custom Loaders
 export {
@@ -40,8 +40,10 @@ export {
 } from './loaders/webhook-notify.loader';
 
 export {
-    vendureProductSyncLoader,
+    createVendureProductSyncLoader,
+    vendureProductSyncDefinition,
     vendureProductSyncSchema,
+    vendureProductSyncLoaderFactory,
 } from './loaders/vendure-product-sync.loader';
 
 // Custom Feed Generators
@@ -55,9 +57,9 @@ import { currencyConvertOperator } from './operators/currency-convert.operator';
 import { maskPiiOperator } from './operators/mask-pii.operator';
 import { inMemoryExtractor } from './extractors/in-memory.extractor';
 import { generatorExtractor } from './extractors/generator.extractor';
-import { shopifyProductsExtractor } from './extractors/shopify-products.extractor';
+import { shopifyProductGeneratorExtractor } from './extractors/shopify-product-generator.extractor';
 import { webhookNotifyLoader } from './loaders/webhook-notify.loader';
-import { vendureProductSyncLoader } from './loaders/vendure-product-sync.loader';
+import { vendureProductSyncLoaderFactory } from './loaders/vendure-product-sync.loader';
 import { ssrFeedGenerator, shopifyExportGenerator } from './feeds';
 
 /**
@@ -65,15 +67,22 @@ import { ssrFeedGenerator, shopifyExportGenerator } from './feeds';
  */
 export const customAdaptersConfig = {
     operators: [currencyConvertOperator, maskPiiOperator] as const,
-    extractors: [inMemoryExtractor, generatorExtractor, shopifyProductsExtractor] as const,
-    loaders: [webhookNotifyLoader, vendureProductSyncLoader] as const,
+    extractors: [inMemoryExtractor, generatorExtractor, shopifyProductGeneratorExtractor] as const,
+    loaders: [webhookNotifyLoader] as const,
     feedGenerators: [ssrFeedGenerator, shopifyExportGenerator] as const,
 };
+
+export const customAdapterFactories = [vendureProductSyncLoaderFactory] as const;
 
 export const allCustomAdapters = [
     ...customAdaptersConfig.operators,
     ...customAdaptersConfig.extractors,
     ...customAdaptersConfig.loaders,
+];
+
+export const allCustomAdapterDefinitions = [
+    ...allCustomAdapters,
+    ...customAdapterFactories.map(factory => factory.definition),
 ];
 
 export const allCustomFeedGenerators = customAdaptersConfig.feedGenerators;
@@ -88,7 +97,7 @@ export const allCustomFeedGenerators = customAdaptersConfig.feedGenerators;
 export const customOperatorsPipelineExample = createPipeline()
     .name('Custom Operators Demo')
     .description('Currency conversion and PII masking')
-    .capabilities({ requires: ['UpdateCustomer'] })
+    .capabilities({ requires: ['UpdateCustomer'], writes: ['CUSTOMERS'] })
     .trigger('start', { type: 'MANUAL' })
     .extract('sample-data', {
         adapterCode: 'csv',
@@ -114,22 +123,20 @@ export const customOperatorsPipelineExample = createPipeline()
     .build();
 
 /**
- * Pipeline using custom generator extractor
+ * Pipeline using custom batch extractor
  */
 export const customExtractorsPipelineExample = createPipeline()
     .name('Custom Extractors Demo')
-    .description('Generate test data with custom extractor')
-    .capabilities({ requires: ['UpdateCatalog'] })
+    .description('Read inline demo data with a custom batch extractor')
+    .capabilities({ requires: ['UpdateCatalog'], writes: ['CATALOG'] })
     .trigger('start', { type: 'MANUAL' })
-    .extract('generate', {
-        adapterCode: 'generator',
-        count: 50,
-        template: {
-            id: '{{index}}',
-            name: 'Product {{index}}',
-            sku: 'GEN-{{index}}',
-            price: '{{random 1000 9000}}',
-        },
+    .extract('sample-data', {
+        adapterCode: 'demoInMemory',
+        data: [
+            { id: '1', name: 'Demo Product 1', sku: 'DEMO-1', price: '1500' },
+            { id: '2', name: 'Demo Product 2', sku: 'DEMO-2', price: '2500' },
+        ],
+        failOnEmpty: true,
     })
     .transform('prepare', {
         operators: [
@@ -145,8 +152,8 @@ export const customExtractorsPipelineExample = createPipeline()
         skuField: 'sku',
         priceField: 'price',
     })
-    .edge('start', 'generate')
-    .edge('generate', 'prepare')
+    .edge('start', 'sample-data')
+    .edge('sample-data', 'prepare')
     .edge('prepare', 'upsert')
     .build();
 
@@ -156,11 +163,15 @@ export const customExtractorsPipelineExample = createPipeline()
 export const customLoadersPipelineExample = createPipeline()
     .name('Custom Loaders Demo')
     .description('Send data to webhook with custom loader')
+    .capabilities({
+        requires: ['UpdateDataHubSettings'],
+        writes: ['CUSTOM'],
+    })
     .trigger('start', { type: 'MANUAL' })
     .extract('query', {
         adapterCode: 'vendureQuery',
         entity: 'PRODUCT',
-        relations: 'translations',
+        relations: ['translations'],
         batchSize: 100,
     })
     .transform('prepare', {
@@ -189,10 +200,10 @@ export const customLoadersPipelineExample = createPipeline()
 export const customAdapterPipelineExample = createPipeline()
     .name('Full Custom Adapters Demo')
     .description('Generator + currency convert + PII mask + webhook')
-    .capabilities({ requires: ['UpdateCatalog'] })
+    .capabilities({ requires: ['UpdateCatalog'], writes: ['CATALOG'] })
     .trigger('start', { type: 'MANUAL' })
     .extract('generate', {
-        adapterCode: 'generator',
+        adapterCode: 'demoGenerator',
         count: 20,
         template: {
             id: '{{index}}',
