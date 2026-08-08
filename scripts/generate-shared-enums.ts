@@ -35,17 +35,41 @@ const PRESERVE_CUSTOM = [
 
 interface EnumInfo {
     name: string;
-    members: Array<{ name: string; value: string }>;
+    members: Array<{ name: string; value: string; comment?: string }>;
     comment?: string;
 }
 
 function parseBackendEnums(filePath: string): EnumInfo[] {
-    const sourceCode = fs.readFileSync(filePath, 'utf8');
+    const barrelCode = fs.readFileSync(filePath, 'utf8');
+    const barrelFile = ts.createSourceFile(
+        filePath,
+        barrelCode,
+        ts.ScriptTarget.Latest,
+        true,
+    );
+    const enumSourcePaths = barrelFile.statements.flatMap(statement => {
+        if (
+            !ts.isExportDeclaration(statement)
+            || !statement.moduleSpecifier
+            || !ts.isStringLiteral(statement.moduleSpecifier)
+            || !statement.moduleSpecifier.text.startsWith('.')
+        ) {
+            return [];
+        }
+
+        return [path.resolve(
+            path.dirname(filePath),
+            `${statement.moduleSpecifier.text}.ts`,
+        )];
+    });
+    const sourceCode = enumSourcePaths
+        .map(sourcePath => fs.readFileSync(sourcePath, 'utf8'))
+        .join('\n');
     const sourceFile = ts.createSourceFile(
         filePath,
         sourceCode,
         ts.ScriptTarget.Latest,
-        true
+        true,
     );
 
     const enums: EnumInfo[] = [];
@@ -58,7 +82,7 @@ function parseBackendEnums(filePath: string): EnumInfo[] {
                 return;
             }
 
-            const members: Array<{ name: string; value: string }> = [];
+            const members: EnumInfo['members'] = [];
 
             node.members.forEach(member => {
                 if (ts.isEnumMember(member) && ts.isIdentifier(member.name)) {
@@ -69,7 +93,11 @@ function parseBackendEnums(filePath: string): EnumInfo[] {
                         value = member.initializer.text;
                     }
 
-                    members.push({ name: memberName, value });
+                    const comment = member
+                        .getFullText(sourceFile)
+                        .match(/\/\*\*[\s\S]*?\*\//)?.[0]
+                        .trim();
+                    members.push({ name: memberName, value, comment });
                 }
             });
 
@@ -109,6 +137,9 @@ function generateConstObject(info: EnumInfo): string {
     lines.push(`export const ${constName} = {`);
 
     info.members.forEach(member => {
+        if (member.comment) {
+            lines.push(`    ${member.comment}`);
+        }
         lines.push(`    ${member.name}: '${member.value}',`);
     });
 
@@ -189,6 +220,14 @@ async function generateSharedEnums() {
     const enums = parseBackendEnums(backendEnumsPath);
     console.log(`✅ Found ${enums.length} enums to generate`);
 
+    const generatedEnumNames = new Set(enums.map(enumInfo => enumInfo.name));
+    const missingEnums = Object.keys(ENUM_MAPPING).filter(
+        enumName => !generatedEnumNames.has(enumName),
+    );
+    if (missingEnums.length > 0) {
+        throw new Error(`Missing required backend enums: ${missingEnums.join(', ')}`);
+    }
+
     console.log('🔍 Extracting custom const objects...');
     const customObjects = await extractCustomConstObjects(sharedEnumsPath);
     console.log(`✅ Preserved ${customObjects.length} custom const objects`);
@@ -202,12 +241,12 @@ async function generateSharedEnums() {
 
     const generatedConsts = enums.map(generateConstObject).join('\n\n');
 
-    const output = [
+    const output = `${[
         header,
         generatedConsts,
         '',
         customObjects.join('\n\n'),
-    ].join('\n');
+    ].join('\n').trimEnd()}\n`;
 
     console.log('📝 Writing to:', sharedEnumsPath);
     await fsPromises.writeFile(sharedEnumsPath, output, 'utf8');
