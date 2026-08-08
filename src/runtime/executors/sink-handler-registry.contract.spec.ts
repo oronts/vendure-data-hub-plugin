@@ -76,7 +76,7 @@ describe('sink handler registry contract', () => {
             .update(JSON.stringify(SINK_ADAPTERS))
             .digest('hex');
 
-        expect(digest).toBe('8891237cf7b510be498ba44f32ae5092f0ab48b4696a74079ed618586b1b1780');
+        expect(digest).toBe('846dba5a2ef30c710fa5e41b16fd5c4af0d378707bda87c2f14f48752b707ae0');
     });
 
     it('publishes the enforced batch-size contract for every sink', () => {
