@@ -15,6 +15,17 @@ const packagePaths = [
     `${packageName}/connectors/pimcore`,
 ] as const;
 const commandOptions = { maxBuffer: 50 * 1024 * 1024 } as const;
+const vendureVersion = process.env.DATA_HUB_TEST_VENDURE_VERSION?.trim();
+const typeormVersion = process.env.DATA_HUB_TEST_TYPEORM_VERSION?.trim();
+const peerVersionOverrides = new Map<string, string>([
+    ...(vendureVersion
+        ? [
+            ['@vendure/core', vendureVersion],
+            ['@vendure/dashboard', vendureVersion],
+        ] as const
+        : []),
+    ...(typeormVersion ? [['typeorm', typeormVersion] as const] : []),
+]);
 const forbiddenPackagePaths = [
     'dist/dashboard/assets/',
     'dist/dashboard/index.html',
@@ -43,7 +54,7 @@ async function getConsumerPeerSpecs(): Promise<string[]> {
     return Object.keys(peerDependencies)
         .filter(name => !manifest.peerDependenciesMeta?.[name]?.optional)
         .map(name => {
-            const version = manifest.devDependencies?.[name];
+            const version = peerVersionOverrides.get(name) ?? manifest.devDependencies?.[name];
             if (!version) {
                 throw new Error(
                     `Required peer dependency is not installed for package verification: ${name}`,
@@ -52,6 +63,22 @@ async function getConsumerPeerSpecs(): Promise<string[]> {
 
             return `${name}@${version}`;
         });
+}
+
+async function assertInstalledOverrides(consumerDirectory: string): Promise<void> {
+    for (const [name, expectedVersion] of peerVersionOverrides) {
+        const manifest = JSON.parse(
+            await readFile(
+                join(consumerDirectory, 'node_modules', name, 'package.json'),
+                'utf8',
+            ),
+        ) as { version?: string };
+        if (manifest.version !== expectedVersion) {
+            throw new Error(
+                `Expected ${name}@${expectedVersion}, installed ${manifest.version ?? 'unknown'}`,
+            );
+        }
+    }
 }
 
 function parsePackResults(output: string): PackResult[] {
@@ -125,6 +152,8 @@ async function verifyPackage(): Promise<void> {
             'typescript@5.9.3',
             ...consumerPeerSpecs,
         ], { cwd: consumerDirectory, ...commandOptions });
+
+        await assertInstalledOverrides(consumerDirectory);
 
         await access(join(
             consumerDirectory,
@@ -215,12 +244,42 @@ void defineConnector;
             },
             files: ['consumer.ts'],
         }, null, 2));
+        await writeFile(join(consumerDirectory, 'dashboard-tsconfig.json'), JSON.stringify({
+            compilerOptions: {
+                allowSyntheticDefaultImports: true,
+                esModuleInterop: true,
+                forceConsistentCasingInFileNames: true,
+                jsx: 'react-jsx',
+                lib: ['ES2020', 'DOM', 'DOM.Iterable'],
+                module: 'NodeNext',
+                moduleResolution: 'NodeNext',
+                noEmit: true,
+                paths: {
+                    '@/gql': [`./node_modules/${packageName}/dist/dashboard/gql/index.ts`],
+                    '@/vdb/*': ['./node_modules/@vendure/dashboard/src/lib/*'],
+                    '@/*': [`./node_modules/${packageName}/dist/dashboard/*`],
+                },
+                skipLibCheck: true,
+                strict: true,
+                target: 'ES2020',
+            },
+            include: [
+                `./node_modules/${packageName}/dist/dashboard/**/*`,
+                './node_modules/@vendure/dashboard/src/lib/virtual.d.ts',
+                './node_modules/@vendure/dashboard/src/lib/graphql/graphql-env.d.ts',
+            ],
+        }, null, 2));
 
         await execFileAsync(process.execPath, ['consumer.cjs'], { cwd: consumerDirectory, ...commandOptions });
         await execFileAsync(process.execPath, ['consumer.mjs'], { cwd: consumerDirectory, ...commandOptions });
         await execFileAsync(
             join(consumerDirectory, 'node_modules', '.bin', 'tsc'),
             ['--project', 'tsconfig.json'],
+            { cwd: consumerDirectory, ...commandOptions },
+        );
+        await execFileAsync(
+            join(consumerDirectory, 'node_modules', '.bin', 'tsc'),
+            ['--project', 'dashboard-tsconfig.json'],
             { cwd: consumerDirectory, ...commandOptions },
         );
     } finally {
