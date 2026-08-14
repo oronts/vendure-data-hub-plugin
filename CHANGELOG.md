@@ -2,6 +2,27 @@
 
 All notable changes to the Data Hub Plugin are documented here.
 
+## [0.1.8] - 2026-08-14
+
+### Added
+- Package-consumer CI coverage for Vendure 3.5.7, 3.6.5, and 3.7.2 with
+  asserted installed versions and the supported TypeORM line
+
+### Fixed
+- Fresh installation on supported Vendure 3 projects no longer fails because
+  the plugin unnecessarily restricts peers to the Vendure 3.5 minor line
+- Dashboard links, triggers, review sections, and Select callbacks now use
+  contracts shared by the Vendure 3.5 and 3.7 Dashboard implementations
+
+### Changed
+- Vendure Core and Dashboard peers now support `>=3.5.7 <4.0.0`; repository
+  development dependencies track 3.7.2 so the newest supported line is built,
+  typechecked, and tested directly
+- TypeORM remains `>=0.3.29 <0.4.0`; applications locked to 0.3.28 must upgrade
+  TypeORM instead of bypassing npm peer validation
+- Dashboard development dependencies now match the Vendure 3.7 React, Lingui,
+  TanStack Router, React Hook Form, and Vite toolchain
+
 ## [0.1.7] - 2026-07-16
 
 ### Added

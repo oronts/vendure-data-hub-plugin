@@ -583,7 +583,7 @@ DataHubPlugin.init({
     telemetry: {
         endpoint: otlpEndpoint,
         serviceName: 'vendure-data-hub-worker',
-        serviceVersion: '0.1.7',
+        serviceVersion: '0.1.8',
         environment: process.env.NODE_ENV,
         exportIntervalMs: 30_000,
         requestTimeoutMs: 5_000,

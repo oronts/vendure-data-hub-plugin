@@ -16,8 +16,8 @@ The package currently declares:
 | Component         | Supported range |
 | ----------------- | --------------- |
 | Data Hub          | `0.1.x`         |
-| Vendure Core      | `>=3.5.7 <3.6.0` |
-| Vendure Dashboard | `>=3.5.7 <3.6.0` |
+| Vendure Core      | `>=3.5.7 <4.0.0` |
+| Vendure Dashboard | `>=3.5.7 <4.0.0` |
 | TypeORM           | `>=0.3.29 <0.4.0` |
 | Node.js           | `>=20.0.0`      |
 

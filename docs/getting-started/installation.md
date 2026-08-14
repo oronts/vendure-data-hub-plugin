@@ -6,6 +6,45 @@
 npm install @oronts/vendure-data-hub-plugin
 ```
 
+## Vendure 3 Compatibility
+
+Data Hub 0.1.8 supports matching Vendure Core and Dashboard versions from
+3.5.7 up to, but not including, Vendure 4. The package-consumer test matrix
+installs and verifies Vendure 3.5.7, 3.6.5, and 3.7.2 independently. Keep every
+`@vendure/*` package in the host application on the same exact Vendure version.
+
+The plugin also requires TypeORM 0.3.29 or newer within the 0.3 release line.
+Older Vendure project lockfiles can still resolve TypeORM 0.3.28 even though
+Vendure itself permits newer 0.3 versions. Upgrade TypeORM together with the
+plugin when that occurs:
+
+```bash
+npm install typeorm@^0.3.29 @oronts/vendure-data-hub-plugin@^0.1.8
+```
+
+Do not use `--force` or `--legacy-peer-deps` to suppress an install conflict.
+Those flags can produce duplicate framework packages or retain an unsupported
+TypeORM version. Check the resolved host graph instead:
+
+```bash
+npm ls @vendure/core @vendure/dashboard typeorm
+```
+
+Data Hub does not depend on Mastra. If the host application also installs
+Mastra 1.x, satisfy Mastra's Node.js engine requirement separately; it does not
+change Data Hub's Vendure or TypeORM peer contract.
+
+| Component | Supported versions |
+| --- | --- |
+| Vendure Core | `>=3.5.7 <4.0.0` |
+| Vendure Dashboard | `>=3.5.7 <4.0.0` |
+| TypeORM | `>=0.3.29 <0.4.0` |
+| Node.js | `>=20.0.0` |
+
+Vendure 3.0 through 3.4 are outside this package's supported range because the
+required Dashboard extension and core contracts are not compatible with this
+implementation.
+
 ## Add to Vendure Config
 
 ```typescript
