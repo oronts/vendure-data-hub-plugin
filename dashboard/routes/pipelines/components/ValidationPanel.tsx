@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { Trans, useLingui } from '@lingui/react/macro';
 import {
-    Button,
+    buttonVariants,
     Dialog,
     DialogClose,
     DialogContent,
@@ -66,10 +66,11 @@ export function ValidationPanel({
                     )}
                 </div>
                 <div className="flex justify-end">
-                    <DialogClose asChild>
-                        <Button variant="outline" data-testid="validation-dialog-close-button">
-                            <Trans>Close</Trans>
-                        </Button>
+                    <DialogClose
+                        className={buttonVariants({ variant: 'outline' })}
+                        data-testid="validation-dialog-close-button"
+                    >
+                        <Trans>Close</Trans>
                     </DialogClose>
                 </div>
             </DialogContent>

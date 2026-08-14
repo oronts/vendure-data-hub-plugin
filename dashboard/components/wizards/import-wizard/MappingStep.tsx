@@ -163,6 +163,7 @@ const MappingRow = memo(function MappingRow({
                 <Select
                     value={mapping.sourceField || SENTINEL_VALUES.EMPTY}
                     onValueChange={sourceField => {
+                        if (sourceField == null) return;
                         updateMapping(index, {
                             sourceField: sourceField === SENTINEL_VALUES.EMPTY ? '' : sourceField,
                             preview: sampleData.slice(0, UI_LIMITS.SAMPLE_VALUES_LIMIT).map(r => r[sourceField]),
@@ -200,10 +201,13 @@ const MappingRow = memo(function MappingRow({
                 <div className="flex items-center gap-2">
                     <Select
                         value={mapping.targetField || SENTINEL_VALUES.EMPTY}
-                        onValueChange={targetField => updateMapping(index, {
-                            targetField: targetField === SENTINEL_VALUES.EMPTY ? '' : targetField,
-                            required: (config.targetSchema?.fields[targetField] as EnhancedFieldDefinition)?.required ?? false,
-                        })}
+                        onValueChange={targetField => {
+                            if (targetField == null) return;
+                            updateMapping(index, {
+                                targetField: targetField === SENTINEL_VALUES.EMPTY ? '' : targetField,
+                                required: (config.targetSchema?.fields[targetField] as EnhancedFieldDefinition)?.required ?? false,
+                            });
+                        }}
                     >
                         <SelectTrigger
                             aria-label={t`Target field`}

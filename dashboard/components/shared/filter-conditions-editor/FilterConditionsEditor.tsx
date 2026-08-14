@@ -226,9 +226,10 @@ function FilterConditionRow({
             {/* Field Selector */}
             <Select
                 value={condition.field || SENTINEL_VALUES.NONE}
-                onValueChange={(v) =>
-                    onUpdate({ field: v === SENTINEL_VALUES.NONE ? '' : v })
-                }
+                onValueChange={(v) => {
+                    if (v == null) return;
+                    onUpdate({ field: v === SENTINEL_VALUES.NONE ? '' : v });
+                }}
             >
                 <SelectTrigger
                     aria-label={t`Filter field`}

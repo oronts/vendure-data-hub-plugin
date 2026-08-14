@@ -153,7 +153,9 @@ export function ManagedResourceChannels({
                     </DialogHeader>
                     <Select
                         value={selectedChannelId}
-                        onValueChange={setSelectedChannelId}
+                        onValueChange={value => {
+                            if (value != null) setSelectedChannelId(value);
+                        }}
                     >
                         <SelectTrigger>
                             <SelectValue placeholder={t`Select a channel`} />

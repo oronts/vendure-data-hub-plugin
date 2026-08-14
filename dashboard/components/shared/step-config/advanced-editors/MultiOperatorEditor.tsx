@@ -77,7 +77,8 @@ export function MultiOperatorEditor({
         });
     }, [onChange, operators]);
 
-    const addOperator = React.useCallback((operatorCode: string) => {
+    const addOperator = React.useCallback((operatorCode: string | null) => {
+        if (operatorCode == null) return;
         const definition = availableOperators.find(operator => operator.code === operatorCode);
         if (!definition) return;
         onChange([

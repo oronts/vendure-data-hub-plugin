@@ -173,7 +173,8 @@ export function SettingsPage() {
         setErrors(prev => ({ ...prev, logsDays: error }));
     };
 
-    const handleLogLevelChange = (value: string) => {
+    const handleLogLevelChange = (value: string | null) => {
+        if (value == null) return;
         if (!isLogPersistenceLevel(value)) return;
         setLogLevel(value);
         setIsDirty(true);

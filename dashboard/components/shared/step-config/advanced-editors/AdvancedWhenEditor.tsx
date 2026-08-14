@@ -160,7 +160,8 @@ function RuleRow({
         ? comparisonOperators
         : [{ value: comparison, label: comparison }, ...comparisonOperators];
 
-    const handleOperatorChange = React.useCallback((value: string) => {
+    const handleOperatorChange = React.useCallback((value: string | null) => {
+        if (value == null) return;
         onUpdate({ cmp: value, value: undefined });
     }, [onUpdate]);
 

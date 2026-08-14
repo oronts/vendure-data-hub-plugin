@@ -1,6 +1,6 @@
 import {
     Badge,
-    Button,
+    buttonVariants,
     DashboardRouteDefinition,
     ListPage,
     PageActionBarRight,
@@ -148,56 +148,48 @@ function PipelinesListPage({ route }: { route: DashboardRoute }) {
                             DATAHUB_PERMISSIONS.VIEW_ENTITY_SCHEMAS,
                             DATAHUB_PERMISSIONS.MANAGE_ADAPTERS,
                         ]}>
-                            <Button
-                                variant="outline"
-                                asChild
+                            <Link
+                                className={buttonVariants({ variant: 'outline' })}
                                 data-testid="datahub-import-wizard-button"
+                                to="./import-wizard"
+                                aria-label={i18n._(DATAHUB_PAGE_LABELS.IMPORT_WIZARD)}
                             >
-                                <Link
-                                    to="./import-wizard"
-                                    aria-label={i18n._(DATAHUB_PAGE_LABELS.IMPORT_WIZARD)}
-                                >
-                                    <Upload className="data-hub-action-icon mr-2 h-4 w-4" />
-                                    <span className="data-hub-action-label">
-                                        {i18n._(DATAHUB_PAGE_LABELS.IMPORT_WIZARD)}
-                                    </span>
-                                </Link>
-                            </Button>
+                                <Upload className="data-hub-action-icon mr-2 h-4 w-4" />
+                                <span className="data-hub-action-label">
+                                    {i18n._(DATAHUB_PAGE_LABELS.IMPORT_WIZARD)}
+                                </span>
+                            </Link>
                         </AllPermissionsGuard>
                         <AllPermissionsGuard requires={[
                             DATAHUB_PERMISSIONS.CREATE_PIPELINE,
                             DATAHUB_PERMISSIONS.READ_PIPELINE,
                             DATAHUB_PERMISSIONS.VIEW_ENTITY_SCHEMAS,
                         ]}>
-                            <Button
-                                variant="outline"
-                                asChild
+                            <Link
+                                className={buttonVariants({ variant: 'outline' })}
                                 data-testid="datahub-export-wizard-button"
+                                to="./export-wizard"
+                                aria-label={i18n._(DATAHUB_PAGE_LABELS.EXPORT_WIZARD)}
                             >
-                                <Link
-                                    to="./export-wizard"
-                                    aria-label={i18n._(DATAHUB_PAGE_LABELS.EXPORT_WIZARD)}
-                                >
-                                    <Download className="data-hub-action-icon mr-2 h-4 w-4" />
-                                    <span className="data-hub-action-label">
-                                        {i18n._(DATAHUB_PAGE_LABELS.EXPORT_WIZARD)}
-                                    </span>
-                                </Link>
-                            </Button>
+                                <Download className="data-hub-action-icon mr-2 h-4 w-4" />
+                                <span className="data-hub-action-label">
+                                    {i18n._(DATAHUB_PAGE_LABELS.EXPORT_WIZARD)}
+                                </span>
+                            </Link>
                         </AllPermissionsGuard>
                         <PermissionGuard requires={[DATAHUB_PERMISSIONS.CREATE_PIPELINE]}>
-                            <Button asChild data-testid="datahub-pipeline-create-button">
-                                <Link
-                                    to={DETAIL_ROUTES.PIPELINE}
-                                    params={{ id: 'new' }}
-                                    aria-label={i18n._(DATAHUB_PAGE_LABELS.NEW_PIPELINE)}
-                                >
-                                    <PlusIcon className="data-hub-action-icon mr-2 h-4 w-4" />
-                                    <span className="data-hub-action-label">
-                                        {i18n._(DATAHUB_PAGE_LABELS.NEW_PIPELINE)}
-                                    </span>
-                                </Link>
-                            </Button>
+                            <Link
+                                className={buttonVariants()}
+                                data-testid="datahub-pipeline-create-button"
+                                to={DETAIL_ROUTES.PIPELINE}
+                                params={{ id: 'new' }}
+                                aria-label={i18n._(DATAHUB_PAGE_LABELS.NEW_PIPELINE)}
+                            >
+                                <PlusIcon className="data-hub-action-icon mr-2 h-4 w-4" />
+                                <span className="data-hub-action-label">
+                                    {i18n._(DATAHUB_PAGE_LABELS.NEW_PIPELINE)}
+                                </span>
+                            </Link>
                         </PermissionGuard>
                     </div>
                 </PageActionBarRight>

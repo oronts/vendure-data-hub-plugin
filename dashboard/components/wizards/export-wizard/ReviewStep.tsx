@@ -1,12 +1,6 @@
 import * as React from 'react';
 import { Trans, useLingui } from '@lingui/react/macro';
-import {
-    Badge,
-    Accordion,
-    AccordionContent,
-    AccordionItem,
-    AccordionTrigger,
-} from '@vendure/dashboard';
+import { Badge } from '@vendure/dashboard';
 import {
     Database,
     Columns,
@@ -18,7 +12,7 @@ import { useExportEntitySchemas } from '../../../hooks/api/use-export-entity-sch
 import { useDestinationSchemas } from '../../../hooks/api/use-config-options';
 import { formatKey } from '../../../utils/formatters';
 import { WizardStepContainer } from '../shared';
-import { ConfigurationNameCard, SummaryCard, SummaryCardGrid, SummaryField } from '../../shared/wizard';
+import { ConfigurationNameCard, ReviewSection, SummaryCard, SummaryCardGrid, SummaryField } from '../../shared/wizard';
 import type { ExportConfiguration } from './types';
 import type { QueryConfig, DestinationConfig } from '../../../types/wizard';
 
@@ -95,41 +89,26 @@ interface DetailedConfigAccordionProps {
 function DetailedConfigAccordion({ config, selectedFieldsCount }: DetailedConfigAccordionProps) {
     const { t } = useLingui();
     return (
-        <Accordion type="multiple" defaultValue={['source', 'fields']}>
-            <AccordionItem value="source">
-                <AccordionTrigger>
-                    <Trans>Source Configuration</Trans>
-                </AccordionTrigger>
-                <AccordionContent>
-                    <SourceQuerySummary sourceQuery={config.sourceQuery} />
-                </AccordionContent>
-            </AccordionItem>
+        <div>
+            <ReviewSection title={<Trans>Source Configuration</Trans>} defaultOpen>
+                <SourceQuerySummary sourceQuery={config.sourceQuery} />
+            </ReviewSection>
 
-            <AccordionItem value="fields">
-                <AccordionTrigger>
-                    {t`Selected Fields (${selectedFieldsCount})`}
-                </AccordionTrigger>
-                <AccordionContent>
-                    <div className="flex flex-wrap gap-2">
-                        {config.fields?.filter(f => f.include).map(f => (
-                            <Badge key={f.sourceField} variant="secondary">
-                                {f.sourceField}
-                                {f.outputName !== f.sourceField && ` -> ${f.outputName}`}
-                            </Badge>
-                        ))}
-                    </div>
-                </AccordionContent>
-            </AccordionItem>
+            <ReviewSection title={t`Selected Fields (${selectedFieldsCount})`} defaultOpen>
+                <div className="flex flex-wrap gap-2">
+                    {config.fields?.filter(f => f.include).map(f => (
+                        <Badge key={f.sourceField} variant="secondary">
+                            {f.sourceField}
+                            {f.outputName !== f.sourceField && ` -> ${f.outputName}`}
+                        </Badge>
+                    ))}
+                </div>
+            </ReviewSection>
 
-            <AccordionItem value="destination">
-                <AccordionTrigger>
-                    <Trans>Destination</Trans>
-                </AccordionTrigger>
-                <AccordionContent>
-                    <DestinationSummary destination={config.destination} />
-                </AccordionContent>
-            </AccordionItem>
-        </Accordion>
+            <ReviewSection title={<Trans>Destination</Trans>}>
+                <DestinationSummary destination={config.destination} />
+            </ReviewSection>
+        </div>
     );
 }
 

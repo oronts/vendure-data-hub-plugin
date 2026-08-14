@@ -1,5 +1,5 @@
 import {
-    Button,
+    buttonVariants,
     DashboardRouteDefinition,
     ListPage,
     PageActionBarRight,
@@ -80,11 +80,13 @@ function SchemasListPage({ route }: Readonly<{ route: SchemasRoute }>) {
             >
                 <PageActionBarRight>
                     <PermissionGuard requires={[DATAHUB_PERMISSIONS.CREATE_SCHEMA]}>
-                        <Button asChild>
-                            <Link to={DETAIL_ROUTES.SCHEMA} params={{ id: 'new' }}>
-                                {i18n._(DATAHUB_PAGE_LABELS.NEW_SCHEMA)}
-                            </Link>
-                        </Button>
+                        <Link
+                            className={buttonVariants()}
+                            to={DETAIL_ROUTES.SCHEMA}
+                            params={{ id: 'new' }}
+                        >
+                            {i18n._(DATAHUB_PAGE_LABELS.NEW_SCHEMA)}
+                        </Link>
                     </PermissionGuard>
                 </PageActionBarRight>
             </ListPage>

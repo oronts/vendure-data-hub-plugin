@@ -388,7 +388,8 @@ export function TriggerForm({
 
     const TriggerIcon = resolveTriggerIcon(trigger.type);
 
-    const handleTriggerTypeChange = useCallback((type: string) => {
+    const handleTriggerTypeChange = useCallback((type: string | null) => {
+        if (type == null) return;
         const schema = triggerSchemas.find(item => item.value === type);
         onChange(applyTriggerSchemaDefaults(
             trigger as unknown as Record<string, unknown>,

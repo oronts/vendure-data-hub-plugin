@@ -60,7 +60,8 @@ function OperatorCardComponent({
     const operatorMeta = availableOperators.find(a => a.code === operator.op);
     const argEntries = Object.entries(operator.args || {});
 
-    const handleOperatorTypeChange = useCallback((newOpCode: string) => {
+    const handleOperatorTypeChange = useCallback((newOpCode: string | null) => {
+        if (newOpCode == null) return;
         const newOpDef = availableOperators.find(a => a.code === newOpCode);
         const newArgs: Record<string, unknown> = {};
         if (newOpDef?.schema?.fields) {

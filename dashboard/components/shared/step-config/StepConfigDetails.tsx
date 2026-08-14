@@ -4,6 +4,7 @@ import { Trans } from '@lingui/react/macro';
 import {
     Button,
     Card,
+    buttonVariants,
     CardContent,
     CardHeader,
     CardTitle,
@@ -331,14 +332,14 @@ function ContextOverrides({
             <Collapsible open={open} onOpenChange={onOpenChange}>
                 <Card>
                     <CardHeader className="py-2">
-                        <CollapsibleTrigger asChild>
-                            <Button type="button" variant="ghost" className="h-auto w-full justify-between px-1 py-1">
-                                <CardTitle className="text-sm">
-                                    <Trans>Execution context overrides</Trans>
-                                    {configuredCount > 0 ? ` (${configuredCount})` : ''}
-                                </CardTitle>
-                                <ChevronDown className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`} />
-                            </Button>
+                        <CollapsibleTrigger
+                            className={buttonVariants({ variant: 'ghost', className: 'h-auto w-full justify-between px-1 py-1' })}
+                        >
+                            <CardTitle className="text-sm">
+                                <Trans>Execution context overrides</Trans>
+                                {configuredCount > 0 ? ` (${configuredCount})` : ''}
+                            </CardTitle>
+                            <ChevronDown className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`} />
                         </CollapsibleTrigger>
                     </CardHeader>
                     <CollapsibleContent>

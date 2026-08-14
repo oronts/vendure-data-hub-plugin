@@ -3,7 +3,7 @@ import { Trans, useLingui } from '@lingui/react/macro';
 
 import {
     Badge,
-    Button,
+    buttonVariants,
     Dialog,
     DialogClose,
     DialogContent,
@@ -248,10 +248,8 @@ export function VersionHistoryDialog({
                     )}
                 </div>
                 <div className="flex justify-end gap-2 pt-3 flex-none">
-                    <DialogClose asChild>
-                        <Button variant="secondary">
-                            <Trans>Close</Trans>
-                        </Button>
+                    <DialogClose className={buttonVariants({ variant: 'secondary' })}>
+                        <Trans>Close</Trans>
                     </DialogClose>
                 </div>
             </DialogContent>

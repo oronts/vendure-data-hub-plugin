@@ -193,7 +193,8 @@ const ValidationRuleRow = memo(function ValidationRuleRow({
         updateRule(index, { ...rule.spec, field: e.target.value });
     }, [index, rule.spec, updateRule]);
 
-    const handlePresetChange = useCallback((v: string) => {
+    const handlePresetChange = useCallback((v: string | null) => {
+        if (v == null) return;
         const schema = ruleTypeSchemas.find(s => s.value === v);
         if (schema) {
             updateRule(index, applyValidationRulePreset(

@@ -111,7 +111,8 @@ export function LogExplorerTab({ initialRunId }: { initialRunId?: string }) {
         setPage(1);
     };
 
-    const handleLevelChange = (v: string) => {
+    const handleLevelChange = (v: string | null) => {
+        if (v == null) return;
         setLevel(v === FILTER_VALUES.ALL ? '' : v);
         setPage(1);
     };

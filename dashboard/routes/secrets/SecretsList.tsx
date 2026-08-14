@@ -1,6 +1,6 @@
 import {
     Badge,
-    Button,
+    buttonVariants,
     DashboardRouteDefinition,
     ListPage,
     PageActionBarRight,
@@ -135,11 +135,14 @@ function SecretsListPage({ route }: { route: SecretsRoute }) {
             >
                 <PageActionBarRight>
                     {canCreate && (
-                        <Button asChild data-testid="datahub-secret-create-button">
-                            <Link to={DETAIL_ROUTES.SECRET} params={{ id: 'new' }}>
-                                {i18n._(DATAHUB_PAGE_LABELS.NEW_SECRET)}
-                            </Link>
-                        </Button>
+                        <Link
+                            className={buttonVariants()}
+                            data-testid="datahub-secret-create-button"
+                            to={DETAIL_ROUTES.SECRET}
+                            params={{ id: 'new' }}
+                        >
+                            {i18n._(DATAHUB_PAGE_LABELS.NEW_SECRET)}
+                        </Link>
                     )}
                 </PageActionBarRight>
             </ListPage>

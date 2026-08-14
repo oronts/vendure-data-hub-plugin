@@ -124,11 +124,12 @@ function QueryConfiguration({
                         </Label>
                         <Select
                             value={query.orderBy ?? 'id'}
-                            onValueChange={(orderBy) =>
+                            onValueChange={(orderBy) => {
+                                if (orderBy == null) return;
                                 updateConfig({
                                     sourceQuery: { ...query, orderBy },
-                                })
-                            }
+                                });
+                            }}
                         >
                             <SelectTrigger id="export-order-by">
                                 <SelectValue />

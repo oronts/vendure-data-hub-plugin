@@ -242,10 +242,13 @@ export function ExecutionContextFields<TContext extends ExecutionContextValue>({
                     <Select
                         disabled={validationStrictnessesLoading}
                         value={selectValue(context.validationMode, 'STRICT')}
-                        onValueChange={value => updateField(
-                            'validationMode',
-                            selectUpdate(value) as ValidationModeType | undefined,
-                        )}
+                        onValueChange={value => {
+                            if (value == null) return;
+                            updateField(
+                                'validationMode',
+                                selectUpdate(value) as ValidationModeType | undefined,
+                            );
+                        }}
                     >
                         <SelectTrigger id={ids.validationMode} className={controlClass}>
                             <SelectValue />
@@ -275,10 +278,13 @@ export function ExecutionContextFields<TContext extends ExecutionContextValue>({
                     <Select
                         disabled={channelsLoading}
                         value={context.channel ?? ACTIVE_CHANNEL}
-                        onValueChange={value => updateField(
-                            'channel',
-                            value === ACTIVE_CHANNEL ? undefined : value,
-                        )}
+                        onValueChange={value => {
+                            if (value == null) return;
+                            updateField(
+                                'channel',
+                                value === ACTIVE_CHANNEL ? undefined : value,
+                            );
+                        }}
                     >
                         <SelectTrigger id={ids.executionChannel} className={controlClass}>
                             <SelectValue />
@@ -307,6 +313,7 @@ export function ExecutionContextFields<TContext extends ExecutionContextValue>({
                     disabled={channelStrategiesLoading}
                     value={selectValue(context.channelStrategy, 'INHERIT')}
                     onValueChange={value => {
+                        if (value == null) return;
                         const channelStrategy = selectUpdate(value) as ChannelStrategy | undefined;
                         const next = { ...context } as unknown as Record<string, unknown>;
                         if (channelStrategy === undefined) {

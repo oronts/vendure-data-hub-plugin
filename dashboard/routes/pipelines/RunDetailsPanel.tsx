@@ -4,6 +4,7 @@ import { Trans, useLingui } from '@lingui/react/macro';
 import {
     Button,
     Dialog,
+    buttonVariants,
     DialogContent,
     DialogDescription,
     DialogFooter,
@@ -176,16 +177,15 @@ export function RunDetailsPanel({
                 <div className="text-xs text-muted-foreground">
                     <Trans>Started by: {run?.startedByUserId ?? '—'}</Trans>
                 </div>
-                <Button variant="outline" size="sm" className="gap-1.5" asChild>
-                    <Link
-                        to={ROUTES.LOGS}
-                        search={{ runId: String(runId) }}
-                        aria-label={t`View logs for this run`}
-                    >
-                        <ScrollText className="h-3.5 w-3.5" />
-                        <Trans>View logs</Trans>
-                    </Link>
-                </Button>
+                <Link
+                    className={buttonVariants({ variant: 'outline', size: 'sm', className: 'gap-1.5' })}
+                    to={ROUTES.LOGS}
+                    search={{ runId: String(runId) }}
+                    aria-label={t`View logs for this run`}
+                >
+                    <ScrollText className="h-3.5 w-3.5" />
+                    <Trans>View logs</Trans>
+                </Link>
             </div>
 
             {status === RUN_STATUS.PAUSED && pausedGateStepKey && (

@@ -23,6 +23,7 @@ vi.mock('@lingui/react/macro', () => ({
 
 vi.mock('@vendure/dashboard', () => ({
     Button: ({ children }: { children?: ReactNode }) => createElement('button', null, children),
+    buttonVariants: () => '',
     Command: ({ children }: { children?: ReactNode }) => createElement('div', null, children),
     CommandInput: () => createElement('input'),
     CommandItem: ({ children }: { children?: ReactNode }) => createElement('div', null, children),
