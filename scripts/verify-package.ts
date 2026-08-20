@@ -250,7 +250,7 @@ void defineConnector;
                 esModuleInterop: true,
                 forceConsistentCasingInFileNames: true,
                 jsx: 'react-jsx',
-                lib: ['ES2020', 'DOM', 'DOM.Iterable'],
+                lib: ['ES2022', 'DOM', 'DOM.Iterable'],
                 module: 'NodeNext',
                 moduleResolution: 'NodeNext',
                 noEmit: true,
@@ -261,7 +261,8 @@ void defineConnector;
                 },
                 skipLibCheck: true,
                 strict: true,
-                target: 'ES2020',
+                target: 'ES2022',
+                types: ['vite/client'],
             },
             include: [
                 `./node_modules/${packageName}/dist/dashboard/**/*`,
