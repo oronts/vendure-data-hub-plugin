@@ -17,6 +17,7 @@ const packagePaths = [
 const commandOptions = { maxBuffer: 50 * 1024 * 1024 } as const;
 const vendureVersion = process.env.DATA_HUB_TEST_VENDURE_VERSION?.trim();
 const typeormVersion = process.env.DATA_HUB_TEST_TYPEORM_VERSION?.trim();
+const typescriptVersion = process.env.DATA_HUB_TEST_TYPESCRIPT_VERSION?.trim();
 const peerVersionOverrides = new Map<string, string>([
     ...(vendureVersion
         ? [
@@ -43,6 +44,19 @@ interface RootPackageManifest {
         string,
         { optional?: boolean }
     >;
+}
+
+async function getConsumerTypeScriptVersion(): Promise<string> {
+    if (typescriptVersion) return typescriptVersion;
+
+    const manifest = JSON.parse(
+        await readFile(join(packageRoot, 'node_modules', 'typescript', 'package.json'), 'utf8'),
+    ) as { version?: string };
+    if (!manifest.version) {
+        throw new Error('Installed TypeScript package does not declare a version');
+    }
+
+    return manifest.version;
 }
 
 async function getConsumerPeerSpecs(): Promise<string[]> {
@@ -123,6 +137,7 @@ async function verifyPackage(): Promise<void> {
     const consumerDirectory = join(temporaryRoot, 'consumer');
     try {
         const consumerPeerSpecs = await getConsumerPeerSpecs();
+        const consumerTypeScriptVersion = await getConsumerTypeScriptVersion();
         const pack = await execFileAsync('npm', [
             'pack',
             '--json',
@@ -149,7 +164,7 @@ async function verifyPackage(): Promise<void> {
             '--no-audit',
             '--no-fund',
             join(temporaryRoot, filename),
-            'typescript@5.9.3',
+            `typescript@${consumerTypeScriptVersion}`,
             ...consumerPeerSpecs,
         ], { cwd: consumerDirectory, ...commandOptions });
 

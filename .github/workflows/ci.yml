@@ -48,12 +48,15 @@ jobs:
         include:
           - vendure: 3.5.7
             typeorm: 0.3.29
+            typescript: 5.8.2
             node: 20.x
           - vendure: 3.6.5
             typeorm: 0.3.31
+            typescript: 5.8.2
             node: 22.x
           - vendure: 3.7.2
             typeorm: 0.3.31
+            typescript: 5.8.2
             node: 24.x
 
     steps:
@@ -69,6 +72,7 @@ jobs:
         env:
           DATA_HUB_TEST_VENDURE_VERSION: ${{ matrix.vendure }}
           DATA_HUB_TEST_TYPEORM_VERSION: ${{ matrix.typeorm }}
+          DATA_HUB_TEST_TYPESCRIPT_VERSION: ${{ matrix.typescript }}
         run: npm run verify:package
 
   integration:
