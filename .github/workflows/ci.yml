@@ -39,6 +39,42 @@ jobs:
       - run: npm test
       - run: npm run build
 
+  vendure-compatibility:
+    name: Vendure ${{ matrix.vendure }} compatibility
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - vendure: 3.5.7
+            typeorm: 0.3.29
+            typescript: 5.8.2
+            node: 20.x
+          - vendure: 3.6.5
+            typeorm: 0.3.31
+            typescript: 5.8.2
+            node: 22.x
+          - vendure: 3.7.2
+            typeorm: 0.3.31
+            typescript: 5.8.2
+            node: 24.x
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - run: npm ci
+      - name: Verify package consumer
+        env:
+          DATA_HUB_TEST_VENDURE_VERSION: ${{ matrix.vendure }}
+          DATA_HUB_TEST_TYPEORM_VERSION: ${{ matrix.typeorm }}
+          DATA_HUB_TEST_TYPESCRIPT_VERSION: ${{ matrix.typescript }}
+        run: npm run verify:package
+
   integration:
     name: Vendure E2E
     runs-on: ubuntu-latest

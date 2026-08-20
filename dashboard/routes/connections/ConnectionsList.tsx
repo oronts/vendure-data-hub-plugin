@@ -1,4 +1,4 @@
-import { Badge, Button, DashboardRouteDefinition, ListPage, PageActionBarRight, PermissionGuard } from '@vendure/dashboard';
+import { Badge, buttonVariants, DashboardRouteDefinition, ListPage, PageActionBarRight, PermissionGuard } from '@vendure/dashboard';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { DATAHUB_NAV_LABELS, DATAHUB_NAV_SECTION, DATAHUB_PAGE_LABELS, DATAHUB_PERMISSIONS, DETAIL_ROUTES, ROUTES } from '../../constants';
 import { connectionsListDocument, deleteConnectionDocument } from '../../hooks';
@@ -66,11 +66,14 @@ function ConnectionsListPage({ route }: { route: ConnectionsRoute }) {
                 }}
             >
                 <PageActionBarRight>
-                    <Button asChild data-testid="datahub-connection-create-button">
-                        <Link to={DETAIL_ROUTES.CONNECTION} params={{ id: 'new' }}>
-                            {i18n._(DATAHUB_PAGE_LABELS.NEW_CONNECTION)}
-                        </Link>
-                    </Button>
+                    <Link
+                        className={buttonVariants()}
+                        data-testid="datahub-connection-create-button"
+                        to={DETAIL_ROUTES.CONNECTION}
+                        params={{ id: 'new' }}
+                    >
+                        {i18n._(DATAHUB_PAGE_LABELS.NEW_CONNECTION)}
+                    </Link>
                 </PageActionBarRight>
             </ListPage>
         </PermissionGuard>

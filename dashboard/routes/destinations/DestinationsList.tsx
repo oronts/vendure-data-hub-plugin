@@ -4,6 +4,7 @@ import {
     Badge,
     Button,
     Card,
+    buttonVariants,
     CardContent,
     ConfirmationDialog,
     DashboardRouteDefinition,
@@ -115,12 +116,10 @@ function DestinationsListPage() {
                         <RefreshCw className={`w-4 h-4 mr-2 ${destinationsQuery.isFetching ? 'animate-spin' : ''}`} />
                         {t`Refresh`}
                     </Button>
-                    <Button asChild>
-                        <Link to={`${ROUTES.DESTINATIONS}/new`}>
-                            <Plus className="w-4 h-4 mr-2" />
-                            {t`New destination`}
-                        </Link>
-                    </Button>
+                    <Link className={buttonVariants()} to={`${ROUTES.DESTINATIONS}/new`}>
+                        <Plus className="w-4 h-4 mr-2" />
+                        {t`New destination`}
+                    </Link>
                 </PageActionBarRight>
             </PageActionBar>
 
@@ -161,11 +160,9 @@ function DestinationsListPage() {
                                 description={t`Create a destination to deliver exported data for this channel.`}
                             />
                             <div className="flex justify-center pb-8">
-                                <Button asChild>
-                                    <Link to={`${ROUTES.DESTINATIONS}/new`}>
-                                        {t`Create destination`}
-                                    </Link>
-                                </Button>
+                                <Link className={buttonVariants()} to={`${ROUTES.DESTINATIONS}/new`}>
+                                    {t`Create destination`}
+                                </Link>
                             </div>
                         </CardContent>
                     </Card>

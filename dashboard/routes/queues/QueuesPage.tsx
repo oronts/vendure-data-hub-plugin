@@ -9,6 +9,7 @@ import {
     PageLayout,
     PageTitle,
     Button,
+    buttonVariants,
     PermissionGuard,
     Drawer,
     DrawerContent,
@@ -317,11 +318,14 @@ function QueuesPage() {
                                 <div className="text-sm text-muted-foreground"><Trans>Pipeline</Trans>: <span className="font-mono">{runDetails.data?.pipeline?.code ?? '—'}</span></div>
                                 {runDetails.data?.pipeline?.id ? (
                                     <div>
-                                        <Button asChild size="sm" variant="secondary">
-                                            <Link to={`${ROUTES.PIPELINES}/$id`} params={{ id: String(runDetails.data?.pipeline.id) }} hash="runs">
-                                                <Trans>Open pipeline runs</Trans>
-                                            </Link>
-                                        </Button>
+                                        <Link
+                                            className={buttonVariants({ size: 'sm', variant: 'secondary' })}
+                                            to={`${ROUTES.PIPELINES}/$id`}
+                                            params={{ id: String(runDetails.data?.pipeline.id) }}
+                                            hash="runs"
+                                        >
+                                            <Trans>Open pipeline runs</Trans>
+                                        </Link>
                                     </div>
                                 ) : null}
                                 <div className="grid grid-cols-2 gap-2 text-sm">

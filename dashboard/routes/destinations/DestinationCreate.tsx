@@ -3,6 +3,7 @@ import { useLingui } from '@lingui/react/macro';
 import {
     Button,
     Card,
+    buttonVariants,
     CardContent,
     CardDescription,
     CardHeader,
@@ -119,8 +120,8 @@ function DestinationCreatePage() {
         }));
     }, [hasSelectedConfig, selectedSchema]);
 
-    const handleTypeChange = React.useCallback((value: string) => {
-        if (!isManagedDestinationType(value)) return;
+    const handleTypeChange = React.useCallback((value: string | null) => {
+        if (value == null || !isManagedDestinationType(value)) return;
         const schema = schemas.find(candidate => candidate.type === value);
         setDraft(current => ({
             ...current,
@@ -224,11 +225,9 @@ function DestinationCreatePage() {
             <PageTitle>{i18n._(DATAHUB_PAGE_LABELS.NEW_DESTINATION)}</PageTitle>
             <PageActionBar>
                 <PageActionBarRight>
-                    <Button variant="outline" asChild>
-                        <Link to={ROUTES.DESTINATIONS}>
-                            {t`Cancel`}
-                        </Link>
-                    </Button>
+                    <Link className={buttonVariants({ variant: 'outline' })} to={ROUTES.DESTINATIONS}>
+                        {t`Cancel`}
+                    </Link>
                     <Button
                         type="submit"
                         form={DESTINATION_FORM_ID}

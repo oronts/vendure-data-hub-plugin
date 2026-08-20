@@ -305,15 +305,15 @@ function ExistingSchemaPage({ route }: Readonly<{ route: DashboardRoute }>) {
         }),
     });
     const CreateVersionMenuItem = React.useCallback(() => (
-        <DropdownMenuItem asChild>
-            <Link
-                to={DETAIL_ROUTES.SCHEMA_VERSION}
-                params={{ id: String(entity?.id ?? params.id) }}
-            >
-                <Trans>Create version</Trans>
-            </Link>
+        <DropdownMenuItem
+            onClick={() => void navigate({
+                to: DETAIL_ROUTES.SCHEMA_VERSION,
+                params: { id: String(entity?.id ?? params.id) },
+            })}
+        >
+            <Trans>Create version</Trans>
         </DropdownMenuItem>
-    ), [entity?.id, params.id]);
+    ), [entity?.id, navigate, params.id]);
     const DeleteVersionMenuItem = React.useCallback(() => (
         <ConfirmationDialog
             title={t`Delete schema version?`}

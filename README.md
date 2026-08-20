@@ -237,7 +237,7 @@ DataHubPlugin.init({
         telemetry: {
             endpoint: otlpEndpoint,
             serviceName: 'vendure-data-hub',
-            serviceVersion: '0.1.7',
+            serviceVersion: '0.1.8',
             environment: process.env.NODE_ENV,
             headers: process.env.OTEL_EXPORTER_OTLP_API_KEY
                 ? { 'x-api-key': process.env.OTEL_EXPORTER_OTLP_API_KEY }
@@ -1271,7 +1271,8 @@ Failed records automatically capture JavaScript stack traces when errors origina
 
 | Requirement | Version |
 |-------------|---------|
-| Vendure | >=3.5.7 <3.6.0 |
+| Vendure Core and Dashboard | >=3.5.7 <4.0.0 |
+| TypeORM | >=0.3.29 <0.4.0 |
 | Node.js | >=20.0.0 |
 
 Amazon SQS consumers and producers additionally require the optional

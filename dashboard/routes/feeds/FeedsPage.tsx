@@ -3,7 +3,7 @@ import { useLingui } from '@lingui/react/macro';
 import { Link } from '@tanstack/react-router';
 import {
     Badge,
-    Button,
+    buttonVariants,
     Card,
     CardContent,
     CardDescription,
@@ -69,12 +69,14 @@ function FeedsPage() {
             <PageTitle>{i18n._(DATAHUB_NAV_LABELS.FEEDS)}</PageTitle>
             <PageActionBar>
                 <PageActionBarRight>
-                    <Button asChild>
-                        <Link to={DETAIL_ROUTES.FEED} params={{ id: 'new' }}>
-                            <Plus className="h-4 w-4" aria-hidden="true" />
-                            {t`New feed`}
-                        </Link>
-                    </Button>
+                    <Link
+                        className={buttonVariants()}
+                        to={DETAIL_ROUTES.FEED}
+                        params={{ id: 'new' }}
+                    >
+                        <Plus className="h-4 w-4" aria-hidden="true" />
+                        {t`New feed`}
+                    </Link>
                 </PageActionBarRight>
             </PageActionBar>
             <PageLayout>

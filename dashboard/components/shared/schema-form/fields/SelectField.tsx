@@ -23,7 +23,13 @@ export function SelectField({ field, value, onChange, compact, disabled }: Selec
     const { t } = useLingui();
     const validOptions = field.options?.filter(o => o.value !== '') ?? [];
     return (
-        <Select value={value ?? (field.default as string) ?? ''} onValueChange={onChange} disabled={disabled}>
+        <Select
+            value={value ?? (field.default as string) ?? ''}
+            onValueChange={nextValue => {
+                if (nextValue != null) onChange(nextValue);
+            }}
+            disabled={disabled}
+        >
             <SelectTrigger className={compact ? 'h-8 text-sm' : ''}>
                 <SelectValue
                     placeholder={field.placeholder ?? t`Select ${field.label || field.key}`}

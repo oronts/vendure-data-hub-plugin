@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link } from '@tanstack/react-router';
-import { Button } from '@vendure/dashboard';
+import { buttonVariants } from '@vendure/dashboard';
 import { ChevronRight } from 'lucide-react';
 
 export interface DetailRouteButtonProps {
@@ -15,15 +15,14 @@ export function DetailRouteButton({
     route,
 }: Readonly<DetailRouteButtonProps>) {
     return (
-        <Button asChild variant="ghost">
-            <Link
-                to={route}
-                params={{ id: String(id) }}
-                preload={false}
-            >
-                {label}
-                <ChevronRight className="h-3 w-3 text-muted-foreground" />
-            </Link>
-        </Button>
+        <Link
+            className={buttonVariants({ variant: 'ghost' })}
+            to={route}
+            params={{ id: String(id) }}
+            preload={false}
+        >
+            {label}
+            <ChevronRight className="h-3 w-3 text-muted-foreground" />
+        </Link>
     );
 }

@@ -125,7 +125,9 @@ export function SourceFileConfig({
                             </Label>
                             <Select
                                 value={config.source.fileConfig.delimiter ?? ','}
-                                onValueChange={delimiter => updateFileConfig({ delimiter })}
+                                onValueChange={delimiter => {
+                                    if (delimiter != null) updateFileConfig({ delimiter });
+                                }}
                             >
                                 <SelectTrigger id={FILE_SOURCE_FIELD_IDS.DELIMITER}>
                                     <SelectValue />

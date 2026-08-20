@@ -270,7 +270,12 @@ function ConditionRow({ condition, comparisonOperators, onUpdate, onRemove }: Co
             />
 
             {/* Comparison operator */}
-            <Select value={condition.cmp} onValueChange={(v) => onUpdate({ cmp: v })}>
+            <Select
+                value={condition.cmp}
+                onValueChange={v => {
+                    if (v != null) onUpdate({ cmp: v });
+                }}
+            >
                 <SelectTrigger className="w-[120px] h-7 text-xs">
                     <SelectValue />
                 </SelectTrigger>

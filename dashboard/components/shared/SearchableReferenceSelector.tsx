@@ -3,6 +3,7 @@ import { Trans } from '@lingui/react/macro';
 import {
     Button,
     Command,
+    buttonVariants,
     CommandInput,
     CommandItem,
     CommandList,
@@ -83,24 +84,23 @@ export function SearchableReferenceSelector({
 }: SearchableReferenceSelectorProps) {
     return (
         <Popover open={open} onOpenChange={onOpenChange}>
-            <PopoverTrigger asChild>
-                <Button
-                    id={id}
-                    type="button"
-                    variant="outline"
-                    role="combobox"
-                    aria-expanded={open}
-                    aria-label={ariaLabel}
-                    aria-labelledby={ariaLabelledBy}
-                    aria-describedby={ariaDescribedBy}
-                    aria-required={ariaRequired}
-                    disabled={disabled}
-                    data-testid={testId}
-                    className={`w-full justify-between font-normal ${compact ? 'h-8 text-sm' : ''} ${className ?? ''}`}
-                >
-                    <span className="truncate">{selectedLabel || placeholder}</span>
-                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                </Button>
+            <PopoverTrigger
+                id={id}
+                role="combobox"
+                aria-expanded={open}
+                aria-label={ariaLabel}
+                aria-labelledby={ariaLabelledBy}
+                aria-describedby={ariaDescribedBy}
+                aria-required={ariaRequired}
+                disabled={disabled}
+                data-testid={testId}
+                className={buttonVariants({
+                    variant: 'outline',
+                    className: `w-full justify-between font-normal ${compact ? 'h-8 text-sm' : ''} ${className ?? ''}`,
+                })}
+            >
+                <span className="truncate">{selectedLabel || placeholder}</span>
+                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
             </PopoverTrigger>
             <PopoverContent
                 className="w-[min(350px,calc(100vw-2rem))] p-0"

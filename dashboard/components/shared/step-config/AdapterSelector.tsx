@@ -47,7 +47,13 @@ export function AdapterSelector({
     }
 
     return (
-        <Select value={value ?? ''} onValueChange={onChange} disabled={disabled}>
+        <Select
+            value={value ?? ''}
+            onValueChange={code => {
+                if (code != null) onChange(code);
+            }}
+            disabled={disabled}
+        >
             <SelectTrigger id={id} className="w-full">
                 <SelectValue placeholder={placeholder ?? t`Select adapter...`}>
                     {selectedAdapter && (

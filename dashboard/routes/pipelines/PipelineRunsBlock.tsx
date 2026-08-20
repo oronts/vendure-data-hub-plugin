@@ -3,6 +3,7 @@ import { Trans, useLingui } from '@lingui/react/macro';
 import {
     Badge,
     Button,
+    buttonVariants,
     DataTable,
     AlertDialog,
     AlertDialogAction,
@@ -31,7 +32,7 @@ import {
     PageLayout,
     usePermissions,
 } from '@vendure/dashboard';
-import { Link } from '@tanstack/react-router';
+import { useNavigate } from '@tanstack/react-router';
 import { ColumnDef, SortingState } from '@tanstack/react-table';
 import { toast } from 'sonner';
 import { Eye, ScrollText, Play, XCircle, ShieldCheck } from 'lucide-react';
@@ -70,6 +71,7 @@ export function PipelineRunsBlock({
     currentRevisionId?: string | number | null;
 }) {
     const { i18n, t } = useLingui();
+    const navigate = useNavigate();
     const locale = i18n.locale;
     const { hasPermissions } = usePermissions();
     const canViewRuns = hasPermissions([DATAHUB_PERMISSIONS.VIEW_RUNS]);
@@ -135,7 +137,8 @@ export function PipelineRunsBlock({
         setCancelConfirmRunId(null);
     }, [cancelConfirmRunId, cancelPipelineRun]);
 
-    const handleStatusChange = React.useCallback((v: string) => {
+    const handleStatusChange = React.useCallback((v: string | null) => {
+        if (v == null) return;
         setPage(1);
         setStatus(v === FILTER_VALUES.ALL ? '' : v);
     }, []);
@@ -232,35 +235,38 @@ export function PipelineRunsBlock({
                 return (
                     <div className="flex items-center gap-0.5">
                         <Tooltip>
-                            <TooltipTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleSelectRun(row.original)} aria-label={t`View details`}>
-                                    <Eye className="h-3.5 w-3.5" />
-                                </Button>
+                            <TooltipTrigger
+                                className={buttonVariants({ variant: 'ghost', size: 'icon', className: 'h-7 w-7' })}
+                                onClick={() => handleSelectRun(row.original)}
+                                aria-label={t`View details`}
+                            >
+                                <Eye className="h-3.5 w-3.5" />
                             </TooltipTrigger>
                             <TooltipContent><Trans>View details</Trans></TooltipContent>
                         </Tooltip>
 
                         <Tooltip>
-                            <TooltipTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-7 w-7" asChild>
-                                    <Link
-                                        to={ROUTES.LOGS}
-                                        search={{ runId: String(row.original.id) }}
-                                        aria-label={t`View logs`}
-                                    >
-                                        <ScrollText className="h-3.5 w-3.5" />
-                                    </Link>
-                                </Button>
+                            <TooltipTrigger
+                                className={buttonVariants({ variant: 'ghost', size: 'icon', className: 'h-7 w-7' })}
+                                onClick={() => void navigate({
+                                    to: ROUTES.LOGS,
+                                    search: { runId: String(row.original.id) },
+                                })}
+                                aria-label={t`View logs`}
+                            >
+                                <ScrollText className="h-3.5 w-3.5" />
                             </TooltipTrigger>
                             <TooltipContent><Trans>View logs</Trans></TooltipContent>
                         </Tooltip>
 
                         {isPaused && (
                             <Tooltip>
-                                <TooltipTrigger asChild>
-                                    <Button variant="ghost" size="icon" className="h-7 w-7 text-amber-600 dark:text-amber-400" onClick={() => handleSelectRun(row.original)} aria-label={t`Approve gate`}>
-                                        <ShieldCheck className="h-3.5 w-3.5" />
-                                    </Button>
+                                <TooltipTrigger
+                                    className={buttonVariants({ variant: 'ghost', size: 'icon', className: 'h-7 w-7 text-amber-600 dark:text-amber-400' })}
+                                    onClick={() => handleSelectRun(row.original)}
+                                    aria-label={t`Approve gate`}
+                                >
+                                    <ShieldCheck className="h-3.5 w-3.5" />
                                 </TooltipTrigger>
                                 <TooltipContent><Trans>Approve gate</Trans></TooltipContent>
                             </Tooltip>
@@ -269,10 +275,12 @@ export function PipelineRunsBlock({
                         {isFinished && pipelineId && canRunPublishedRevision && (
                             <PermissionGuard requires={[DATAHUB_PERMISSIONS.RUN_PIPELINE]}>
                                 <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleRerun(pipelineId)} aria-label={t`Re-run pipeline`}>
-                                            <Play className="h-3.5 w-3.5" />
-                                        </Button>
+                                    <TooltipTrigger
+                                        className={buttonVariants({ variant: 'ghost', size: 'icon', className: 'h-7 w-7' })}
+                                        onClick={() => handleRerun(pipelineId)}
+                                        aria-label={t`Re-run pipeline`}
+                                    >
+                                        <Play className="h-3.5 w-3.5" />
                                     </TooltipTrigger>
                                     <TooltipContent><Trans>Re-run pipeline</Trans></TooltipContent>
                                 </Tooltip>
@@ -282,10 +290,13 @@ export function PipelineRunsBlock({
                         {canCancel && (
                             <PermissionGuard requires={[DATAHUB_PERMISSIONS.RUN_PIPELINE]}>
                                 <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleCancelRun(row.original.id)} disabled={cancellingRunId === row.original.id} aria-label={t`Cancel run`}>
-                                            <XCircle className="h-3.5 w-3.5" />
-                                        </Button>
+                                    <TooltipTrigger
+                                        className={buttonVariants({ variant: 'ghost', size: 'icon', className: 'h-7 w-7 text-destructive' })}
+                                        onClick={() => handleCancelRun(row.original.id)}
+                                        disabled={cancellingRunId === row.original.id}
+                                        aria-label={t`Cancel run`}
+                                    >
+                                        <XCircle className="h-3.5 w-3.5" />
                                     </TooltipTrigger>
                                     <TooltipContent><Trans>Cancel run</Trans></TooltipContent>
                                 </Tooltip>
@@ -303,6 +314,7 @@ export function PipelineRunsBlock({
         handleRerun,
         handleSelectRun,
         locale,
+        navigate,
         pipelineId,
         t,
         translateRunStatus,

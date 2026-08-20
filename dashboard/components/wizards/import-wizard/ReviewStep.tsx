@@ -1,12 +1,6 @@
 import * as React from 'react';
 import { Trans, useLingui } from '@lingui/react/macro';
-import {
-    Badge,
-    Accordion,
-    AccordionContent,
-    AccordionItem,
-    AccordionTrigger,
-} from '@vendure/dashboard';
+import { Badge } from '@vendure/dashboard';
 import {
     Database,
     Table,
@@ -16,7 +10,7 @@ import {
 } from 'lucide-react';
 import { VENDURE_ENTITY_LIST } from '../../../../shared';
 import { WizardStepContainer } from '../shared';
-import { ConfigurationNameCard, SummaryCard, SummaryCardGrid, SummaryField } from '../../shared/wizard';
+import { ConfigurationNameCard, ReviewSection, SummaryCard, SummaryCardGrid, SummaryField } from '../../shared/wizard';
 import { useAdaptersByType } from '../../../hooks/api/use-adapters';
 import { formatKey } from '../../../utils/formatters';
 import type { ImportConfiguration } from './types';
@@ -107,63 +101,51 @@ function DetailedConfigAccordion({ config, mappedFieldsCount }: DetailedConfigAc
     const { t } = useLingui();
 
     return (
-        <Accordion type="multiple" defaultValue={['source', 'mappings', 'strategy']}>
-            <AccordionItem value="source">
-                <AccordionTrigger><Trans>Source configuration</Trans></AccordionTrigger>
-                <AccordionContent>
-                    <SourceConfigSummary source={config.source} />
-                </AccordionContent>
-            </AccordionItem>
+        <div>
+            <ReviewSection title={<Trans>Source configuration</Trans>} defaultOpen>
+                <SourceConfigSummary source={config.source} />
+            </ReviewSection>
 
-            <AccordionItem value="mappings">
-                <AccordionTrigger>{t`Field mappings (${mappedFieldsCount})`}</AccordionTrigger>
-                <AccordionContent>
+            <ReviewSection title={t`Field mappings (${mappedFieldsCount})`} defaultOpen>
+                <div className="space-y-2">
+                    {config.mappings?.filter(m => m.sourceField && m.targetField).map(m => (
+                        <div key={m.targetField} className="flex items-center gap-3 p-2 bg-muted rounded">
+                            <code className="text-xs">{m.sourceField}</code>
+                            <ArrowRight className="w-4 h-4" />
+                            <code className="text-xs">{m.targetField}</code>
+                            {m.required && (
+                                <Badge variant="destructive" className="text-[10px]">
+                                    <Trans>Required</Trans>
+                                </Badge>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            </ReviewSection>
+
+            <ReviewSection title={<Trans>Import strategy</Trans>} defaultOpen>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                    <SummaryField label={t`Existing records`}>{config.strategies?.existingRecords}</SummaryField>
+                    <SummaryField label={t`Lookup fields`}>{config.strategies?.lookupFields?.join(', ')}</SummaryField>
+                    <SummaryField label={t`Batch size`}>{config.strategies?.batchSize}</SummaryField>
+                </div>
+            </ReviewSection>
+
+            {(config.transformations?.length ?? 0) > 0 && (
+                <ReviewSection title={t`Transformations (${config.transformations?.length ?? 0})`}>
                     <div className="space-y-2">
-                        {config.mappings?.filter(m => m.sourceField && m.targetField).map(m => (
-                            <div key={m.targetField} className="flex items-center gap-3 p-2 bg-muted rounded">
-                                <code className="text-xs">{m.sourceField}</code>
-                                <ArrowRight className="w-4 h-4" />
-                                <code className="text-xs">{m.targetField}</code>
-                                {m.required && (
-                                    <Badge variant="destructive" className="text-[10px]">
-                                        <Trans>Required</Trans>
-                                    </Badge>
-                                )}
+                        {config.transformations?.map((transformation, index) => (
+                            <div key={transformation.id} className="flex items-center gap-3 p-2 bg-muted rounded">
+                                <span className="w-6 h-6 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center">
+                                    {index + 1}
+                                </span>
+                                <span className="capitalize font-medium">{transformation.type}</span>
                             </div>
                         ))}
                     </div>
-                </AccordionContent>
-            </AccordionItem>
-
-            <AccordionItem value="strategy">
-                <AccordionTrigger><Trans>Import strategy</Trans></AccordionTrigger>
-                <AccordionContent>
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                        <SummaryField label={t`Existing records`}>{config.strategies?.existingRecords}</SummaryField>
-                        <SummaryField label={t`Lookup fields`}>{config.strategies?.lookupFields?.join(', ')}</SummaryField>
-                        <SummaryField label={t`Batch size`}>{config.strategies?.batchSize}</SummaryField>
-                    </div>
-                </AccordionContent>
-            </AccordionItem>
-
-            {(config.transformations?.length ?? 0) > 0 && (
-                <AccordionItem value="transforms">
-                    <AccordionTrigger>{t`Transformations (${config.transformations?.length ?? 0})`}</AccordionTrigger>
-                    <AccordionContent>
-                        <div className="space-y-2">
-                            {config.transformations?.map((t, i) => (
-                                <div key={t.id} className="flex items-center gap-3 p-2 bg-muted rounded">
-                                    <span className="w-6 h-6 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center">
-                                        {i + 1}
-                                    </span>
-                                    <span className="capitalize font-medium">{t.type}</span>
-                                </div>
-                            ))}
-                        </div>
-                    </AccordionContent>
-                </AccordionItem>
+                </ReviewSection>
             )}
-        </Accordion>
+        </div>
     );
 }
 

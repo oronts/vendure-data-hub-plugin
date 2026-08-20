@@ -187,14 +187,15 @@ function FieldRow({
                 </span>
                 <Select
                     value={field.transformation ?? SENTINEL_VALUES.NONE}
-                    onValueChange={(transformation) =>
+                    onValueChange={(transformation) => {
+                        if (transformation == null) return;
                         onUpdate({
                             transformation:
                                 transformation === SENTINEL_VALUES.NONE
                                     ? undefined
                                     : transformation,
-                        })
-                    }
+                        });
+                    }}
                     disabled={!field.include}
                 >
                     <SelectTrigger

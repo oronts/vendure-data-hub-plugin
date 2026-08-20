@@ -21,6 +21,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import {
+    buttonVariants,
     Button,
     Badge,
     Sheet,
@@ -358,16 +359,12 @@ export function ReactFlowPipelineEditor({
                     <div className="flex flex-wrap items-center gap-2">
                         {!readOnly && (
                             <Sheet>
-                                <SheetTrigger asChild>
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        className="gap-2"
-                                        data-testid="datahub-pipeline-editor-settings-button"
-                                    >
-                                        <Settings2 className="w-4 h-4" />
-                                        {i18n._(DATAHUB_NAV_LABELS.SETTINGS)}
-                                    </Button>
+                                <SheetTrigger
+                                    className={buttonVariants({ variant: 'outline', className: 'gap-2' })}
+                                    data-testid="datahub-pipeline-editor-settings-button"
+                                >
+                                    <Settings2 className="w-4 h-4" />
+                                    {i18n._(DATAHUB_NAV_LABELS.SETTINGS)}
                                 </SheetTrigger>
                                 <SheetContent className="w-full p-0 sm:max-w-xl">
                                     <SheetHeader className="sr-only">

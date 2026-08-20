@@ -2,7 +2,7 @@ import * as React from 'react';
 import { memo } from 'react';
 import { Trans, useLingui } from '@lingui/react/macro';
 import {
-    Button,
+    buttonVariants,
     Drawer,
     DrawerContent,
     DrawerHeader,
@@ -47,14 +47,13 @@ export const LogDetailDrawer = memo(function LogDetailDrawer({ log, onClose }: L
                         <div className="flex items-center gap-3">
                             <LogLevelBadge level={log.level} />
                             {log.pipeline && (
-                                <Button asChild variant="link" size="sm" className="p-0 h-auto">
-                                    <Link
-                                        to={`${ROUTES.PIPELINES}/$id`}
-                                        params={{ id: log.pipeline.id }}
-                                    >
-                                        {log.pipeline.name}
-                                    </Link>
-                                </Button>
+                                <Link
+                                    className={buttonVariants({ variant: 'link', size: 'sm', className: 'p-0 h-auto' })}
+                                    to={`${ROUTES.PIPELINES}/$id`}
+                                    params={{ id: log.pipeline.id }}
+                                >
+                                    {log.pipeline.name}
+                                </Link>
                             )}
                         </div>
 
@@ -106,14 +105,13 @@ export const LogDetailDrawer = memo(function LogDetailDrawer({ log, onClose }: L
 
                         {log.runId && log.pipeline?.id && (
                             <div className="pt-3 border-t">
-                                <Button asChild variant="outline" size="sm">
-                                    <Link
-                                        to={`${ROUTES.PIPELINES}/$id`}
-                                        params={{ id: log.pipeline.id }}
-                                    >
-                                        <Trans>View Pipeline</Trans>
-                                    </Link>
-                                </Button>
+                                <Link
+                                    className={buttonVariants({ variant: 'outline', size: 'sm' })}
+                                    to={`${ROUTES.PIPELINES}/$id`}
+                                    params={{ id: log.pipeline.id }}
+                                >
+                                    <Trans>View Pipeline</Trans>
+                                </Link>
                             </div>
                         )}
                     </div>
